@@ -1,4 +1,4 @@
-// The final benchmark matrix (book chapter 199). Three parts, written to
+// The final benchmark matrix (the book's chapter “The final benchmark matrix”). Three parts, written to
 // results/matrix-<date>.json, and rendered from that JSON into
 // results/matrix-<date>.md (no number in the MD is typed by hand):
 //

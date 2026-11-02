@@ -1,4 +1,4 @@
-//! A hash table with open addressing and linear probing (book chapter 51).
+//! A hash table with open addressing and linear probing (the book's chapter “Finding things fast: hash tables”).
 //!
 //! Keys are interned strings, so two keys are equal exactly when their
 //! handles are. Like the TypeScript table, storage is a struct of arrays,

@@ -1,5 +1,5 @@
 export default {
-  id: 'VI', track: 'A', days: '47–57', title: 'The compiler middle-end',
+  id: 'VI', track: 'A', days: '47–58', title: 'The compiler middle-end',
   blurb: 'Intermediate representations, control-flow graphs, dominators, SSA, dataflow analysis, classic optimizations, alias and escape analysis, and pass managers.',
   chapters: [
     { n: 185, title: 'What an IR is for', introduces: { ir: 'intermediate representation: the compiler’s working form of a program', lowering: 'translating to a lower-level form' } },
@@ -116,21 +116,39 @@ export default {
       'affine-access': 'array indices that are linear in the loop counters',
       'polyhedral-model': 'loop nests as points in a shape, transformed with matrices',
     } },
-    { n: 219, title: 'Alias analysis', introduces: { 'alias-analysis': 'deciding which references may point at the same object', 'points-to': 'the set of objects a reference may point at' } },
-    { n: 220, title: 'Interprocedural analysis', introduces: {
+    { n: 219, title: 'Alias analysis', introduces: {
+      'alias-analysis': 'deciding which references may point at the same object',
+    } },
+    { n: 220, title: 'Points-to analysis: Andersen and Steensgaard', introduces: {
+      'points-to': 'the set of objects a reference may point at',
+    } },
+    { n: 221, title: 'Interprocedural analysis', introduces: {
       'interprocedural-analysis': 'analysis across function boundaries',
       'context-sensitivity': 'analysing a function separately for each kind of caller',
+    } },
+    { n: 222, title: 'Function summaries and analyses in Datalog', introduces: {
       'function-summary': 'what a function does, recorded once and reused',
       'datalog-analysis': 'program analyses written as logic rules',
     } },
-    { n: 221, title: 'Escape analysis', introduces: { 'escape-analysis': 'deciding whether a reference can leave a region of code', 'escape-sites': 'the places a value can escape: stores, calls, returns' } },
-    { n: 222, title: 'Type and shape inference', introduces: { 'type-inference': 'deducing types without annotations', 'shape-inference': 'deducing object shapes statically' } },
-    { n: 223, title: 'Sea of nodes and other IR designs', introduces: {
+    { n: 223, title: 'Escape analysis', introduces: {
+      'escape-analysis': 'deciding whether a reference can leave a region of code',
+    } },
+    { n: 224, title: 'Escape sites: how Viscosity proves a rewrite safe', introduces: {
+      'escape-sites': 'the places a value can escape: stores, calls, returns',
+    } },
+    { n: 225, title: 'Type and shape inference', introduces: { 'type-inference': 'deducing types without annotations', 'shape-inference': 'deducing object shapes statically' } },
+    { n: 226, title: 'Sea of nodes and other IR designs', introduces: {
       'sea-of-nodes': 'an IR where only data and control dependencies order instructions',
       'graph-ir': 'IRs as graphs instead of lists',
       'mlir-dialects': 'many small IRs, lowered step by step',
     } },
-    { n: 224, title: 'Pass managers', introduces: { 'compiler-pass': 'one analysis or transformation over the IR', 'pass-manager': 'the scheduler that runs passes and caches analyses', 'analysis-invalidation': 'throwing away cached facts after a change' } },
-    { n: 225, title: 'Testing compilers', introduces: { 'differential-testing': 'comparing two implementations on many inputs', fuzzing: 'generating random programs to find bugs', 'round-trip-testing': 'parse → print → parse gives the same tree' } },
+    { n: 227, title: 'Pass managers', introduces: { 'compiler-pass': 'one analysis or transformation over the IR', 'pass-manager': 'the scheduler that runs passes and caches analyses', 'analysis-invalidation': 'throwing away cached facts after a change' } },
+    { n: 228, title: 'Testing compilers', introduces: {
+      'differential-testing': 'comparing two implementations on many inputs',
+      'round-trip-testing': 'parse → print → parse gives the same tree',
+    } },
+    { n: 229, title: 'Fuzzing and test-case reduction', introduces: {
+      fuzzing: 'generating random programs to find bugs',
+    } },
   ],
 };

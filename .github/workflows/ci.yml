@@ -108,7 +108,7 @@ jobs:
         working-directory: engine/rust
         run: cargo build --target wasm32-unknown-unknown -p viscosity-wasm
 
-      # Not published, but kept publishable: every crate must package
+      # Published on crates.io (0.0.1), and kept publishable: every crate must package
       # (versions on path dependencies, a LICENSE in each crate).
       - name: Package the crates
         working-directory: engine/rust

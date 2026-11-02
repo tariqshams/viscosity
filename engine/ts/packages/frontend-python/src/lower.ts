@@ -1,4 +1,4 @@
-// Lowering Python to VIR (book chapter 115). The same IR as JavaScript:
+// Lowering Python to VIR (the book's chapter “Lowering Python to VIR”). The same IR as JavaScript:
 // records come from @dataclass constructor calls, collections from lists,
 // `append` is a push, `len(xs)` reads the length, `for i in range(...)` is a
 // counting loop and `for x in xs` an element loop. The core analyses then

@@ -1,0 +1,291 @@
+---
+n: 429
+day: 108
+part: XIII
+title: 'Proving an index in bounds in Rust'
+tagline: 'Every element read the compiler cannot prove safe costs a check in the hottest loop. The Rust port proves the common case with four questions, a counting phi, and a set that lets a recursive walk go round a cycle exactly once.'
+objectives:
+  - Ask the four questions the bounds proof asks of each element read, and predict its verdict on a loop.
+  - Explain how is_counting_phi finds the start and the step, and why it tries both orders.
+  - Explain how non_neg_int uses a shared seen set to handle the cycle through a phi.
+  - Implement the counting-phi test over a small arena of values, with tests.
+introduces: []
+uses: [rust-access-pass, viscosity-rs, ir-arena, rust-ssa, access-pattern, access-rewriting, natural-loop, induction-variable, dominator, phi-node, ssa, basic-block, cfg, cross-implementation-tests, hashmap, vec, option, enum, match, pattern, borrow-checker, shared-vs-mutable, rust-iterator, rust-closure, typed-index, cargo-test, recursion]
+sources: [rust-std-hashset-insert]
+---
+import BoundsSteps from '../../../components/diagrams/ch429/BoundsSteps';
+import SeenSteps from '../../../components/diagrams/ch429/SeenSteps';
+
+## A check in the hottest loop
+
+*Rewriting field accesses* showed what happens to an element read that
+nobody proved safe: `ps[i].x` becomes `ps.x[__vsc_bc(ps, i, 'x',
+false)]`, a call that checks `i` and throws the original's `TypeError`
+if it is out of range. That keeps the compiled program honest, but it
+costs a call and two comparisons on every access, in exactly the loops
+Viscosity is trying to speed up. Here are two loops that differ by one
+character, and the line the Rust CLI emits for each (I ran
+`viscosity build` here):
+
+```js
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += 1;
+// → ps.x[i] += 1;
+for (let i = 0; i <= ps.length; i++)
+  ps[i].x += 1;
+// → ps.x[__vsc_bc(ps, i, 'x', false)]
+//     += 1;
+```
+
+The first is proven, so it gets a bare index. The second is not, and
+rightly: on its last trip `i` equals `ps.length`, and both the original
+and the compiled program stop with `TypeError: Cannot read properties of
+undefined (reading 'x')`. This chapter reads how `bounds_loops_and_sizes`
+in `analysis.rs` tells the two apart (*Access patterns in Rust* read the
+rest of that function).
+
+<Analogy title="climbing a ladder in the dark">
+You can climb a ladder you cannot see without ever grabbing air, if you
+keep three rules: start on a rung you know is there, only ever move up
+one rung, and before each move feel that there is a rung above. Nobody
+has to count the rungs for you; the rules alone keep you on the ladder.
+<span slot="breaks">A ladder can't change while you climb; an array
+can grow during the loop. That is fine, because the guard rereads
+`ps.length` on every trip, and a collection Viscosity transforms can
+only use `.length` and `.push`, so it never gets shorter.</span>
+</Analogy>
+
+<Analogy title="an usher with a numbered row">
+An usher seats a queue along a row: the first person in seat 0, each
+next person one seat along, and before seating anyone the usher checks
+the seat number is less than the number of seats in the row. However
+long the queue, nobody is ever sent to a seat that isn't there.
+<span slot="breaks">The usher looks at real seats on one evening; the
+analysis never sees a number at all, only the shape of the code, and
+its answer has to hold for every run of the program at once.</span>
+</Analogy>
+
+## Four questions
+
+The proof asks four questions of each element read (each `index.get`
+in VIR), and an access is proven only if all four say yes:
+
+1. Is the index the phi at the header of some loop that contains the
+   access? (Any enclosing loop counts, not only the innermost.)
+2. Is that phi a **counting phi**: it starts at a non-negative whole
+   number and steps by `+ 1`?
+3. Does that loop's header test `index < c.length`, for this same
+   collection (one conjunct of an `&&` is enough)?
+4. Does the true edge of that test **dominate** the access, so that the
+   access can only be reached after the test said yes?
+
+Step through them on a program with four element reads:
+
+<BoundsSteps client:visible />
+
+<Callout kind="definition">
+An element read `c[i]` is **proven in bounds** when `i` is a **counting
+phi** of a loop around the read (a phi with a **non-negative integer
+start** and a **`+ 1` step**), the loop's header tests **`i <
+c.length`**, and the **true edge** of that test **dominates** the read.
+The Rust port records the answer in `IndexGet::bounds_proven`, and the
+emitter leaves the check out wherever it is `true`.
+</Callout>
+
+<Formal title="The bounds rule">
+
+```text
+i = φ(s, i + 1)    s ∈ ℕ
+header: if (i < c.length) goto t
+t dominates the block of c[i]
+─────────────────────────────────
+     0 ≤ i < c.length  at  c[i]
+```
+
+<span slot="read">If i is a phi whose operands are a start s and i plus
+one, and s is a natural number (a whole number from zero up); and the
+loop's header jumps to t when i is less than c's length; and t
+dominates the block holding the read c of i; then, at that read, i is at
+least zero and less than c's length.</span>
+</Formal>
+
+<Examples of="rust-access-pass">
+
+```js
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += 1;
+// 1 of 1 element accesses proven
+```
+
+```js
+for (let i = 0; i < ps.length; i++)
+  for (let j = i + 1;
+      j < i + 8 && j < ps.length; j++)
+    ps[i].x += ps[j].x;
+// 2 of 2 element accesses proven
+```
+
+```js
+function step(arr, dt) {
+  for (let i = 0; i < arr.length; i++) {
+    const p = arr[i];
+    p.x += p.vx * dt;
+  }
+}
+// particles.js: 2 of 2 proven
+```
+
+</Examples>
+
+Each `ps` holds 100 pushed records (left out), and the comments are the
+Rust CLI's verdicts. The first is the plain case. In the second, `ps[j]` is proven although `j` starts at
+`i + 1`, because the start only has to be a non-negative integer, and
+the guard `j < i + 8 && j < ps.length` is split into its conjuncts and
+one of them is the right test; `ps[i]` is proven through the *outer*
+loop, whose header defines `i`. The third is the hot loop of the
+benchmark `particles.js` (trimmed): every call of `step` passes `ps`, so
+the analysis follows it into `arr`, and `viscosity build` writes
+`arr.x[p]` with no check.
+
+## The counting phi
+
+In SSA (*SSA form*), a loop variable becomes a **phi** at the loop
+header: `i = φ(0, i + 1)` means "0 when we arrive from before the loop,
+`i + 1` when we come back round". The test for question 2 is
+`is_counting_phi` (rewrapped, with the step test shortened to a
+comment):
+
+```rust
+if !matches!(phi.op, Op::Phi)
+    || phi.args.len() != 2
+{
+    return false;
+}
+for (s0, s1) in [(0, 1), (1, 0)] {
+    let start = self.inst(phi.args[s0]);
+    let step = self.inst(phi.args[s1]);
+    // continue unless step is phi + 1
+    let start_ok = if zero_start {
+        start.op == Op::Const(
+            Const::Number(0.0))
+    } else {
+        self.non_neg_int(start,
+            &mut HashSet::default())
+    };
+    if start_ok {
+        return true;
+    }
+}
+false
+```
+
+A phi's operands are listed in the order of the header's predecessor
+blocks, which says nothing about which one is the start, so the loop
+tries both orders: `[(0, 1), (1, 0)]` is an array of two tuples, and
+each turn takes one operand as the start and the other as the step. The
+step must be a `+` whose left side is the phi itself (perhaps under a
+unary `+`) and whose right side is the constant `1`. The `zero_start`
+flag serves two callers: trip counts (in *Access patterns in Rust*)
+need a start of exactly `0`, while bounds only need a start that is a
+non-negative integer, which is the job of `non_neg_int`.
+
+## Going round a cycle once
+
+`non_neg_int` accepts finite whole constants from `0` up, `+` and `*`
+of such values, unary `+`, and phis whose operands all pass. Its first
+three lines are the interesting part (rewrapped; the `+`, `*` and unary
+`+` arms are left out):
+
+```rust
+if !seen.insert(v.id) {
+    return true;
+}
+match &v.op {
+    Op::Const(Const::Number(x)) => x
+        .is_finite()
+        && x.trunc() == *x
+        && *x >= 0.0,
+    Op::Phi => v.args.iter().all(
+        |&a| self.non_neg_int(
+            self.inst(a), seen)),
+    _ => false,
+}
+```
+
+`HashSet::insert` returns `false` when the value was already in the
+set<Cite id="rust-std-hashset-insert" />, so the one call both records
+the visit and asks "have I been here?". That matters because a start
+like `j = i + 1` leads to `i`, which is `φ(0, i + 1)`, which leads to
+`i` again; without the set the walk would never end. Answering `true`
+on the second visit is an optimistic assumption ("suppose `i` is fine"),
+which the rest of the cycle then has to earn: here `0` and `1`.
+Answering `false` instead would end the walk too, but then no start that
+mentions a loop variable could ever pass. The `x.is_finite()` matters
+as well: `f64::INFINITY.trunc()` is infinity, so without it an infinite
+start would pass as a whole number. Step through the walk:
+
+<SeenSteps client:visible />
+
+<Prompts ids={['bp-four', 'acc-both-orders', 'acc-seen', 'bp-finite']} />
+
+## The guard, and two phases
+
+Questions 3 and 4 are a few lines more. `conjuncts` flattens `a && b &&
+c` into a list, and one conjunct must be a `<` whose left side is the
+index and whose right side is a `.length` read of a load of this same
+collection. The answer for each read is then pushed into a local
+vector:
+
+```rust
+proven.push(guarded
+    && idom.dominates(then, gi.block));
+```
+
+and only after the loop over all reads are the answers stored:
+
+```rust
+for (ig, p) in self.collections[ci]
+    .index_gets
+    .iter_mut()
+    .zip(proven)
+{
+    ig.bounds_proven |= p;
+}
+```
+
+The reason is the borrow checker (*Borrowing*). The first loop calls
+`&self` methods such as `is_counting_phi`, which borrow all of `self`,
+so it can't also hold a mutable borrow of an element: read everything,
+then write. The TypeScript reference sets `ig.boundsProven = true`
+inside its loop, which JavaScript allows; the parity fixtures check the
+verdicts agree through every explain's `proven in bounds` line.
+
+The proof is cautious, and the port keeps every caution. `i < 100`
+with a constant `100` is not proven, even when `ps` holds 100 elements,
+because the test must read `ps.length`; `i += 2` is not proven, because
+the step must be `+ 1`; and `ps[k + 1]` is not proven, because the index
+is an addition, not the phi (on the last trip it really is out of
+range).
+
+<Prompts ids={['bp-le', 'acc-k-plus-1', 'bp-const-bound', 'acc-two-phases']} />
+
+## Your turn
+
+<Exercise id="countingPhi" />
+
+## What you learned
+
+- An element read is **proven in bounds** when its index is a
+  **counting phi** of a loop around it, the header tests **`index <
+  c.length`**, and that test's true edge **dominates** the read.
+- `is_counting_phi` tries the phi's operands in **both orders**;
+  `zero_start` serves trip counts (start exactly 0) and bounds (any
+  **non-negative integer**).
+- `non_neg_int` shares one **`seen`** set across the query, and answers
+  `true` for a value met twice, which carries the walk round a phi's
+  cycle exactly once.
+- Proofs go into a `Vec<bool>` and are stored afterwards, in **two
+  phases**, because the borrow checker won't allow `&self` calls while a
+  collection is borrowed mutably.
+
+<Quiz />

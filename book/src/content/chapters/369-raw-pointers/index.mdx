@@ -1,0 +1,239 @@
+---
+n: 369
+day: 93
+part: XI
+title: 'Raw pointers'
+tagline: 'A reference is an address with promises attached. A raw pointer is the same address with the promises taken off: you may make one anywhere, and you may only read through one inside unsafe. Here is what that means, what Miri says when it goes wrong, and why drip-rs has none.'
+objectives:
+  - Create raw pointers with &raw const, &raw mut and as_ptr, and dereference them inside unsafe.
+  - List the promises a reference keeps and a raw pointer does not.
+  - Step through a buffer with add, and say when the arithmetic stays in bounds.
+  - Read Miri's reports for out-of-bounds, null, misaligned and dangling reads.
+introduces: [raw-pointer]
+uses: [unsafe, rust, crate, scalar-types, rust-functions, ownership, borrow, shared-vs-mutable, borrow-checker, slice, option, vec, arena, typed-index, size-of, pointer, address, memory, garbage-collection, virtual-machine]
+sources: [klabnik2026, rustref-raw-pointer, rustref-ub, miri-readme]
+---
+import PointerSteps from '../../../components/diagrams/ch369/PointerSteps';
+import RefVsRaw from '../../../components/diagrams/ch369/RefVsRaw';
+
+## An address without promises
+
+*Pointers, the stack and the heap* drew a pointer as an arrow: a number
+that says where in memory something lives. A Rust reference, `&T`, is
+such a number, plus a set of promises the compiler checks for you: it
+is never null, it points at a live, correctly aligned `T`, and the
+borrowing rules hold for as long as it lives. *Unsafe Rust* listed
+"dereference a raw pointer" first among the things that need `unsafe`;
+a **raw pointer** is the same number with every one of those promises
+taken off.
+
+<Analogy title="an address on a scrap of paper">
+A reference is the key to a flat you are renting right now: the flat
+exists, it is yours to enter, and the landlord has checked nobody else
+holds a key for writing. A raw pointer is the address written on a
+scrap of paper: the house may have been knocked down, it may be the
+wrong street, or someone else may live there now.
+<span slot="breaks">Walking to a wrong address only wastes your
+afternoon; reading through a wrong pointer is undefined behaviour,
+which can quietly corrupt the rest of the program.</span>
+</Analogy>
+
+<Analogy title="a page number in your notes">
+Your notes say a quote is "on page 42". Open the same edition and it
+is there; open a new edition, or a different book, and page 42 holds
+something else entirely, and nothing on the page tells you so.
+<span slot="breaks">A wrong page still holds words you can read
+harmlessly; a dangling pointer may point at memory that no longer
+belongs to your program at all.</span>
+</Analogy>
+
+<Figure takeaway="A reference is an address the compiler vouches for; a raw pointer is an address nobody vouches for." caption="What each kind of pointer promises. Making a raw pointer is safe; everything after that is your job.">
+  <RefVsRaw />
+</Figure>
+
+<Examples of="raw-pointer">
+
+```rust
+let mut n = 41;
+let r: *const i32 = &raw const n;
+let w: *mut i32 = &raw mut n;
+let z: *const i32 = std::ptr::null();
+let p = [1.5, 2.5, 4.0].as_ptr();
+```
+
+```rust
+println!("{}", *r);
+// error[E0133]: dereference of raw
+//   pointer is unsafe and requires
+//   unsafe function or block
+println!("{}", unsafe { *r }); // 41
+```
+
+<Run id="raw-play" />
+
+</Examples>
+
+The first block makes five raw pointers, all in safe code: `&raw
+const n` and `&raw mut n` take the address of `n` without making a
+reference (the types `*const i32` and `*mut i32` are read "pointer to
+const `i32`" and "pointer to mut `i32`"), `std::ptr::null()` is the
+address 0, and `as_ptr` gives the address of a slice's first element.
+Notice that a `*const` and a `*mut` to the same variable exist side by
+side, which two references could never do. The second block reads
+through one: without `unsafe` it is error E0133 (rustc 1.97's words,
+trimmed, followed by the note that "raw pointers may be null, dangling
+or unaligned; they can violate aliasing rules and cause data races"),
+and inside `unsafe` it prints `41`. The runnable one does all of this,
+writes through the `*mut`, checks a pointer with `is_null()`, measures
+a raw pointer with `size_of` (8 bytes, like a reference) and reads an
+array element with `add`.
+
+<Callout kind="definition">
+A **raw pointer** is `*const T` (read through it) or `*mut T` (read and
+write through it): an address with no safety or liveness guarantees.
+It may be null, dangling or misaligned; copying or dropping one does
+nothing to the value it points at. You make one with `&raw const` or
+`&raw mut`; making, copying and comparing them is safe, and
+**dereferencing** one is an unsafe operation<Cite id="rustref-raw-pointer" />.
+</Callout>
+
+<Prompts ids={['raw-make', 'raw-types', 'raw-vs-ref']} />
+
+## Walking a buffer
+
+`p.add(i)` moves a pointer on by `i` *elements*, not bytes, so on a
+pointer to `f64` it adds `8 × i` to the address. Step through reading
+an array, first safely and then through a pointer:
+
+<PointerSteps client:visible />
+
+<Formal title="Pointer arithmetic">
+
+```text
+addr(p.add(i)) = addr(p) + i × size(T)
+p.add(i) is allowed  when  0 ≤ i ≤ len
+*p.add(i) is allowed when  0 ≤ i < len
+```
+
+<span slot="read">Adding i to a pointer to T moves the address on by i
+times the size of a T (its size_of). For a pointer to the start of n elements, add
+may go as far as one past the end (i equal to len, a pointer you may
+compare but not read), and a read is only allowed strictly inside the
+elements.</span>
+</Formal>
+
+That last rule is why a loop like `for i in 0..len { *p.add(i) }` is
+fine and `0..=len` is not. Raw pointers matter most where Rust meets
+other code: a C library hands you a `*const u8` and a length, and
+*FFI and unsafe boundaries*, later in this part, is about making such
+a pointer safe to use. The exercise uses the same reasoning to walk a
+*column* of an array of structs, one stride at a time.
+
+<OtherLanguages title="Read element 2 through a pointer">
+
+```rust
+let xs = [1.5, 2.5, 4.0];
+let p = xs.as_ptr();
+// SAFETY: 2 < 3
+let x = unsafe { *p.add(2) }; // 4
+```
+
+```c
+double xs[] = {1.5, 2.5, 4.0};
+double *p = xs;
+double x = *(p + 2); /* 4, no unsafe */
+```
+
+```ts
+// No pointers: an offset into a buffer
+const v = new DataView(buf);
+const x = v.getFloat64(2 * 8, true);
+```
+
+</OtherLanguages>
+
+C's `*(p + 2)` is Rust's `*p.add(2)`, and in C every line of a program
+may do it; Rust allows it only inside `unsafe`, so a reviewer knows
+which lines to check. TypeScript has no pointers at all; the nearest
+thing is a byte offset into an `ArrayBuffer`, which is always bounds
+checked.
+
+<Prompts ids={['add-units', 'one-past']} />
+
+## When it goes wrong: Miri
+
+Run four broken reads under Miri (`cargo +nightly miri run`, nightly
+of 2026-11-01), and it names each mistake at the line where it
+happens<Cite id="miri-readme" />:
+
+```text
+*p.add(3), on a 3-element [i32; 3]:
+  attempting to access 4 bytes, but got
+  alloc149+0xc which is at or beyond
+  the end of the allocation of size 12
+
+*std::ptr::null::<i32>():
+  attempting to access 4 bytes, but got
+  null pointer
+
+an f64 read at an odd address:
+  accessing memory based on pointer
+  with alignment 1, but alignment 8
+  is required
+
+*p after drop(v):
+  alloc165 has been freed, so this
+  pointer is dangling
+```
+
+Each report starts with `error: Undefined Behavior:`, points at the
+offending line, and for the last one also shows where the memory was
+allocated and where it was freed. Without Miri the same four programs
+behaved very differently in an ordinary debug build: the out-of-bounds
+read quietly printed `0`; the null and misaligned reads were caught by
+the debug build's own checks (`null pointer dereference occurred`,
+`misaligned pointer dereference`); and the use-after-free printed a
+tiny number with about three hundred zeros after the decimal point,
+read from freed memory. Undefined behaviour does not announce itself,
+which is why Miri exists<Cite id="rustref-ub" />.
+
+<Prompts ids={['miri-dangling', 'debug-quiet']} />
+
+<Callout kind="engine" label="Under the hood">
+Raw pointers are how the standard library builds safe types: a `Vec`
+is a pointer to its buffer, a capacity and a length (the 24 bytes
+*Memory layout in Rust* measured), and its safe methods keep every
+read inside the first `len` elements. drip-rs has no raw pointers at
+all, since `#![forbid(unsafe_code)]` rules out reading through one,
+and its objects refer to each other by typed indices instead, as
+*Arenas and typed indices* showed. engine/rust's own crates have no
+`unsafe` blocks either, but its parser's arena allocator, the
+`oxc_allocator` crate (version 0.156.0), has 383 source lines that
+mention `unsafe`; the safety of the whole program rests on those
+lines being right, which is exactly why they are kept in one crate.
+</Callout>
+
+<Prompts ids={['vec-raw']} />
+
+## Your turn
+
+The core exercise reads one field out of an array of structs by
+stepping a raw pointer one record at a time; the second is a bounds
+checked read.
+
+<Exercise id="columnSum" />
+
+<Exercise id="read" />
+
+## What you learned
+
+- A **raw pointer**, `*const T` or `*mut T`, is an address without a
+  reference's promises: it may be null, dangling or misaligned.
+- Making one (`&raw const`, `&raw mut`, `as_ptr`) is safe;
+  dereferencing it needs `unsafe` (E0133 otherwise).
+- `p.add(i)` moves by `i` elements; it may reach one past the end, but
+  a read must stay strictly inside.
+- **Miri** reports out-of-bounds, null, misaligned and dangling reads
+  at the line where they happen; ordinary builds often say nothing.
+
+<Quiz />

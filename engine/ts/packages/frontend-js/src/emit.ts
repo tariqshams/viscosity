@@ -1,4 +1,4 @@
-// Emitting JavaScript from a layout plan (book chapters 94, 103–107).
+// Emitting JavaScript from a layout plan (the book's chapters “Emitting JavaScript” and “Generating SoA storage” to “AoSoA code generation”).
 //
 // Viscosity rewrites only what it must: every edit is a replacement of one
 // source range, and everything else is copied through byte for byte. That

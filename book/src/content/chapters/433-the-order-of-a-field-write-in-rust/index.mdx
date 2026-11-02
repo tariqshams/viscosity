@@ -1,0 +1,288 @@
+---
+n: 433
+day: 109
+part: XIII
+title: 'The order of a field write in Rust'
+tagline: 'A field write looks like one step, but JavaScript does it in three, and a fuzzer found two ways the rewritten code got the order wrong. The fix is a fact the analysis records about every write, and a late store the emitter uses only when the order could be seen.'
+objectives:
+  - Say in what order JavaScript evaluates a field write, and where it throws when the element is missing.
+  - Explain the two fuzzer-found bugs, a check that ran too early and a store into a column that had been replaced.
+  - Explain RhsEffect and the condition under which emit.rs stores a write late.
+  - Implement that decision, with tests.
+introduces: []
+uses: [rust-soa-codegen, viscosity-rs, rust-codegen, rust-access-pass, cross-implementation-tests, soa-container, column-storage, access-rewriting, capacity, typed-array, fuzzing, differential-testing, end-to-end-benchmark, enum, match, borrow, shared-vs-mutable, borrow-checker, throw, try-catch, error-object, test-corpus]
+sources: [ecma262-assignment-order, rustc-e0499]
+---
+import LateStoreSteps from '../../../components/diagrams/ch433/LateStoreSteps';
+import LateTable from '../../../components/diagrams/ch433/LateTable';
+
+## A write that failed too early
+
+*SoA code generation in Rust* showed how an unproven access gets a
+bounds check, `ps.x[__vsc_bc(ps, i, 'x', true)]`. For reads that is the
+whole story. For writes it is not, and the corpus program
+`write_rhs_first.js` is there to show why: a fuzzer (*Testing
+compilers*) wrote a program like it. Its middle part:
+
+```js
+try {
+  for (let i = 0; i <= ps.length; i++)
+    ps[i].x = ps[i].y;
+} catch (e) {
+  console.log('caught', e.message);
+}
+let t = 0;
+try {
+  ps[100].x = (t = 5);
+} catch (e) {
+  console.log('caught', e.message, t);
+}
+```
+
+`ps` holds 100 elements, so both writes go out of bounds. Here is what
+node prints for the original, and for the Rust emitter's output before
+the fix (I reproduced that here, on a scratch copy of `engine/rust`
+with the new branch switched off; lines wrapped):
+
+```
+original, and today's output:
+  caught Cannot read properties of
+    undefined (reading 'y')
+  caught Cannot set properties of
+    undefined (setting 'x') 5
+before the fix:
+  caught Cannot set properties of
+    undefined (setting 'x')
+  caught Cannot set properties of
+    undefined (setting 'x') 0
+```
+
+The compiled program failed at the wrong moment: before the right-hand
+side ran, so the wrong error was thrown and `t = 5` never happened.
+
+<Analogy title="a waiter and a moved table">
+A waiter takes your order and only walks to your table once the plate
+is ready. If the table was moved while the food was cooking, he looks
+for it again; he doesn't set the plate down where the table used to
+be.
+<span slot="breaks">A waiter can see the room; the compiled code can't
+"look again" unless the emitter wrote it to fetch the column at the
+moment of the store, which is exactly what the fix does.</span>
+</Analogy>
+
+<Analogy title="a cheque that bounces">
+You write a cheque and hand it over; it bounces later, at the bank.
+Everything you did before that still happened. A shop that refused the
+cheque before you wrote it would change your afternoon, although the
+payment fails either way.
+<span slot="breaks">A bounced cheque can be paid later; a failed store
+is final, and the only thing the compiled program must get right is
+when it fails and with which message.</span>
+</Analogy>
+
+## Three steps, in order
+
+For an assignment `a = b`, the specification evaluates the left-hand
+side to a **reference** (here, "property `x` of the value `ps[100]`"),
+then the right-hand side, and only then stores, with `PutValue`; and
+it is `PutValue` that throws when the base is `undefined`<Cite id="ecma262-assignment-order" />.
+Reading `ps[100]` gives `undefined` without complaint. So in the
+original, `t = 5` runs, and then the store throws "Cannot set
+properties of undefined". In the loop, the right side `ps[i].y` is read
+first and throws its own error, "reading 'y'".
+
+The rewritten left side `ps.x[__vsc_bc(ps, 100, 'x', true)]` is also
+evaluated first, but now that *runs the check*, which threw before the
+right side ran. The same order caused a quieter bug: evaluating
+`ps.x[...]` also fetches the column, and if the right side pushes and
+the container grows, `grow()` replaces `this.x`, so the store goes
+into the old array, which nothing reads any more. Step through it on `ps[3].x = (more(),
+77)`, where `more()` pushes:
+
+<LateStoreSteps client:visible />
+
+Rust wouldn't let you write the old emitter's order. Holding a mutable
+reference to a column while growing its owner is two mutable borrows of
+the same value at once, and rustc rejects it with error
+E0499<Cite id="rustc-e0499" />. Run it and read the error:
+
+<Run id="grow-borrow" />
+
+JavaScript has no such rule; it runs the program, and the write is
+lost. (`engine/rust/README.md` lists the two as bugs 11 and 12 of the
+ones that fuzzing and porting found.)
+
+<Prompts ids={['cg-spec-order', 'cg-col-fetch', 'cg-rust-borrow']} />
+
+## What the right side can do
+
+The fix starts in the analysis (`crates/core/src/analysis.rs`). For
+every field write it records what evaluating the rest of the assignment
+can do, as an enum ordered from least to worst (doc comments left
+out):
+
+```rust
+#[derive(Copy, Clone, PartialEq, Eq,
+    PartialOrd, Ord, Debug)]
+pub enum RhsEffect {
+    Inert,
+    MayThrow,
+    Effects,
+}
+```
+
+Deriving `PartialOrd` and `Ord` orders the variants as they are
+written, so `Inert < MayThrow < Effects`, and the analysis can combine
+the instructions of a right-hand side with `worst = worst.max(effect(x))`.
+
+<Prompts ids={['cg-ord-derive']} />
+
+Constants, variables and arithmetic on numbers are `Inert`; reading an
+element that wasn't proven in bounds is `MayThrow`; a call, an
+assignment such as `t = 5`, or anything the analysis doesn't model is
+`Effects`. Two things are left out of the count: the element being
+written to, and, for `+=` and friends, the read of the old value, which
+JavaScript does first in both versions anyway.
+
+The emitter then picks the late form only when the order can be
+observed (from `emit_js`, rewrapped):
+
+```rust
+let typed = cp.layout == Layout::Aosoa
+    || c.numeric_fields.contains(&a.field);
+if let Some(op) = operator.filter(|&op| {
+    write
+        && ((op == "=" && !ok
+            && a.rhs != RhsEffect::Inert)
+            || (typed && a.rhs
+                == RhsEffect::Effects))
+}) {
+```
+
+`ok` means "proven in bounds, or `--bounds assume`". An unproven `=`
+whose right side may throw or act needs its error after the right side.
+A typed column (or AoSoA's `data`) can be replaced by `grow()`, but only
+if the right side runs code. A plain column is an ordinary array that
+grows in place, and an inert right side can't tell the difference, so
+both keep the cheap `col[i] = rhs`.
+
+<Formal title="When a write stores late">
+
+```text
+late ⇔ write ∧ ( (op is = ∧ ¬ok
+                  ∧ rhs ≠ Inert)
+               ∨ (typed ∧ rhs = Effects) )
+```
+
+<span slot="read">A field access is stored late exactly when it is a
+write, and either it is a plain assignment whose index isn't proven
+(and isn't assumed) and whose right side can do something, or its
+column is a typed array and its right side runs code.</span>
+</Formal>
+
+<Figure caption="The decision for a plain = write, by bounds proof, column kind and right-hand side. A compound write such as += stores late only in the typed rows' Effects column." takeaway="Only writes whose order could be observed pay for a late store.">
+  <LateTable />
+</Figure>
+
+## Storing late
+
+The late form uses three helpers, which the emitter adds to the prelude
+only when some write needs them (wrapped; `__vsc_seta` is the same for
+AoSoA, computing the slot in `data`):
+
+```js
+let __vsc_k = 0;
+function __vsc_bk(c, i) {
+  return i >>> 0 === i && i < c.length
+    ? i : NaN;
+}
+function __vsc_set(c, col, i, v, f) {
+  if (i !== i) throw new TypeError(
+    `Cannot set properties of undefined`
+    + ` (setting '${f}')`);
+  c[col][i] = v;
+  return v;
+}
+```
+
+`__vsc_bk` decides the bounds question first, as the original's
+reference is evaluated first, but answers `NaN` instead of throwing.
+Then the right side runs, as an argument. Then `__vsc_set` throws if the
+index was `NaN` (`i !== i` is true only for `NaN`), and otherwise
+fetches the column `c[col]` *now*, after any growth, and stores. It
+returns `v`, because an assignment's value is its right side.
+
+<Examples of="rust-soa-codegen">
+
+```js
+ps[100].x = (t = 5);
+// → __vsc_set(ps, 'x', __vsc_bk(ps, 100),
+//     (t = 5), 'x');
+```
+
+```js
+ps[4].x += (more(), 1);
+// → __vsc_set(ps, 'x', __vsc_k =
+//     __vsc_bc(ps, 4, 'x', false),
+//     ps.x[__vsc_k] + ((more(), 1)), 'x');
+```
+
+```js
+qs[5].a = (grow(qs, 70), 9);
+// → __vsc_seta(qs, __vsc_bk(qs, 5),
+//     (grow(qs, 70), 9), 'a', 2, 8, 0, 3);
+```
+
+</Examples>
+
+All three are real lines of the Rust CLI's output, wrapped. The first
+is the plain case. The second is a compound write, which in the
+original *reads* `ps[4].x` first, so it keeps `__vsc_bc` with `false`
+(the "reading" wording) and saves the checked index in the scratch
+variable `__vsc_k` for the late store. The third, from
+`write_rhs_grows.js`, is an AoSoA collection whose right side pushes
+70 elements; `__vsc_seta` gets the shift, stride, offset and mask of
+*AoSoA and hot/cold in Rust*. That program prints `130 77 6` and `335 9
+4 4` for the original and today's output, but `130 4 6` and `335 5 4 0`
+for the old emitter's (both run here with node).
+
+<Callout kind="definition">
+A **late store** is the emitter's form for a field write whose order
+could be observed: an unproven `=` whose right side may throw or act, or
+a typed column whose right side runs code (the analysis records each
+write's **`RhsEffect`**: `Inert`, `MayThrow` or `Effects`). The index is
+checked before the right-hand side with **`__vsc_bk`**, and the store
+happens after it with **`__vsc_set`** or **`__vsc_seta`**, which throws
+the original's error or writes into the column as it is then.
+</Callout>
+
+<Prompts ids={['cg-rhs-effect', 'cg-bk-nan', 'cg-plain-cheap', 'cg-k-scratch']} />
+
+<Callout kind="engine" label="Under the hood">
+The late form costs a call, and it reached a benchmark: the hot store
+of `heat.js`, `c[i].next = c[i].h + …`, has an unproven index and
+unproven reads on the right, so it goes through `__vsc_set`. The
+committed `bench/results/matrix-2026-10-31.md` was measured after the
+fix (its corpus table has both new programs) and reports heat 4.11×
+faster than the original on Node, best of 9 fresh processes on a shared
+cloud VM. The fuzzer's fixed-seed run here ended `300 programs (134
+transformed, ...), 0 failing`.
+</Callout>
+
+## Your turn
+
+<Exercise id="storeLate" />
+
+## What you learned
+
+- JavaScript evaluates a field write's **left reference first**, then
+  the **right-hand side**, then **stores**; only the store throws on a
+  missing element.
+- The old rewrite ran the **check** and fetched the **column** too
+  early, so it threw too soon and could store into a column that
+  **`grow()`** had replaced.
+- Each write's **`RhsEffect`** (`Inert < MayThrow < Effects`) decides
+  whether the emitter **stores late**, through **`__vsc_bk`** and
+  **`__vsc_set`**.
+
+<Quiz />

@@ -1,4 +1,4 @@
-//! Parsing a Python subset (book chapter 114): the part of Python that
+//! Parsing a Python subset (the book's chapter “A small Python front-end”): the part of Python that
 //! numeric, data-heavy code uses — functions, dataclass records, lists,
 //! for/while/if, arithmetic and calls. Statements are recursive descent;
 //! expressions use binding powers. Anything outside the subset is a clear

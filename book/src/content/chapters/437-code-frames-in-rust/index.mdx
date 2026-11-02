@@ -1,0 +1,264 @@
+---
+n: 437
+day: 110
+part: XIII
+title: 'Code frames in Rust'
+tagline: 'With --frames, every refusal points at the code it is about, with carets under it. Rust counts in UTF-8 bytes and JavaScript in UTF-16 units, yet the carets land in the same place, because both engines count the same third thing.'
+objectives:
+  - Explain when explain --frames prints a frame, and how Option::zip decides it.
+  - Build a code frame from byte offsets, counting columns in code points and keeping tabs.
+  - Say why a Rust byte offset, a TypeScript UTF-16 offset and a code-point column differ, and why the frames still match.
+  - Say what the 14 frames fixtures check, and what a frame still gets wrong.
+introduces: []
+uses: [rust-explain, viscosity-rs, optimization-report, bailout, cross-implementation-tests, test-corpus, fuzzing, source-location, utf8-utf16, option, match, struct, vec, rust-iterator, rust-closure, string-vs-str, slice, char-code, cargo-test]
+sources: ['klabnik2026']
+---
+import FrameSteps from '../../../components/diagrams/ch437/FrameSteps';
+import Columns from '../../../components/diagrams/ch437/Columns';
+
+## Which ps[i]?
+
+*explain in Rust* printed this reason for the tab-indented program of
+that chapter: `unsafe: line 7: an element is used by push`. The loop
+there reads `ps[i]` twice, once in the test on line 6 and once in the
+push on line 7, and a reason names only a line. In a long file, with
+several element reads on one line, you'd go hunting. So both engines have `viscosity explain
+--frames`, which prints the source line under each refusal, with carets
+under the code (I ran it here, release build, rustc 1.97; reasons
+wrapped):
+
+```
+  · unsafe: line 7: an element is used by
+    push
+    7 | 		keep.push(ps[i]);
+      | 		          ^^^^^
+  · unsafe: line 9: an element is passed
+    to a function call
+    9 | const t = "🎉"; f(t, ps[2]);
+      |                     ^^^^^
+```
+
+The TypeScript CLI printed the same bytes. Two things in it are less
+simple than they look: the caret line starts with the same two tabs as
+the code, and on line 9 the carets have to get past an emoji, which is
+one character to you but four bytes to Rust and two units to
+JavaScript.
+
+<Analogy title="a finger on the page">
+A note in the margin says "see line 7". A friend leaning over says
+"this one, here", with a finger on the word. The report already had the
+margin notes; frames add the finger.
+<span slot="breaks">A finger is placed by someone who sees the page;
+the carets are placed by counting characters, and a count can be wrong
+where the page is drawn differently from how it is counted (an emoji
+drawn two columns wide, at the end of this chapter).</span>
+</Analogy>
+
+<Analogy title="a street address in three alphabets">
+"Number 20 on this street" is clear until houses are numbered in
+different ways: one town counts plots of land, another counts front
+doors. Two maps can disagree on the number and still agree on the
+house, if both are translated back to counting houses.
+<span slot="breaks">A town picks one numbering for good; each engine
+keeps its own offsets for slicing, and translates to the shared count
+only for the column it prints.</span>
+</Analogy>
+
+## When a frame is printed
+
+In `explain_text` (*explain in Rust*), the frame part that the last
+chapter left as a comment is a few lines (rewrapped):
+
+```rust
+let at = if refused {
+    c.bailout_sites.get(&c.bailouts[k])
+        .copied().flatten()
+} else { None };
+let site = frames.zip(at);
+if let Some((src, at)) = site {
+    lines.push(code_frame(src, at, "    "));
+}
+```
+
+`get` returns `Option<&Option<SourceRef>>` (the map may have no entry,
+and the entry itself may be `None`), so `copied().flatten()` turns it
+into one `Option<SourceRef>`. Then `Option::zip` combines two options:
+it gives `Some((src, at))` only when both are `Some`, a source to quote
+(frames were asked for) and a place (this reason has one). Either
+missing, and the reason is printed exactly as plain `explain` prints
+it.
+
+<Prompts ids={['rx-flatten']} />
+
+## Drawing the frame
+
+`code_frame(source, at, indent)` turns a span into the two lines. From
+`plan.rs`, rewrapped, with the last two lines (building the line number
+and the gutter, and the final `format!`) left out:
+
+```rust
+let start = (at.start as usize)
+    .min(source.len());
+let s = source[..start]
+    .rfind(is_line_break)
+    .map_or(0, |i| i + source[i..]
+        .chars().next()
+        .map_or(1, char::len_utf8));
+let e = source[start..]
+    .find(is_line_break)
+    .map_or(source.len(), |i| start + i);
+let text = source[s..e]
+    .trim_end_matches([' ', '\t']);
+let before = &source[s..start];
+let col = before.chars().count();
+let end = (at.end as usize)
+    .max(start).min(e);
+let up_to =
+    source[s..end].chars().count();
+let width = up_to
+    .min(text.chars().count())
+    .saturating_sub(col)
+    .max(1);
+let pad: String = before.chars()
+    .map(|c| if c == '\t' { '\t' }
+        else { ' ' })
+    .collect();
+```
+
+`s` is where the span's line starts: the last line break before
+`start`, plus that break's length in bytes (U+2028 is three bytes, so
+`char::len_utf8` is used instead of `+ 1`), or 0 when there is none.
+`e` is where the line ends. `is_line_break` is true for `\n`, `\r`,
+U+2028 and U+2029, the breaks acorn counts lines by. `text` is the line
+without trailing blanks. `col` counts the code points before the span,
+which is the column. The end of the span is cut at the end of its
+first line (`min(e)`), so a span across lines gets carets to the end of
+the first one; the width never runs past the trimmed text, and
+`saturating_sub` and `max(1)` give an empty span one caret instead of
+underflowing. And `pad` copies the text before the span with every
+character but a tab turned into a space, so two tabs before the code
+give two tabs before the carets, which line up whatever width your
+editor gives a tab. Step through it on line 7:
+
+<FrameSteps client:visible />
+
+<Formal title="Where the carets go">
+
+```text
+col   = |chars(line[0 .. start])|
+width = max(1, min(|chars(line[0 .. end])|,
+                   |chars(text)|) − col)
+pad   = line[0 .. start] with each
+        non-tab character → ' '
+```
+
+<span slot="read">The column is the number of code points on the line
+before the span's start. The width is the number of code points up to
+the span's end (cut at the line's end), or the length of the trimmed
+text if that is smaller, minus the column, and at least one. The pad is
+the text before the span with every character that isn't a tab
+replaced by a space.</span>
+</Formal>
+
+<Prompts ids={['rx-zip', 'rx-tabs', 'rx-clip', 'rx-line-start']} />
+
+## Bytes, units and code points
+
+Here is the problem parity had to solve. A Rust `SourceRef` holds
+UTF-8 byte offsets, because oxc's spans are bytes and Rust strings are
+sliced by bytes. The TypeScript one holds UTF-16 offsets, because
+JavaScript strings are indexed in 16-bit units (*Strings and Unicode*).
+The same `ps` has different offsets in the two engines:
+
+<Figure caption="Where ps starts on line 9 of the program, counted three ways." takeaway="Each engine slices in its own units and counts columns in a shared one.">
+  <Columns />
+</Figure>
+
+Neither offset is a column. The TypeScript `codeFrame` turns the text
+before the span into an array of code points with `Array.from` and
+counts them; the Rust one counts `chars()`. Both get 20. That is the
+whole trick: each engine slices in its own units, which is always safe
+in its own string, and counts the column in a shared one. Try it; the
+last line asks Rust whether byte 3, inside `ï`, is a place a string may
+be cut:
+
+<Run id="offsets" />
+
+<Examples of="rust-explain">
+
+```
+    7 | 		keep.push(ps[i]);
+      | 		          ^^^^^
+```
+
+```
+    9 | const t = "🎉"; f(t, ps[2]);
+      |                     ^^^^^
+```
+
+```
+    4 | const k = '5';
+      |           ^^^
+```
+
+</Examples>
+
+All three are frames the Rust CLI printed. The first copies two tabs
+into its pad, so the carets sit under `ps[i]` however wide a tab is
+drawn. The second counts the emoji as one column, so the carets start
+20 places in, after 23 bytes. The third is `string_index.js`, whose
+reason names line 6 but whose site is the constant `'5'` on line 4
+(*explain in Rust* explains why).
+
+## Held to the same bytes
+
+`scripts/gen_expected.mjs` writes a `.frames.txt` fixture for each of
+14 programs (its `FRAMES` list: 12 JavaScript, 2 Python) with the
+TypeScript `explain(plan, { frames: source })`, and the parity test
+`code_frames_equal_typescript_code_frames` in `parity.rs` checks every
+`.frames.txt` it finds; all 14 matched when I ran it here. One of them,
+`tests/extra/frames_columns.js`, was written to break exactly this: tabs
+before the code, accented letters and an emoji before a span, a CRLF
+line end, a U+2028 inside a line, and an element written across two
+lines. The fuzzer also compares `explain --frames` on every program it
+generates.
+
+<Callout kind="definition">
+A **code frame** is the line a bailout site starts on, with its number,
+and a second line of **carets** under the site: clipped to that line,
+never past its trimmed text, at least one wide, with **tabs copied**
+into the pad. Its column is a count of **code points**, which is the
+same in both engines even though Rust's offsets are **UTF-8 bytes** and
+TypeScript's are **UTF-16 units**. `explain --frames` prints one under
+each refused reason whose site is known (`frames.zip(at)`).
+</Callout>
+
+<Prompts ids={['rx-bytes', 'rx-fixtures']} />
+
+<Callout kind="engine" label="Under the hood">
+A code point is not a screen column. An emoji is one code point, but
+many fonts draw it two columns wide, so in the frame for line 9 the
+carets under `ps[2]` start one column early wherever `🎉` is drawn
+double. Both engines make the same mistake, so parity can't notice it;
+getting it right would need a table of character widths, which neither
+engine has.
+</Callout>
+
+<Prompts ids={['rx-display']} />
+
+## Your turn
+
+<Exercise id="codeFrame" />
+
+## What you learned
+
+- `frames.zip(at)` prints a frame only when there is a **source** and a
+  **site**; `copied().flatten()` turns the map's answer into one
+  `Option<SourceRef>`.
+- A **code frame** is the site's first line plus carets: clipped to
+  that line, blanks trimmed, **tabs copied** into the pad.
+- Rust slices in **UTF-8 bytes** and TypeScript in **UTF-16 units**,
+  but both **count columns in code points**, so the 14 frames fixtures
+  match byte for byte. Code points still aren't screen columns.
+
+<Quiz />

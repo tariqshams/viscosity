@@ -1,5 +1,5 @@
 // The VM's heap: every object is allocated here, and a mark-and-sweep
-// garbage collector frees the ones nothing can reach (book chapter 58).
+// garbage collector frees the ones nothing can reach (the book's chapter “Reclaiming memory: mark and sweep”).
 //
 // JavaScript has its own garbage collector, so "freeing" here means
 // unlinking the object from the heap and poisoning it: any later use of a

@@ -1,0 +1,310 @@
+---
+n: 343
+day: 86
+part: XI
+title: 'Enums and match'
+tagline: 'Your TypeScript VM spelled “one of several things” three different ways. Rust has one way, the enum, and match makes the compiler check that you handled every case.'
+objectives:
+  - Define an enum whose variants carry data, and build values of it.
+  - Use match to branch on an enum and take its data out, and explain why a match must be exhaustive.
+  - Use match as an expression, and read the errors when an arm is missing or has the wrong type.
+  - Read the opcode match at the heart of the Rust Drip VM.
+introduces: [enum, match]
+uses: [struct, impl, self-receiver, slice, borrow, ownership, move, let-mut, scalar-types, rust-functions, expression-oriented, union-type, discriminated-union, narrowing, exhaustiveness, typescript, tagged-value, value-representation, opcode, dispatch-loop, virtual-machine, stack-machine, upvalue, open-upvalue, closed-upvalue, tagged-union, exhaustiveness-checking, decision-tree]
+sources: [klabnik2026, rustref-match, rustref-enum, rust-book-enums, rust-book-match]
+---
+import MatchSteps from '../../../components/diagrams/ch343/MatchSteps';
+import EnumLayout from '../../../components/diagrams/ch343/EnumLayout';
+
+## One of several things
+
+Your TypeScript Drip VM needed "this is one of several things" in three
+places, and spelled it three ways. The dispatch loop switched on opcode
+numbers (`case Op.None: this.push(null); break;`); a Drip value was
+`null | boolean | number | Obj`, told apart with `typeof`; and a syntax
+tree node was a tagged union, an object with a `tag` field naming its
+kind (*Tagged unions: the shape of every syntax tree*). Rust has a
+single feature for all three, and the compiler checks every use of it.
+
+<Analogy title="a parcel form with tick boxes">
+A courier's form has tick boxes: *letter*, *parcel*, *registered*. You
+tick exactly one. Some boxes come with a blank to fill in ("registered:
+tracking number ____"), and that blank only exists if you ticked its
+box; nobody can read a tracking number off a plain letter.
+<span slot="breaks">On paper you can tick two boxes or none, and the
+courier has to sort it out; a Rust value is always exactly one variant,
+and the compiler will not build one that is two or none.</span>
+</Analogy>
+
+<Analogy title="a traffic light">
+A traffic light is red, amber or green, never two at once, and every
+driver must know what to do for each colour. A driving test that only
+covered red and green would be refused, because amber happens.
+<span slot="breaks">A traffic light carries no extra information, while
+an enum's variants can carry data (a number, a string, a whole struct),
+different for each variant.</span>
+</Analogy>
+
+## Enums
+
+```rust
+enum Op {
+    Const,
+    Add,
+    Neg,
+    Return,
+}
+
+enum Value {
+    None,
+    Bool(bool),
+    Number(f64),
+}
+
+let op = Op::Add;
+let v = Value::Number(2.5);
+```
+
+These are cut down from the Rust Drip VM: its `OpCode` (in
+`companion/rust/src/chunk.rs`) has 53 variants, and its `Value` (in
+`value.rs`) adds variants for strings, lists, functions, classes and
+other heap objects. An `Op` is exactly one of four things. A `Value` is
+one of three, and two of those carry data: `Bool` holds a `bool`,
+`Number` holds an `f64`. You name a variant with the enum's name, two
+colons and the variant: `Value::Number(2.5)`. (`Value::None` is Drip's
+`none`, unrelated to Rust's own `None`, which comes two chapters on.)
+
+<Callout kind="definition">
+An **enum** is a type whose every value is exactly one of a fixed list of
+**variants**. A variant may carry data: values in brackets, like
+`Number(f64)`, or named fields, like a struct, `Move { dx: f64 }`. An
+enum with data is Rust's discriminated union: the variant is the tag and
+its data is the payload<Cite id="rust-book-enums" />.
+</Callout>
+
+<Examples of="enum">
+
+```rust
+enum Dir { North, East, South, West }
+let d = Dir::East;
+```
+
+```rust
+enum Shape {
+    Circle(f64),
+    Rect { w: f64, h: f64 },
+}
+let s = Shape::Rect { w: 2.0, h: 3.0 };
+```
+
+```rust
+// from companion/rust/src/object.rs
+pub enum ObjUpvalue {
+    Open(usize),
+    Closed(Value),
+}
+```
+
+</Examples>
+
+The first is the plainest enum: four variants and no data. The second
+gives each variant its own data: a circle needs a radius, a rectangle a
+width and a height (named, like a struct's fields). The
+third is real, and shows what enums are best at: making a wrong state
+impossible to build. A captured variable (an upvalue, from *Capturing
+variables: upvalues*) is either still on the stack, in slot `usize`, or
+closed, holding the value itself; a closed upvalue that still has a slot
+cannot exist, because no variant has both.
+
+In memory, an enum value is what the chapter *Sum types in memory* drew:
+a tag saying which variant, then room for the largest payload, so every
+`Value` is the same size whichever variant it holds.
+
+<Figure takeaway="An enum value is a tag plus room for the largest payload." caption="Drawn in the classic tag-and-payload layout. The default layout leaves the exact arrangement to the compiler, but rustc 1.97 reports 16 bytes for this Value: room for an 8-byte f64 and a tag.">
+  <EnumLayout />
+</Figure>
+
+<Formal title="An enum is a sum of its variants">
+
+```text
+enum V { A, B(bool), C(u8) }
+V  ≅  1 + bool + u8
+|V| = 1 + 2 + 256 = 259
+```
+
+<span slot="read">A value of V is an A, or a B holding a bool, or a C
+holding a u8, which mathematicians write as a sum, 1 + bool + u8 (A
+counts as 1, since it carries nothing). So V has 1 + 2 + 256 possible
+values. A struct multiplies the counts of its fields; an enum adds the
+counts of its variants.</span>
+</Formal>
+
+<Prompts ids={['enum-what', 'variant-data', 'enum-vs-union', 'enum-sum']} />
+
+## match
+
+To do anything with an enum value you ask which variant it is, and take
+its data out. That is `match`:
+
+```rust
+let n = match v {
+    Value::None => 0.0,
+    Value::Bool(true) => 1.0,
+    Value::Bool(false) => 0.0,
+    Value::Number(x) => x,
+};
+```
+
+Each line inside is an **arm**: a pattern, `=>`, and the code to run.
+`Value::Number(x)` fits any `Number` and names its payload `x` for that
+arm. Step through two different values:
+
+<MatchSteps client:visible />
+
+Arms are tried top to bottom, and the first one that fits wins; there is
+no falling through to the next arm, so there is no `break` to forget.
+`match` is an expression, like `if` in *Functions and expressions*, so
+the whole `match` has a value, and every arm must produce the same type.
+(Give one arm a different type, say a `bool` where the others give
+`&str`, and rustc says E0308, "`match` arms have incompatible types".)
+Most important of all, a `match` must cover **every** possible value.
+Leave out `Value::Bool(false)` and rustc 1.97 says (trimmed):
+
+```text
+error[E0004]: non-exhaustive patterns:
+  `Value::Bool(false)` not covered
+ 8 |     match v {
+   |           ^ pattern
+   |   `Value::Bool(false)` not covered
+help: ensure that all possible cases are
+  being handled by adding a match arm ...
+12 ~         Value::Bool(false) => todo!(),
+```
+
+The `help` even writes the missing arm for you, with `todo!()` (a
+placeholder that stops the program) as its body.
+
+<Callout kind="definition">
+A **`match`** expression compares a value with the patterns of its
+**arms**, in order, and runs the first arm that fits<Cite id="rustref-match" />.
+Its value is that arm's value, so all arms have the same type. It must
+be **exhaustive**: every possible value has to fit some arm, or the
+program does not compile.
+</Callout>
+
+<Examples of="match">
+
+```rust
+fn name(op: Op) -> &'static str {
+    match op {
+        Op::Const => "const",
+        Op::Add => "add",
+        Op::Neg => "neg",
+        Op::Return => "return",
+    }
+}
+```
+
+```rust
+fn area(s: Shape) -> f64 {
+    match s {
+        Shape::Circle(r) => 3.14 * r * r,
+        Shape::Rect { w, h } => w * h,
+    }
+}
+```
+
+<Run id="values" />
+
+</Examples>
+
+The first turns each opcode into its name, one arm per variant
+(`&'static str` is the type of a string literal, text that lives for the
+whole program); the `match` is the last expression of the function, so
+its value is returned. The second takes the payload out: `r` is the
+circle's radius, and `Rect { w, h }` names the rectangle's two fields,
+so `area` of a 2 by 3 rectangle is `6`. The runnable one prints Drip
+values and adds two of them; change it, delete an arm, and read what
+rustc says.
+
+<OtherLanguages title="One of several shapes">
+
+```rust
+enum Shape {
+    Circle(f64),
+    Rect { w: f64, h: f64 },
+}
+fn area(s: Shape) -> f64 {
+    match s {
+        Shape::Circle(r) => 3.14 * r * r,
+        Shape::Rect { w, h } => w * h,
+    }
+}
+```
+
+```ts
+type Shape =
+  | { kind: 'circle'; r: number }
+  | { kind: 'rect'; w: number; h: number };
+function area(s: Shape): number {
+  switch (s.kind) {
+    case 'circle': return 3.14 * s.r ** 2;
+    case 'rect': return s.w * s.h;
+  }
+}
+```
+
+</OtherLanguages>
+
+The TypeScript union needs a `kind` field that you write by hand, and
+the check that every case is handled is something you set up (with a
+`never` default, as in *TypeScript II: unions and narrowing*). In Rust
+the tag is the variant, and a missing case is always a hard
+error<Cite id="rust-book-match" />.
+
+<Prompts ids={['match-arms', 'match-exhaustive', 'match-expr']} />
+
+<Callout kind="engine" label="Under the hood">
+The heart of the Rust Drip VM is one `match` in `run`, in
+`companion/rust/src/vm.rs`, and it reads like your TypeScript `switch`:
+
+```rust
+match op {
+    OpCode::None => self.push(Value::None),
+    OpCode::Add => self.add()?,
+    OpCode::Sub => { /* pop two, push */ }
+    // ...one arm per opcode
+}
+```
+
+The real one lists all 53 opcodes and has no catch-all arm, so adding an
+opcode breaks the build until the VM handles it. `OpCode` is marked
+`#[repr(u8)]`, which makes each variant exactly the byte that encodes
+it, numbered as in the TypeScript VM. Underneath, every enum value has a
+**discriminant**, an integer that says which variant it holds; the
+compiler may store it in a smaller type, or tell variants apart some
+other way<Cite id="rustref-enum" />. How rustc turns arms into a tree of
+tests, and proves that nothing is missed, was the subject of *Compiling
+pattern matching*.
+</Callout>
+
+<Prompts ids={['discriminant']} />
+
+## Your turn
+
+<Exercise id="miniVm" />
+
+## What you learned
+
+- An **enum** is exactly one of a fixed set of **variants**, which can
+  carry data: a discriminated union built into the language, and a sum
+  of its variants.
+- **`match`** tries its arms in order and runs the first that fits,
+  binding names to the payload. It is an expression, so every arm has
+  the same type, and it must be **exhaustive**.
+- The Rust VM's dispatch loop is one exhaustive `match` on `OpCode`.
+
+Next: patterns, the shapes on the left of each arm, which can do far
+more than name a variant.
+
+<Quiz />

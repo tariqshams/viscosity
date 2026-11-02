@@ -1,0 +1,256 @@
+---
+n: 443
+day: 111
+part: XIII
+title: 'The npm package'
+tagline: 'There are two ways to give npm users a Rust program: a native binary for every kind of computer, or one WebAssembly file for all of them. @viscosity/wasm takes the second, and its package.json, its licences and a test that installs it like a stranger show what that means.'
+objectives:
+  - Compare shipping native binaries through npm with shipping one .wasm, and say what each costs.
+  - Read a conditional exports map and predict which file Node, a bundler and TypeScript load.
+  - Explain why a statically linked .wasm must carry its dependencies' licences.
+  - Describe how smoke.mjs tests the package as a user would get it, and what it found when its oracle went stale.
+introduces: [native-vs-wasm]
+uses: [wasm-pack, webassembly, wasm-bindgen, npm-package, semantic-versioning, module, import-export, typescript, cargo, crate, release-build, viscosity-rs, oxc, engine-parity, test-corpus, differential-testing, enum, match, option, recursion, vec, rust-iterator]
+sources: [npm-package-json-platform, node-packages-exports, ts-modules-reference, rustc-wasm32-unknown-unknown, binaryen-readme, wasm-bindgen-guide]
+---
+import ExportsSteps from '../../../components/diagrams/ch443/ExportsSteps';
+import ShipTwoWays from '../../../components/diagrams/ch443/ShipTwoWays';
+
+## Two ways to ship Rust
+
+The chapter *Shipping Viscosity* packed the TypeScript CLI for npm as
+one JavaScript bundle that runs on any computer with Node 18, which
+was easy, because JavaScript is the same everywhere. The Rust engine is
+faster (the chapter *How fast is the compiler?* measures by how much),
+but a compiled Rust program is not the same everywhere: `cargo build
+--release` gave me a 2,786,376-byte ELF executable for x86-64 Linux,
+and a Mac cannot run it, nor can an ARM laptop.
+
+Tools written in Rust, Go or C++ solve this in one of two ways, and you
+have used both without noticing. Look in this book's own
+`node_modules`: the bundler esbuild 0.27.7 lists 26
+`optionalDependencies`, from `@esbuild/aix-ppc64` to
+`@esbuild/win32-x64`, and each of those packages declares the `os` and
+`cpu` it runs on, so npm compares them with the machine and skips the
+rest<Cite id="npm-package-json-platform" />. Here only
+`@esbuild/linux-x64` was installed, one 11,120,788-byte binary. The
+other way is to compile once to WebAssembly and let the JavaScript
+engine run it; wasm-bindgen's guide offers its Node target "perhaps as
+an alternative to a native module"<Cite id="wasm-bindgen-guide" />.
+
+<Figure takeaway="Native means one build per platform, chosen at install time; WebAssembly means one build for all of them." caption="On the left, npm installs the one esbuild package whose os and cpu match the machine. On the right, every platform, and a browser tab, runs the same .wasm.">
+  <ShipTwoWays />
+</Figure>
+
+<Analogy title="plug adapters and batteries">
+Travelling abroad, you can pack a plug adapter for every country you
+might visit, or bring a device that runs on batteries sold everywhere.
+The adapters give full mains power, but you need the right one for each
+wall; the batteries work anywhere, at a little less power.
+<span slot="breaks">You can carry all the adapters at once; npm
+downloads only the one platform package that matches, so the cost of
+the native route falls on the people who build and test 26 packages,
+not on the person installing.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Native binaries vs WebAssembly**: a native build is compiled for one
+operating system and CPU, so it is the fastest and can use threads and
+files, but you ship (and build, and test) one per platform. A `.wasm`
+is one file for every platform, run by the host's JavaScript engine;
+it is slower, and on `wasm32-unknown-unknown` the standard library
+cannot reach the host, so `std::fs` returns errors and
+`std::thread::spawn` panics<Cite id="rustc-wasm32-unknown-unknown" />.
+</Callout>
+
+<Examples of="native-vs-wasm">
+
+```json
+"os": ["linux"], "cpu": ["x64"]
+```
+
+```text
+ELF 64-bit LSB pie executable, x86-64
+```
+
+```js
+const { compile } =
+  require('@viscosity/wasm');
+```
+
+</Examples>
+
+The first is from `@esbuild/linux-x64/package.json`: the two fields
+that let npm skip the package on any other machine. The second is what
+`file` says about the Rust CLI I built: x86-64 Linux, and nothing else.
+The third is the whole WebAssembly story for a user: one package, the
+same on every machine, and `compile` is ready the moment `require`
+returns. The run below does what npm does with esbuild's list, for
+whatever machine compiles it:
+
+<Run id="pick-native" />
+
+It holds the 26 names as `<os>-<cpu>` strings, asks Rust which
+operating system and CPU it was compiled for (`std::env::consts::OS`
+and `ARCH`), and translates Rust's names into Node's (`macos` is
+`darwin`, `x86_64` is `x64`), because the two worlds name the same
+machines differently. On an x86-64 Linux machine, like the one I ran it
+on, it prints `this machine: linux-x64` and `npm installs ["linux-x64"] of
+26`; on a Mac with an M-series chip it would pick `darwin-arm64`
+instead.
+
+<Prompts ids={['native-vs-wasm-what', 'esbuild-26']} />
+
+## One package, two kinds of glue
+
+`@viscosity/wasm` takes the WebAssembly road. The chapter *Compiling
+the engine to WebAssembly* left two folders, `dist/node` (CommonJS
+glue that loads synchronously) and `dist/web` (an ES module with
+`init()`), and the `package.json` decides who gets which with an
+`exports` map. Trimmed:
+
+```json
+"exports": {
+  ".": {
+    "node": {
+      "types": "./dist/node/….d.ts",
+      "default": "./dist/node/….js"
+    },
+    "browser": { … },
+    "types": "./dist/web/….d.ts",
+    "default": "./dist/web/….js"
+  },
+  "./web": …, "./node": …
+}
+```
+
+The `"."` entry is what `import '@viscosity/wasm'` means; `"./web"`
+and `"./node"` let a user ask for one glue by name. Each key inside
+`"."` is a **condition**. Node sets `"node"` and either `"import"`
+or `"require"`; a bundler building for the web uses `"browser"`. Key
+order is significant: the first key whose condition is active wins,
+`"default"` always matches and so comes last, and a nested object that
+matches nothing falls back to its parent's next
+key<Cite id="node-packages-exports" />. TypeScript reads the same map
+and always matches `"types"`<Cite id="ts-modules-reference" />.
+
+<Analogy title="the signs at a hotel reception">
+A reception desk has a list of signs, read from the top: "members: the
+lounge", "families: the garden rooms", "everyone else: the main
+building". You go to the first sign that applies to you, even if a
+later one also does, and "everyone else" has to be at the bottom, or
+nobody would ever read past it.
+<span slot="breaks">A guest who is sent to the lounge stays there; in
+an exports map, a matching key whose own list matches nothing sends you
+back to the desk to read the next sign.</span>
+</Analogy>
+
+Step through five importers on the real map:
+
+<ExportsSteps client:visible />
+
+<Formal title="Resolving conditional exports">
+
+```text
+resolve(file, C) = file
+resolve([k₁:v₁ … kₙ:vₙ], C) =
+  the first resolve(vᵢ, C) ≠ none
+  with kᵢ ∈ C or kᵢ = default
+```
+
+<span slot="read">A file resolves to itself. A map resolves to the
+first entry, in the map's own order, whose key is one of the importer's
+conditions C or is "default", and whose value itself resolves to
+something; if none does, the map resolves to nothing.</span>
+</Formal>
+
+<Prompts ids={['exports-order', 'exports-fallthrough']} />
+
+## What is in the box
+
+Packed, the package is 13 files, 997 KiB, and 2,840 KiB unpacked. Most
+of that is two copies of the module, `dist/node/viscosity_wasm_bg.wasm`
+(1,373,486 bytes) and `dist/web/viscosity_wasm_bg.wasm` (1,373,422):
+each glue file loads the module sitting next to it, so sharing one
+would mean editing generated code, and the build does not, at a price
+of 1.4 MB of disk. There is no `bin`: `@viscosity/cli` installs a
+`viscosity` command, while `@viscosity/wasm` is a library, for
+programs that call `compile` themselves (an editor plugin, a bundler
+plugin, this book).
+
+The third big file is `THIRD_PARTY_LICENSES.txt`, 130,597 bytes. The
+`.wasm` *statically links* 71 third-party Rust crates (oxc's parser,
+`indexmap`, `rustc-hash`, the ICU4X Unicode crates, wasm-bindgen
+itself): their code is inside the file you hand out, so their licence
+notices must travel with it. `build.mjs` asks `cargo tree` which
+crates are linked for `wasm32-unknown-unknown` (leaving out proc
+macros, which run only at build time), finds each crate's licence
+files through `cargo metadata`, and writes every distinct text once.
+One snag: oxc's crates are published without their licence file, so
+the package carries copies of oxc's own files in `licenses/` and uses
+them as a fallback for any `oxc` crate.
+
+<Prompts ids={['two-copies', 'licences-67', 'oxc-licence']} />
+
+## Installed like a stranger would
+
+`smoke.mjs` installs the package the way a stranger would: `npm pack`,
+install the tarball into a fresh directory, compile every corpus
+program through the installed package (40 JavaScript, 20 Python) in
+three ways, compare `code` and `explain` with what the TypeScript CLI
+prints, and finally type-check a small consumer under both the Node and
+the browser conditions. When I ran it for this chapter it printed:
+
+```text
+packed viscosity-wasm-0.0.1.tgz:
+  13 files, 997 KiB (2840 KiB unpacked)
+✗ nodejs target, require():
+  {"programs":60,"mismatches":4}
+✗ nodejs target, import: … 4
+✗ web target, init(bytes): … 4
+✓ types (node, nodenext)
+✓ types (browser, bundler)
+```
+
+Four mismatches, the same four each way, all in the explain text of
+Python programs. The package was not at fault: the oracle was.
+`smoke.mjs` compares with the TypeScript CLI's committed bundle,
+`engine/ts/packages/cli/dist/viscosity.mjs`, and that bundle was built
+before a change of wording in the analysis ("a dataclass call is
+modelled only with its arguments in field order and literal
+defaults"), so it still printed the old sentence. I bundled the CLI
+from its current source into a scratch folder and compared again: all
+60 programs matched, three ways. It is the lesson of the chapter
+*TypeScript vs Rust: differential tests* in miniature: a test is only as current as the thing it trusts. (On
+2026-11-02 both packages went to npm, as the chapter *Release
+engineering* describes, so `npm install @viscosity/wasm` works now.)
+
+<Prompts ids={['smoke-what']} />
+
+<Callout kind="engine" label="Under the hood">
+The build itself relies on a WebAssembly package. Binaryen is written
+in C++ and publishes native releases for several platforms, plus a
+build for Node: "A port of `wasm-opt` to JavaScript+WebAssembly … on
+any platform that Node.js runs on"<Cite id="binaryen-readme" />. The
+npm `binaryen` package that `build.mjs` finds is that port; its
+`bin/wasm-opt` is one 11 MB file, a JavaScript loader with the module
+inside it, which is why `npm install` was enough on the build machine,
+whatever it was, and also why each `-O3` run took about half a minute.
+</Callout>
+
+## Your turn
+
+<Exercise id="resolve" />
+
+## What you learned
+
+- **Native** builds are fastest but per platform (esbuild ships 26
+  packages); a **.wasm** is one file for every platform, without
+  threads or files on `wasm32-unknown-unknown`.
+- An **exports map** is tried in key order: the first active condition
+  wins, `"default"` comes last, and nested misses fall through.
+- A statically linked `.wasm` must carry its crates' **licences**, and
+  `smoke.mjs` tests the package installed, against an oracle that has
+  to be kept current.
+
+<Quiz />

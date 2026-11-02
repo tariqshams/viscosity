@@ -1,0 +1,300 @@
+---
+n: 295
+day: 74
+part: X
+title: 'Objects, vtables and dynamic dispatch'
+tagline: 'Your Drip VM finds a method by looking its name up in a hash table on every call. A compiled language does the same job with two loads and a jump, by numbering the methods before the program runs.'
+objectives:
+  - Explain why the method a call runs can only be chosen at run time, and what dynamic dispatch costs.
+  - Build a vtable for a class and its subclasses, keeping each method in the same slot.
+  - Lay out an object with its vtable pointer and fields, and say why a subclass only adds to the end.
+  - Read the two loads and the jump that clang emits for a C++ virtual call on RISC-V.
+introduces: [vtable, dynamic-dispatch, object-layout]
+uses: [class, method, instance, new, extends, method-override, this, prototype-chain, object, field, array, index, function, first-class-function, pointer, address, memory, drip-class, inheritance, method-invocation, hash-table, shape, inline-cache, monomorphic, megamorphic, inlining, risc-v, assembly-language, load-store, calling-convention]
+sources: [itanium-cxx-abi, hotspot-klassvtable, holzle1991, mdn-classes]
+---
+import VtableSteps from '../../../components/diagrams/ch295/VtableSteps';
+import LayoutFigure from '../../../components/diagrams/ch295/LayoutFigure';
+
+## One call, many bodies
+
+Part X shows how real languages build features you already use: each
+chapter builds a small version in JavaScript, then checks what C++,
+Java, Rust, Go or Python really emit. First, a method call:
+
+```drip
+class Shape { name() { return "shape"; } }
+class Sq extends Shape {
+  init(s) { self.s = s; }
+  area() { return self.s * self.s; }
+}
+class Circle extends Shape {
+  init(r) { self.r = r; }
+  area() { return 3 * self.r * self.r; }
+  name() { return "circle"; }
+}
+for o in [new Sq(2), new Circle(1)] {
+  print o.name() + " " + str(o.area());
+}
+```
+
+It prints `shape 4` and then `circle 3`: the same words, `o.area()`,
+run `Sq`'s `area` the first time round the loop and `Circle`'s the
+second, and `o.name()` runs the inherited `Shape.name` for the square
+but `Circle`'s own for the circle. Nothing in the text of that line says
+which body to run; only the object in `o` at that moment can say.
+
+<Analogy title="the house special">
+You ask for "the house special" in two restaurants and get lasagne in
+one and green curry in the other; your words are the same, and the
+restaurant you are standing in decides what they mean.
+<span slot="breaks">You chose the restaurant knowingly; a call often
+cannot tell which class of object it has been handed until the moment it
+runs, and it never asks: it follows a pointer.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Dynamic dispatch** is choosing which body of a method to run at run
+time, from the class of the object the method is called on, rather than
+at compile time from the text of the call. A call that uses it is a
+**virtual call**; the class whose body runs is found by the object's
+own class, following overrides.
+</Callout>
+
+<Examples of="dynamic-dispatch">
+
+```js
+class A { hi() { return 'A'; } }
+class B extends A { hi() { return 'B'; } }
+const xs = [new A(), new B()];
+xs.map((x) => x.hi()); // ['A', 'B']
+```
+
+```drip
+let o = new Sq(2);
+o = new Circle(1);
+print o.area();     # 3, not 4
+```
+
+```js
+// a static call: no choice to make
+Math.max(1, 2); // always the same body
+```
+
+</Examples>
+
+In the first, one arrow function calls `x.hi()` on both elements and
+gets two answers, because `B` overrides `hi`. In the second, `o` keeps
+its name while the object in it changes, and the call follows the
+object. The third is the contrast, a **static call**: `Math.max` names
+exactly one function, so its body is known before the program runs.
+
+<Prompts ids={['dd-what', 'why-runtime']} />
+
+## The Drip VM's answer, and what it costs
+
+Your bytecode VM already does dynamic dispatch the simplest way: it
+looks the method's name up in the receiver's class (simplified from
+`companion/ts/src/vm/vm.ts`):
+
+```ts
+const method =
+  receiver.klass.methods.get(name);
+this.call(method, argCount);
+```
+
+`methods` is a hash table from names to closures (chapter 146), and
+`Op.Inherit` copies the parent's methods into the child's table once,
+so lookups never walk up the chain. However, every call still hashes
+the name and probes a table, a million times for a million shapes. A
+compiled language with fixed classes knows something your VM never
+uses: the full list of method names, before the program runs.
+
+## Number the methods: the vtable
+
+The trick is to swap names for numbers. The compiler gives each of
+`Shape`'s methods a **slot number** (`area` 0, `name` 1), and each
+class gets an array whose slot 0 holds the address of that class's
+`area` and slot 1 its `name`. A subclass copies its parent's array,
+overwrites the slots it overrides, and adds new methods after them.
+Every object points at its class's array, so `o.area()` becomes
+"follow `o`'s pointer, read slot 0, jump there". Step through it:
+
+<VtableSteps client:visible />
+
+<Analogy title="speed dial">
+On every phone in a family, speed-dial 1 means "home" and 2 means "the
+doctor", but each phone stores its own number behind each key. Pressing
+2 never needs a search through the contacts: the phone reads key 2 and
+dials whatever is there.
+<span slot="breaks">Anyone can reprogram a speed-dial key at any time;
+a vtable is built once, by the compiler, and is read-only while the
+program runs.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **vtable** (virtual method table) is an array of method addresses, one
+per class, with one **slot** per virtual method. Slot numbers are chosen
+at compile time and are the same across a class and all its subclasses:
+an override replaces the address in its parent's slot, and a new method
+takes the next free slot. Each object holds a **vtable pointer**
+(**vptr**) to its class's table.
+</Callout>
+
+<Formal title="Slots and dispatch">
+
+```text
+slot_C(m) = slot_P(m)      if m is in P
+          = |vt(P)| + k    otherwise
+vt(C)[slot_C(m)] = the body of m in C,
+                   or else in P
+o.m(a)  ⟶  vt(class(o))[slot(m)](o, a)
+```
+
+<span slot="read">In class C with parent P, a method P already has keeps
+P's slot, and the k-th new method goes after the end of P's table. The
+slot holds C's own body if it has one, else P's. A call o.m(a) reads
+m's slot in the table of o's class and calls what is there, passing o
+first (it becomes this).</span>
+</Formal>
+
+The object itself is a hidden first argument: that is how `this` (or
+`self`) reaches the method.
+
+<Prompts ids={['vtable-what', 'slot-fixed', 'new-slot']} />
+
+## Where the vptr and the fields go
+
+The other half is the **object layout**. A compiled object is a block
+of memory with no names in it; the compiler puts the vptr at offset 0
+and each field at a fixed offset after it, and all code uses those
+numbers. Inheritance adds the **prefix rule**: a subclass keeps its
+parent's layout exactly and only adds to the end, in the object and in
+the vtable alike.
+
+<Figure takeaway="A subclass object starts with a complete parent object." caption="BigSq extends Sq with a field tag and a method grow. The first two cells of the object and the first two slots of the vtable are laid out exactly as Sq's.">
+  <LayoutFigure />
+</Figure>
+
+<Analogy title="a form with an extra page">
+A council's basic form has your name in box 1 and address in box 2; the
+business version is the same two boxes plus a third page. A clerk who
+only knows the basic form can still read boxes 1 and 2 of either.
+<span slot="breaks">A form can be reprinted; compiled code has the
+offsets built into its instructions, so a parent's layout cannot change
+without recompiling all its users.</span>
+</Analogy>
+
+<Callout kind="definition">
+An **object layout** fixes, at compile time, the offset of every field
+and of the vptr within an object of a class. With single inheritance a
+subclass's layout begins with its parent's complete layout (the
+**prefix rule**), so code compiled for the parent reads a subclass
+object correctly.
+</Callout>
+
+C++ compilers on Linux follow the **Itanium C++ ABI**, a published
+agreement on layouts, which puts the vtable pointer at offset zero when
+no base class already has one<Cite id="itanium-cxx-abi" />. Given:
+
+```cpp
+struct Shape {
+  virtual double area() = 0;
+  virtual const char* name();
+};
+struct Sq : Shape {
+  double s;
+  double area() override;
+};
+double use(Shape* p) { return p->area(); }
+```
+
+(with the bodies as in the Drip version), clang 18 with
+`--target=riscv64 -O2 -S` emits this (real output, trimmed, my comments
+after `#`):
+
+<Examples of="vtable object-layout">
+
+```text
+_Z3useP5Shape:       # use(Shape*)
+  ld   a1, 0(a0)     # a1 = p's vptr
+  ld   t1, 0(a1)     # t1 = slot 0
+  jr   t1            # jump to area
+```
+
+```text
+_ZTV2Sq:             # Sq's vtable
+  .quad 0            # offset to top
+  .quad _ZTI2Sq      # type info
+  .quad _ZN2Sq4areaEv     # Sq::area
+  .quad _ZN5Shape4nameEv  # Shape::name
+```
+
+```text
+_Z2mkd:              # new Sq(s)
+  call _Znwm         # 16 bytes
+  lui  a1, %hi(_ZTV2Sq+16)
+  addi a1, a1, %lo(_ZTV2Sq+16)
+  sd   a1, 0(a0)     # vptr at +0
+  fsd  fs0, 8(a0)    # s at +8
+```
+
+</Examples>
+
+The first is the whole virtual call: `a0` holds `p` (chapter 233), one
+load fetches the vptr, a second fetches slot 0, and `jr` jumps there (a
+tail call); a call to `name` differs only in `ld t1, 8(a1)`, slot 1.
+The second is `Sq`'s vtable: two words the ABI requires (the "offset to
+top" and a pointer to type information), then `Sq::area`, then the
+inherited `Shape::name`. The third builds an `Sq`: `operator new`
+returns 16 bytes, the vptr is set to `_ZTV2Sq+16`, which skips the two
+extra words to land on slot 0 (the ABI's "address
+point"<Cite id="itanium-cxx-abi" />), and `s` goes at offset 8.
+
+Java's HotSpot virtual machine keeps the same kind of table: a
+variable-length vtable of method pointers embedded in each class's
+metadata<Cite id="hotspot-klassvtable" />.
+
+Here is the whole scheme in JavaScript, an object being an array whose
+element 0 is its vtable:
+
+<Run id="tiny-objects" />
+
+`AREA` and `NAME` are the slot numbers, `sqVt` reuses `shapeVt[NAME]`
+since `Sq` does not override `name`, and the loop never names a class,
+yet prints `shape 4` and `circle 3.14`.
+
+<Prompts ids={['prefix-why', 'two-loads']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript cannot use fixed vtables, because a program may change a
+prototype at any moment. Engines win the speed back another way: hidden classes (chapter 168)
+play the vptr's part, and an inline cache at each call site remembers
+the method found for the hidden classes it has seen (chapter 170), an
+idea from the Self system's polymorphic inline
+caches<Cite id="holzle1991" />. A vtable call also has a hidden cost:
+its target is unknown until run time, so the method cannot be inlined,
+unless the compiler proves the object's class and calls it directly
+(**devirtualisation**).
+</Callout>
+
+<Prompts ids={['js-no-vtable']} />
+
+## Your turn
+
+<Exercise id="build-vtable" />
+
+## What you learned
+
+- **Dynamic dispatch** chooses the method body at run time from the
+  object's class; the Drip VM does it with a name lookup per call.
+- A **vtable** numbers the methods: each class has an array of method
+  addresses, an override keeps its parent's slot, and new methods go
+  last; a call is two loads and an indirect jump.
+- **Object layout** puts the vptr first and fields at fixed offsets; a
+  subclass only adds to the end, so parent code still works on it.
+
+Next: what happens when a class implements several unrelated
+interfaces, and the single row of slots is no longer enough.
+
+<Quiz />

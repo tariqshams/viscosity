@@ -1,4 +1,4 @@
-//! Scope analysis for JavaScript (book chapters 42 and 93): resolve every
+//! Scope analysis for JavaScript (the book's chapters “Finding every name before running: the resolver” and “Lowering JavaScript to VIR”): resolve every
 //! identifier to the binding it refers to, and record which function each
 //! reference occurs in, so lowering knows which variables closures capture.
 //!

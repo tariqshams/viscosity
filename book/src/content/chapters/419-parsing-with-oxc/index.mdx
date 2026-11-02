@@ -1,0 +1,242 @@
+---
+n: 419
+day: 105
+part: XIII
+title: 'Parsing with oxc'
+tagline: 'acorn says the collection starts at offset 266; oxc says 286. Both are right, because one counts UTF-16 code units and the other counts bytes. Meet the Rust parser behind the port, its arena-allocated tree, and the rule that keeps every splice cutting at the same characters.'
+objectives:
+  - Call oxc’s parser the way engine/rust does, and relate its options to acorn’s.
+  - Explain oxc’s arena-allocated AST, its 'a lifetime, and why the port keeps no AST after lowering.
+  - Explain why UTF-8 byte offsets in Rust and UTF-16 offsets in JavaScript cut the source at the same characters, and convert between them.
+  - Say which syntax errors oxc’s parser leaves to a later pass, and what that means for the port.
+introduces: [oxc]
+uses: [viscosity-rs, ir-arena, plugin-trait, language-plugin, parser, parser-adapter, estree, ast-node, source-location, arena, lifetime, lifetime-annotation, drop, ownership, borrow, slice, string-vs-str, byte-scanning, enum, struct, box, result, option, size-of, rust-iterator, typescript, access-rewriting, source-to-source]
+sources: [oxc-project, oxc-parser-docs, oxc-allocator-docs, acorn, rust-std-str]
+---
+import OxcSteps from '../../../components/diagrams/ch419/OxcSteps';
+import TwoRulers from '../../../components/diagrams/ch419/TwoRulers';
+
+## Two right answers
+
+One of the programs written for the port,
+`tests/extra/unicode_offsets.js`, starts like this (trimmed; in `sep`
+each `…` stands for U+2028 or U+2029, invisible line-break characters):
+
+```js
+// Ünïcödé before the collection: …
+/* U+2028 and U+2029 are line breaks … */
+const label = 'héllo wörld 😀 𝒳';
+const sep = 'a…b…c'; // …
+const ps = [];
+```
+
+I parsed it with both parsers here. acorn, the TypeScript engine's
+parser, says the statement `const ps = [];` runs from offset 266 to 280;
+oxc, the Rust engine's, says 286 to 300. They are twenty apart and both
+correct, and the parity test checks that both engines rewrite this file
+identically. This chapter is about how both can be true, and about the
+parser that gives the second answer.
+
+## oxc
+
+oxc, the Oxidation Compiler, is "a collection of high-performance tools
+for JavaScript and TypeScript written in Rust": a parser, a linter, a
+formatter, a transformer and a minifier<Cite id="oxc-project" />. The
+port uses its parser and syntax-tree crates, version 0.156. The parser
+has "three inputs (a memory arena, a source string, and a SourceType)
+and one return struct"<Cite id="oxc-parser-docs" />.
+
+<Callout kind="definition">
+**oxc** (the Oxidation Compiler) is a JavaScript and TypeScript
+toolchain written in Rust. Its parser takes an `Allocator`, the source
+and a `SourceType`, and returns a `ParserReturn` holding the `Program`
+(with its comments) and a list of syntax errors. The tree is a set of
+Rust types, allocated in the arena, with spans in UTF-8 byte
+offsets<Cite id="oxc-parser-docs" />.
+</Callout>
+
+<Examples of="oxc">
+
+```rust
+let a = Allocator::default();
+let ret = Parser::new(&a, "let x = 1;",
+    SourceType::mjs()).parse();
+// ret.program.body.len() == 1
+```
+
+```rust
+let ret = Parser::new(&a,
+    "const ps = [;",
+    SourceType::mjs()).parse();
+let e = ret.diagnostics.errors().next();
+// its message: "Unexpected token"
+```
+
+```rust
+let options = ParseOptions {
+    preserve_parens: false,
+    parse_regular_expression: true,
+    ..ParseOptions::default()
+};
+let ret = Parser::new(&allocator, source,
+        SourceType::mjs())
+    .with_options(options)
+    .parse();
+if let Some(e) =
+    ret.diagnostics.errors().next() {
+    return Err(syntax_error(source, e));
+}
+```
+
+</Examples>
+
+The first is the smallest parse: make an arena, hand it the text and
+`SourceType::mjs()` (a JavaScript module, acorn's `sourceType:
+'module'`), and the tree comes back with one statement in its body. The
+second shows how errors arrive: as data in the return value, not as an
+exception, so parsing `const ps = [;` still returns, and its first error
+says `Unexpected token`. The third is the real call in
+`crates/frontend-js/src/lib.rs` (rewrapped); I ran all three here with
+oxc 0.156. Line it up with the acorn adapter of *Parsing real
+JavaScript*: `preserve_parens: false` matches acorn's default of not
+keeping parentheses as nodes, `parse_regular_expression` checks regular
+expression literals as acorn does, and the plugin turns the first error
+into a `CompileError` written as `message (line:column)`, the shape of
+acorn's messages, so both CLIs print `Unexpected token (1:12)` for that
+second program.
+
+<Prompts ids={['oxc-what', 'oxc-inputs', 'oxc-errors']} />
+
+## A tree in an arena
+
+ESTree is plain objects with a `type` string. oxc's tree is Rust types:
+a `Statement` enum, an `Expression` enum with dozens of variants, and a
+struct per node kind. One variant, from `oxc_ast`:
+
+```rust
+pub enum Expression<'a> {
+    // ...
+    BinaryExpression(
+        Box<'a, BinaryExpression<'a>>),
+    // ...
+}
+```
+
+That `Box` is not std's: it is oxc's **arena** box, a pointer to a node
+in the `Allocator`, and here an `Expression` is 16 bytes, a tag and that
+pointer. (The kinds are split finer than ESTree's too: `ps[i].x` is a
+`StaticMemberExpression` whose object is a `ComputedMemberExpression`,
+where ESTree has one `MemberExpression` with a `computed` flag.)
+
+<Analogy title="a notepad">
+A bump arena is a notepad: each new node is written on the next free
+line, nothing is ever rubbed out on its own, and when you are done you
+throw the whole pad away.
+<span slot="breaks">You could tear one page out of a real notepad; an
+arena never gives back a single node, so a tree with one dead branch
+still holds its memory until the whole arena goes.</span>
+</Analogy>
+
+`'a` is the **lifetime** of *Lifetimes*, and here it names the arena:
+every node borrows the allocator, so no node can outlive it. Step
+through what that means for the plugin:
+
+<OxcSteps client:visible />
+
+oxc's documentation spells out the deal: objects in the arena "are
+never Dropped", and memory is "released in bulk when the allocator is
+dropped". To keep that from leaking, the arena refuses, at compile time,
+any type that implements `Drop`, such as std's `Vec`, which is why oxc
+ships arena versions of `Box`, `Vec`, `String` and
+`HashMap`<Cite id="oxc-allocator-docs" />. For the port this settles a
+design question. The TypeScript engine keeps ESTree nodes alive inside
+the VIR, in `SourceRef.node`; the Rust tree dies when `lower` returns,
+so the VIR keeps a `NodeRef` index into a side table of facts instead
+(*Lowering oxc's AST to VIR*). Spans survive, because an oxc `Span` is
+two `u32`s with no lifetime.
+
+<Prompts ids={['oxc-arena', 'oxc-nodrop', 'oxc-lifetime']} />
+
+## Bytes and code units
+
+Now the two offsets. A JavaScript string is a sequence of UTF-16
+**code units** (16-bit pieces; most characters take one, emoji take
+two), and acorn's offsets count those. A Rust `String` is UTF-8 bytes,
+and oxc's spans count bytes:
+
+<Figure takeaway="Two units, two numbers, one character." caption="é is 2 bytes and 1 code unit; the emoji is 4 bytes and 2 code units; x is 1 of each. So x starts at byte 6 in Rust and at code unit 3 in JavaScript.">
+  <TwoRulers />
+</Figure>
+
+<Analogy title="a road measured in metres and in paces">
+A lamp-post can be "120 metres" or "160 paces" from the corner; the
+numbers differ, and both send you to the same post, as long as you
+pace with the unit you were told.
+<span slot="breaks">Paces vary from person to person; bytes and code
+units are exact, so a mixed-up offset never lands "about" right, it
+lands somewhere else entirely.</span>
+</Analogy>
+
+Before `const ps`, the test file has accented letters (one unit, two
+bytes each), 😀 and 𝒳 (two units, four bytes each), and U+2028 and
+U+2029 (one unit, three bytes each), which is where the twenty comes
+from. Each engine splices its own string with its own offsets: the
+TypeScript emitter writes `out.slice(0, e.start) + e.text +
+out.slice(e.end)`, and the Rust one calls `out.replace_range(start..end,
+&e.text)`. `slice` counts code units and `replace_range` counts bytes,
+so both cut at the same characters, and the fixture shows identical
+output from both engines.
+
+The danger is mixing the two. Hand acorn's `266..280` to the Rust string
+and you get `"9, and a line "`, from a comment two lines up; land inside
+a character and Rust panics, because a string slice must start and end
+on a character boundary<Cite id="rust-std-str" />. When the port does
+need a JavaScript-style offset, `lines::utf16_offset` converts.
+
+<Run id="three-lengths" />
+
+Line numbers need care too, because oxc reports none. The plugin counts
+them itself in `lines.rs`, at the same breaks acorn counts: `\n`,
+`\r\n`, a lone `\r`, U+2028 and U+2029.
+
+<Prompts ids={['oxc-units', 'oxc-same-cut', 'oxc-lines']} />
+
+<Callout kind="pitfall">
+oxc's parser does not report every syntax error: its documentation says
+the list "is not comprehensive", and more expensive checks are left to
+its semantic analyzer<Cite id="oxc-parser-docs" />. When this chapter
+was first written the port ran only the parser, so `let a = 1; let a =
+2;` compiled in Rust while acorn rejected it, and no parity fixture
+caught it, because every parity program is valid JavaScript. The fix is
+a second pass right after parsing, `SemanticBuilder::new()
+.with_check_syntax_error(true).build(&program)`, whose first error is
+reported the same way; and `early_errors.rs` now runs 108 invalid
+programs through both CLIs, which must both reject them. Each still
+words an error its own way, and not always at the same token: for that
+program Rust says ``Identifier `a` has already been declared (1:4)``
+and acorn `Identifier 'a' has already been declared (1:15)`.
+</Callout>
+
+<Prompts ids={['oxc-semantic']} />
+
+## Your turn
+
+<Exercise id="byteOffset" />
+
+## What you learned
+
+- **oxc** is a Rust toolchain for JavaScript. Its parser takes an
+  arena, the source and a `SourceType`, and returns the tree with its
+  errors as data.
+- The tree lives in a bump **arena**: `'a` ties every node to the
+  `Allocator`, nodes are never dropped one by one, and the whole arena is
+  freed at once. So the port keeps spans and facts, not the tree.
+- oxc spans count **UTF-8 bytes**, acorn's offsets **UTF-16 code
+  units**. Each engine slices its own string with its own offsets, so
+  both cut at the same characters.
+- Line numbers are counted by the plugin at every ECMAScript line
+  break.
+- oxc's parser leaves some early errors to a semantic pass, so the
+  port runs that pass's syntax checks too.
+
+<Quiz />

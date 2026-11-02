@@ -1,4 +1,4 @@
-// The single-pass bytecode compiler (book chapters 48, 53–59): a Pratt
+// The single-pass bytecode compiler (the book's chapters “One pass from source to bytecode” and “Globals by name” to “Objects and method calls in the VM”): a Pratt
 // parser that emits bytecode as it parses, with no syntax tree in between.
 //
 // It parses with the same functions, in the same order, as the

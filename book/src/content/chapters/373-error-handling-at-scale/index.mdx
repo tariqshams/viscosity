@@ -1,0 +1,270 @@
+---
+n: 373
+day: 94
+part: XI
+title: 'Error handling at scale'
+tagline: 'One function that can fail is easy: return a Result. A crate with a scanner, a compiler, a VM, files and a command line has many kinds of failure, and callers that must tell them apart. Give them one enum, match it in one place, and see why neither of this book’s Rust projects quite does that.'
+objectives:
+  - Define an error enum with one variant per kind of failure, each holding its details.
+  - Match an error enum to choose what to do, and let the compiler find the cases you forgot.
+  - Give an error type a Display message, and convert errors by hand with map_err.
+  - Compare drip-rs’s, engine/rust’s and a full error enum’s designs, and choose by what callers need.
+introduces: [error-enum]
+uses: [rust, crate, rust-functions, struct, impl, self-receiver, enum, match, pattern, option, result, question-mark, trait, string-vs-str, vec, rust-closure, rust-module, wasm-bindgen, runtime-error, syntax-error, panic-mode, error-recovery, error-propagation, try-catch, error-object, compiler, virtual-machine, drip, language-plugin]
+sources: [klabnik2026, thiserror-readme, rust-std-exitcode]
+---
+import ExitSteps from '../../../components/diagrams/ch373/ExitSteps';
+import NoteVsForm from '../../../components/diagrams/ch373/NoteVsForm';
+
+## Many ways to fail
+
+The `drip-rs` binary can fail in four ways, and it says which with its
+exit code (from its `main.rs` and `vm.rs`): 64 if you call it wrongly,
+66 if it cannot read the file, 65 for a compile error and 70 for a
+runtime error, the same codes the TypeScript `drip` command uses. A
+test runner, a shell script or the differential tests of *Edge cases
+and differential testing* can tell those failures apart without reading a word of the
+message.
+
+Inside a program the same question comes up at every layer. In
+*Option and Result*, a function returned `Result<f64, String>`, which
+works until a caller needs to *do* something different for different
+failures: retry when a file is busy, underline a compile error in an
+editor, exit with 65 rather than 70. Then a `String` is a dead end,
+because the only way to find out what happened is to read the text.
+
+<Analogy title="a note or a form">
+A `String` error is a handwritten note saying what went wrong; an error
+enum is a printed form with tick boxes, and room under each box for the
+details. Anyone can read the note, but only the forms can be sorted
+into piles without reading them.
+<span slot="breaks">A clerk can still sort notes by reading them
+carefully; a program that sorts by searching message text breaks the
+day someone rewords a message, and nothing warns it.</span>
+</Analogy>
+
+<Analogy title="triage tags in a hospital">
+In a busy emergency department every patient gets a coloured tag at
+the door, so each team knows at a glance who is theirs, and the notes
+travel with the patient for whoever needs the details.
+<span slot="breaks">A nurse may retag a patient whose condition
+changes; an error's variant is fixed when it is made, so choose the
+variants by what callers will do, not by what is convenient to report.</span>
+</Analogy>
+
+<Figure takeaway="With a String, sorting errors means reading them; with an enum, the type has already sorted them." caption="Four failures from a Drip run, as plain strings and as variants of one enum (a design, with Drip's own wording).">
+  <NoteVsForm />
+</Figure>
+
+## One enum for the crate
+
+Give each kind of failure a variant, holding whatever detail that kind
+has:
+
+<Examples of="error-enum">
+
+```rust
+#[derive(Debug)]
+enum CliError {
+    Usage,
+    Io(io::Error),
+    Num(ParseIntError),
+}
+```
+
+```rust
+fn exit_code(e: &CliError) -> u8 {
+    match e {
+        CliError::Usage => 64,
+        CliError::Io(_) => 66,
+        CliError::Num(_) => 65,
+    }
+}
+```
+
+<Run id="cfg-error" />
+
+</Examples>
+
+The first is the smallest useful error enum, for a command-line tool
+that reads a number from a file: `Usage` carries nothing, because the
+kind is the whole story; `Io` holds the standard library's
+`std::io::Error` (with its own message, such as "No such file or
+directory"), and `Num` holds the `ParseIntError` from a failed
+`parse`. A caller now gets one error type and can `match` on its kind
+while keeping the details, which is *Enums and match* doing one more
+job. The second is such a caller: one `match` turns each kind into an
+exit code, with no text searched. The runnable one is complete: a
+`CfgErr` enum for reading a line like `min=64`, a `Display` impl that
+gives each variant a message (through a small `describe` function),
+and a `min_size` that fails in three different ways. Read its body
+line by line: `strip_prefix` gives an `Option`, which `ok_or(Missing)`
+turns into a `Result` with our own error, so `?` can return it; a
+failed `parse` has its error replaced with `NotNum` by `map_err`, a
+method that converts the error inside a `Result` and leaves an `Ok`
+alone; and the size check returns `Small` itself. It prints `min=64:
+64 (0)`, `max=9: no min= (2)`, `min=lots: not a number: lots (1)` and
+`min=2: 2 is below 8 (1)`, where the number in brackets is an exit code
+chosen by matching, not by reading.
+
+<Callout kind="definition">
+An **error enum** is a single enum that lists every way a crate's (or a
+module's) operations can fail, one variant per kind, each holding that
+kind's details. Its functions return `Result<T, ThatEnum>`, so callers
+handle one error type and can match on its variants; it usually also
+implements `Display`, for a message, and the standard
+`std::error::Error` trait<Cite id="klabnik2026" />.
+</Callout>
+
+<Formal title="An error type is a sum type">
+
+```text
+DripError = Usage
+          + Io(io::Error)
+          + Compile(Vec<String>)
+          + Runtime(String)
+```
+
+<span slot="read">A DripError is exactly one of four things: a usage
+error with nothing inside, or an I/O error holding an io::Error, or a
+compile error holding a list of messages, or a runtime error holding
+one message. The plus is the "or" of the sum types in *Sum types in
+memory*.</span>
+</Formal>
+
+Here is that design at work, matched in one place to choose drip-rs's
+exit codes:
+
+<ExitSteps client:visible />
+
+The last step is the strongest reason to prefer an enum. Add a variant
+and every `match` that does not handle it stops compiling; rustc 1.97
+says, for the `exit_code` above with a new `Timeout` variant (trimmed):
+
+```text
+error[E0004]: non-exhaustive patterns:
+  `&CliError::Timeout` not covered
+help: ensure that all possible cases are
+  being handled by adding a match arm
+```
+
+With `String` errors, the code that should treat the new failure
+differently would compile and quietly do the wrong thing. (A `_ =>`
+arm switches this check off for that `match`, so use one only when
+"everything else" really means everything, including future variants.)
+
+<OtherLanguages title="Four kinds of failure">
+
+```rust
+enum DripError {
+    Usage,
+    Io(io::Error),
+    Compile(Vec<String>),
+    Runtime(String),
+}
+```
+
+```ts
+type DripError =
+  | { kind: 'usage' }
+  | { kind: 'io'; message: string }
+  | { kind: 'compile'; errors: string[] }
+  | { kind: 'runtime'; message: string };
+```
+
+```python
+class DripError(Exception): pass
+class UsageError(DripError): pass
+class CompileError(DripError): pass
+class RuntimeErr(DripError): pass
+```
+
+```c
+enum drip_error { USAGE = 64, IO = 66,
+  COMPILE = 65, RUNTIME = 70 };
+/* details go in a separate struct */
+```
+
+</OtherLanguages>
+
+TypeScript's discriminated union is the closest relative: a `kind`
+field plays the tag, and a `switch` can be made exhaustive by the type
+checker; however, it is returned or thrown only by convention.
+Python uses a family of exception classes, caught by type, with
+nothing checking that every kind is handled. C has only numbers, so
+the details live elsewhere. Rust's enum carries the details inside
+each variant and the compiler checks every `match`.
+
+<Prompts ids={['enum-what', 'enum-why', 'enum-exhaustive', 'map-err', 'display-msg']} />
+
+## Two real designs
+
+Neither of this book's Rust projects has an error enum for its whole
+library, and why is the most useful part of the chapter.
+
+**drip-rs** splits errors by when they are reported. The compiler
+collects each message (`line 3: expected ';' after the value`, in
+Drip's wording) into a `Vec<String>` as it goes, recovering to find
+more, as *Syntax errors and recovery* described. The VM's runtime
+error is this, from `vm.rs`:
+
+```rust
+/// Its message and stack trace are
+/// already on stderr by the time one
+/// of these exists, so it carries
+/// nothing.
+pub struct RuntimeError;
+
+type Run<T = ()> = Result<T, RuntimeError>;
+```
+
+The VM's `runtime_error` method writes the message and the stack trace
+into its stderr lines and returns a `RuntimeError`, and every `?` in
+the run loop passes it up. `interpret` then returns an `Outcome`
+holding the output, the errors and an `exit_code` (65 or 70), and
+`main` turns that into the process's exit code<Cite id="rust-std-exitcode" />.
+A unit struct is enough because nobody upstream needs more than
+"stop".
+
+**engine/rust** has one error type for compiling, a newtype in
+`core/src/plugin.rs`, `pub struct CompileError(pub String);`, with
+`Display` and `std::error::Error` impls: a syntax error from the parser
+and an internal check that failed are both one message. Its command
+line has the smallest possible error enum, two variants that both hold
+a `String`, because `main` treats them differently: a `Usage` error is
+followed by the help text, an `Other` is not.
+
+<Prompts ids={['drip-unit', 'drip-codes', 'compile-error-newtype']} />
+
+<Callout kind="engine" label="Under the hood">
+Both choices fit what their callers do. Every caller of engine/rust's
+`compile` prints the message and gives up, so a `String` loses
+nothing; drip-rs's callers need only the *kind*, compile or runtime,
+and get it as an exit code. An error enum earns its keep when one
+crate's callers want different things: a test that expects a runtime
+error and must not accept a compile error, an editor that underlines
+compile errors at their line, a server that retries an I/O error.
+Crates such as `thiserror` can write the `Display` and conversion code
+for an error enum from attributes<Cite id="thiserror-readme" />, but
+drip-rs uses only the standard library.
+</Callout>
+
+## Your turn
+
+<Exercise id="report" />
+
+## What you learned
+
+- An **error enum** gives a crate one error type with a variant per
+  kind of failure, so callers match instead of parsing messages.
+- Adding a variant makes every `match` that misses it fail to compile
+  (E0004); a `_` arm gives that check up.
+- `Display` gives each variant a message; `map_err` and `ok_or` turn
+  other errors into yours, by hand.
+- drip-rs keeps only the kind (exit codes 64, 65, 66 and 70);
+  engine/rust's `CompileError` is one `String`. Choose by what callers
+  need to tell apart.
+
+Next: letting `?` do the converting.
+
+<Quiz />

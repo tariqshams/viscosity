@@ -1,4 +1,4 @@
-// Tokens: the "words" of a Drip program (book chapter 27).
+// Tokens: the "words" of a Drip program (the book's chapter “Tokens and lexemes”).
 
 export type TokenType =
   // punctuation

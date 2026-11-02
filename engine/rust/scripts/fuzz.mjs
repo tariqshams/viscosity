@@ -32,7 +32,7 @@
 // so it costs a few process starts per batch rather than per program.
 //
 // Usage (Node >= 22.18, which strips TypeScript types natively):
-//   node scripts/fuzz.mjs                        # the CI run: 300 programs, seed 1
+//   node scripts/fuzz.mjs                        # 300 programs, seed 1 (CI runs 200: tests/fuzz.rs)
 //   node scripts/fuzz.mjs --count 20000 --seed 7 # a long campaign
 //   node scripts/fuzz.mjs --seed 7 --only 1234 --print   # show one program
 //

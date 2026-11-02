@@ -1,0 +1,236 @@
+---
+n: 364
+day: 91
+part: XI
+title: 'Typed indices'
+tagline: 'A slot number is just a number, so nothing stops you using a class''s number to read the instances arena. Wrap each kind of index in its own type and the compiler stops you, for free: the wrapper is the same four bytes as the number inside.'
+objectives:
+  - Write a newtype index such as struct NodeId(u32), and say what it costs at run time.
+  - Read engine/rust's ValueId, BlockId, FuncId and BindingId, and the macro that makes them.
+  - Explain drip-rs's generic handle Gc<T>, its PhantomData field and its hand-written Copy.
+  - Let a type be indexed by your own ids, as arena[handle] is.
+introduces: [typed-index]
+uses: [arena, rust, rust-functions, let-mut, scalar-types, ownership, borrow, borrow-checker, struct, impl, self-receiver, enum, match, option, vec, trait, rust-generics, trait-bound, monomorphization, heap-object, garbage-collection, instance, closure, handle, pointer, index, vir, typescript, type-annotation]
+sources: [rust-std-phantomdata, rust-std-ops-index, klabnik2026]
+---
+import HandleSteps from '../../../components/diagrams/ch364/HandleSteps';
+import IdBox from '../../../components/diagrams/ch364/IdBox';
+
+## Two numbers that look alike
+
+*Arenas and typed indices* left one hole open. drip-rs's heap has nine
+arenas, and a slot number for one of them looks exactly like a slot
+number for another. With bare numbers, this compiles and runs:
+
+```rust
+let classes = vec!["Ship", "Rock"];
+let hps = vec![10.0, 4.0, 7.0];
+let ship: usize = 1; // a class slot
+println!("{}", hps[ship]); // 4
+```
+
+`ship` is a slot in `classes`, but nothing stops it being used to read
+`hps`, and the program quietly prints the hit points of some unrelated
+object. In a VM with nine arenas and thousands of handles flying
+about, that bug is easy to write and miserable to find.
+
+<Analogy title="colour-coded tickets">
+A venue gives out green tickets for the cloakroom and blue tickets for
+the car park, both numbered from 1. Hand a green 17 to the car park
+attendant and they refuse it at a glance, before anyone goes looking
+for car 17; the colour says which counter the number belongs to.
+<span slot="breaks">An attendant checks the colour every time; Rust
+checks the "colour" once, while compiling, and the running program
+carries no colour at all, only the number.</span>
+</Analogy>
+
+## A number in its own type
+
+The fix is to wrap each kind of number in a type of its own, a
+**newtype**: a struct with one unnamed field.
+
+```rust
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct ValueId(pub u32);
+```
+
+That is real: engine/rust's VIR (*VIR: Viscosity's IR*) keeps its
+instructions, blocks, functions and bindings in `Vec`s, and names them
+with `ValueId`, `BlockId`, `FuncId` and `BindingId`, each a `u32` in its
+own newtype. `ValueId(7)` builds one, and `.0` reads the number back
+out. A function that wants a `ValueId` will not take a `BlockId`, even
+though both hold a `u32`: they are different types, so mixing them up
+is a type error, found while compiling.
+
+<Figure takeaway="A newtype index is the same 4 bytes as the number inside; only the type is new." caption="size_of on rustc 1.97: a bare u32, engine/rust's ValueId and drip-rs's Gc handle are all 4 bytes.">
+  <IdBox />
+</Figure>
+
+<Analogy title="postcodes and phone numbers">
+A postcode and a phone number are both short strings of digits and
+letters, and a careless form could swap them. A well-designed form has
+a separate box for each, labelled, so a phone number can never be
+posted to.
+<span slot="breaks">A form's boxes take up room on the page; a newtype
+takes up no room at all in memory, since only the compiler ever sees
+the label.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **typed index** is a number wrapped in its own type, a newtype such
+as `struct NodeId(u32)`. It costs nothing at run time (it has exactly
+the size and layout of the number), but the compiler treats each
+wrapper as a different type, so indices into different collections
+cannot be mixed up. A generic handle like drip-rs's `Gc<T>` gives every
+element type its own index type from one definition.
+</Callout>
+
+<Prompts ids={['typed-index', 'newtype-cost', 'vir-ids']} />
+
+<Formal title="When arena[h] type-checks">
+
+```text
+impl<T> Index<Gc<T>> for Arena<T>
+
+arena : Arena<T>    h : Gc<U>
+──────────────────────────────  (T = U)
+        arena[h] : T
+```
+
+<span slot="read">An arena of T's can be indexed by a handle for T's.
+Read the rule as: if arena is an Arena of T, and h is a handle of U,
+then arena of h is a T, provided T and U are the same type. If they
+differ, the rule does not apply, and the program is rejected.</span>
+</Formal>
+
+## One wrapper for every kind of object
+
+engine/rust has four id types, so it writes them with a small macro
+(code that writes code, like `println!`), `id_type!`, which expands to
+the struct, its derives, an `index()` method and printing. drip-rs has
+nine kinds of object, so it writes the wrapper *once*, as a generic:
+
+```rust
+pub struct Gc<T> {
+    index: u32,
+    marker: PhantomData<fn() -> T>,
+}
+```
+
+A struct must use every type parameter it declares, or rustc refuses
+with E0392, "type parameter `T` is never used", and suggests "a marker
+such as `PhantomData`". **`PhantomData`** is that marker: a standard
+type that takes no space at all and tells the compiler to act as
+though the struct held a `T`<Cite id="rust-std-phantomdata" />. (The
+`fn() -> T` form, rather than a plain `T`, is drip-rs's choice: its
+comment says it keeps the handle `Copy`, `Send` and `Sync` whatever
+`T` is.) So a `Gc<ObjClass>` is 4 bytes, just a `u32`, yet a
+different type from a `Gc<ObjClosure>`.
+
+The arena then implements the standard `Index` trait, which is what
+`x[i]` calls (a later chapter covers these operator traits), for
+handles of its own element type only:
+
+```rust
+impl<T> Index<Gc<T>> for Arena<T> {
+    type Output = T;
+    fn index(&self, h: Gc<T>) -> &T {
+        match &self.slots[h.index()] {
+            Some(object) => object,
+            None => use_after_free::<T>(),
+        }
+    }
+}
+```
+
+Step through two arenas and two handles that hold the same number:
+
+<HandleSteps client:visible />
+
+One wrinkle: drip-rs writes `impl<T> Copy for Gc<T> {}` by hand rather
+than `#[derive(Clone, Copy)]`. A derive adds the bound `T: Clone` (and
+`T: Copy`) to its impl, and an `ObjClass` is neither, so a derived
+handle to a class would not be `Copy`. rustc 1.97 even says so, in a
+note: "derived `Clone` adds implicit bounds on type parameters". The
+handle is a number and should copy whatever it points at.
+
+<Examples of="typed-index">
+
+```rust
+#[derive(Clone, Copy, PartialEq)]
+struct NodeId(u32);
+let n = NodeId(3);
+let i = n.0 as usize; // 3, for a Vec
+```
+
+<Run id="typed-handles" />
+
+```rust
+// engine/rust's builder.rs, trimmed:
+let id = ValueId(m.values.len() as u32);
+m.values.push(Inst { id, op, args, ... });
+```
+
+</Examples>
+
+The first is the smallest typed index: `NodeId(3)` wraps a 3, and
+`n.0 as usize` unwraps it to index a `Vec`. The runnable one is drip-rs's
+design in miniature: a generic `Gc<T>`, an `Arena<T>` that `Index`es
+only with its own handles, a class and two instances, and the
+copy-out pattern of the last chapter; it prints `Ship instance, hp 18`
+and `handle size: 4 bytes`, and uncommenting its last line gives the
+E0308 from the diagram. The third is real: when VIR's builder emits an
+instruction, the new instruction's id is simply the current length of
+the module's `values` arena, wrapped in `ValueId`, and the instruction
+is pushed at exactly that position.
+
+<OtherLanguages title="An id that is not just a number">
+
+```rust
+#[derive(Clone, Copy)]
+struct NodeId(u32);
+fn name(id: NodeId) -> &'static str
+    { "..." }
+name(NodeId(1)); // ok
+// name(1);  error: expected NodeId
+```
+
+```ts
+type NodeId = number & {
+  readonly __brand: 'NodeId';
+};
+const id = 1 as NodeId;
+function name(id: NodeId) { /* ... */ }
+name(id); // ok
+// name(1); error: not a NodeId
+```
+
+</OtherLanguages>
+
+TypeScript's types are structural (a type is its shape), so two
+`number` aliases are interchangeable; the usual trick, a **branded
+type**, intersects `number` with a made-up property that no plain number
+has, and `as` stamps the brand on. Rust's structs are nominal (a type
+is its name), so a one-field struct is already a distinct type, and,
+as in TypeScript, the wrapper disappears when the program is compiled.
+
+<Prompts ids={['phantom', 'gc-size', 'derive-bound', 'index-trait', 'ts-brand']} />
+
+## Your turn
+
+<Exercise id="graphIds" />
+
+## What you learned
+
+- A **typed index** wraps a number in its own type, a newtype such as
+  `struct NodeId(u32)`: the same bytes at run time, a different type
+  while compiling, so ids for different collections cannot be mixed.
+- engine/rust's VIR names everything with `ValueId`, `BlockId`, `FuncId`
+  and `BindingId`; drip-rs writes one generic handle, `Gc<T>`, whose
+  `PhantomData` field makes each `Gc<T>` a different type at no cost.
+- Implementing `Index` for your own id type lets you write `arena[id]`,
+  and only with the right kind of id.
+
+Next: how Rust lays these values out in memory, byte by byte.
+
+<Quiz />

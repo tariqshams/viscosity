@@ -1,0 +1,265 @@
+---
+n: 237
+day: 60
+part: VII
+title: 'Instruction selection by tree tiling'
+tagline: 'An IR says what to compute; a processor offers a fixed menu of instructions, some of which do several IR operations at once. Choosing from that menu turns out to be a puzzle about covering a tree with tiles, and a short greedy recursion solves it well.'
+objectives:
+  - Say what instruction selection decides, and why one IR operation is not always one instruction.
+  - Rebuild expression trees from three-address code, and read a tile as a small tree pattern with an instruction attached.
+  - Tile a tree by maximal munch, by hand, and emit the instructions in the right order.
+  - Extend a small maximal-munch selector for RISC-V with the addi and load-offset tiles.
+introduces: [instruction-selection, tree-tiling]
+uses: [machine-code, assembly-language, isa, risc-v, load-store, addressing-mode, code-shape, array-address-arithmetic, ir, lowering, three-address-code, temporary, ssa, tree, recursion, ast, register, function, array, object, if, test]
+sources: [aho1989, llvm-riscv-td, riscv-isa-zba, riscv-isa-unpriv, cranelift-isle, llvm-codegen, coopertorczon2022]
+---
+import MunchSteps from '../../../components/diagrams/ch237/MunchSteps';
+import TwoTilings from '../../../components/diagrams/ch237/TwoTilings';
+
+## Two IR instructions, one machine instruction
+
+Look again at the running example of this part, `sumsq`, and at the
+line of VIR that adds one to `i`. In the IR it is two instructions:
+
+```text
+%9  = const 1
+%10 = binop + %3, %9
+```
+
+In the RISC-V listing we are aiming for, it is one, `addi t1, t1, 1`,
+because RISC-V's `addi` carries a small constant inside the
+instruction itself, so the `1` never needs a register of its own. The
+same thing happens on a larger scale with the array load of chapter
+235: for `a[i + 1]` the IR does a shift, two adds and a load, four
+operations, and clang writes three instructions, because the final
+`+ 8` disappears into the load's offset (`ld a0, 8(a0)`). Somebody has
+to decide, for every operation in the IR, which instruction computes
+it, and that one instruction may be doing the work of several IR
+operations at once.
+
+<Analogy title="paying with coins">
+To pay 85p you could hand over eighty-five pennies, but you would
+rather use a 50p, a 20p, a 10p and a 5p; bigger coins cover more of
+the amount, so you need fewer of them. Instruction selection is the
+same instinct: cover the computation with as few machine instructions
+as you can, preferring the ones that do the most.
+<span slot="breaks">Coins add up along one dimension, and any coin
+can go anywhere; an instruction must match the *shape* of the
+computation (an `addi` needs a constant on one side, a load offset
+needs an add right under the load), so the pieces have to fit
+together, not merely sum up.</span>
+</Analogy>
+
+<Analogy title="tiling a bathroom floor">
+You have a box of tiles in a few shapes (squares, long strips, an
+L-shape) and a floor to cover. Every bit of floor must be covered by
+exactly one tile, with no gaps and no overlaps, and the bigger tiles
+mean fewer joints and less work.
+<span slot="breaks">Every square of a floor is the same; every node
+of a program tree has an operator, and a tile only fits where the
+operators match its pattern. And a floor tile is chosen by area,
+while an instruction is chosen by what it costs to run.</span>
+</Analogy>
+
+## Programs as trees
+
+Three-address code (chapter 186) named every intermediate result,
+which made it easy to optimise; for choosing instructions, it helps to
+put the names back together. A temporary that is used exactly once can
+be replaced by the expression that computes it, and doing that again
+and again rebuilds an **expression tree** for each value, much like
+the syntax trees of Part III. The two lines above become the tree
+`ADD(i, CONST 1)`, and the address arithmetic for `a[i + 1]` (once the
+middle end has rewritten `(i + 1) × 8` as `i × 8 + 8`, and the
+multiply by 8 as a shift left by 3) becomes this:
+
+```text
+LOAD
+└─ ADD
+   ├─ ADD
+   │  ├─ a0            (address of a[0])
+   │  └─ SHL
+   │     ├─ a1         (i)
+   │     └─ CONST 3
+   └─ CONST 8
+```
+
+Read it from the bottom: shift `i` left by 3 (multiply by 8), add the
+base address, add 8, and load the 8-byte word at the result. Every
+node is an operation, and its children are its operands.
+
+<Callout kind="definition">
+**Instruction selection** is the stage of a back end that chooses
+which machine instructions compute each operation of the IR. Its input
+is the IR of one function, often rebuilt into expression trees, and
+its output is machine instructions that still name **virtual
+registers** (as many as it likes, `v1`, `v2`, ...); a later stage,
+register allocation, maps those onto the real ones.
+</Callout>
+
+<Prompts ids={['isel-what', 'why-not-one-to-one', 'why-trees']} />
+
+## Tiles
+
+A **tile** is a small tree pattern with one instruction attached: if
+the pattern matches somewhere in the tree, that instruction computes
+the value at the pattern's root. A pattern's leaves are either
+constants it can carry inside the instruction, or the letter `x` or
+`y`, meaning "any value, already in a register". Here is a small tile
+set for 64-bit RISC-V:
+
+```text
+pattern                instruction
+CONST c                li   d, c
+ADD(x, y)              add  d, x, y
+ADD(x, CONST c)        addi d, x, c
+SHL(x, CONST k)        slli d, x, k
+MUL(x, y)              mul  d, x, y
+LOAD(x)                ld   d, 0(x)
+LOAD(ADD(x, CONST c))  ld   d, c(x)
+```
+
+`d` is the register the result goes in. Two of the tiles have a
+condition: `addi` adds a "sign-extended 12-bit immediate"
+<Cite id="riscv-isa-unpriv" />, and a load's offset is the same size,
+so they only match when `c` is between −2048 and 2047. Real back ends
+write their tiles in almost exactly this form. LLVM's RISC-V back end
+gives an integer add two of them, one for two registers and one for a
+register and a 12-bit constant<Cite id="llvm-riscv-td" />:
+
+```text
+def : PatGprGpr<add, ADD>;
+def : PatGprSimm12<add, ADDI>;
+```
+
+<Callout kind="definition">
+A **tiling** (or *cover*) of an expression tree is a set of tile
+matches such that every node belongs to exactly one tile, and each
+leaf `x` of a tile is the root of another tile (or a value that is
+already in a register). **Tree tiling** is instruction selection
+done this way: each tile becomes one instruction, so choosing the
+tiles chooses the code.
+</Callout>
+
+<Formal title="A tile as a rewrite rule">
+
+```text
+ADD(x, CONST c)  ⇒  addi d, x, c
+          if −2048 ≤ c ≤ 2047
+```
+
+<span slot="read">Wherever an ADD node has some value x as its left
+child and a constant c as its right child, and c fits in 12 signed
+bits, that ADD and its constant can be covered by one tile, which
+becomes the instruction addi d, x, c; x must already be in a register,
+so whatever is below it is tiled separately.</span>
+</Formal>
+
+The same tree can often be tiled in more than one way, and the tile
+set decides which ways exist. The **Zba** extension adds `sh3add`,
+which computes `rs2 + (rs1 << 3)` in one instruction
+<Cite id="riscv-isa-zba" />, a tile that covers an ADD, a SHL and the
+constant 3 at once. Compiled for RV64IM with Zba, the load needs one
+instruction fewer:
+
+<Figure takeaway="Change the tile set and the best cover changes with it." caption="Left: the tree for a[i + 1] covered by three base RV64IM tiles. Right: with Zba, sh3add covers the inner ADD, the SHL and the 3 in one go. Both listings are clang 18 -O2 output for long get(long *a, long i) { return a[i + 1]; }.">
+  <TwoTilings />
+</Figure>
+
+<Prompts ids={['tile-what', 'tile-condition', 'cover-rule']} />
+
+## Maximal munch
+
+How do we find a tiling? The simplest good method is called
+**maximal munch**: start at the root, choose the *biggest* tile that
+matches there (the one covering the most nodes), and then do the same,
+recursively, for every subtree hanging from the tile's leaves. Only
+when the children's instructions have been written do we write the
+tile's own, because an instruction can only run once its operands are
+in registers; the tiles are chosen top-down, and the code comes out
+bottom-up. Step through it on `a[i + 1]`:
+
+<MunchSteps client:visible />
+
+<Examples of="instruction-selection tree-tiling">
+
+```text
+ADD(a0, CONST 5)
+  addi v1, a0, 5
+```
+
+```text
+ADD(a0, CONST 5000)
+  li   v1, 5000
+  add  v2, a0, v1
+```
+
+```text
+LOAD(ADD(ADD(a0, SHL(a1, CONST 3)),
+         CONST 8))
+  slli v1, a1, 3
+  add  v2, a0, v1
+  ld   v3, 8(v2)
+```
+
+</Examples>
+
+The first is the simplest case: `addi` covers the whole tree, the add
+and its constant, in one instruction. The second changes one number,
+and the choice changes with it: 5000 does not fit in 12 bits, so the
+`addi` tile no longer matches, and munch falls back to two smaller
+tiles, `li` for the constant and `add` for the sum. (`li` is a
+pseudoinstruction, and the assembler expands a constant this big into
+two real ones; clang writes `lui a1, 1` and `addiw a1, a1, 904`, since
+4096 + 904 = 5000.) The third is the array load you stepped through:
+the biggest tile at the root is `ld c(x)`, and the rest follows.
+
+Here is a selector that knows only the small tiles, run on that same
+tree; it writes five instructions where three would do, because it
+puts the 8 in a register and adds it separately. Your exercise below
+is to teach it the two bigger tiles.
+
+<Run id="naive" />
+
+<Prompts ids={['munch-rule', 'munch-order', 'li-pseudo']} />
+
+<Callout kind="engine" label="Under the hood">
+Real selectors are generated from tile descriptions rather than
+written by hand. LLVM's matcher is built from patterns like the two
+above, read from the target's `.td` files, and it matches them on a
+directed acyclic graph rather than a tree, so that a value used twice
+can be computed once and shared<Cite id="llvm-codegen" />. Cranelift (the
+code generator behind Wasmtime) writes its tiles in a small language
+called ISLE, as rules over "a tree of terms", each with a priority:
+its RISC-V `iadd` has a plain `add` rule, higher-priority `addi`
+rules for a 12-bit constant, and, with Zba, still higher ones that
+choose `sh1add`, `sh2add` or `sh3add`<Cite id="cranelift-isle" />, so
+the bigger pattern wins, just as in maximal munch. Viscosity has no
+instruction selector at all: it emits JavaScript, and V8 chooses the
+machine instructions. Maximal munch is not always the cheapest cover;
+the next chapter shows when it goes wrong and the dynamic programming
+that never does<Cite id="aho1989" /><Cite id="coopertorczon2022" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="munch" />
+
+## What you learned
+
+- **Instruction selection** chooses machine instructions for IR
+  operations; one instruction often covers several of them, like
+  `addi` (an add and its constant) or `ld 8(x)` (an add and a load).
+- Rebuilt into **expression trees**, the IR can be covered by
+  **tiles**: small patterns, each with one instruction. A **tiling**
+  covers every node exactly once.
+- **Maximal munch** picks the biggest matching tile at the root and
+  recurses into the leftover subtrees, writing each tile's instruction
+  after its children's.
+- The tile set is the machine: with Zba's `sh3add`, the same tree
+  needs one instruction fewer.
+
+Next: when the biggest tile is not the cheapest, and how to find the
+cheapest cover for certain.
+
+<Quiz />

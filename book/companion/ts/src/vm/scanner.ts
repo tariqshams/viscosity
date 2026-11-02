@@ -1,4 +1,4 @@
-// An on-demand scanner for the bytecode compiler (book chapter 48): instead
+// An on-demand scanner for the bytecode compiler (the book's chapter “One pass from source to bytecode”): instead
 // of producing a list of tokens up front, it hands the compiler one token at
 // a time. Errors come back as 'error' tokens whose lexeme is the message.
 // It produces exactly the tokens of the tree-walker's scanner (a test

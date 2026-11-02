@@ -1,0 +1,263 @@
+---
+n: 370
+day: 93
+part: XI
+title: 'Measuring Rust performance'
+tagline: 'The first Rust timing most people take is wrong by a factor of ten, or of a million. Build for release, and stop the optimizer from deleting the very work you meant to time.'
+objectives:
+  - Explain what a release build changes, and why debug timings mislead.
+  - Say how overflow behaves in each profile, and read Cargo's profile settings.
+  - Use black_box so a benchmark measures the work you meant, and know where it stops helping.
+  - Read how drip-rs and engine/rust time themselves, noise included.
+introduces: [release-build, black-box]
+uses: [rust, cargo, crate, scalar-types, rust-functions, slice, vec, rust-closure, rust-iterator, cargo-test, workspace, dead-code-elimination, jit-warmup, median-p95, benchmark-isolation, end-to-end-benchmark, compiler, virtual-machine, drip]
+sources: [cargo-profiles, rustref-int-overflow, rust-std-black-box]
+---
+import OptSteps from '../../../components/diagrams/ch370/OptSteps';
+import Profiles from '../../../components/diagrams/ch370/Profiles';
+
+## A number from the wrong build
+
+You port a hot loop to Rust, time it with `cargo run`, and it is slower
+than your JavaScript. Before you blame Rust, look at the line Cargo
+printed just before your program started:
+
+```text
+Finished `dev` profile [unoptimized +
+  debuginfo] target(s) in 0.09s
+```
+
+You measured the build made for debugging. *Benchmarking honestly*
+warned that a JIT needs warming up before its numbers mean anything;
+Rust has no JIT, but it has an equally large trap of its own, and a
+second one that runs the other way.
+
+<Analogy title="a car on the test track">
+A debug build is a car on the test track with a sensor on every bolt
+and a speed limiter fitted: perfect for finding faults, useless for lap
+times. A release build takes the sensors off.
+<span slot="breaks">Taking sensors off a car does not change where it
+goes; a release build can also behave differently, since integer
+overflow, for example, panics in one and wraps in the other.</span>
+</Analogy>
+
+<Analogy title="a dance rehearsal">
+In rehearsal the teacher stops the music at every slip and the steps
+are taken at half speed, so each mistake is easy to see; on the night
+the piece runs at full speed with no stops. Nobody times the
+rehearsal and calls it the length of the show.
+<span slot="breaks">A rehearsal is slower in a steady way; a debug
+build is slower by different factors in different code (about 5
+times for this chapter's sum, 10 for drip-rs's `fib`, 15 for the last
+chapter's columns), so you cannot divide by a constant to correct it.</span>
+</Analogy>
+
+## Debug and release
+
+Cargo builds with a **profile**, a named set of compiler settings.
+`cargo build`, `cargo run` and `cargo test` use `dev`; adding
+`--release` uses `release`; and `cargo bench` uses `bench`, which
+inherits from `release`<Cite id="cargo-profiles" />:
+
+<Figure takeaway="Only the release and bench profiles optimize; the dev default does no optimization at all." caption="The main settings of Cargo's three built-in profiles, from the Cargo book. opt-level 0 means no optimization, 3 means all of it.">
+  <Profiles />
+</Figure>
+
+<Examples of="release-build">
+
+```text
+$ cargo build
+Finished `dev` profile [unoptimized +
+  debuginfo]
+$ cargo build --release
+Finished `release` profile [optimized]
+```
+
+```toml
+# drip-rs's Cargo.toml
+[profile.release]
+codegen-units = 1
+lto = true
+```
+
+<Run id="overflow-play" />
+
+</Examples>
+
+The first shows the two commands and the line each prints, which is
+the quickest way to know which build you are timing. How much it
+matters: for this chapter I built drip-rs both ways (rustc 1.97, the
+book's shared cloud VM) and ran `fib.drip` three times each; the debug
+build took 4.3 to 4.7 seconds and the release build 0.45 to 0.64, ten
+times faster. The second is how drip-rs asks for even more: `lto =
+true` (link-time optimization) and `codegen-units = 1` let the
+optimizer see the whole program at once, at the price of slower
+builds. The third, the runnable one, shows that the two builds also
+*behave* differently: integer overflow panics in a debug build and
+wraps around in a release build<Cite id="rustref-int-overflow" />.
+In the page it runs as a debug build and stops with `attempt to add
+with overflow`; built with `-O` on the same machine it printed
+`255 + 1 = 0`.
+
+<Callout kind="definition">
+A **release build** (`cargo build --release`) compiles with the
+`release` profile: `opt-level = 3`, with debug assertions and overflow
+checks off. Only release builds (or `cargo bench`, which inherits from
+release) give timings that say anything about speed; the default `dev`
+profile does no optimization, for fast builds and easy debugging<Cite id="cargo-profiles" />.
+</Callout>
+
+A note on this book: the Run button sends Rust to the official Rust
+Playground in **debug** mode, so any time it prints is a debug time,
+on a server you do not control. The "Open in Rust Playground" link
+lets you switch the mode to Release there.
+
+<Prompts ids={['debug-default', 'release-what', 'overflow-modes', 'runner-mode']} />
+
+## The loop that vanished
+
+Now build for release and time a sum of a million `f64`s, done 100
+times, once plainly and once with every input and output wrapped in
+`black_box`. Step through what four builds of it printed:
+
+<OptSteps client:visible />
+
+A hundred million additions in under 200 ns is about half a million
+additions per nanosecond; they did not happen. `sum` has no side
+effects and its result was dropped, so the optimizer deleted the calls:
+the dead code elimination *Benchmarking honestly* caught a JIT doing,
+here in a compiler with all the time it likes to look for it.
+**`std::hint::black_box`** is the fix: it returns its argument
+unchanged, but the compiler must assume the value could be used in any
+way at all. Wrapping the input stops the compiler reasoning about `xs`;
+wrapping the result stops it throwing the sum away<Cite id="rust-std-black-box" />.
+
+<Examples of="black-box">
+
+```rust
+use std::hint::black_box;
+let n = black_box(1_000_000);
+// the compiler may not assume n's value
+```
+
+```rust
+for _ in 0..100 {
+    black_box(sum(black_box(&xs)));
+}
+```
+
+<Run id="bb-play" />
+
+</Examples>
+
+The first hides a constant: without `black_box`, the compiler could
+work out anything that depends on `n` before the program runs. The
+second is the benchmark loop from the diagram, with both ends hidden.
+The runnable one is the whole program; run in the page (a debug build)
+the two lines come out within a few tens of percent of each other,
+which is exactly the misleading part, and in a release build the
+`plain` line drops to nanoseconds.
+
+<Callout kind="definition">
+**`black_box(x)`** (in `std::hint`) is an identity function the
+compiler must treat as opaque, so work feeding into it cannot be
+removed and values coming out of it cannot be predicted. It is
+**best-effort**: the documentation says it can generally be relied on
+for benchmarking, but never for correctness<Cite id="rust-std-black-box" />.
+</Callout>
+
+<Formal title="An identity the optimizer cannot see through">
+
+```text
+black_box : T → T
+black_box(x) = x
+```
+
+<span slot="read">black_box takes a value of any type T and gives back
+a value of the same type; in fact it gives back x itself. As a function
+it does nothing; what it changes is what the compiler is allowed to
+assume about x, before and after.</span>
+</Formal>
+
+`black_box` hides values; it does not stop the compiler being clever
+with the code between them. A loop adding up `i * i` for every `i`
+below a black-boxed million still took 1 to 2 ns per call in a
+release build here, so the loop must have been replaced by a formula
+(about a million multiplications cannot fit in 2 ns). Benchmark work
+shaped like the real thing.
+
+<OtherLanguages title="Keep the result alive">
+
+```rust
+let t = Instant::now();
+black_box(sum(black_box(&xs)));
+let d = t.elapsed();
+```
+
+```ts
+// A JIT may also delete unused work;
+// keep the result and use it.
+const t = performance.now();
+const r = sum(xs);
+const d = performance.now() - t;
+console.log(r);
+```
+
+```c
+/* gcc -O2 may delete an unused loop */
+volatile double sink;
+sink = sum(xs, n);
+```
+
+```python
+t = time.perf_counter()
+r = sum(xs)  # CPython runs it all
+d = time.perf_counter() - t
+```
+
+</OtherLanguages>
+
+The problem is not Rust's alone. An optimizing JIT can remove work
+whose result nobody uses, so a JavaScript benchmark keeps and prints
+its result; C programmers write to a `volatile` variable, which the
+compiler must treat as watched from outside; CPython does no such
+optimization, so a plain timing runs everything (slowly). Rust's
+`black_box` is the standard, named way to say "assume this matters".
+
+<Prompts ids={['bb-why', 'bb-what', 'bb-limit']} />
+
+<Callout kind="engine" label="Under the hood">
+The book's two Rust projects time themselves differently. drip-rs's
+`scripts/bench.sh` builds with `--release`, runs each
+`benchmark/*.drip` program in a fresh process three times, and keeps
+the best wall-clock time, compile time included, so no `black_box` is
+needed: the output is printed, and printing is a side effect the
+optimizer must keep. engine/rust measures in process instead: its
+`compile_speed` example compiles each program 100 times to warm up,
+then times 500 calls with `Instant`, passing each result to
+`black_box(r)`, and reports the median and minimum. Even then its
+committed results show the noise of a shared VM: `ledger`'s fastest
+compile was 74, 73, then 109 µs in three rounds. The next chapter adds
+statistics to judge such differences.
+</Callout>
+
+<Prompts ids={['whole-program']} />
+
+## Your turn
+
+<Exercise id="summary" />
+
+<Exercise id="measure" />
+
+## What you learned
+
+- Time only a **release build**: `opt-level = 3`, no overflow checks.
+  drip-rs's `fib` was ten times slower in the `dev` default.
+- Debug panics on integer overflow; release wraps.
+- An unused result invites the optimizer to delete the work.
+  **`black_box`** hides inputs and keeps results, on a best-effort
+  basis, and cannot stop a loop being replaced by a formula.
+- drip-rs times whole processes, best of three; engine/rust times warm
+  calls in process, with `black_box`, and reports median and minimum.
+
+<Quiz />

@@ -1,0 +1,262 @@
+---
+n: 301
+day: 76
+part: X
+title: 'Sum types in memory'
+tagline: 'A value that is one of several shapes still has to fit in a fixed number of bytes. A tag and a union do the job; a clever compiler can even hide the tag inside bit patterns the value never uses.'
+objectives:
+  - Lay out a tagged union by hand, saying where the tag goes, how much padding there is and how big the whole value is.
+  - Compute the size, alignment and payload offset of a sum type, and check the answer against C and Rust.
+  - Explain the niche optimisation, and predict which Rust Option types are free.
+  - Compare the layouts chosen by C, Rust and OCaml.
+introduces: [tagged-union, niche-optimization, adt-layout]
+uses: [discriminated-union, union-type, exhaustiveness, byte, bit, memory, address, pointer, contiguous, arraybuffer, typed-array, tagged-value, value-representation, nan-boxing, smi, heap-object, object-header, boxing, decision-tree, array, object, function]
+sources: [rust-reference-type-layout, rust-option-representation, ocaml-manual-intf-c]
+---
+import LayoutSteps from '../../../components/diagrams/ch301/LayoutSteps';
+import NicheFigure from '../../../components/diagrams/ch301/NicheFigure';
+
+## One of three shapes, in twelve bytes
+
+In chapter 30 a shape was a JavaScript object with a `kind` field, and
+the last chapter matched on Rust's `Option`. Both are **sum types**: a
+value is *one of* several variants, each with its own fields. Take this
+one, written in Rust with 32-bit whole numbers (`u32`):
+
+```rust
+enum Sh { Dot, Sq(u32), Re(u32, u32) }
+```
+
+A `Sh` is a `Dot` with no fields, or a `Sq` with a side, or a `Re` with
+a width and height. In JavaScript each variant is a separate object on
+the heap, of whatever size it needs. A compiled language wants more:
+every `Sh` should be the same number of bytes, so that a list of them
+can sit in one contiguous block and element `i` is at `i × size`, with
+no pointers to follow (the whole point of this book's first parts). So
+how many bytes, and which bytes mean what?
+
+The answer is to store two things side by side: a small number saying
+which variant this is (the **tag**), and enough room for the biggest
+variant's fields, where all the variants share the same bytes (a
+**union**). Code that reads a `Sh` reads the tag first, and only then
+knows what the other bytes mean. Step through the layout:
+
+<LayoutSteps client:visible />
+
+<Analogy title="a parcel locker">
+A locker bank has compartments big enough for the largest parcel the
+company sends, and a label on each door saying what is inside. A small
+parcel leaves most of its compartment empty, and the courier reads the
+label before opening the door.
+<span slot="breaks">An empty corner of a locker is just empty; the
+unused bytes of a small variant still hold whatever was there before,
+and reading them as if they were another variant's fields gives
+nonsense, which is why the tag must always be read first.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **tagged union** stores a value of a sum type as a **tag** (also
+called the **discriminant**), a small integer naming the variant, next
+to a **payload**: a region big enough for the largest variant, in which
+all the variants' fields overlap. Its size is fixed, whatever variant
+it holds.
+</Callout>
+
+<Examples of="tagged-union">
+
+```c
+struct Sh {
+  uint8_t tag;   /* 0 Dot, 1 Sq, 2 Re */
+  union {
+    uint32_t side;
+    struct { uint32_t w, h; } re;
+  } as;
+};  /* sizeof 12, as at offset 4 */
+```
+
+```text
+# rustc -Zprint-type-sizes, enum Sh
+`Sh`: 12 bytes, alignment: 4 bytes
+    discriminant: 4 bytes
+    variant `Re`: 8 bytes
+    variant `Sq`: 4 bytes
+```
+
+<Run id="shapes-in-bytes" />
+
+</Examples>
+
+The first is the layout written by hand in C, which has no sum types,
+only `union` (overlapping fields) and `struct`; the comment holds what
+clang 18 reported for it. The second is rustc 1.97's own report for
+`Sh` (trimmed): also 12 bytes, but its tag takes 4 bytes rather than
+one, since the 3 bytes of padding were there anyway. The runnable one
+stores three shapes in a 36-byte `ArrayBuffer` exactly as the diagram
+does, prints the bytes and works out each area by reading the tag
+first.
+
+<Prompts ids={['tu-what', 'tu-size', 'tu-tag-first']} />
+
+## The rules for the layout
+
+The diagram used one rule we have not named: **alignment**. A 4-byte
+number must start at an address divisible by 4, and an 8-byte one at a
+multiple of 8, because that is how processors load them fastest (some
+cannot load them otherwise at all). That is where the padding came
+from, and it gives a small recipe that C uses, and that Rust uses
+whenever you ask it to with `#[repr(C, u8)]`<Cite id="rust-reference-type-layout" />:
+
+<Formal title="Laying out a tagged union">
+
+```text
+align(T) = max(1, align(V₁) … align(Vₙ))
+off(T)   = up(size(tag), align(T))
+size(T)  = up(off(T) + max size(Vᵢ),
+              align(T))
+up(n, a) = the first multiple of a ≥ n
+```
+
+<span slot="read">The whole value is aligned like its most demanding
+variant. The payload starts at the first multiple of that alignment
+after the tag. The size is the payload's end, the biggest variant
+after the offset, rounded up to a multiple of the alignment, so that
+the next element of an array is aligned too. Each variant is itself
+laid out as a struct: fields in order, each at a multiple of its own
+alignment.</span>
+</Formal>
+
+<Callout kind="definition">
+The **layout of an algebraic data type** fixes, for a sum type, the
+tag's size and offset, the payload's offset and each variant's field
+offsets, and the total size and alignment. With the C-style rules
+above, the payload starts at the first offset after the tag that suits
+every variant, and the size is rounded up to the alignment.
+</Callout>
+
+The rules are not the only choice. Rust's default layout promises
+almost nothing (only that each field is aligned) so that the compiler
+may reorder fields and choose the tag as it likes<Cite id="rust-reference-type-layout" />.
+OCaml goes the other way: a variant with no fields is stored as a plain
+small integer, and every other variant is a heap block whose header
+holds the tag<Cite id="ocaml-manual-intf-c" />, much like the boxed
+values of chapter 297.
+
+<Examples of="adt-layout">
+
+```text
+uint8_t tag; union {uint8_t a; double b;}
+  size 16, payload at 8
+```
+
+```text
+#[repr(C, u8)] enum F { X(f64, u8), Y(u8) }
+  size 24, align 8
+```
+
+```ocaml
+type t =
+  | A          (* the integer 0 *)
+  | B of string (* block, tag 0 *)
+  | C          (* the integer 1 *)
+  | D of bool   (* block, tag 1 *)
+```
+
+</Examples>
+
+In the first, the `double` needs alignment 8, so the payload moves to
+byte 8 and seven bytes are padding (clang reported 16 and 8). In the
+second, variant `X` is itself a struct of 9 bytes rounded up to 16, so
+the payload is 16 bytes from offset 8, and the size is 24 (rustc
+agreed). The third is the example from OCaml's manual: field-less and
+field-carrying variants are numbered separately, from 0, which only
+works because OCaml can always tell an immediate integer from a pointer
+to a block (its C interface calls the two tests `Is_long` and
+`Is_block`)<Cite id="ocaml-manual-intf-c" />.
+
+<Prompts ids={['align-why', 'pad-where', 'rust-free']} />
+
+## Hiding the tag: niches
+
+Now look at sizes that Rust 1.97 printed for some `Option`s (on a
+64-bit machine):
+
+<Examples of="niche-optimization">
+
+```text
+&u8 8          Option<&u8> 8
+u32 4          Option<u32> 8
+bool 1         Option<bool> 1
+```
+
+```text
+char 4         Option<char> 4
+NonZeroU32 4   Option<NonZeroU32> 4
+```
+
+```text
+None::<bool> stored as the byte 2
+```
+
+</Examples>
+
+`Option<u32>` is twice the size of `u32`, as the recipe predicts: every
+one of a `u32`'s four billion bit patterns is a valid number, so the tag
+needs bytes of its own, padded to 4. Yet `Option<&u8>` is no bigger
+than `&u8`. A Rust reference can never be null, so the all-zero address
+is a bit pattern a `&u8` never uses, and the compiler stores `None` as
+exactly that pattern; the standard library guarantees this for
+references, `Box`, function pointers and the `NonZero` integers<Cite id="rust-option-representation" />.
+A `bool` only ever uses the bytes 0 and 1, so `None` gets another unused
+byte (2, when I ran it), and a `char` stops at 0x10FFFF, which leaves
+room in its 4 bytes.
+
+<Figure takeaway="A niche is a bit pattern the type never uses; the tag can live there for free." caption="Option&lt;bool&gt; and Option&lt;&amp;u8&gt;, as rustc 1.97 stores them. No byte is spent on a tag.">
+  <NicheFigure />
+</Figure>
+
+<Analogy title="room zero">
+No hotel has a room 0, so a key card encoded with room 0 can safely
+mean "no room booked yet", with no extra field on the card.
+<span slot="breaks">A hotel could one day add a room 0 and break the
+rule; a type's invalid values are fixed by the language (a reference is
+never null, a `bool` is never 7), so the compiler can rely on them
+forever.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **niche** is a bit pattern that a type's values never use. The
+**niche optimisation** stores a sum type's tag in a niche of one of its
+variants' fields instead of in bytes of its own, so that, for example,
+`Option<T>` is the same size as `T` whenever `T` has a niche.
+</Callout>
+
+<Prompts ids={['niche-what', 'option-ref', 'no-niche']} />
+
+<Callout kind="engine" label="Under the hood">
+You have met niches before under other names. NaN-boxing (chapter
+163) stores pointers inside the bit patterns of NaNs that arithmetic
+never produces, and V8 (chapter 57) tells a small integer from a
+pointer by the lowest bit of a slot, which an aligned address would not
+otherwise need; both are a tag hidden where the other case leaves
+room. A JavaScript `{ kind: 'sq', side: 5 }` takes the
+opposite route: every variant is its own heap object, and the tag is a
+pointer to a string in one of its fields.
+</Callout>
+
+## Your turn
+
+<Exercise id="union-layout" />
+
+## What you learned
+
+- A **tagged union** is a tag plus a payload big enough for the
+  largest variant, with the variants' fields overlapping.
+- **ADT layout** puts the payload at the first suitably aligned offset
+  after the tag, and rounds the size up to the alignment.
+- The **niche optimisation** hides the tag in bit patterns a field never
+  uses, which is why `Option<&T>` costs nothing in Rust.
+
+Next: a function that can stop half-way and carry on later, compiled
+into a state machine.
+
+<Quiz />

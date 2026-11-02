@@ -1,5 +1,5 @@
 // The resolver: a static pass that works out, for every variable use, how many
-// environments up its declaration lives (book chapter 42). It also enforces
+// environments up its declaration lives (the book's chapter “Finding every name before running: the resolver”). It also enforces
 // Drip's static rules: no redeclaring a local, no reading a local in its own
 // initialiser, `return` only in functions, `break` and `continue` only in
 // loops, `self` and `super` only in methods.

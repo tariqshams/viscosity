@@ -1,4 +1,4 @@
-//! The heap and its mark-and-sweep garbage collector (book chapter 58).
+//! The heap and its mark-and-sweep garbage collector (the book's chapter “Reclaiming memory: mark and sweep”).
 //!
 //! The [`Heap`] owns one [`Arena`] per kind of object. Allocating never
 //! collects by itself: it can't see the roots. Instead whoever allocates,

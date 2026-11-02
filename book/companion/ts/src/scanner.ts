@@ -1,4 +1,4 @@
-// The scanner turns source text into tokens (book chapters 27–29).
+// The scanner turns source text into tokens (the book's chapters “Tokens and lexemes” to “Numbers and strings”).
 //
 // It never reports an error itself. A character it can't use, a string
 // with no closing quote or an unknown escape becomes an 'error' token whose

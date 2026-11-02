@@ -1,4 +1,4 @@
-// End-to-end benchmark (book chapter 111): compile whole programs with
+// End-to-end benchmark (the book's chapter “Benchmarking Viscosity end to end”): compile whole programs with
 // Viscosity and compare them with the originals. Each version runs in a fresh
 // Node process (several times), the programs time their own hot section, and
 // the checksums must match exactly.

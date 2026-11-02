@@ -1,0 +1,287 @@
+---
+n: 351
+day: 88
+part: XI
+title: 'Generics and trait bounds'
+tagline: 'One function for every type, checked once: type parameters in angle brackets, and trait bounds that say exactly what the function may do with whatever type it is given.'
+objectives:
+  - Write generic functions, structs and impl blocks with type parameters, and read Option<T>, Vec<T> and HashMap<K, V> as generic types.
+  - Explain why a generic body may not use > on a bare T, and fix it with a trait bound.
+  - Combine bounds with + and where, and read impl Trait in a parameter.
+  - Compare Rust's bounds with TypeScript's extends constraints.
+introduces: [rust-generics, trait-bound]
+uses: [rust, rust-functions, let-mut, scalar-types, borrow, slice, struct, impl, self-receiver, enum, option, result, question-mark, vec, hashmap, trait, trait-object, generic, typescript, hash-function, ssa-construction, garbage-collection, roots, compiler, dictionary-passing]
+sources: [klabnik2026, rust-book-generics, rust-book-traits, rustref-trait-bounds]
+---
+import BoundSteps from '../../../components/diagrams/ch351/BoundSteps';
+import BoundPowers from '../../../components/diagrams/ch351/BoundPowers';
+
+## One function, any type
+
+Here is a generic function in TypeScript, from *Generics: types with
+blanks*:
+
+```ts
+function first<T>(xs: T[]): T | undefined {
+  return xs[0];
+}
+```
+
+Rust has the same idea and almost the same syntax:
+
+```rust
+fn first<T>(xs: &[T]) -> Option<&T> {
+    xs.get(0)
+}
+```
+
+`<T>` declares a **type parameter**: `first` works for a slice of any
+`T`, and returns a borrowed `T` if there is one. Call it with `&[1, 2]`
+and `T` is `i32`; with `&["a", "b"]`, `T` is `&str`. You almost never
+write `T` at the call, because the compiler works it out from the
+arguments.
+
+<Analogy title="a form letter">
+A form letter reads "Dear ___, your order of ___ has shipped". It is
+written and checked once, and then filled in for each customer. A
+generic function is a form letter whose blanks are *types*.
+<span slot="breaks">A form letter's blanks hold words and can be filled
+in with anything; a type parameter can be filled only with a type, and
+(with a bound) only with a type that has passed a test first.</span>
+</Analogy>
+
+<Analogy title="a shipping container">
+Cranes, ships and lorries all handle the same steel container without
+opening it, whatever is inside: the handling code never depends on the
+cargo. That is a generic function with no bounds: it can move, store and
+hand back a `T` without knowing anything about it.
+<span slot="breaks">Some cargo needs special handling (a refrigerated
+container must be plugged in); a function that needs to *do* something
+with a `T`, like compare two of them, has to say so with a bound, which
+is the second half of this chapter.</span>
+</Analogy>
+
+## Generic types
+
+`Option<T>`, `Result<T, E>`, `Vec<T>` and `HashMap<K, V>` from the last
+few chapters are all generic types: one definition, with type
+parameters. Your own structs, enums and impl blocks can have them too.
+
+<Callout kind="definition">
+**Generics** in Rust are type parameters, written in angle brackets on a
+function (`fn first<T>`), a struct or enum (`struct Pair<T>`), or an
+impl block (`impl<T> Pair<T>`). Each use fills them with concrete types,
+written out or worked out by the compiler, and the code is checked so
+that it is correct for every type it may be filled with<Cite id="rust-book-generics" />.
+</Callout>
+
+<Examples of="rust-generics">
+
+```rust
+fn swap<A, B>(p: (A, B)) -> (B, A) {
+    (p.1, p.0)
+}
+swap((1, "one")); // ("one", 1)
+```
+
+```rust
+struct Pair<T> { a: T, b: T }
+impl<T> Pair<T> {
+    fn first(&self) -> &T { &self.a }
+}
+let p = Pair { a: 2.5, b: 4.0 };
+```
+
+```rust
+// from companion/rust/src/object.rs
+pub struct Gc<T> {
+    index: u32,
+    marker: PhantomData<fn() -> T>,
+}
+```
+
+</Examples>
+
+The first has two type parameters and works for any pair: it moves the
+two parts and hands them back the other way round, so `(1, "one")`
+becomes `("one", 1)` without the function knowing anything about
+numbers or strings. The second puts the parameter on a struct, so both
+fields share one type; `impl<T> Pair<T>` reads "for every `T`, here are
+methods of `Pair<T>`", and `p` is a `Pair<f64>`. The third is drip-rs's
+handle to a heap object: only a `u32` index at run time, while the `T`
+(remembered by the zero-size `PhantomData` marker) keeps handles apart
+at compile time, so a `Gc<ObjClosure>` can never be used to look up a
+class.
+
+<Prompts ids={['gen-what', 'gen-infer', 'gen-impl', 'gen-gc']} />
+
+## Bounds: what T can do
+
+Now try a generic function that compares:
+
+```rust
+fn top<T>(xs: &[T]) -> Option<&T> {
+    let mut best = xs.get(0)?;
+    for x in xs {
+        if x > best { best = x; }
+    }
+    Some(best)
+}
+```
+
+rustc 1.97 refuses it, and its help line is the fix:
+
+```text
+error[E0369]: binary operation `>` cannot
+  be applied to type `&T`
+4 |         if x > best {
+  |            - ^ ---- &T
+help: consider restricting type parameter
+  `T` with trait `PartialOrd`
+1 | fn top<T: std::cmp::PartialOrd>(...
+```
+
+A body that works for *every* `T` may only do what every type can do,
+and not every type can be compared. So you promise that this `T` can:
+`fn top<T: PartialOrd>(xs: &[T])`. Inside the body you may now use `>`,
+because `PartialOrd` is the standard trait behind `<` and `>`; and every
+caller must pass a type that implements it. Step through both checks:
+
+<BoundSteps client:visible />
+
+<Callout kind="definition">
+A **trait bound** such as `T: PartialOrd` restricts a type parameter to
+types that implement the trait. It lets the generic body call that
+trait's methods and operators, and makes every caller supply such a
+type<Cite id="rustref-trait-bounds" />. `T: A + B` asks for both traits,
+and a **`where`** clause after the signature holds longer bounds.
+</Callout>
+
+<Figure takeaway="A generic body may do exactly what its bounds promise." caption="With no bound, a T can only be moved, borrowed and stored. Each bound adds the operations of one trait.">
+  <BoundPowers />
+</Figure>
+
+<Examples of="trait-bound">
+
+```rust
+fn show_all<T: Display>(xs: &[T]) {
+    for x in xs { println!("{x}"); }
+}
+```
+
+```rust
+fn report<T>(a: T, b: T) -> T
+where
+    T: PartialOrd + Display,
+{
+    let big = if a > b { a } else { b };
+    println!("largest: {big}");
+    big
+}
+```
+
+```rust
+// engine/rust/crates/core/src/builder.rs
+impl<K: Clone + Eq + Hash>
+    FunctionBuilder<K> { /* ... */ }
+```
+
+</Examples>
+
+The first may print each `x` with `{}` because `T: Display` promises
+that it can be printed (`Display` is `std::fmt::Display`). The second
+needs two promises, joined with `+`: `PartialOrd` for `>`, and `Display`
+for printing the winner with `{big}`; the `where` clause holds them
+after the signature, where long bounds read better. The third is real: the Rust port of Viscosity's SSA
+builder keeps its variables in `HashMap`s keyed by `K`, and a `HashMap`
+key must be comparable and hashable, so the builder says so once, on the
+whole impl block. For one parameter there is also a short form:
+`fn show(p: &impl Plugin)` means the same as
+`fn show<P: Plugin>(p: &P)`<Cite id="rust-book-traits" />.
+
+Call `top` with a type that does not keep the promise, and the error
+appears at the call, naming the bound:
+
+```text
+error[E0277]: can't compare `P` with `P`
+16 |     let t = top(&ps);
+   |             --- ^^^ no implementation
+   |             for `P < P` and `P > P`
+note: required by a bound in `top`
+help: consider annotating `P` with
+  `#[derive(PartialOrd)]`
+```
+
+<Formal title="Calling a bounded generic function">
+
+```text
+f : ∀T: Tr. A(T) → R(T)
+U : Tr      a : A(U)
+───────────────────────
+      f(a) : R(U)
+```
+
+<span slot="read">If f works for every type T that implements trait Tr
+(the upside-down A, ∀, reads "for all"), taking an A of T and giving an
+R of T; and U is a type that implements Tr; and a is an A of U: then
+f(a) is allowed, and its result is an R of U. If U does not implement
+Tr, the second fact is missing, and that is E0277.</span>
+</Formal>
+
+<OtherLanguages title="The largest element">
+
+```rust
+fn top<T: PartialOrd>(xs: &[T])
+    -> Option<&T> {
+    let mut best = xs.get(0)?;
+    for x in xs {
+        if x > best { best = x; }
+    }
+    Some(best)
+}
+```
+
+```ts
+function top<T>(xs: T[]): T | undefined {
+  let best = xs[0];
+  for (const x of xs) {
+    if (x > best) best = x;
+  }
+  return best;
+}
+```
+
+</OtherLanguages>
+
+The TypeScript version passes `tsc --strict`: TypeScript lets `>`
+through for any `T`, so `top([{}, {}])` type-checks and compares two
+objects by turning them into strings. Its constraints, written `T
+extends ...`, describe a *shape* the type must have; Rust's bounds name
+*traits* the type must implement, and nothing else may be used in the
+body. Bounds are also the "dictionary" of *Interfaces and traits:
+dictionary passing*, which the next chapter shows Rust resolving at
+compile time.
+
+<Run id="bound-play" />
+
+<Prompts ids={['bound-what', 'bound-why', 'bound-where', 'bound-impl']} />
+
+## Your turn
+
+<Exercise id="argmax" />
+
+## What you learned
+
+- **Generics** put type parameters on functions, structs, enums and
+  impl blocks; `Option<T>`, `Vec<T>` and `HashMap<K, V>` are generic
+  types, and the compiler usually works out the types at each call.
+- A generic body may only do what its bounds allow. A **trait bound**
+  like `T: PartialOrd` lets it use `>`, and makes every caller supply a
+  type that implements the trait (E0277 otherwise).
+- Combine bounds with `+`, move long ones to `where`, and write
+  `&impl Trait` for the short form.
+
+Next: what the compiler does with all those types, one copy per type,
+and how that compares with `dyn`.
+
+<Quiz />

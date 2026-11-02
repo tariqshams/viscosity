@@ -1,0 +1,294 @@
+---
+n: 287
+day: 72
+part: IX
+title: 'The Python subset and its parser'
+tagline: 'Viscosity reads only the part of Python that numeric, data-heavy code uses, and it knows exactly where that part ends; anything past the edge leaves the file untouched. Inside the edge, Python parses like every language you have parsed before.'
+objectives:
+  - Describe the Python subset Viscosity accepts, and say what happens to a file outside it.
+  - Explain why refusing a construct is safer than guessing at its meaning, using chained comparisons.
+  - Read the parser's block rule and follow it through INDENT and DEDENT tokens.
+  - Read the binding-power table, and say how two-word operators, elif and ** are handled.
+introduces: [python-subset]
+uses: [indentation-tokens, token, keyword, grammar, production-rule, ast, ast-node, parser, recursive-descent, pratt-parser, binding-power, precedence, syntax-error, language-plugin, lowering, vir, multi-language-ir, array, function, for-loop, while-loop, comparison, logical-operators, throw, error-object]
+sources: [python-expressions, python-lexical]
+---
+import BlockSteps from '../../../components/diagrams/ch287/BlockSteps';
+import SubsetGate from '../../../components/diagrams/ch287/SubsetGate';
+
+## How much Python?
+
+The previous chapter turned Python's indentation into tokens. Now
+those tokens need a parser, and the parser needs an answer to a harder
+question first: *how much* of Python should Viscosity read? Python has
+list comprehensions, dictionaries, slices, generators, exceptions,
+decorators of every kind, `with`, `lambda`, `async` and much more, and
+each of them has its own exact meaning.
+
+Viscosity does not need all of that. It needs the part of Python that
+numeric, data-heavy code uses (lists of records and loops over them),
+and above all it needs to know *exactly* where that part ends, because
+a construct it half understands is far more dangerous than one it does
+not read at all.
+
+<Analogy title="a short set menu">
+A small restaurant with a set menu cooks eight dishes and cooks them
+well. Ask for something that is not on the menu and the kitchen says
+no, rather than improvising a dish it has never made and serving it as
+if it were right.
+<span slot="breaks">A waiter tells you *why* the answer is no. Viscosity
+records the reason (`list comprehensions: not supported...`) but, at the
+moment, its report only says "No arrays of objects found.", so you have
+to know to look.</span>
+</Analogy>
+
+<Analogy title="a phrasebook">
+A traveller with a phrasebook can order food, ask for directions and
+buy a ticket; when a stranger says something outside the book, the
+honest reply is "sorry, I don't understand", not a confident guess.
+<span slot="breaks">A traveller can learn new phrases by listening. A
+parser's subset grows only when someone writes the code, the lowering
+and the tests for a new construct, so its edge stays exactly where it
+was put.</span>
+</Analogy>
+
+## The part of Python it accepts
+
+The parser, `frontend-python/src/parser.ts`, accepts:
+
+- `def` functions, `return`, `pass`, `break`, `continue` and `global`;
+- `@dataclass` classes with annotated fields;
+- `if`, `elif` and `else`, `while`, and `for x in ...`;
+- assignment, `+=` and its friends, and `x: float = ...`;
+- arithmetic, comparisons, `and`, `or` and `not`, calls (with keyword
+  arguments), lists such as `[]` and `[a, b]`, and `import` and
+  `from ... import`.
+
+Everything else is refused with a message that names it. These are
+the parser's real messages, each ending with a line and the token it
+stopped at (`at line 1 near 'for'`):
+
+```text
+list comprehensions: not supported by
+  Viscosity's Python subset ...
+dict and set literals: not supported ...
+slices: not supported ...
+default parameter values: not ...
+chained comparisons: not supported ...
+'try': not supported ...
+```
+
+<Callout kind="definition">
+The **Python subset** is the part of Python that Viscosity's parser
+accepts: functions, dataclass records, lists, `for`, `while` and `if`,
+assignment, arithmetic and calls. A file that uses anything else is a
+syntax error *for Viscosity* (not for Python), and is left exactly as
+it was. Failing closed like this means a construct Viscosity does not
+understand can never be mis-transformed.
+</Callout>
+
+<Formal title="A slice of the subset's grammar">
+
+```text
+block ::= ':' simple_line
+        | ':' NEWLINE INDENT stmt+ DEDENT
+stmt  ::= 'for' NAME 'in' expr block
+        | 'while' expr block
+        | 'if' expr block [ 'else' block ]
+        | simple_line
+cmp   ::= sum [ ('<' | '==' | ...) sum ]
+```
+
+<span slot="read">A block is a colon followed either by a single
+simple line, or by a NEWLINE, an INDENT, one or more statements and a
+DEDENT. A statement is a for loop (the word for, a name, the word in,
+an expression and a block), a while loop, an if with an optional else
+block, or a simple line. A comparison is a sum, optionally followed by
+one comparison operator and another sum; at most one, which is how
+chains such as a &lt; b &lt; c are kept out.</span>
+</Formal>
+
+<Examples of="python-subset">
+
+```py
+for i in range(n):
+    if xs[i] > 0:
+        total += xs[i]
+```
+
+```py
+xs = [p.x for p in ps]
+# list comprehensions: not supported by
+#   Viscosity's Python subset at line 1
+#   near 'for'
+```
+
+```py
+if 0 <= i and i < n:   # accepted
+    pass
+if 0 <= i < n:         # refused:
+    pass               # chained comparisons
+```
+
+</Examples>
+
+The first is squarely inside the subset: a `for` over `range`, an `if`,
+an index and a `+=`, every one of them on the list above, so it parses
+and goes on to be lowered. The second is a list comprehension, which
+Python programmers use constantly; the parser reads `[`, then the
+expression `p.x`, and when it meets the keyword `for` inside a list it
+stops with the message shown, so the whole file is left alone. The
+third is a spot-the-difference pair. The two `if` lines mean the same
+thing in Python, but only the first is accepted, because a chained
+comparison means something different in the language Viscosity was
+built for. Python reads `1 < 3 < 2` as `1 < 3 and 3 < 2`, which is
+`False`<Cite id="python-expressions" />; JavaScript reads it as
+`(1 < 3) < 2`, which is `true < 2`, which is `true`. A parser that
+treated `<` as an ordinary binary operator would build JavaScript's
+tree for Python's code, so this one refuses, and you can rewrite the
+condition with `and` in a moment.
+
+<Prompts ids={['ps-what', 'ps-chain']} />
+
+## Failing closed
+
+What exactly happens to a refused file? The parser throws a
+`PySyntaxError`, and the plugin's `lower`, in
+`frontend-python/src/index.ts`, catches it (wrapped to fit):
+
+```ts
+} catch (e) {
+  // Outside the supported subset:
+  // leave the file exactly as it is.
+  if (!(e instanceof PySyntaxError))
+    throw e;
+  const mb =
+    new ModuleBuilder('python', source);
+  mb.newFunction('<module>').finish();
+  return { module: mb.module, ...,
+    low: null, unsupported: e.message };
+}
+```
+
+Any other kind of error is a bug and is thrown on; a subset error is
+expected, so the plugin builds an *empty* VIR module (one function,
+`<module>`, with nothing in it) and keeps the message in
+`unsupported`. With nothing to find, the core finds nothing, and
+`emit` returns `source` unchanged when there is no lowered program.
+
+<Figure takeaway="A file is either fully understood or left exactly as it was." caption="The plugin's two paths. There is no third path where part of a file is transformed.">
+  <SubsetGate />
+</Figure>
+
+The cost of failing closed is that the reason stays inside the plugin:
+`viscosity explain` on the corpus program `unsupported_left_alone.py`
+says only `No arrays of objects found.`, although the plugin knows
+precisely which construct it stopped at.
+
+<Prompts ids={['ps-fail', 'ps-explain']} />
+
+## Blocks are braces
+
+With INDENT and DEDENT in the token stream, Python's block rule is
+short. This is `block()` from `parser.ts`, as it is:
+
+```ts
+function block(): PyNode[] {
+  op(':');
+  if (peek().type !== 'newline') {
+    const s = simpleLine();
+    return s;
+  }
+  p++;
+  if (peek().type !== 'indent')
+    fail('expected an indented block');
+  p++;
+  const body: PyNode[] = [];
+  while (peek().type !== 'dedent' &&
+         peek().type !== 'eof')
+    body.push(...statement());
+  p++;
+  return body;
+}
+```
+
+`op(':')` insists on the colon. If the colon is not followed by a
+NEWLINE, the body is on the same line (`if x: y = 1`) and one simple
+line is parsed. Otherwise the NEWLINE is skipped (`p++`), an INDENT is
+required and skipped, and statements are parsed until a DEDENT (or the
+end of the file), which is skipped in turn. It is the recursive descent
+you wrote for Drip, with INDENT for `{` and DEDENT for `}`. Step
+through it:
+
+<BlockSteps client:visible />
+
+`elif` is handled with a small trick: the parser rewrites the `elif`
+token to `if` and parses the rest as a nested `if` statement in the
+`else` branch:
+
+```ts
+if (isKw('elif')) {
+  toks[p] = { ...toks[p], value: 'if' };
+  orelse = statement();
+}
+```
+
+<Prompts ids={['pp-block', 'pp-elif']} />
+
+## Binding powers
+
+Expressions use binding powers, exactly as in *Pratt parsing*, from one
+table (wrapped):
+
+```ts
+const BIN = {
+  or: 1, and: 2,
+  '<': 4, '>': 4, '==': 4, '!=': 4,
+  '<=': 4, '>=': 4, in: 4, 'not in': 4,
+  is: 4, 'is not': 4,
+  '|': 5, '^': 6, '&': 7, '<<': 8,
+  '>>': 8, '+': 9, '-': 9,
+  '*': 10, '/': 10, '//': 10, '%': 10,
+};
+```
+
+A higher number binds tighter, so `a + b * c < d and e` parses as
+`((a + (b * c)) < d) and e`. Three details are worth seeing. Two
+operators are two words, `not in` and `is not`, so the parser looks one
+token ahead when it sees `not` or `is`. All comparisons share power 4,
+and when a comparison's left side is already a comparison, the parser
+calls `unsupported('chained comparisons')` instead of building a tree.
+And `**` is not in the table at all: it is parsed one level below the
+unary operators and to the right, so `-2 ** 2` is `-(2 ** 2)`, which
+is `-4`, as Python's reference says<Cite id="python-expressions" />.
+
+<Prompts ids={['pp-notin', 'pp-power']} />
+
+<Callout kind="engine" label="Under the hood">
+Notice how the work is divided between the two halves of this front end.
+The tokenizer knows widths and brackets; the parser knows grammar.
+Python's own reference divides the indentation errors the same way: an
+inconsistent dedent is found while tokenizing, while an indent where no
+block may start is found by the parser<Cite id="python-lexical" />.
+After those two stages the Python plugin holds an ordinary syntax tree,
+and the next chapter lowers it into the same VIR as JavaScript.
+</Callout>
+
+## Your turn
+
+<Exercise id="nest" />
+
+## What you learned
+
+- The **Python subset** is functions, dataclasses, lists, loops, `if`,
+  assignment, arithmetic and calls; anything else is refused by name.
+- A refused file **fails closed**: the plugin returns an empty module,
+  and the file comes out exactly as it went in (and explain says only
+  "No arrays of objects found.").
+- Chained comparisons are refused because they mean something different
+  in Python and JavaScript; `a < b and b < c` is accepted.
+- `block()` is recursive descent with INDENT and DEDENT as braces;
+  expressions use one binding-power table, with `not in`, `is not`,
+  `elif` and `**` handled specially.
+
+<Quiz />

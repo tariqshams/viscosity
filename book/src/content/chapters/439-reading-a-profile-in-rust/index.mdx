@@ -1,0 +1,233 @@
+---
+n: 439
+day: 110
+part: XIII
+title: 'Reading a profile in Rust'
+tagline: 'A profile is a small JSON file, and both CLIs now read it by one strict rule, with the same words when it is broken. Then the honest part: what a profile measured on one run cannot tell the planner, read straight off the code.'
+objectives:
+  - Read read_profile in main.rs, and say what it accepts and how it reports a bad entry.
+  - Explain how collecting an iterator of Results into one Result stops at the first error.
+  - Describe how the planner uses the profile, and how two engines that once disagreed on hand-edited files now agree.
+  - State what a profile can’t tell the planner, which programs can’t be profiled, and which tests check all this.
+introduces: []
+uses: [rust-pgo, viscosity-rs, rust-cost-model, pgo, instrumentation, cost-model, cross-implementation-tests, option, result, question-mark, hashmap, vec, string-vs-str, rust-closure, rust-iterator, match, cargo-test, fuzzing]
+sources: ['v8-maglev']
+---
+import ReadSteps from '../../../components/diagrams/ch439/ReadSteps';
+import KeyedByName from '../../../components/diagrams/ch439/KeyedByName';
+
+## A file anyone can edit
+
+*PGO in Rust* ended with a JSON file that Node wrote. Nothing stops a
+person from editing it, or writing one by hand, and then the planner
+has to decide what to make of it. Here is a profile whose number has
+been typed in quotes, and what both CLIs say about it (I ran them here,
+release build, rustc 1.97):
+
+```
+$ cat bad.json
+{"ps": {"maxLength": "20"}}
+$ viscosity explain spawn.js \
+    --profile bad.json
+viscosity: the profile entry "ps" must be
+an object whose maxLength is a
+non-negative number
+```
+
+The TypeScript CLI prints the same line. It wasn't always so: when the
+Rust chapters were first written, the Rust CLI skipped such an entry
+(and transformed `ps`), while the TypeScript CLI compared `"20" < 64`
+the way JavaScript does (as numbers, so true) and kept the array, so
+the two engines made different decisions from one file
+(`engine/rust/README.md` lists it as bug 21). Now both apply one rule,
+with one wording. This chapter reads the Rust side of that rule, how
+the planner uses what it reads, and what a profile can't tell it.
+
+<Analogy title="a delivery note checked at the door">
+A warehouse checks a delivery note line by line: every line must name
+a product and a quantity written as a number. One line that says "a
+few" and the whole note is sent back, with the line that was wrong.
+<span slot="breaks">A warehouse might accept the good lines and query
+the bad one; the CLI refuses the whole file, because a profile that is
+half believed could steer the planner with numbers nobody meant.</span>
+</Analogy>
+
+<Analogy title="a high-water mark">
+A harbour wall has a line showing the highest the tide reached. It
+says nothing about when the tide was high, how often, or what it will
+do next year.
+<span slot="breaks">A high-water mark records the peak whenever it
+happened; the profile reads each array's length once, at exit, which
+is its peak only because a collection Viscosity can transform never
+gets shorter.</span>
+</Analogy>
+
+## One rule, one wording
+
+`read_profile` in `crates/cli/src/main.rs` reads the file, parses it
+with `serde_json` into a `Value` (a tree of JSON values), and checks it
+(rewrapped, with the error messages shortened to comments):
+
+```rust
+let obj = json.as_object()
+    .ok_or(/* must be a JSON object */)?;
+obj.iter()
+    .map(|(name, v)| match v.as_object()
+        .and_then(|e| e.get("maxLength"))
+        .and_then(Value::as_f64) {
+        Some(n) if n.is_finite()
+            && n >= 0.0 =>
+            Ok((name.clone(), n)),
+        _ => Err(/* the profile entry … */),
+    })
+    .collect()
+```
+
+`as_object` gives `Some(map)` only for a JSON object, so a file that is
+`[1]` stops at once with "the profile must be a JSON object". Then each
+entry goes through a chain of `Option`s: is the value an object, does it
+have a `maxLength`, is that a number (`as_f64` is `None` for the string
+`"20"`)? A **match guard** (`if n.is_finite() && n >= 0.0`) then
+refuses infinity, `NaN` and negative numbers. Other keys inside an
+entry are ignored, and so are entries for names the program doesn't
+have.
+
+The last line does more than it looks. The `map` produces an iterator
+of `Result<(String, f64), String>`, and `collect` is asked (by the
+function's return type) for one `Result<HashMap<String, f64>, String>`.
+Rust's `FromIterator` for `Result` does exactly that: it builds the map
+while every item is `Ok`, and stops at the first `Err`, returning it.
+So one bad entry refuses the whole file, and the message names that
+entry. Step through it on three files:
+
+<ReadSteps client:visible />
+
+<Formal title="A valid profile">
+
+```text
+valid(P) ⇔ P is an object ∧
+  ∀ name ∈ P.
+    P[name] is an object ∧
+    P[name].maxLength ∈ [0, ∞)
+```
+
+<span slot="read">A profile P is valid exactly when it is an object,
+and for every name in P, the entry for that name is an object whose
+maxLength is a number from zero up, and not infinity.</span>
+</Formal>
+
+<Prompts ids={['pg-filter-map', 'pg-strict', 'pg-collect', 'pg-guard']} />
+
+## Where the planner uses it
+
+The checked map goes into `PlanOptions::profile` as a
+`HashMap<String, f64>` of `maxLength` by name, and the size rung of
+*Sizes and thresholds in Rust* looks the collection up by its name,
+`opts.profile.as_ref().and_then(|p| p.get(&c.name))`. A hit wins over
+the estimate, in either direction, and a measured size is always
+worded "about ... (measured)". Nothing else in the planner reads the
+profile: it is consulted after every safety check, so it can only move
+a collection across the size threshold, never make an unsafe rewrite
+look safe.
+
+<Examples of="rust-pgo">
+
+```
+{"ps": {"maxLength": 20}, "qs": 5}
+viscosity: the profile entry "qs" must
+be an object whose maxLength is a
+non-negative number
+```
+
+```
+[1]
+viscosity: the profile must be a JSON
+object: { "name": { "maxLength": n },
+... }
+```
+
+```
+{"ps": {"maxLength": 20, "note": "x"},
+ "zz": {"maxLength": 3}}
+ps (line 1) {x, vx} → kept as array of
+  objects
+```
+
+</Examples>
+
+Each is a profile file and the first line the Rust CLI printed for
+`explain spawn.js --profile` with it (the TypeScript CLI printed the
+same). In the first, `ps` is fine but `qs` is a bare number, and
+collecting stops there. The second isn't an object at all. The third
+is accepted: the extra key `"note"` is ignored, `zz` names no
+collection of the program and is never looked up, and `ps` is kept as
+"about 20 elements (measured)".
+
+## What a profile can't say
+
+The code is short enough to read its limits straight off it, and each
+one below was checked here with the Rust CLI.
+
+- **Keyed by name.** Give two functions each their own `ps`, one of
+  1000 elements and one of 10, and the profile has one entry, `"ps": {
+  "maxLength": 1000 }`; with it, explain reports "about 1000 elements
+  (measured by profiling)" for both.
+- **The length at exit.** The hook reads `a.length` once, at exit, and
+  keeps the largest per name. Every tracked array also stays alive until
+  then, because `__vsc_seen` holds it.
+- **One run, no input.** The program gets no arguments and an empty
+  stdin, so it measures one day of the program's life.
+- **Scripts only.** The file is run as CommonJS, so a program with
+  `import` fails ("Cannot use import statement outside a module"), and a
+  program that throws is an error, "the profiled program failed (exit
+  code 1)", even though its exit hook wrote the JSON.
+- **JavaScript only.** `viscosity profile x.py` refuses, with the
+  reference's words: "profile runs JavaScript programs only; Python
+  profiling is not supported yet".
+
+<Figure caption="Two different collections called ps share one profile entry, the larger length." takeaway="A profile is keyed by name, so same-named collections can't be told apart.">
+  <KeyedByName />
+</Figure>
+
+<Callout kind="definition">
+**Reading a profile in Rust** is `read_profile` in the CLI: the file
+must be a JSON **object** whose every entry is an object with a
+**finite, non-negative `maxLength`**; the entries are checked with a
+chain of `Option`s and a match guard, and **collected into one
+`Result`**, which stops at the first bad entry and names it. The result
+is a `HashMap<String, f64>` the planner looks collections up in **by
+name**, and it can only change the size threshold's verdict.
+</Callout>
+
+<Prompts ids={['pg-by-name', 'pg-cant', 'pg-after-safety', 'pg-tests']} />
+
+<Callout kind="engine" label="Under the hood">
+What tests this? When this chapter was first written, `parity.rs`
+checked only the Python refusal message, and no fixture ran
+`--profile`. Now four profiles in `engine/rust/tests/profiles` run
+through both the library and `--profile` in
+`profiled_output_equals_typescript_output`; `profile_cli.rs` (4 tests,
+which all passed in my run of `cargo test --workspace`, 77 tests in
+all) checks that both CLIs validate profile files identically, clean up
+their temporary directories, refuse a throwing program, name a
+missing file and refuse a blank `--min-size`; and the fuzzer gives every batch a random profile.
+</Callout>
+
+## Your turn
+
+<Exercise id="readProfile" />
+
+## What you learned
+
+- `read_profile` accepts only a JSON **object** of entries that are
+  objects with a **finite, non-negative `maxLength`**, and both CLIs
+  refuse anything else **with the same words**.
+- Collecting an iterator of **`Result`s into one `Result`** stops at the
+  first `Err`, so one bad entry refuses the whole file.
+- The planner looks the profile up **by name**, after every safety
+  check, so it can only move a collection across the size threshold.
+- A profile is **keyed by name**, records the **length at exit** of
+  **one run**, and needs a **CommonJS script** that exits cleanly;
+  Python isn't profiled.
+
+<Quiz />

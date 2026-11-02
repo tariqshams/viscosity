@@ -1,0 +1,223 @@
+---
+n: 221
+day: 56
+part: VI
+title: 'Interprocedural analysis'
+tagline: 'An analysis that stops at every call has to assume the worst about it. Following values into functions and back out again fixes that, as long as the analysis remembers who called; this chapter is about how much remembering is enough.'
+objectives:
+  - Treat a call as copies (argument to parameter, return value to result) and extend a points-to analysis across functions.
+  - Explain why merging every caller of a function creates impossible paths and false aliases.
+  - Compute with call-string contexts limited to k call sites, and say when one site of context is not enough.
+  - Describe object sensitivity and cloning, and why JavaScript needs the call graph and the points-to sets at the same time.
+introduces: [interprocedural-analysis, context-sensitivity]
+uses: [points-to, alias-analysis, call-graph, inlining, function, call, parameter, argument, return, first-class-function, callback, method, class, this, recursion, object, set, map, fixpoint, dataflow, static-analysis, arrow-function, while-loop, for-of]
+sources: [sharirpnueli1981, milanova2005, whaleylam2004, bravenboer2009]
+---
+import ContextSteps from '../../../components/diagrams/ch221/ContextSteps';
+import PathsPic from '../../../components/diagrams/ch221/PathsPic';
+
+## The analysis that stops at the door
+
+Last chapter's points-to analysis looked at one function's statements.
+Real programs are mostly calls, and an analysis that looks at one
+function at a time (an **intraprocedural** analysis, "inside one
+procedure") has to treat each call as a closed door: whatever goes in
+might be stored anywhere, and whatever comes out might be anything.
+Take the smallest function there is:
+
+```js
+function id(p) { return p; }
+const a = id({ n: 1 });  // call site s1
+const b = id({ n: 2 });  // call site s2
+```
+
+Behind a closed door, `a` and `b` each point at "something unknown",
+so every question about them is answered "may alias", and every object
+passed in counts as lost. An **interprocedural** analysis opens the
+door: it follows the argument into `id`, sees that `id` hands it
+straight back, and concludes that `a` is the first object and `b` the
+second.
+
+<Analogy title="tracing a pipe through the walls">
+A plumber who stops at every wall has to assume the pipe behind it
+could go anywhere, and so cannot promise that the kitchen tap is safe
+to turn on. One who opens the panels and follows the pipe through each
+room can say exactly which taps it feeds.
+<span slot="breaks">A pipe goes through a wall once; a function is
+entered from many places, and the hard part (the rest of this chapter)
+is remembering which entrance you came in by.</span>
+</Analogy>
+
+The trick is to see a call as nothing more than copies. Calling
+`r = f(x)` copies the argument into the parameter and, on the way out,
+the return value into `r`, so the same inclusion rules from the last
+chapter apply:
+
+<Formal title="A call as two copies">
+
+```text
+r = f(x)  at site s:
+  pts(x) ⊆ pts(param of f)
+  pts(return of f) ⊆ pts(r)
+```
+
+<span slot="read">At a call site s where r is assigned f of x: the set
+of things x may point at is included in the set of f's parameter, and
+the set of things f may return is included in the set of r.</span>
+</Formal>
+
+<Callout kind="definition">
+**Interprocedural analysis** follows facts across function boundaries:
+from arguments into parameters, and from return values back to the
+callers, along the edges of the call graph (chapter 210). It sees more
+than an intraprocedural analysis, which must assume the worst at every
+call, without copying function bodies the way inlining does.
+</Callout>
+
+In JavaScript there is a twist. Which function a call reaches depends
+on which function *value* the callee holds, and that is itself a
+points-to question: in `g(x)`, the targets are whatever function objects
+`pts(g)` contains. So the call graph and the points-to sets have to be
+built together, each new edge adding facts and each new fact perhaps
+adding edges. Doop, which the next chapter meets, computes exactly this,
+"on the fly"<Cite id="bravenboer2009" />.
+
+<Prompts ids={['ipa-what', 'call-as-copy', 'cg-needs-pts']} />
+
+## The price of a single shelf
+
+Follow the copies for `id` and something goes wrong. Both calls copy
+into the same parameter `p`, so `pts(p) = {o1, o2}`; the return copies
+all of `p` to both callers, so `a` and `b` both end up with
+`{o1, o2}`, and the analysis says they may alias. They never do.
+
+<Figure takeaway="Merging all callers lets facts enter at one call and leave at another, which no real run can do." caption="Real paths (green) return to the call site they came from. A context-insensitive analysis also follows the red one: in at s2, out to a.">
+  <PathsPic />
+</Figure>
+
+The analysis has followed a path that enters `id` at `s2` and leaves to
+`s1`'s result, which no run can take: a call always returns to the
+place it came from. This kind of analysis, which keeps one set of facts
+per function whatever the caller, is called **context-insensitive**,
+and its false answers come from these impossible paths.
+
+<Analogy title="one lost-property shelf for a whole hotel">
+A small hotel keeps everything guests leave behind on one shelf. When
+the guest from room 4 asks for her umbrella, the desk can only say
+"one of these", because nobody wrote down which room each thing came
+from. A shelf per room fixes it.
+<span slot="breaks">A hotel has a fixed number of rooms; the number of
+ways a function can be reached (chains of callers, recursion) can grow
+without limit, so the analysis has to decide how many "rooms" it can
+afford.</span>
+</Analogy>
+
+<Prompts ids={['unrealizable']} />
+
+## Remembering who called
+
+A **context** is a label that tells calls to the same function apart.
+The best-known choice comes from Sharir and Pnueli's "call-string
+approach": label each fact with the chain of call sites that led
+there<Cite id="sharirpnueli1981" />. Since recursion makes those chains
+endless, analyses keep only the last **k** sites (a "k-call-site"
+analysis); with `k = 1`, `id` is analysed once for `s1` and
+once for `s2`. Step through both versions:
+
+<ContextSteps client:visible />
+
+<Analogy title="a translator who notes the sender">
+A translator works for two clients. If replies are handed back without
+noting who asked, the answers get mixed up; writing the sender's name
+on each message keeps every reply going to the person who asked. The
+name on the message is the context.
+<span slot="breaks">A name identifies a person forever; a call string
+cut to k sites can make two different chains of callers look the
+same, and then their facts mix again.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Context sensitivity** analyses a function separately for each kind of
+caller, so facts from one caller never flow back to another. The
+context is usually the last k call sites (**call-string** sensitivity)
+or, for methods, the allocation site of the receiver object (**object
+sensitivity**). A **context-insensitive** analysis keeps one set of
+facts per function.
+</Callout>
+
+<Formal title="k-limited call strings">
+
+```text
+pts(v, c)       v's set in context c
+call at site s in context c:
+  callee context = first k of (s · c)
+```
+
+<span slot="read">Every variable now has one set per context c. When a
+function running in context c makes a call at site s, the callee runs
+in the context made by putting s in front of c and keeping only the
+first k sites.</span>
+</Formal>
+
+<Examples of="interprocedural-analysis context-sensitivity">
+
+```js
+id({ n: 1 });  // s1: id in context [s1]
+id({ n: 2 });  // s2: id in context [s2]
+```
+
+```js
+function wrap(q) { return id(q); } // s3
+wrap({ n: 1 });  // id in [s3, s1]
+wrap({ n: 2 });  // id in [s3, s2]
+// k = 1: both are [s3]: merged again
+```
+
+```js
+function put(b, v) { b.set(v); } // s4
+put(box1, o1);
+put(box2, o2);
+// call sites: set is always [s4];
+// objects: set runs for box1, box2
+```
+
+</Examples>
+
+The first is the case from the stepper: one site of context separates
+the two calls. The second shows the limit of k: `id` is now always
+called from the same site, `s3` inside `wrap`, so with `k = 1` both
+calls look alike and the false alias returns; `k = 2` separates them,
+at the price of more contexts. The third is why object-oriented code
+uses **object sensitivity**, from Milanova, Rountev and Ryder: it
+analyses a method separately for each receiver object (`box1`, `box2`)
+rather than each call site<Cite id="milanova2005" />. The same idea
+can be pictured as **cloning**: make a copy of the function for every
+context and run a plain context-insensitive analysis on the bigger
+program; Whaley and Lam made that practical for large Java programs by
+storing the facts compactly in binary decision diagrams<Cite id="whaleylam2004" />.
+Run the wrapper version for real, to see that `a` and `b` never alias:
+
+<Run id="wrapper" />
+
+<Prompts ids={['call-string', 'k-limit', 'object-sens', 'cloning']} />
+
+## Your turn
+
+<Exercise id="contexts" />
+
+## What you learned
+
+- **Interprocedural analysis** follows facts across calls by treating a
+  call as copies: argument to parameter, return value to result.
+- In JavaScript the call graph needs points-to sets (callees are
+  values), so the two are built together.
+- A **context-insensitive** analysis merges every caller and follows
+  impossible paths (in at one call, out at another), producing false
+  aliases.
+- **Context sensitivity** keeps facts apart per caller: by the last k
+  call sites (**call strings**), by receiver object (**object
+  sensitivity**), or, equivalently, by cloning functions per context.
+- More context is more precise and more expensive; when k is too small,
+  a wrapper merges the callers again.
+
+<Quiz />

@@ -1,4 +1,4 @@
-// A disassembler: prints bytecode as readable text (book chapter 46).
+// A disassembler: prints bytecode as readable text (the book's chapter “Bytecode as data”).
 //
 //   0004    2 load.global       2 'add'
 //   offset line  instruction    operands

@@ -1,4 +1,4 @@
-//! The plugin API (book chapter 90). A language plugin turns its source into
+//! The plugin API (the book's chapter “The plugin API”). A language plugin turns its source into
 //! VIR and, given a layout plan, rewrites its source. The core never sees
 //! language syntax, so adding a language means implementing
 //! [`LanguagePlugin`].

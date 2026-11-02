@@ -1,0 +1,292 @@
+---
+n: 420
+day: 105
+part: XIII
+title: 'Lowering oxc’s AST to VIR'
+tagline: 'The TypeScript lowering walks “all the children” of any ESTree node with Object.keys. Rust has no Object.keys, and oxc’s AST has hundreds of node types. The answer is a visitor: a trait that walks everything, where you override only what you care about.'
+objectives:
+  - Explain the visitor pattern, and how oxc’s Visit trait walks children in source order.
+  - Map resolve.ts and lower.ts to resolve.rs and lower.rs, and name the design differences.
+  - Say why the port keys tables by spans and records JsNode facts instead of keeping AST nodes.
+  - Write a small visitor that overrides two methods and lets the defaults walk the rest.
+introduces: [visitor-pattern]
+uses: [viscosity-rs, ir-arena, plugin-trait, oxc, ast, ast-node, estree, ast-to-ir, lowering, resolver, scope, closure, nested-function, arrow-function, try-catch, ssa, phi-node, vir, source-location, trait, enum, match, pattern, struct, impl, self-receiver, rust-generics, trait-bound, box, vec, hashmap, option, result, question-mark, string-vs-str, borrow, lifetime, typed-index, arena, typescript]
+sources: [oxc-ast-visit]
+---
+import VisitSteps from '../../../components/diagrams/ch420/VisitSteps';
+import SideTable from '../../../components/diagrams/ch420/SideTable';
+
+## All the children
+
+In *Lowering JavaScript to VIR*, `lower.ts` turned anything it did not
+model into an `opaque` instruction taking every variable the subtree
+mentions. It found them with one small function from `estree.ts`
+(simplified):
+
+```ts
+function children(n: Node): Node[] {
+  const out: Node[] = [];
+  for (const key of Object.keys(n)) {
+    const v = n[key];
+    if (v && typeof v.type === 'string')
+      out.push(v);
+    // (and arrays of nodes)
+  }
+  return out.sort(byStart);
+}
+```
+
+An ESTree node is an ordinary object, so you can ask it for its keys,
+keep the values that are nodes, and sort them by where they start. oxc's
+tree (*Parsing with oxc*), however, is a set of Rust types, and a struct
+has no `Object.keys`; yet the port walks "all the children" in several
+places, and a `match` over hundreds of node kinds in each would be a lot
+of code. oxc solves this once for everyone.
+
+<Analogy title="a tour guide with a short list">
+A tour guide walks every room of a building in the same order. You
+hand the guide a short list ("count the kitchen chairs; skip the
+cellar"), and every other room gets the standard walk-through.
+<span slot="breaks">A guide who skips the cellar can still glance down
+the stairs; a visitor that overrides a node and does not walk it sees
+nothing at all below that node.</span>
+</Analogy>
+
+<Analogy title="a shop's checkout scanner">
+A checkout scans every item the same way, and the shop adds special
+rules for a few products: weigh the apples, ask for proof of age for
+the wine.
+<span slot="breaks">If the rule for a multipack forgot to scan the
+items inside it, they would go through unscanned; an override replaces
+the default walk, so it must walk the children itself if it still wants
+them.</span>
+</Analogy>
+
+## One method per node kind
+
+Here is the idea in a toy, shaped like oxc's `Visit` trait from the
+`oxc_ast_visit` crate:
+
+```rust
+trait Visit: Sized {
+    fn visit_expr(&mut self, e: &Expr) {
+        walk_expr(self, e);
+    }
+    fn visit_name(&mut self, _: &str) {}
+    fn visit_func(&mut self, b: &Expr) {
+        self.visit_expr(b);
+    }
+}
+```
+
+Every method has a default body, and `walk_expr` is the standard
+walk-through: a `match` on the node that calls `visit_*` on each child,
+left to right. (`: Sized` lets the defaults pass `self` to a generic
+function like `walk_expr`.) The real trait has 263 visit methods in oxc 0.156, all generated, and each
+default calls the matching `walk_*` function, which visits that node's
+children<Cite id="oxc-ast-visit" />. That walk goes in source order,
+as `children()` did with its sort, which matters because the order in
+which variables are found decides an opaque instruction's arguments.
+
+<Callout kind="definition">
+The **visitor pattern** separates *walking* a tree from *what you do* at
+each node. A trait has one method per node kind; each default method
+calls a **walk** function that visits the node's children; a visitor
+**overrides** only the kinds it cares about. An override replaces the
+default, so it must call the walk itself if it still wants the children.
+</Callout>
+
+<Formal title="The default walk">
+
+```text
+visit_K(v, n) = walk_K(v, n)
+walk_K(v, n)  = visit c₁; …; visit cₖ
+```
+
+<span slot="read">For every node kind K, visiting a node n of that kind,
+unless you override it, means walking it; and walking it means visiting
+each of its children c₁ to cₖ in turn, first to last as they appear
+in the source. An override changes the first line for one kind and leaves the
+second alone.</span>
+</Formal>
+
+<Examples of="visitor-pattern">
+
+```rust
+impl Visit for Names {
+    fn visit_name(&mut self, n: &str) {
+        self.0.push(n.into());
+    }
+}
+```
+
+```rust
+impl Visit for Outer {
+    fn visit_name(&mut self, n: &str) {
+        self.0.push(n.into());
+    }
+    fn visit_func(&mut self, _: &Expr) {}
+}
+```
+
+```rust
+impl<'a> Visit<'a> for Mentions {
+    fn visit_identifier_reference(
+        &mut self,
+        it: &IdentifierReference<'a>,
+    ) {
+        self.found
+            .push((it.span, self.inner));
+    }
+    // visit_binding_identifier: the same
+    fn visit_arrow_function_expression(
+        &mut self,
+        it: &ArrowFunctionExpression<'a>,
+    ) {
+        let saved = std::mem::replace(
+            &mut self.inner, true);
+        walk_arrow_fn(self, it);
+        self.inner = saved;
+    }
+    // visit_function: the same
+}
+```
+
+</Examples>
+
+The first overrides one method: `Names` records every name and the
+defaults walk the rest, so on `a + (() => b + 1)` it collects `a` and
+`b`. The second
+also overrides `visit_func` with an empty body; that replaces the walk
+of function bodies, so it collects only `a`, which is exactly how
+`HoistCollector` in `resolve.rs` stops at nested functions on purpose.
+The third is the real `Mentions` from `lower.rs` (rewrapped;
+`walk_arrow_fn` stands for oxc's `walk::walk_arrow_function_expression`):
+it records each identifier's span and whether it is inside a nested
+function, and four overrides cover all of JavaScript. `std::mem::replace` stores
+`true` in `self.inner` and hands back the old value, so leaving the
+arrow restores it. Run the first two, then try your own:
+
+<Run id="visit-play" />
+
+<VisitSteps client:visible />
+
+<Prompts ids={['visitor-what', 'skip-walk']} />
+
+## Two passes, two files each
+
+As in TypeScript, the plugin makes two passes. `resolve.rs` pairs every
+identifier with its binding (*Finding every name before running: the
+resolver*), then `lower.rs` builds VIR. The resolver implements `Visit`
+and overrides the node kinds that `resolve.ts` handles in its own
+`switch`, such as functions, blocks, loops, `try` and declarations.
+
+The bigger change is how things are *named*. `resolve.ts` keys its maps
+by node objects, which JavaScript compares by identity for free. The
+port keys everything by plain values instead. An
+owner is `FnKey::Program` or `FnKey::Func(Span)` (in the words of
+`resolve.rs`, "spans of function nodes are unique"), `refs` is a
+`HashMap<Span, JsBindingId>`, and bindings live in a `Vec`, named by a
+typed index (*VIR in Rust*). No table holds a reference into the tree,
+so none needs the tree's lifetime.
+
+<Prompts ids={['fnkey']} />
+
+## Lowering, function by function
+
+`lower.rs` uses the same rule as `lower.ts`: a variable stays an SSA
+value only if it is a simple kind (`const`, `let`, `var`, a parameter
+or a `catch` variable), used in no other function, never assigned in a
+`try`, and not initialized with an array; anything else is a binding.
+
+In TypeScript, `lowerFunction` holds its helpers (`read`, `write`,
+`expr` and the rest) as closures sharing the function builder `fb`.
+Rust closures cannot share mutable state that freely, so the port has
+one `Lowerer` struct with the per-function state in one field, `f`. A
+nested function builds an `FnState` of its own, swaps it in with `let
+outer = std::mem::replace(&mut self.f, state);`, lowers its body, and
+puts the outer state back with `self.f = outer;` before it even looks
+at whether lowering succeeded. Lowering this with
+`JsPlugin.lower` and `print_func` gave the listing below for `add` (the
+TypeScript engine printed the same):
+
+```js
+let n = 0;
+const ps = [];
+function add(v) {
+  ps.push({ x: v });
+  n++;
+}
+```
+
+```
+  b0:
+    %0 = param
+    %1 = load ps
+    %2 = record {x} %0
+    %3 = push %1, %2
+    %4 = load n
+    %5 = unop + %4
+    %6 = const 1
+    %7 = binop + %5, %6
+    store n, %7
+    return
+```
+
+`v` stays an SSA value (`%0`), while `ps` is array-initialized and `n`
+is used inside `add`, so both are bindings. In `n++`, `unop +` turns the
+old value into a number, as JavaScript does, before `1` is added.
+
+<Prompts ids={['ssa-or-binding', 'mem-replace']} />
+
+## No AST after lowering
+
+The TypeScript engine keeps ESTree nodes in `SourceRef.node`, and its
+emitter asks them questions, such as (through a parent map) "is this
+`a[i]` the object of a member expression?". oxc's tree lives in the
+parse's arena, so keeping it would put a lifetime on the whole `Module`;
+instead `node` is a `NodeRef`, an index into a side table of `JsNode`
+facts:
+
+<Figure takeaway="The emitter's questions are answered ahead of time, in a table." caption="Lowering ps[i].x += ps[i].vx: instruction %19, the first ps[i], points at entry 4 of the side table, which records the byte spans of ps and i and that ps[i] is the object of a member expression (direct).">
+  <SideTable />
+</Figure>
+
+`direct` answers the parent question: lowering sets a flag just before
+it lowers a member expression's object. The other kinds of fact record
+what *Emitting JavaScript from Rust* needs.
+
+<Prompts ids={['side-table', 'direct-flag']} />
+
+<Callout kind="engine" label="Under the hood">
+`lower.rs` names, in comments, the ESTree case each oxc case mirrors.
+oxc keeps `"use strict"` in a separate `directives` list, where ESTree
+has an expression statement that the TypeScript engine lowers to a
+string constant; the port lowers it too, because nothing uses it but
+every later value keeps its `%n`. And one mismatch is kept on purpose,
+marked `NOTE`: as in the reference, assigning to the private `p.#x` is
+treated as the field `x`.
+</Callout>
+
+<Prompts ids={['directives']} />
+
+## Your turn
+
+<Exercise id="mentions" />
+
+## What you learned
+
+- The **visitor pattern**: a trait with one method per node kind, whose
+  defaults **walk** the children. You override only what you need;
+  overriding replaces the walk, so call it yourself if you want the
+  children.
+- oxc's `Visit` walks in source order, like `children()`, so value
+  numbers match the reference.
+- `resolve.rs` and `lower.rs` port their TypeScript files case by case.
+  Node identity becomes spans and typed ids (`FnKey`, `HashMap<Span,
+  _>`), and closures sharing `fb` become one `Lowerer` whose `FnState`
+  is swapped with `std::mem::replace`.
+- Instructions point into a **side table** of `JsNode` facts, not into
+  a live tree.
+
+<Quiz />

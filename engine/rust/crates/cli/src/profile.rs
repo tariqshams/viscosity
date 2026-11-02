@@ -1,4 +1,4 @@
-//! Profile-guided optimization (book chapter 109): run the ORIGINAL program
+//! Profile-guided optimization (the book's chapter “Profile-guided optimization”): run the ORIGINAL program
 //! with light instrumentation that records how big each candidate collection
 //! really gets, then feed those numbers to the cost model.
 //!

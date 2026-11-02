@@ -1,0 +1,299 @@
+---
+n: 432
+day: 108
+part: XIII
+title: 'SoA code generation in Rust'
+tagline: 'The emitter never reprints your program; it cuts a few byte ranges out of it and splices new text in, back to front. Around those edits it writes a container class whose name and columns can never clash with anything, and a bounds check wherever nothing was proven.'
+objectives:
+  - Read the container class emit.rs writes, and say what each of its members does.
+  - Explain how the emitter rewrites a program by splicing byte-range edits, and why it applies them last first.
+  - Explain how container classes and columns are named so that nothing clashes.
+  - Implement column_names, with tests.
+introduces: [rust-soa-codegen]
+uses: [viscosity-rs, rust-codegen, rust-access-pass, rust-cost-model, cross-implementation-tests, soa-container, column-storage, access-rewriting, capacity, amortized-growth, typed-array, hashmap, vec, string-vs-str, rust-closure, rust-iterator, enum, match, throw, error-object, test-corpus]
+sources: [ecma262-assignment-order, rustc-e0499]
+---
+import EditSteps from '../../../components/diagrams/ch432/EditSteps';
+import ClassAnatomy from '../../../components/diagrams/ch432/ClassAnatomy';
+
+## From a plan to a program
+
+The planner has decided that `ps` should become a struct of arrays
+(*The cost model in Rust*). Now something has to write the program that
+does it: a class to hold the columns, and a new spelling for every place
+the program creates, grows or reads `ps`. In the TypeScript engine that
+was *Generating SoA storage* and *Rewriting field accesses*; in Rust it
+is `crates/frontend-js/src/emit.rs`. Here is a program:
+
+```js
+const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i, vx: 1 });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += ps[i].vx;
+console.log(ps[99].x);
+```
+
+and the end of what `viscosity build` wrote for it (I ran it here,
+release build, rustc 1.97; node prints `100` for both versions):
+
+```js
+const ps = new __Vsc_ps();
+for (let i = 0; i < 100; i++)
+  ps.push(i, 1);
+for (let i = 0; i < ps.length; i++)
+  ps.x[i] += ps.vx[i];
+console.log(
+  ps.x[__vsc_bc(ps, 99, 'x', false)]);
+```
+
+The last line is wrapped to fit; otherwise every character the program
+didn't need to change is exactly where it was. Above it, the emitter put
+a class, `__Vsc_ps`, and a helper, `__vsc_bc`. This chapter reads how it
+writes all three, and how it picks names that can never collide with
+the programmer's own. (What happens when a *write* goes out of bounds
+is subtle enough for its own chapter, *The order of a field write in
+Rust*.)
+
+<Analogy title="relabelling a warehouse">
+A warehouse that stored each customer's order on one shelf moves to one
+aisle per product: all the screws together, all the bolts together. The
+goods are the same, but every pick list has to be rewritten, from
+"shelf 12, the screws" to "the screw aisle, slot 12", and nothing else
+on the list may change.
+<span slot="breaks">A picker who finds an old pick list can ask
+someone; a compiled program can't, so the emitter must rewrite every
+single access, which is why the analysis refused any collection with a
+use it couldn't see.</span>
+</Analogy>
+
+<Analogy title="names a folder won't take">
+Copy `report.txt` into a folder that already has one, and you get
+`report (2).txt`. Try to name a file `CON` on Windows and you can't: the
+name is reserved for the console. Good naming has to dodge both kinds of
+clash.
+<span slot="breaks">Windows refuses a reserved name and tells you; the
+emitter quietly picks another one, and only the generated code shows
+it.</span>
+</Analogy>
+
+## The container class
+
+For each collection planned as SoA, `container_class` builds the class
+with `format!` and `join`. Reformatted (it is six long lines in the
+output), with `of` and `grow` shortened:
+
+```js
+class __Vsc_ps {
+  constructor(cap = 16) {
+    this.length = 0; this.cap = cap;
+    this.x = new Float64Array(cap);
+    this.vx = new Float64Array(cap);
+  }
+  static of(...v) { … }
+  push(v0, v1) {
+    const n = this.length;
+    if (n === this.cap) this.grow();
+    this.x[n] = v0; this.vx[n] = v1;
+    return (this.length = n + 1);
+  }
+  grow() { … }
+}
+```
+
+`length` is how many elements are in use and `cap` how many slots each
+column has. Each numeric field gets a `Float64Array` column (a typed
+array: a fixed-size block of 64-bit floats). `push` takes the values in
+field order, grows the columns when they are full, writes slot `n` of
+each, and returns the new length, as `Array.prototype.push` does.
+`grow` doubles `cap`, makes new typed arrays and copies the old ones in
+with `set`, which is the doubling of *Growing collections*. `of` builds
+a container from an array literal's values, taking them two at a time
+for two fields.
+
+<Figure caption="The object new __Vsc_ps() after 100 pushes: two columns of 128 slots each, 100 of them in use." takeaway="A container holds a length, a capacity and one column per field.">
+  <ClassAnatomy />
+</Figure>
+
+## Edits, back to front
+
+The emitter does not print the program from its IR. It collects a list
+of **edits**, each a byte range of the original source and the text
+that replaces it, and leaves everything else alone, comments and
+spacing included. The doc comment at the top of `emit.rs` lists the
+shapes it rewrites (rearranged to fit):
+
+```
+const ps = [];
+  → const ps = new __Vsc_ps();
+ps.push({ x: a, y: b });
+  → ps.push(a, b);
+ps[i].x
+  → ps.x[i]
+const p = ps[i]; p.x
+  → const p = i; ps.x[p]
+for (const p of ps) p.x
+  → for (let p = 0; p < ps.length; p++)
+      ps.x[p]
+```
+
+When all the edits are collected they are sorted by start, largest
+first, and applied with `String::replace_range`. Back to front is the
+whole trick: an edit changes the length of the text after it, so if
+edits were applied front to back every later offset would need fixing;
+applied from the end, nothing still waiting has moved. The offsets are
+UTF-8 bytes, oxc's spans, which is also how Rust indexes a `String`, so
+they cut the same characters the TypeScript reference cuts in its
+UTF-16 string. If two edits ever overlap, that is a bug, and the
+emitter returns `internal error: overlapping rewrites` rather than
+writing a broken program. Step through the edits for the program
+above:
+
+<EditSteps client:visible />
+
+<Prompts ids={['cg-edits', 'cg-back-to-front', 'cg-copy-through', 'cg-push-args']} />
+
+## Names that never clash
+
+Two collections can have the same name in different functions, so the
+class name is numbered (from `emit_js`):
+
+```rust
+let mut cls = format!("__Vsc_{}", c.name);
+let mut k = 2;
+while class_names.contains(&cls) {
+    cls = format!("__Vsc_{}_{k}", c.name);
+    k += 1;
+}
+class_names.insert(cls.clone());
+```
+
+`class_names` is a `HashSet<String>` of names already used, so the
+corpus program `same_name_collections.js` gets `__Vsc_ps` and
+`__Vsc_ps_2`. Columns need more care, because they are properties of
+the container: a field called `length` or `push` would overwrite the
+container's own members. `column_name(field, i)` keeps a field's name
+only if it is a plain ASCII identifier and not in the list `RESERVED`
+(`length`, `push`, `grow`, `of`, `constructor`, `prototype`, `get`,
+`cap`, `data`); otherwise field number `i` becomes `f{i}_`. Then
+`column_names` makes the whole list unique: a renamed column gets `_`
+appended until it differs from every field that kept its name and every
+column before it. The corpus program `renamed_column_clash.js` has
+fields `length` and `f0_`, and its constructor shows both rules:
+
+```js
+this.f0__ = new Float64Array(cap);
+this.f0_ = new Float64Array(cap);
+```
+
+`length` (field 0) became `f0_`, which the real field `f0_` already
+uses, so it became `f0__`. Explain still says "fields length, f0_",
+because columns are an internal detail.
+
+<Prompts ids={['cg-numbered', 'cg-reserved', 'cg-unique']} />
+
+## Reads that need a check
+
+An element read that wasn't proven in bounds (*Proving an index in
+bounds in Rust*) goes through a helper the emitter adds to the prelude
+only when some access needs it (rewrapped, the message split in two):
+
+```js
+function __vsc_bc(c, i, f, w) {
+  if (i >>> 0 === i && i < c.length)
+    return i;
+  throw new TypeError(w
+    ? `Cannot set properties of undefined`
+      + ` (setting '${f}')`
+    : `Cannot read properties of undefined`
+      + ` (reading '${f}')`);
+}
+```
+
+`i >>> 0` converts `i` to an unsigned 32-bit integer, so `i >>> 0 ===
+i` holds exactly for whole numbers from 0 to 2³² − 1 (not `-1`, `1.5`
+or `'3'`),
+and `i < c.length` checks the top end. In range, it returns the index
+unchanged, so `ps.x[__vsc_bc(ps, 99, 'x', false)]` reads the same slot
+as `ps.x[99]`; out of range, it throws the same `TypeError`, word for
+word, that the original would have thrown reading `.x` of `undefined`.
+The flag `w` picks the "setting" wording for writes.
+
+<Formal title="Rewriting a field access">
+
+```text
+c[i].f  ⟶  c.col(f)[i]
+            if i is proven in bounds
+c[i].f  ⟶  c.col(f)[bc(c, i, f, w)]
+            otherwise
+```
+
+<span slot="read">Reading or writing field f of element i of a
+transformed collection c becomes indexing f's column with i, when i is
+proven to be in bounds; otherwise the index first goes through the
+bounds check bc, which returns i unchanged or throws the original's
+error, with w saying whether it is a write.</span>
+</Formal>
+
+<Examples of="rust-soa-codegen">
+
+```js
+const ps = [{ x: 1, vx: 2 },
+  { x: 3, vx: 4 }];
+// → const ps = __Vsc_ps.of(1, 2, 3, 4);
+```
+
+```js
+for (const p of ps) s += p.x;
+// → for (let p = 0; p < ps.length;
+//     p++) s += ps.x[p];
+```
+
+```js
+const p = ps[i];
+p.x *= 2;
+// → const p = i;
+//   ps.x[p] *= 2;
+```
+
+</Examples>
+
+All three are real output of the Rust CLI (the first with `--min-size
+0`, since two elements are below the threshold). An array literal
+becomes a call to `of`, with the values in field order. A `for...of`
+loop becomes a counting loop, and the loop variable now holds an index,
+so every `p.x` becomes `ps.x[p]`. And a variable that held an element
+now holds the element's index: `const p = ps[i]` becomes `const p = i`,
+and `p.x` becomes `ps.x[p]`, which is how the hot loop of the benchmark
+`particles.js` is compiled.
+
+<Callout kind="definition">
+**SoA emission in Rust** (`emit.rs`) writes one **container class** per
+transformed collection, `__Vsc_name` (numbered `__Vsc_name_2`, ... on a
+clash), with one **column** per field named by `column_names`
+(`f{i}_` for reserved or non-identifier names, then made unique), and
+rewrites the program as a list of **byte-range edits** applied **back to
+front**, so that everything else is copied through unchanged. Accesses
+not proven in bounds index through **`__vsc_bc`**, which throws the
+original's `TypeError`.
+</Callout>
+
+<Prompts ids={['cg-bc-shift']} />
+
+## Your turn
+
+<Exercise id="columnNames" />
+
+## What you learned
+
+- The **container class** holds `length`, `cap` and one column per
+  field; `push` writes slot `n` of every column, and `grow` doubles.
+- The emitter **splices edits** into the original text, **last first**,
+  so no offset goes stale and untouched code is copied byte for byte.
+- Class names are **numbered** on a clash; columns keep the field name
+  unless it is **reserved** or not a plain identifier, then become
+  `f{i}_`, extended with `_` until **unique**.
+- Unproven accesses go through **`__vsc_bc`**, which returns the index
+  or throws the original's error.
+
+<Quiz />

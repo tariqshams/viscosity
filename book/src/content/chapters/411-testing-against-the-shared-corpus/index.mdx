@@ -1,0 +1,254 @@
+---
+n: 411
+day: 103
+part: XII
+title: 'Testing against the shared corpus'
+tagline: 'Three Drip implementations, one folder of programs with their expected behaviour written in their own comments. Here is how drip-rs reads those comments with no regex crate, what the stress-GC suite adds, and what a byte-for-byte comparison with the TypeScript VM, on the corpus and on thousands of mangled programs, found.'
+objectives:
+  - Read the corpus’s four kinds of expectation comment, and say what each one checks.
+  - Explain what tests/corpus.rs and tests/stress_gc.rs check, and what harness = false gains.
+  - Say what compare_with_ts.mjs and the two fuzzers compare, and what they can and cannot catch.
+  - Write the expectation parser in Rust, with tests.
+introduces: [shared-corpus]
+uses: [drip-rs, runtime-stack-trace, method-copy-down, rust-bound-method, arena-gc, test-corpus, differential-testing, cargo-test, assert-macros, cargo, crate, rust-module, garbage-collection, roots, runtime-error, syntax-error, panic-mode, option, question-mark, slice, string-vs-str, struct, vec, match, pattern, rust-iterator, drip, typescript]
+sources: [cargo-targets]
+---
+import CheckSteps from '../../../components/diagrams/ch411/CheckSteps';
+import CorpusFan from '../../../components/diagrams/ch411/CorpusFan';
+
+## One folder, three interpreters
+
+The book has built Drip three times: the tree-walker of Part III, the
+TypeScript VM of Part IV, and now drip-rs. How do you know the three
+agree? Not by reading them side by side; they share hardly a line. You
+agree on the *behaviour* instead, write it down once, and make every
+implementation prove it. In this book that agreement is a folder,
+`book/companion/corpus`: 344 small Drip programs in 25 folders (334
+tests and 10 benchmarks), each of which says in its own comments what it
+should print. Here is `lists/by_reference.drip`, whole:
+
+```drip
+let a = [1, 2];
+let b = a;
+push(b, 3);
+print a; # expect: [1, 2, 3]
+fn fill(xs) {
+  xs[0] = "changed";
+}
+fill(a);
+print b[0]; # expect: changed
+```
+
+It checks that lists are shared, not copied: `b` is the same list as
+`a`, so pushing through `b` shows up in `a`, and `fill` writing through
+its parameter shows up in `b`. The two `# expect:` comments are the
+whole test: the program must print exactly those two lines, in that
+order, with nothing on stderr and exit code 0. Any implementation that
+prints `[1, 2]` has copied a list somewhere it should not have.
+
+<Analogy title="one answer key for three exam papers">
+Three students sit the same exam, and one answer key marks all three
+papers. Nobody has to compare the students' working with each other;
+each is checked against the key, and if all three match the key, they
+match each other.
+<span slot="breaks">An answer key is written by someone who knows the
+answers. The corpus was written by people, too, and if a comment is
+wrong, all three implementations are forced to be wrong the same way.
+DRIP.md says the corpus is the source of truth for wording for exactly
+this reason: someone had to decide.</span>
+</Analogy>
+
+<Analogy title="a reference weight at a market">
+A market keeps one certified kilogram, and every stallholder's scale is
+checked against it; the scales can be of any make, as long as they
+agree with the weight.
+<span slot="breaks">A weight checks one number; the corpus checks 344
+behaviours, and a scale that passes them all could still be wrong on a
+program nobody wrote. That gap is what the fuzzers at the end of this
+chapter go looking for.</span>
+</Analogy>
+
+<CorpusFan />
+
+<Prompts ids={['sc-what', 'sc-why']} />
+
+## Four kinds of comment
+
+A program says what it should do with four markers, all documented in
+the corpus's `README.md`:
+
+<Examples of="shared-corpus">
+
+```drip
+print 1 + 2; # expect: 3
+```
+
+```drip
+print 1 print 2;
+# expect compile error: line 1: expected
+#   ';' after the value, found 'print'
+```
+
+```drip
+fn f(a, b) { return a + b; }
+f(
+  1,
+  "x"
+);
+# expect runtime error: cannot add a
+#   number and a string  (on line 1)
+# expect trace: at line 1 in fn f
+# expect trace: at line 2 in script
+```
+
+<Run id="shared" />
+
+</Examples>
+
+The first is the commonest: `# expect:` is one line of output. The
+second is `compile/missing_semicolon.drip` (its comment, which really
+sits at the end of line 1, is wrapped here): `# expect compile error:`
+lists the compile errors, exactly and in order, and means the program
+must exit with 65 without running anything. The third is
+`errors/call_spanning_lines.drip`, shortened: `# expect runtime error:`
+gives the message and means exit 70, and the two `# expect trace:`
+lines pin the whole stack trace, innermost first. Notice the second
+trace line says line 2, where the call's `(` is, although the arguments
+run on to line 5; that is DRIP.md's rule, and three implementations had
+to agree on it. Without `trace` lines, only the innermost `at` line is
+checked, against the line the runtime-error comment is on. The fourth is
+`by_reference.drip` again, for you to run and change.
+
+<Callout kind="definition">
+A **shared corpus** is one set of test programs that every
+implementation of a language must pass, with each program's expected
+behaviour (its output, its compile errors, its runtime error and stack
+trace, its exit code) written beside it, so that the tests belong to
+the language rather than to any one implementation.
+</Callout>
+
+<Formal title="Passing the corpus">
+
+```text
+passes(I) ⇔ ∀p ∈ C. run(I, p) = expect(p)
+passes(I) ∧ passes(J) ⇒ ∀p ∈ C.
+    run(I, p) = run(J, p)
+```
+
+<span slot="read">An implementation I passes the corpus C when, for every
+program p in C, what I does with p equals what p's comments expect. If I
+and J both pass, they behave the same on every program in C (and the
+corpus says nothing about programs outside it).</span>
+</Formal>
+
+<Prompts ids={['sc-markers', 'sc-trace-line']} />
+
+## The Rust side: cargo test
+
+`tests/corpus.rs` runs every program except the benchmarks; it is short,
+because the work is in `tests/common/mod.rs`, a port of `check()` from
+the TypeScript runner `test/corpus.ts`:
+
+```rust
+fn main() {
+    let options = Options {
+        debug_gc: true,
+        ..Options::default()
+    };
+    common::run_suite("corpus",
+        |t| !common::is_benchmark(t),
+        options);
+}
+```
+
+(rewrapped). It has its own `main` because `Cargo.toml` sets
+`harness = false` for it<Cite id="cargo-targets" />: Rust's built-in
+test runner would make one test of the whole folder, whereas this prints
+one line per program, as the TypeScript runner does, and a failure says
+which file. `run_suite` reads each program, runs it with `drip::run`
+(in the same process, so no files or pipes are involved), wraps the run
+in `catch_unwind` so that a panic fails only that program, and calls
+`check`, which compares the exit code, then the compile errors or the
+runtime error and its trace, then stdout line by line. `debug_gc` makes
+the heap never reuse a freed slot, so a collector bug panics instead of
+quietly reading another object. The expectations are found by hand,
+with `str::find` and `strip_prefix`, because the crate has no
+dependencies at all, not even a regex crate.
+
+<CheckSteps client:visible />
+
+`tests/stress_gc.rs` is the same runner with `stress_gc: true`: the
+heap collects before **every** allocation and never reuses a slot, so a
+value that is only on a Rust local, and not on any root, is freed at the
+first chance, and the next read of it panics. It runs the 165 programs
+in the ten folders that allocate most (`closures`, `classes`,
+`inheritance`, `strings`, `functions`, `lists`, `methods`, `fields`,
+`for` and `programs`). On 2026-11-02, `cargo test` printed
+`corpus result: ok. 334 passed; 0 failed` and
+`stress GC result: ok. 165 passed; 0 failed`, beside the 13 unit tests
+in the modules and the 6 in `tests/vm.rs`.
+
+<Prompts ids={['sc-harness', 'sc-stress']} />
+
+## Byte for byte, and mangled programs
+
+Passing the corpus says each implementation matches the comments; it
+does not say they match each other on things the comments leave out,
+such as a second error after the first. `scripts/compare_with_ts.mjs`
+checks that directly: it runs drip-rs (as a process) and the TypeScript
+VM (in Node) on every corpus program, benchmarks included, and compares
+stdout, stderr and the exit code byte for byte. Then it **mangles**
+2,000 programs, dropping a token, replacing one with a random piece of
+Drip such as `fn` or `}`, or inserting one, and compares again. Mangled
+programs are mostly broken, so this tests compile errors and error
+recovery hardest; for instance, turning line 3 of `by_reference.drip`
+into `push(b, 3) fn` makes both print the same two errors:
+
+```text
+line 3: expected ';' after the
+  expression, found 'fn'
+line 4: expected a function name
+  after 'fn', found 'print'
+```
+
+When I ran `node scripts/compare_with_ts.mjs 2000` on 2026-11-02 it took
+27 seconds and printed `corpus: 343 programs compared, 0 differ` (one
+program reads the clock, so its output differs on every run and it is
+skipped) and `mangled: 2000 programs, 0 skipped (slow), 0 differ`. The
+TypeScript side has a fuzzer of its own, `test/fuzz.mjs`, which mangles
+programs the same way and checks that the tree-walker's parser and
+resolver report exactly the compile errors the VM's one-pass compiler
+does; `node test/fuzz.mjs 2000` printed
+`2000 mangled programs, 0 disagreements`.
+
+<Prompts ids={['sc-mangle', 'sc-clock']} />
+
+<Callout kind="engine" label="Under the hood">
+Comparing two implementations with each other, rather than with a
+written answer, is differential testing: generate many programs, run
+them through two implementations, and investigate every difference. It
+needs no answers written in advance, which is why it can test thousands
+of programs nobody wrote. Its blind spot is the
+same as the corpus's, a shared mistake: if both VMs were wrong the same
+way, every comparison here would still say `0 differ`. That is why the
+corpus is checked against DRIP.md by people, and the implementations
+against the corpus by programs.
+</Callout>
+
+## Your turn
+
+<Exercise id="parseExpect" />
+
+## What you learned
+
+- The **shared corpus** is 344 programs whose comments say what they
+  must do; all three implementations run it.
+- Four markers: **`# expect:`**, **`# expect compile error:`**,
+  **`# expect runtime error:`** and **`# expect trace:`**.
+- drip-rs's suites bring their own `main` (**`harness = false`**) to
+  print a line per program; **`stress_gc`** collects before every
+  allocation, so a missing root fails at once.
+- **`compare_with_ts.mjs`** compares drip-rs and the TypeScript VM byte
+  for byte, on the corpus and on 2,000 mangled programs.
+
+<Quiz />

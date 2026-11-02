@@ -1,4 +1,4 @@
-// Parsing JavaScript (and TypeScript) for Viscosity (book chapter 92).
+// Parsing JavaScript (and TypeScript) for Viscosity (the book's chapter “Parsing real JavaScript”).
 // The parser is pluggable: acorn (a mature ESTree parser, MIT) by default,
 // or the book's hand-written parser for the teaching subset. TypeScript is
 // stripped to JavaScript first with sucrase.

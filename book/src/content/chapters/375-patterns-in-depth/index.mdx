@@ -1,0 +1,338 @@
+---
+n: 375
+day: 94
+part: XI
+title: 'Patterns in depth'
+tagline: 'Match on a borrowed value and the names you pull out quietly become borrows too; add a guard, an @ or a slice pattern, and one arm can say "a list of at least two items whose ends are equal, and give me both".'
+objectives:
+  - Predict whether a name in a pattern moves, borrows or mutably borrows, from what you matched on.
+  - Use match guards, and say why guarded arms never count towards exhaustiveness.
+  - Write range, @, nested and slice patterns, including rest patterns like rest @ ..
+  - Read the decision tree rustc builds for a slice match.
+introduces: [binding-modes, match-guard, pattern-syntax]
+uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, slice, string-vs-str, struct, enum, match, pattern, option, result, vec, typescript, scanner, token, decision-tree, match-compilation, exhaustiveness-checking]
+sources: [rustref-patterns, rustref-match, rust-book-patterns, klabnik2026]
+---
+import BindingSteps from '../../../components/diagrams/ch375/BindingSteps';
+import SliceTree from '../../../components/diagrams/ch375/SliceTree';
+
+## The name that took the string
+
+The patterns you met with `match` (just after enums) matched values
+you owned. Real code mostly
+matches values it has *borrowed*: a parser looks at `&self.tokens`, a
+collector looks at `&self.slots[i]`. Here is the first surprise:
+
+```rust
+let name = Some(String::from("drip"));
+match name {
+    Some(s) => println!("{s}"),
+    None => {}
+}
+println!("{name:?}"); // ✗
+```
+
+rustc 1.97 refuses the last line:
+
+```text
+error[E0382]: borrow of partially moved
+  value: `name`
+4 | Some(s) => println!("{s}"),
+  |      - value partially moved here
+7 | println!("{name:?}");
+  |            ^^^^ value borrowed here
+  |                 after partial move
+help: borrow this binding in the pattern
+  to avoid moving the value
+4 | Some(ref s) => println!("{s}"),
+```
+
+(Indentation is trimmed to fit.) The name `s` *took* the `String` out of
+`name`, so `name` is now missing a piece. Write `match &name` instead,
+and the same `Some(s)` gives you a `&String`, leaving `name` whole. Which
+of the two happens is decided by the pattern's **binding mode**.
+
+## Binding modes
+
+<Analogy title="a museum glass case">
+Show a visitor an object inside a glass case, and everything they point
+at (the lid, the handle, a coin inside) is still behind the glass: they
+can look, but nothing leaves the case. Matching through `&` is the glass
+case.
+<span slot="breaks">Glass has one kind; Rust has two. Through `&mut` the
+visitor may also change what they point at, as long as nobody else is
+looking at the same time.</span>
+</Analogy>
+
+<Analogy title="a library book">
+Take a book home and it is yours; read it at the desk and it stays the
+library's. A name in a pattern either takes the part it matches (move)
+or reads it where it lies (a borrow).
+<span slot="breaks">A small value such as an `i32` is `Copy`: "taking
+it" makes a copy and the original stays put, which no library does.</span>
+</Analogy>
+
+Step through the three ways of matching the same `Option<String>`:
+
+<BindingSteps client:visible />
+
+<Callout kind="definition">
+Every name in a pattern is bound in a **binding mode**: *move* (the
+name takes the value, or a copy of it), *ref* (a `&` borrow) or *ref
+mut* (a `&mut` borrow). The **default binding mode** starts as move.
+Each time the pattern meets a reference while expecting a non-reference
+pattern (such as `Some(..)`), rustc looks through the reference and
+switches the mode: `&` makes it ref, `&mut` makes it ref mut unless it
+is already ref<Cite id="rustref-patterns" />. Writing `ref` or `ref mut`
+before a name asks for a borrow explicitly; it matches nothing itself.
+</Callout>
+
+<Examples of="binding-modes">
+
+```rust
+if let Some(s) = &name { // s: &String
+    println!("{s}");
+}
+```
+
+```rust
+if let Some(s) = &mut name { // &mut String
+    s.push('!');
+}
+```
+
+```rust
+// companion/rust/src/object.rs
+match &self.slots[handle.index()] {
+    Some(object) => object,   // &T
+    None => use_after_free::<T>(),
+}
+```
+
+</Examples>
+
+The first reads through `&name`, so `s` is a `&String` and `name` is
+untouched. The second goes through `&mut name`, so `s` is a
+`&mut String` and `push` changes the string inside `name`. The third is
+drip-rs's arena: the match looks at a borrowed slot of a
+`Vec<Option<T>>`, so `object` comes out as `&T`, exactly what
+`Index::index` must return. Mutate through a `&` binding and rustc
+says why not:
+
+```text
+error[E0596]: cannot borrow `*s` as
+  mutable, as it is behind a `&` reference
+```
+
+<Formal title="How the mode changes">
+
+```text
+mode := move
+meet &     : move → ref,  ref mut → ref
+meet &mut  : move → ref mut, ref → ref
+bind x : T in mode
+  move ⇒ x : T   ref ⇒ x : &T
+  ref mut ⇒ x : &mut T
+```
+
+<span slot="read">The mode starts as move. Meeting a shared reference
+makes it ref; meeting a mutable one makes it ref mut, unless it is
+already ref (a mutable borrow seen through a shared one is read-only). A
+name binding a part of type T then gets T, &T or &mut T.</span>
+</Formal>
+
+<Run id="modes" />
+
+<Prompts ids={['mode-amp', 'mode-move', 'mode-ref']} />
+
+## Guards
+
+The first chapter on patterns met the **match guard**,
+`pattern if condition`. Three
+details matter. First, a guard after an
+or-pattern covers *every* alternative: `4 | 5 | 6 if ok` means
+`(4 | 5 | 6) if ok`<Cite id="rust-book-patterns" />. Second, the guard
+sees the names by shared reference and the value is moved into them
+only once the guard has said yes, so a guard can never mutate and a
+failed guard moves nothing<Cite id="rustref-match" />. Third, the
+compiler does not try to prove anything about your conditions:
+
+```rust
+match n {
+    Some(x) if x > 0 => "pos",
+    Some(x) if x <= 0 => "not pos",
+    None => "none",
+}
+```
+
+Every integer is either above zero or not, yet:
+
+```text
+error[E0004]: non-exhaustive patterns:
+  `Some(_)` not covered
+  = note: match arms with guards don't
+    count towards exhaustivity
+```
+
+Make the last case unguarded (`Some(_) => "not pos"`) and it compiles.
+
+<Analogy title="a ticket and an age check">
+At the cinema the usher first looks at your ticket (is it for this
+screen?), and only then, for some films, checks your age. The ticket is
+the pattern; the age check is the guard, a question about the person
+holding a perfectly good ticket.
+<span slot="breaks">An usher who turns you away from screen 1 does not
+send you on to try screen 2; a failed guard does exactly that, falling
+through to the next arm.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **match guard** is an `if` condition after an arm's pattern. The arm
+is chosen only when the pattern fits and the guard is true; otherwise
+matching continues with the next pattern, including the other
+alternatives of the same arm<Cite id="rustref-match" />. Guarded arms are
+ignored when rustc checks that a match is exhaustive.
+</Callout>
+
+<Examples of="match-guard">
+
+```rust
+match n {
+    Some(x) if x % 2 == 0 => "even",
+    Some(_) => "odd",
+    None => "none",
+}
+```
+
+```rust
+// companion/rust/src/scanner.rs
+b'&' if self.peek() == b'&' => {
+    self.current += 1;
+    self.make(T::AndAnd)
+}
+```
+
+```rust
+// engine/rust/crates/cli/src/main.rs
+Err(e) if !several => {
+    return Err(CliError::Other(e))
+}
+```
+
+</Examples>
+
+The first sends even payloads to one arm and other `Some`s to the next.
+The second is Drip's scanner: a `&` byte becomes the `&&` token only
+when the *next* byte is also `&`, which the pattern cannot see. In the
+third, Viscosity's command line tool stops at a compile error when there
+is one input file; with several, a later arm prints it and goes on.
+
+<Prompts ids={['guard-or', 'guard-exhaust']} />
+
+## Ranges, @, nesting and slices
+
+The rest of the pattern language fits in four examples.
+
+<Examples of="pattern-syntax">
+
+```rust
+match age {
+    0..=12 => "child",
+    13.. => "older",
+}
+```
+
+```rust
+match tok {
+    Some(Tok::Num(n @ 0..=9)) => n,
+    Some(Tok::Num(_)) => 10,
+    _ => 0,
+}
+```
+
+```rust
+match args {
+    [] => usage(),
+    [f] => build(f, None),
+    [f, "-o", out] => build(f, Some(out)),
+    [_, rest @ ..] => bad(rest),
+}
+```
+
+</Examples>
+
+The first uses **range patterns**: `0..=12` includes both ends and
+`13..` has no top, so together they cover every `u32`. The second
+**nests** patterns three deep and uses an **@ binding**: `n @ 0..=9`
+tests the range *and* keeps the number in `n`<Cite id="rust-book-patterns" />.
+The third reads command line arguments, a slice of `&str`s: a **slice
+pattern** `[a, b, c]` fits slices of exactly that length, element by
+element, and the **rest pattern** `..` stands for any number of
+elements, here bound as `rest` so it can be passed on. A slice's length
+is unknown until the program runs, so a slice match needs an arm for
+every length, and rustc names the one you forgot: ``pattern `&[]` not
+covered``.
+
+<Callout kind="definition">
+**Pattern syntax**, beyond the basics: ranges `a..=b`, `a..` and `..=b`
+for integers and `char`s; `name @ p`, which matches `p` and binds the
+whole matched part to `name`; patterns nested inside variants, tuples
+and structs; and slice patterns `[p₁, …, pₙ]` with at most one rest
+pattern `..`, which matches zero or more elements and may be bound as
+`rest @ ..`<Cite id="rustref-patterns" />.
+</Callout>
+
+rustc runs a slice match as a decision tree (chapter 300, *Compiling
+pattern matching*): it reads the length once, branches on it, and only
+then compares elements. Here is the tree from rustc 1.97's MIR for the
+exercise below:
+
+<SliceTree client:visible />
+
+<OtherLanguages title="First element, and the rest">
+
+```rust
+fn sum(xs: &[i32]) -> i32 {
+    match xs {
+        [] => 0,
+        [x, rest @ ..] => x + sum(rest),
+    }
+}
+```
+
+```ts
+function sum(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  const [x, ...rest] = xs;
+  return x + sum(rest);
+}
+```
+
+</OtherLanguages>
+
+They look alike, with two real differences. TypeScript destructuring
+never fails (`const [x] = []` makes `x` `undefined`), so the length test
+is yours to remember, while Rust refuses a match that misses `[]`. And
+`...rest` *copies* the remaining elements into a new array on every
+call, while `rest @ ..` is a borrowed view, so the Rust `sum` copies
+nothing.
+
+<Prompts ids={['at-binding', 'slice-rest', 'slice-len']} />
+
+## Your turn
+
+<Exercise id="shape" />
+
+## What you learned
+
+- The **binding mode** decides whether a name moves, borrows or
+  mutably borrows; matching through `&` or `&mut` switches it.
+- A **match guard** covers its whole arm and never counts towards
+  exhaustiveness.
+- Ranges, `@`, nesting and **slice patterns** with `rest @ ..`
+  describe shapes; slice matches test the length first.
+
+Next: what a `dyn` call really costs, and why some traits cannot be
+put behind `dyn` at all.
+
+<Quiz />

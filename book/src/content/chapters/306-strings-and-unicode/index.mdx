@@ -1,0 +1,303 @@
+---
+n: 306
+day: 77
+part: X
+title: 'Strings and Unicode'
+tagline: 'Ask four languages how long the string "👍" is and you get four answers, all correct. Each counts something different, and a language designer has to choose what a string is made of and how it sits in memory.'
+objectives:
+  - Say what a Unicode code point is, and find the code point of a character.
+  - Encode a code point in UTF-8 by hand and in code, and explain UTF-16's surrogate pairs.
+  - Tell bytes, code units, code points and grapheme clusters apart, and say which one each language counts.
+  - Explain how a rope makes joining strings cheap, and where V8 uses one.
+introduces: [unicode, utf8-utf16, grapheme-cluster, rope]
+uses: [strings, string-index, char-code, string-methods, string-building, byte, bit, binary, bit-ops, array, object, tree, heap-object, function, while-loop]
+sources: [mdn-string, mdn-charcodeat, mdn-intl-segmenter, rfc3629, pep393, rust-std-string, v8-src-string-h, boehm1995]
+---
+import LevelsFigure from '../../../components/diagrams/ch306/LevelsFigure';
+import Utf8Steps from '../../../components/diagrams/ch306/Utf8Steps';
+import RopeFigure from '../../../components/diagrams/ch306/RopeFigure';
+
+## Four answers to one question
+
+How long is the string `"👍"`?
+
+```text
+JavaScript  '👍'.length          2
+Python      len('👍')            1
+Drip        len("👍")            1
+Rust        "👍".len()           4
+```
+
+None of these is a bug. JavaScript counts 16-bit pieces, Python and
+Drip count characters as Unicode numbers them, and Rust counts bytes.
+In chapter 21 you met strings as rows of character codes; this chapter
+shows what those codes really are, the two common ways to store them,
+what a reader means by "one character", and one clever way to store a
+string that keeps growing.
+
+<Figure takeaway="One visible character can be 1, 3, 5 or 11 long, depending on what you count." caption="The emoji 👩‍💻 counted four ways (figures from Node 22 and Python 3.13).">
+  <LevelsFigure />
+</Figure>
+
+## Unicode: one number per character
+
+<Analogy title="a world-wide catalogue number">
+A library gives every book a catalogue number, so that a book has one
+identity whichever shelf, branch or country it is in. Unicode does the
+same for characters: `A` is number 65 in every program on every
+computer, and so is the same letter in an Arabic or a Japanese text.
+<span slot="breaks">A catalogue number names one book; some things a
+reader sees as one character are made of several Unicode numbers, as
+the section on graphemes shows. And the number says nothing about the
+look: that is the font's job.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Unicode** gives every character in every script a number, its **code
+point**, written `U+` and the number in hexadecimal: `U+0041` is `A`,
+`U+00E9` is `é`, `U+20AC` is `€` and `U+1F44D` is `👍`. Code points run
+from `U+0000` to `U+10FFFF`<Cite id="rfc3629" />.
+</Callout>
+
+<Examples of="unicode">
+
+```js
+'A'.codePointAt(0);          // 65
+```
+
+```js
+'€'.codePointAt(0).toString(16); // '20ac'
+String.fromCodePoint(0x1f44d);   // '👍'
+```
+
+```python
+[hex(ord(c)) for c in 'hé€']
+# ['0x68', '0xe9', '0x20ac']
+```
+
+</Examples>
+
+The first reads the code point of `A`: 65, the same number ASCII used.
+The second goes both ways in JavaScript: `€` is `0x20AC`, and
+`String.fromCodePoint` turns `0x1F44D` back into the thumbs-up. The
+third is Python, where `ord` gives the code point of each character.
+
+<Prompts ids={['uni-what', 'uni-range']} />
+
+## Storing the numbers: UTF-8 and UTF-16
+
+A code point is a number up to 1,114,111, which needs 21 bits; storing
+four bytes for every letter would waste three of them on most text. So
+there are **encodings**, rules for turning code points into bytes.
+**UTF-8** uses one to four bytes: a code point below 128 is a single
+byte (so plain ASCII text is already UTF-8), and bigger ones are cut
+into groups of bits behind marker bits. Step through `👍`:
+
+<Utf8Steps client:visible />
+
+**UTF-16** uses 16-bit **code units**: one unit for code points up to
+`U+FFFF`, and for the rest a **surrogate pair** of two units from the
+reserved range `D800` to `DFFF`<Cite id="mdn-string" />. That is why
+`'👍'.length` is 2: a JavaScript string is a sequence of UTF-16 units,
+and `length` and `str[i]` count units, not
+characters<Cite id="mdn-charcodeat" />.
+
+<Formal title="UTF-8 and UTF-16 on one page">
+
+```text
+code points    UTF-8 bytes
+0000–007F      0xxxxxxx
+0080–07FF      110xxxxx 10xxxxxx
+0800–FFFF      1110xxxx 10xxxxxx ×2
+10000–10FFFF   11110xxx 10xxxxxx ×3
+
+UTF-16, c ≥ 10000:  c' = c − 10000
+  hi = D800 + (c' >> 10)
+  lo = DC00 + (c' & 3FF)
+```
+
+<span slot="read">For UTF-8, find the row whose range holds the code
+point; write the code point's bits, from the left, into the x's of that
+row, and the fixed bits are markers. For UTF-16, a code point from
+10000 up first has 10000 taken away; the top ten bits of what is left
+are added to D800 to make the high unit and the bottom ten bits to DC00
+to make the low unit. All numbers are hexadecimal.</span>
+</Formal>
+
+<Callout kind="definition">
+**UTF-8** stores each code point in one to four bytes and keeps ASCII
+unchanged; **UTF-16** stores each in one or two 16-bit code units, the
+two-unit form being a **surrogate pair**. Both can store every code
+point; they differ in size and in what an index counts.
+</Callout>
+
+<Examples of="utf8-utf16">
+
+```js
+[...Buffer.from('é€')]  // UTF-8 bytes
+// [195, 169, 226, 130, 172]
+```
+
+```js
+const s = '👍';
+s.length;                       // 2
+s.charCodeAt(0).toString(16);   // 'd83d'
+[...s].length;                  // 1
+```
+
+```rust
+let s = String::from("né");
+s.len();            // 3 bytes
+s.chars().count();  // 2 characters
+&s[0..2];
+// panicked: end byte index 2 is not a
+// char boundary; it is inside 'é'
+```
+
+</Examples>
+
+In the first, Node's `Buffer` shows `é` as two UTF-8 bytes and `€` as
+three. In the second, `length` and `charCodeAt` see the two halves of
+the surrogate pair, while spreading with `...` walks code points and
+finds one. The third is Rust, whose `String` is always UTF-8 and whose
+`len` counts bytes<Cite id="rust-std-string" />; slicing in the middle
+of `é` stops the program (rustc 1.97's message, trimmed).
+
+Each language picked its trade-off. Python stores each string with 1, 2
+or 4 bytes per character, chosen by its largest code point, so that
+`len` and indexing count code points and stay fast<Cite id="pep393" />.
+V8 keeps strings whose characters all fit in one byte as "one-byte"
+strings; `%DebugPrint` in Node 22 reports such a string's type as
+`ONE_BYTE`. Drip's `len` counts code points, because its specification
+says so (DRIP.md), even though its interpreter runs on JavaScript.
+
+<Prompts ids={['enc-ascii', 'enc-pair', 'enc-rust']} />
+
+## Graphemes: what a reader calls a character
+
+Even code points are not what people mean by a character. `é` can be one
+code point, `U+00E9`, or two, `e` followed by `U+0301`, a combining
+accent; a flag such as 🇬🇧 is two "regional indicator" code points; and
+👩‍💻 is three, two emoji joined by a zero-width joiner.
+
+<Analogy title="a letter typed with a dead key">
+On some keyboards you type an accent key and then `e`, and one letter,
+`é`, appears: two key presses, one letter on screen.
+<span slot="breaks">The keyboard throws the two presses away and stores
+one letter; Unicode text may really keep both code points, so the two
+spellings of `é` are different strings until they are
+normalised.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **grapheme cluster** is a sequence of one or more code points that a
+reader sees as one character<Cite id="mdn-string" />. Unicode defines
+where the boundaries fall; in JavaScript, `Intl.Segmenter` splits a
+string into them<Cite id="mdn-intl-segmenter" />.
+</Callout>
+
+<Examples of="grapheme-cluster">
+
+```js
+const g = new Intl.Segmenter();
+[...g.segment('🇬🇧')].length; // 1
+```
+
+```js
+const e = 'é';      // e + accent
+e.length;                // 2
+e === 'é';          // false
+e.normalize() === 'é'; // true
+```
+
+```js
+// reversing breaks clusters:
+[...e].reverse().join(''); // '́e'
+```
+
+</Examples>
+
+The first counts the flag as one grapheme, though it is two code points
+and four UTF-16 units. The second is a spot the difference: the two
+spellings of `é` look the same but are not equal, until `normalize()`
+turns both into the one-code-point form. The third shows a real bug:
+reversing by code points moves the accent in front of the `e`, where it
+has nothing to sit on.
+
+<Prompts ids={['gr-what']} />
+
+## Ropes: strings as trees
+
+A string that is built up piece by piece, `s += part` in a loop, may be
+copied in full at every step if strings are flat arrays, so building a
+long one costs time proportional to the square of its length. A
+**rope** avoids the copying: joining two strings makes a small node
+that points at both and records the total length.
+
+<Figure takeaway="Concatenation builds a node; reading walks down by lengths." caption='A rope for "hello, world!", made by two joins.'>
+  <RopeFigure />
+</Figure>
+
+<Analogy title="a ring binder">
+To add a chapter to a report in a ring binder you clip it in; you do
+not retype the whole report. To find page 40 you skip whole sections by
+their page counts.
+<span slot="breaks">A binder is easy to read from start to end; a deep
+rope makes every character lookup walk down the tree, which is why
+engines can flatten a rope back into one array (V8 has a
+`String::Flatten` for this).</span>
+</Analogy>
+
+<Callout kind="definition">
+A **rope** is a string stored as a binary tree whose leaves are flat
+strings and whose inner nodes mean "left, then right", each recording
+its length. Joining is one new node; reading character `i` walks down,
+going left if `i` is less than the left length and right (subtracting
+it) otherwise<Cite id="boehm1995" />.
+</Callout>
+
+<Examples of="rope">
+
+```js
+const node = (l, r) =>
+  ({ l, r, n: l.n + r.n });
+```
+
+<Run id="rope" />
+
+```text
+%DebugPrint(a + b)  (Node 22)
+ - type: CONS_ONE_BYTE_STRING_TYPE
+%DebugPrint(c.slice(2, 20))
+ - type: SLICED_ONE_BYTE_STRING_TYPE
+```
+
+</Examples>
+
+The first is the whole idea of joining: a node with two children and
+their total length. The runnable second adds leaves and a lookup that
+walks down by lengths. The third is V8: `a + b` on two longer strings
+made a `ConsString`, which V8's source describes as "a pair where the
+first and second components are pointers to other string values",
+forming "a binary tree of ConsStrings where the leaves are non-ConsString
+string values"<Cite id="v8-src-string-h" />; and `slice` made a
+`SlicedString`, which points into its parent rather than copying it.
+
+<Prompts ids={['rope-what', 'rope-v8']} />
+
+## Your turn
+
+Write the UTF-8 encoder from the formal table.
+
+<Exercise id="utf8" />
+
+## What you learned
+
+- **Unicode** numbers every character; the numbers are **code points**.
+- **UTF-8** (1 to 4 bytes) and **UTF-16** (1 or 2 units, with
+  surrogate pairs) store them; languages count bytes, units or code
+  points.
+- A **grapheme cluster** is what a reader sees as one character.
+- A **rope** stores a string as a tree, so joining copies nothing.
+
+<Quiz />

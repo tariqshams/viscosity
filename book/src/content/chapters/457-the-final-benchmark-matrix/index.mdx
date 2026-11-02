@@ -1,0 +1,256 @@
+---
+n: 457
+day: 115
+part: XIV
+title: 'The final benchmark matrix'
+tagline: 'One script, one evening, one machine: the end-to-end programs on two JavaScript engines, the compiler in two languages, and Drip three ways. Most of it is what you would predict; one row is not, and it says something about every promise a layout optimizer can make.'
+objectives:
+  - Read the matrix’s three sections and say what each one compares, and how each cell was measured.
+  - Compute a speed-up and a geometric mean from the results file, skipping cells that are missing or meaningless.
+  - Explain why Viscosity gains about 4× on heat under V8 and nothing under JavaScriptCore, and say which part of that explanation is still a hypothesis.
+  - Tell the two compile-speed numbers apart, and say which parts of the matrix are older than the code they describe.
+introduces: [benchmark-matrix]
+uses: [end-to-end-benchmark, benchmark-isolation, median-p95, jit-warmup, aos-vs-soa, typed-array, float64, heap-number, field-representation, nan-boxing, shape, cpu-cache, spatial-locality, cost-model, rust-cost-model, compile-time-performance, implementation-comparison, drip-rs, viscosity-rs, webassembly, engine-parity, rust-explain, cli, release-process, option, struct, pattern, rust-iterator]
+sources: [v8-react-cliff, jsc-jsvalue]
+---
+import MatrixSteps from '../../../components/diagrams/ch457/MatrixSteps';
+import MatrixAxes from '../../../components/diagrams/ch457/MatrixAxes';
+import Num from '../../../components/diagrams/ch457/Num';
+
+## Three questions, one run
+
+By the end of Part XIII three comparisons had each been measured on a
+different day, in a different way: Viscosity's compiled programs against
+their originals on Node (*Benchmarking Viscosity end to end*), the
+TypeScript engine against the Rust one (*How fast is the compiler?*), and
+the three Drips (*Benchmarks: three implementations*). Numbers taken on
+different days by different methods cannot honestly sit in one table,
+because you cannot tell whether a difference comes from the code or from
+the day; so the last benchmark of the book runs all of them from one
+script, on one machine, in one sitting.
+
+<Analogy title="a school report card">
+A report card lists every subject in one grid, marked in the same week by
+the same rules. One great mark from last term tells you less than the
+whole grid, because now the rows can be compared with each other.
+<span slot="breaks">A school grades every pupil on the same scale; the
+matrix's machine is a noisy shared computer, so it also has to record how
+much its own marks wobble.</span>
+</Analogy>
+
+<Analogy title="testing tyres on two kinds of road">
+A new tyre that grips far better on a wet road may make no difference on
+a dry one, because the old tyre was already fine there. Test it on only
+one surface and you will overstate, or understate, what it does.
+<span slot="breaks">Road surfaces are easy to see. The difference between
+two JavaScript engines is hidden inside them, and the matrix can show
+that it exists long before anyone can show where it is.</span>
+</Analogy>
+
+The script is `engine/ts/packages/bench/src/matrix.ts`. It writes
+`results/matrix-2026-10-31.json` and generates the `.md` next to it from
+that file, with a header saying not to edit it by hand; every figure on
+this page, in the diagrams and in the text, is read from that JSON (or,
+where the page says so, from another committed results file).
+
+<Figure caption="The matrix's three sections, their axes and how many cells each holds. Each section asks a different question; within a section, every cell was measured the same way." takeaway="A benchmark matrix is every combination of a few axes, measured by one method.">
+  <MatrixAxes />
+</Figure>
+
+<Callout kind="definition">
+A **benchmark matrix** measures every combination along a few axes
+(here: program × JavaScript engine × original or compiled; compiler ×
+corpus program × way of running it; Drip implementation × program) with
+one method, so that any two cells can be compared. It records the
+machine, the versions and the noise alongside the numbers.
+</Callout>
+
+<Formal title="Speed-up and geometric mean">
+
+```text
+speedup(p) = t_original(p) / t_compiled(p)
+geomean    = (s₁ × s₂ × ... × sₙ)^(1/n)
+           = exp((ln s₁ + ... + ln sₙ) / n)
+```
+
+<span slot="read">The speed-up of a program is its original time divided
+by its compiled time, so 4 means four times faster. The geometric mean of
+n speed-ups multiplies them together and takes the n-th root; the second
+line computes the same thing by averaging their logarithms, which never
+overflows. Unlike the ordinary average, a 2× gain and a 2× loss cancel
+out to exactly 1.</span>
+</Formal>
+
+<Prompts ids={['matrix-what', 'matrix-why']} />
+
+## How each cell was measured
+
+The machine is a shared cloud VM with 4 vCPUs. Other tenants use the same
+CPUs, so the file itself warns that timings vary by up to about 2×
+between runs, and that differences under about 10% are noise. Against
+that, the end-to-end section runs each program in <Num k="runs" /> fresh
+processes per version per engine, original and compiled interleaved,
+after one discarded run of each (the rules of *Benchmarking honestly*
+and *Noisy numbers: the median, p95 and a fresh process*). It reports
+the best time, which is the most stable figure because noise only ever
+adds time, with the median beside it. Every compiled program printed the
+same checksum as its original, on both engines, and the Rust CLI's
+compiled code was byte-identical to the TypeScript engine's for all five.
+
+Bun <Num k="bun" /> is the second engine; it runs JavaScriptCore (*JavaScriptCore and
+SpiderMonkey*). One detail shows why the file records its settings: the VM's
+shell set `BUN_OPTIONS=--smol`, a memory-saving mode, and the script
+removed it so that Bun ran with its defaults.
+
+<Examples of="benchmark-matrix">
+
+```js
+// one cell: heat on Node
+const r = m.e2e.rows
+  .find((r) => r.program === 'heat');
+r.node.originalMs.best
+  / r.node.viscosityMs.best;
+```
+
+```js
+// the same row, the other engine
+r.bun.originalMs.best
+  / r.bun.viscosityMs.best;
+```
+
+```js
+// a column: skip what has no ratio
+const xs = m.drip.rows
+  .map((r) => r.rustVsVm)
+  .filter((x) => x != null);
+Math.exp(xs.reduce((a, x) =>
+  a + Math.log(x), 0) / xs.length);
+```
+
+</Examples>
+
+Each example reads the results file, `m`. The first finds heat's row and
+divides its original time on Node, <Num k="heatNodeOrig" />, by its
+compiled time, <Num k="heatNodeComp" />, giving the <Num k="heatNode" />
+in the table. The second reads the same row along the engine axis: on
+Bun the original takes <Num k="heatBunOrig" /> and the compiled program
+<Num k="heatBunComp" />, a speed-up of <Num k="heatBun" />. The third
+works down a column, the Drip section's drip-rs-against-VM ratios;
+`filter` drops the rows that have none (more on those below), and the
+last line is the geometric mean from the formal box, which the file
+rounds to <Num k="rustVsVm" />.
+
+<Prompts ids={['best-of', 'interleave']} />
+
+## The results
+
+<MatrixSteps client:visible />
+
+On Node, Viscosity speeds up every program, with a geometric mean of
+<Num k="nodeGeo" />. On Bun the mean is <Num k="bunGeo" />, and `heat`
+gains nothing; `nbody` comes out at <Num k="nbodyBun" /> on Bun, also
+within the noise. The same compiled code, checked to behave the same,
+pays off on one engine and not on the other.
+
+The third step shows where the difference lies: in the originals. Bun
+runs the unchanged array-of-objects programs <Num k="bunOrig" /> faster
+than Node (as a geometric mean), and the compiled ones only
+<Num k="bunComp" /> faster. JavaScriptCore was already fast on the
+objects; V8 was not, and after Viscosity the two engines are close.
+
+<Prompts ids={['heat-two', 'originals']} />
+
+## A likely cause, not yet confirmed
+
+`FINDINGS.md` in the bench package, section 7, offers an explanation and
+labels it carefully as a likely cause, "not yet confirmed with engine
+traces". The facts it rests on are documented. In V8, a field that holds
+doubles gets the Double representation, and its value sits in a separate
+box on the heap that only that object points to<Cite id="v8-react-cliff" />
+(*Field representations: one TypeScript line, a slower loop*).
+JavaScriptCore stores a double inside the value itself: its `JSValue`
+encodes doubles by adding 2^49 to their bits, so a double needs no
+box<Cite id="jsc-jsvalue" />. A `Float64Array` holds raw doubles on both.
+
+The hypothesis joins them. If every `c[i].h` on V8 is one more pointer
+to follow, then the struct-of-arrays rewrite fixes two things on V8, the
+storage and the locality, and only the locality on JSC; and heat reads
+four neighbours of every cell in every step, so the extra pointer would
+hurt it most. Section 5 of the same file fits: on V8, packing the fields
+into one `Float64Array` recovered much of the gain without changing the
+layout. What would confirm it is a trace of what V8 really does with
+heat's objects (*Watching the engine work*), and nobody has taken one.
+
+The lesson for the cost model holds either way. Its rules about size and
+access patterns predict *whether* a layout helps on these programs, but
+not *how much*, because that depends on an engine the compiler never
+sees; which is why `explain` says why a collection was transformed and
+never promises a speed-up.
+
+<Prompts ids={['hypothesis', 'explain-claim']} />
+
+## Older than the code: two honest footnotes
+
+The compile-speed section has two numbers that are easy to mix up. Run
+as command-line tools, one process per file over the <Num k="programs" />
+corpus programs, the Rust CLI is <Num k="cli" /> faster; but the
+TypeScript CLI's total of <Num k="tsCliTotal" /> is mostly Node starting
+and loading a 1 MB bundle, and inside one warm Node process the
+TypeScript engine compiled all of them in about <Num k="tsInprocTotal" />.
+There, the Rust engine running as WebAssembly in the same Node is
+<Num k="inproc" /> faster. That figure carries a note added afterwards:
+the WebAssembly side's timed region did not copy the output strings out
+of linear memory, which the TypeScript side never has to do. `matrix.ts`
+now does, but the timing has not been re-run, so treat it as an upper
+bound.
+
+The Drip section was copied from Part XII's results of 2026-10-31, not
+re-run: there, the TS VM was <Num k="vmVsTree" /> faster than the
+tree-walker and drip-rs <Num k="rustVsVm" /> faster than the TS VM, as
+geometric means over <Num k="dripPrograms" /> programs. Two rows have no
+ratio: `string_equality` stopped on both VMs with "Too many constants in
+one chunk", and `zoo_batch` runs for a fixed time, so its time is not a
+speed. Both are footnoted rather than silently dropped, which is the
+exercise below. Those rows, however, describe Drip *before* it was
+redesigned into the language this book now teaches. The redesigned
+Drip's own committed run, of 2026-11-02, has <Num k="dripNowPrograms" />
+different programs: there drip-rs is <Num k="rustVsVmNow" /> faster than
+the TS VM, while the TS VM and the tree-walker are about level
+(<Num k="vmVsTreeNow" />); *Benchmarks: three implementations* explains
+why. The matrix has not been re-run since (when it is, `matrix.ts` picks the
+newest results file in each folder, so it will copy the new rows), and
+until then its Drip section is a record of the old language.
+
+<Prompts ids={['old-file', 'startup', 'drip-old']} />
+
+<Callout kind="engine" label="Under the hood">
+The README and *Benchmarking Viscosity end to end* also quote an earlier
+run, `results/e2e-node-2026-10-31.json`: Node only, a median of three
+runs, made before the fuzzer fixes of Part XIII. One of those fixes
+changed heat's compiled code: a field write whose right-hand side may
+throw now stores late, through a small helper (`__vsc_set`), so an error
+comes out in the original's order (the Rust CLI here emits it three
+times in heat). The matrix measured the code as it is now; the two files
+used different methods too, so compare their shapes, never their cells.
+</Callout>
+
+## Your turn
+
+<Exercise id="geomean" />
+
+## What you learned
+
+- A **benchmark matrix** runs every comparison with one method on one
+  machine, and records the versions and the noise with the numbers.
+- Each end-to-end cell is the **best of several fresh processes**,
+  interleaved, with the checksum checked on both engines; a
+  **speed-up** is original over compiled, and a **geometric mean**
+  averages speed-ups so that a gain and an equal loss cancel.
+- Viscosity gains on **V8** across the board and much less on
+  **JavaScriptCore**, where heat gains nothing; the originals explain it.
+- The **heap-number** explanation is a **hypothesis**, built on
+  documented facts about both engines and not yet confirmed.
+- The CLI compile-speed ratio mostly measures **start-up**, and the
+  matrix's **Drip** rows predate the redesigned Drip.
+
+<Quiz />

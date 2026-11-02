@@ -1,4 +1,4 @@
-//! The single-pass compiler (book chapters 48 and 53 to 59): a Pratt
+//! The single-pass compiler (the book's chapters “One pass from source to bytecode” and “Globals by name” to 59): a Pratt
 //! parser that emits bytecode as it parses, with no syntax tree between.
 //!
 //! It is a port of the TypeScript compiler (`../ts/src/vm/compiler.ts`),

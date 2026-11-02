@@ -1,0 +1,279 @@
+---
+n: 428
+day: 107
+part: XIII
+title: 'Access patterns in Rust'
+tagline: 'Before the planner can decide anything, the analysis writes down two facts about each collection: which fields every loop touches, and how many elements there will be. In Rust that is an IndexMap keyed by a tuple, a stable sort, and a size that is honest about being a guess.'
+objectives:
+  - Read the per-loop access table the port builds, and say why its key is a tuple and its sets keep order.
+  - Explain why explain lists fields in visit order, and why both engines agree on it.
+  - Work out a collection’s size estimate, and say when it is “about”, “at most” or unknown.
+  - Implement the size estimate in Rust, with tests.
+introduces: [rust-access-pass]
+uses: [viscosity-rs, ir-arena, rust-ssa, rust-collections-pass, rust-escape-pass, access-pattern, hot-loop, natural-loop, induction-variable, dominator, ssa, basic-block, cfg, optimization-report, cross-implementation-tests, hashmap, vec, option, enum, match, struct, borrow-checker, rust-iterator, rust-closure, typed-index, cargo-test]
+sources: [indexmap-docs, rust-std-slice-sort-by-key]
+---
+import TableSteps from '../../../components/diagrams/ch428/TableSteps';
+import SizeVerdicts from '../../../components/diagrams/ch428/SizeVerdicts';
+
+## What the planner needs to know
+
+By now the Rust engine has found the collections, learned their shapes
+and proved that nothing can see their layout change (*Escape and alias
+analysis in Rust*). One question is left: would a new layout pay off?
+For that the planner needs facts about how the program *uses* each
+collection, which *Access patterns* collected in the TypeScript engine.
+Here is a small program:
+
+```js
+const ps = [];
+for (let i = 0; i < 500; i++)
+  ps.push({ x: i, y: 0, vx: 1, vy: 2 });
+for (let i = 0; i < ps.length; i++) {
+  ps[i].x += ps[i].vx;
+  ps[i].y += ps[i].vy;
+}
+let s = 0;
+for (let i = 1; i < ps.length; i++)
+  s += ps[i - 1].x;
+console.log(s, ps[0].y);
+```
+
+and the middle of what the Rust CLI says about it (I ran
+`viscosity explain` here, on a release build with rustc 1.97; lines
+wrapped to fit):
+
+```
+  · loop at line 4 in <module>() touches 4
+    of 4 fields (vy, y, vx, x)
+  · loop at line 9 in <module>() touches 1
+    of 4 fields (x)
+  · about 500 elements
+```
+
+The first two lines say which fields each loop touches; the third says
+how many elements `ps` will hold. Both come from one function in
+`crates/core/src/analysis.rs`, `bounds_loops_and_sizes`, which also
+proves element reads in bounds (the next chapter, *Proving an index in
+bounds in Rust*, takes that part). This chapter reads the other two, and
+explains why the fields come out as `vy, y, vx, x`.
+
+<Analogy title="a library's room bookings">
+A library keeps a sheet per reading group listing the rooms it used,
+in the order it first booked them, each room written once. The
+librarian files every booking on its group's sheet, starting a sheet
+the first time a group appears, and at the end sorts the sheets by
+meeting time.
+<span slot="breaks">A librarian files bookings in the order they
+arrive; the analysis files accesses in the order an earlier pass
+happened to find them, which is not the order they appear in the
+program.</span>
+</Analogy>
+
+<Analogy title="a caterer's head count">
+A caterer asks how many guests are coming. "Exactly 200" lets them cook
+for 200; "up to 202, if everyone who was invited turns up" lets them
+cook for the worst case; "no idea, it depends who hears about it" means
+they have to plan without a number at all.
+<span slot="breaks">A caterer can phone the host and ask; the analysis
+has only the program text, and never runs it (the chapter *PGO in
+Rust* is where a real run supplies the number).</span>
+</Analogy>
+
+## One table per loop
+
+Each field read or write on an element is filed under the loop it
+happens in, in a plain struct (from `analysis.rs`, with two of its doc
+comments left out):
+
+```rust
+pub struct LoopAccess {
+    pub func: String,
+    pub line: u32,
+    pub depth: u32,
+    /// Fields read, in first-access order.
+    pub reads: IndexSet<String>,
+    pub writes: IndexSet<String>,
+    pub trips: Option<f64>,
+}
+```
+
+`depth` is 1 for an outermost loop (0 outside loops), and `trips` is
+how many times the loop runs, if that is a constant. An **`IndexSet`** is a set that remembers the order
+things were first added, the way a JavaScript `Set` does, where std's
+`HashSet` iterates in an order that depends on hashing<Cite id="indexmap-docs" />.
+That order reaches the explain text, so it has to be the reference's.
+
+The tables are grouped in an `IndexMap` (a map that keeps insertion
+order), and the heart of the filing loop is this (rewrapped, with the
+body of the closure left out):
+
+```rust
+let l = loop_of(loops, ai.block);
+let la = by_loop
+    .entry((f, l.map(|l| l.header)))
+    .or_insert_with(|| { /* new table */ });
+match a.kind {
+    AccessKind::Read => la
+        .reads
+        .insert(a.field.clone()),
+    AccessKind::Write => la
+        .writes
+        .insert(a.field.clone()),
+};
+```
+
+`loop_of` (in `cfg.rs`) returns the innermost natural loop containing
+the access's block, or `None` outside every loop. The key is a tuple,
+`(FuncId, Option<BlockId>)`: the function, and the header block of that
+loop. `entry` looks the key up, and `or_insert_with` runs its closure
+only the first time a key is seen, building a table with the loop's
+line, depth and trip count and two empty sets; either way it hands back
+`&mut LoopAccess`, so the `match` can add the field to the right set.
+Then the tables are sorted by line with `sort_by_key`, which is stable,
+like JavaScript's `Array.prototype.sort`, so two tables on one line keep
+their order<Cite id="rust-std-slice-sort-by-key" />.
+
+The TypeScript reference builds its key as a string,
+`` `${f.id}:${l.header}` `` (or `` `${f.id}:none` ``), because a
+JavaScript `Map` compares object keys by identity; Rust's tuple
+compares by value, and `None` is a real key rather than a spelling.
+
+Step through the filing on the program above:
+
+<TableSteps client:visible />
+
+Now the odd order. "First-access order" means the order the pass
+*visits* accesses, which is the order an earlier step found the element
+reads: it keeps a worklist of the places `ps` is loaded and takes them
+with `work.pop()`, last first. So line 11 comes before line 10, and line
+6 before line 5, and explain lists reads before writes. The reference
+pops its worklist too, so both engines print `(vy, y, vx, x)`. Here is
+the same filing as a program you can change:
+
+<Run id="table-play" />
+
+<Prompts ids={['acc-what', 'acc-key', 'acc-none', 'acc-order']} />
+
+## How many elements?
+
+The second fact is a size. The analysis counts the elements written in
+the array literal, and then, for each `push`, multiplies the trip counts
+of every loop around it; a loop's trip count is known only for the
+shape `for (let i = 0; i < N; i++)` with a constant `N` (or `<=`, which
+gives `N + 1`).
+
+<Formal title="The size estimate">
+
+```text
+size = literals + Σ   Π  trips(l)
+                 p   l ∋ p
+
+known  ⇔ every trips(l) is a constant
+         and every push p is in main
+at most ⇔ known and some p may skip
+```
+
+<span slot="read">The size is the number of literal elements plus, for
+each push p, the product of the trip counts of the loops l that contain
+p. It is known only when every one of those trip counts is a constant
+and every push is in the top-level code. It is only a maximum when it
+is known and some push may not run on every trip.</span>
+</Formal>
+
+The "may skip" test, `push_runs_on_every_path`, uses dominators (a
+block **dominates** another when every path to the second passes
+through the first). For each region, from the function down to the
+innermost loop, the next thing in (an inner loop's header, or the push)
+must dominate every way out: the `return` and `throw` blocks of the
+function, or the **latches** (blocks that jump back to the header) of a
+loop. If one test fails, the push may be skipped. Two lines store the
+result:
+
+```rust
+c.size_estimate = known.then_some(size);
+c.size_is_upper_bound = known && upper;
+```
+
+`bool::then_some` gives `Some(size)` when `known` is true and `None`
+when it isn't, so an unknown size cannot be mistaken for zero; and the
+`known &&` means a size that is unknown is never also called a maximum.
+
+<Figure caption="Three programs from this chapter and the size the Rust analysis records for each." takeaway="A size is about N, at most N, or unknown, and the analysis says which.">
+  <SizeVerdicts />
+</Figure>
+
+<Examples of="rust-access-pass">
+
+```js
+const ps = [];
+for (let i = 0; i < 40; i++)
+  for (let j = 0; j < 5; j++)
+    ps.push({ x: j });
+// explain: about 200 elements
+```
+
+```js
+const ps = [{ x: 1 }, { x: 2 }];
+for (let i = 0; i < 100; i++) {
+  if (i % 2) ps.push({ x: i });
+  else ps.push({ x: 0 });
+}
+// explain: at most 202 elements
+```
+
+```js
+const ps = [];
+function add(v) { ps.push({ x: v }); }
+for (let i = 0; i < 50; i++) add(i);
+// explain: size unknown statically
+```
+
+</Examples>
+
+Each program also has a loop over `ps` (left out), and the comments are
+what the Rust CLI printed. In the first, both loops are constant and
+every trip runs the push, so the size is `0 + 40 × 5`, a plain
+estimate. In the second, the literal holds two elements and each branch
+counts once per trip, `2 + 100 + 100`; neither push dominates the
+latch, so 202 is marked as a maximum (the program holds 102: cautious,
+but never wrong in the dangerous direction). In the third, the push is
+inside `add`, and `if f != m.main { known = false; }` makes the size
+unknown, although the loop around the call is constant.
+
+<Callout kind="definition">
+The **access-pattern pass in Rust** is the part of
+`bounds_loops_and_sizes` in `analysis.rs` that files each field access
+into **one `LoopAccess` per loop**, keyed by `(FuncId,
+Option<BlockId>)` in an `IndexMap`, with fields in **visit order**; and
+that estimates the collection's **size** as an `Option<f64>`, flagged
+when it is only a **maximum**.
+</Callout>
+
+<Prompts ids={['acc-tuple-key', 'acc-product', 'acc-at-most', 'acc-fn-unknown']} />
+
+<Callout kind="engine" label="Under the hood">
+`crates/core/tests/core.rs` mirrors the reference's unit tests: nested
+constant loops of 40 and 5 must give `Some(200.0)` with no flag, and an
+`if`/`else` with a push on each side `Some(200.0)` with the flag set.
+That second test pins a cautious answer on purpose; the port must match
+the reference even where the reference could be cleverer.
+</Callout>
+
+## Your turn
+
+<Exercise id="sizeEstimate" />
+
+## What you learned
+
+- The pass files every field access into **one `LoopAccess` per loop**,
+  keyed by **`(FuncId, Option<BlockId>)`** in an **`IndexMap`**, where
+  the reference uses a string key in a JavaScript `Map`.
+- `entry(...).or_insert_with(...)` builds a table the **first time** a
+  key is seen; **`IndexSet`** keeps each field once, in **visit order**,
+  which both engines share because both pop their worklist.
+- The size is **literals plus, per push, the product of trip counts**;
+  it is **about** N, **at most** N (a push may be skipped) or
+  **unknown** (a non-constant loop, or a push inside a function).
+
+<Quiz />

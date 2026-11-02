@@ -1,4 +1,4 @@
-//! The layout analyses (book chapters 96–101). They run on VIR, so they work
+//! The layout analyses (the book's chapters “Finding collections” to “The cost model”). They run on VIR, so they work
 //! for any language plugin.
 //!
 //! | step | what it finds |
@@ -270,7 +270,7 @@ impl<'m> Analyzer<'m> {
 
         // Known functions: declared functions whose binding is only ever
         // called directly. For those we know every call site, so parameters
-        // can be analyzed interprocedurally (book chapter 99).
+        // can be analyzed interprocedurally (the book's chapter “Proving it safe”).
         for f in &m.functions {
             let Some(declared) = f.declared_as else {
                 continue;
@@ -868,7 +868,7 @@ impl<'m> Analyzer<'m> {
                 }
             }
             // Fields that may hold non-numbers still get a column, just a
-            // plain array instead of a Float64Array (book chapter 108).
+            // plain array instead of a Float64Array (the book's chapter “Hot/cold splitting”).
             let c = &mut self.collections[ci];
             for (k, f) in c.fields.iter().enumerate() {
                 if self.col_numeric[ci][k] {

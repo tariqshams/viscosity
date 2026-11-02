@@ -1,4 +1,4 @@
-//! Lowering JavaScript (oxc's AST) to VIR (book chapter 93).
+//! Lowering JavaScript (oxc's AST) to VIR (the book's chapter “Lowering JavaScript to VIR”).
 //!
 //! Each function becomes a VIR [`Func`](viscosity_vir::Func): a control-flow
 //! graph in SSA form. Local variables that no closure captures become SSA
@@ -912,7 +912,7 @@ impl<'s> Lowerer<'s> {
         Ok(())
     }
 
-    /// `for (const p of arr) body` ==> an index loop over `arr` (chapter 93).
+    /// `for (const p of arr) body` ==> an index loop over `arr` (chapter “Lowering JavaScript to VIR”).
     fn for_of(&mut self, s: &ForOfStatement, label: Option<String>) -> R<()> {
         let arr = self.expr(&s.right)?;
         let idx_key = VarKey::ForOf(s.span.start);

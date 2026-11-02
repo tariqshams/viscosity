@@ -1,4 +1,4 @@
-//! The scanner (book chapter 48, and the Rust port in Part X).
+//! The scanner (the book's chapter “One pass from source to bytecode”, and the Rust port in Part X).
 //!
 //! It works on demand: the compiler asks for one token at a time, and
 //! nothing is stored up front. A token borrows its lexeme straight out of

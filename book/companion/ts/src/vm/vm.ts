@@ -1,4 +1,4 @@
-// The bytecode virtual machine (book chapters 47, 53–60).
+// The bytecode virtual machine (the book's chapters “A machine with a stack” and “Globals by name” to “Measuring and speeding up the VM”).
 import { Op } from './chunk.ts';
 import { compile } from './compiler.ts';
 import { Heap } from './heap.ts';

@@ -1,4 +1,4 @@
-//! The bytecode virtual machine (book chapters 47 and 53 to 60). It runs
+//! The bytecode virtual machine (the book's chapters “A machine with a stack” and “Globals by name” to 60). It runs
 //! the same instructions as the TypeScript VM, with the same results and
 //! the same error messages, to the byte.
 

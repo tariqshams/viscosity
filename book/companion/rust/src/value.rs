@@ -1,4 +1,4 @@
-//! Values (book chapters 49 and 50): what a Drip variable can hold, and
+//! Values (the book's chapters “Tagging values at run time” and “Objects that live on the heap”): what a Drip variable can hold, and
 //! how `print` shows them.
 
 use crate::gc::Heap;

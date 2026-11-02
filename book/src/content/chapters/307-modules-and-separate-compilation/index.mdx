@@ -1,0 +1,276 @@
+---
+n: 307
+day: 77
+part: X
+title: 'Modules and separate compilation'
+tagline: 'Big programs are compiled one file at a time and joined at the end; that only works if every name a file shares can be found again by a linker that knows nothing about types, scopes or overloading, which is why compilers quietly rename everything.'
+objectives:
+  - Explain separate compilation, and say what a file needs to know about the others to be compiled alone.
+  - Read the defined and undefined symbols of an object file with nm.
+  - Decode a C++ mangled name such as _ZN3geo4areaEd, and write a small mangler.
+  - Compare how C, C++, Rust, Go and Java name the same function in compiled code.
+introduces: [separate-compilation, name-mangling]
+uses: [module, import-export, compiler, object-file, linker, relocation, assembler, function, parameter, call, type-checking, type-annotation, abi, calling-convention, generic-specialization, object, array, set]
+sources: [itanium-cxx-abi, elf-gabi, rustc-symbol-mangling, mdn-modules]
+---
+import SeparateSteps from '../../../components/diagrams/ch307/SeparateSteps';
+import ManglingFigure from '../../../components/diagrams/ch307/ManglingFigure';
+
+## A one-line change
+
+Chapter 25 split a program into modules so that each file could keep
+its own secrets<Cite id="mdn-modules" />, and the chapters on assemblers and linkers
+showed how an assembler leaves holes in an object file for a linker to
+fill. Put those together and you have the question this chapter
+answers: when you change one line in one file of a program with ten
+thousand files, what does the compiler have to do again? If the answer
+were "everything", every edit would cost minutes or hours; real
+toolchains get away with compiling the one file you touched, and the
+rest of this chapter is about the two ideas that make that possible.
+
+## Compiling a file on its own
+
+Here is the smallest program that needs two files, in C:
+
+```c
+// sq.c
+int sq(int x) { return x * x; }
+
+// main.c
+int sq(int x);   // a declaration only
+int main(void) {
+  printf("%d\n", sq(7));
+}
+```
+
+`main.c` never sees the body of `sq`; it sees a **declaration**, a
+promise that some file defines a function called `sq` taking an `int`
+and returning an `int`. That is enough to type-check the call and to
+emit the right instructions for it (chapter 233's calling convention
+says where the argument goes), so `main.c` can be compiled while
+`sq.c` is not even written. Step through the build:
+
+<SeparateSteps client:visible />
+
+<Analogy title="an orchestra learning its parts">
+Each musician practises at home from their own sheet, which shows only
+their notes and a few cues ("the violins come in here"). Nobody needs
+the whole score to practise, and the parts only meet at the
+performance.
+<span slot="breaks">Musicians adjust to each other when they finally
+play together; object files never adjust. The linker only fills the
+holes it was told about, so if two parts disagree, nobody notices
+until the result sounds wrong.</span>
+</Analogy>
+
+<Analogy title="a kitchen with a printed menu">
+A restaurant's pastry chef and grill chef work in separate rooms from
+one printed menu; the waiter joins their dishes on one tray. A new
+dessert means only the pastry chef cooks again.
+<span slot="breaks">A waiter can see that the dessert is the wrong
+dish; a C linker matches only names, so a dish with the right name
+and the wrong recipe goes out without a word.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Separate compilation** compiles each source file (each module, or
+*translation unit*) into an object file on its own, using only the
+**declarations** of what it takes from other files, and leaves joining
+them to a later **link** step. A changed file is compiled again; the
+others' object files are reused.
+</Callout>
+
+<Formal title="What separate compilation promises">
+
+```text
+link(c(f₁), c(f₂), …, c(fₙ))
+      ≡ c(f₁ f₂ … fₙ)
+provided every fᵢ was compiled against
+the same declarations
+```
+
+<span slot="read">Compiling each file on its own with c and linking
+the results gives the same program as compiling all the files
+together, as long as every file was compiled against the same
+declarations of the others. If one file's declaration changes, every
+file that uses it has to be compiled again.</span>
+</Formal>
+
+<Examples of="separate-compilation">
+
+```text
+$ clang -c sq.c main.c
+$ nm sq.o
+0000000000000000 T sq
+$ nm main.o
+0000000000000000 T main
+                 U printf
+                 U sq
+```
+
+```text
+$ clang main.o -o prog
+main.c:(.text+0xa): undefined
+  reference to `sq'
+```
+
+```c
+// main.c, with a declaration that lies
+double sq(double x);
+printf("%f\n", sq(7));
+// links fine; prints 7.000000, not 49
+```
+
+</Examples>
+
+The first is real `nm` output (the tool that lists an object file's
+symbols): `sq.o` defines `sq` (`T` means it is in the code section),
+while `main.o` defines `main` and needs two symbols it does not have
+(`U` for undefined), `printf` from the C library and `sq` from the
+other file. The second links `main.o` alone, and the linker (GNU `ld`,
+called by clang; the message is trimmed) stops at the hole it cannot
+fill, the same error the linker chapter met. The third is the spot-the-difference,
+and the reason this chapter has a second half: the declaration
+disagrees with the definition, yet both files compile and the link
+succeeds, because the only thing a C symbol records is the name `sq`.
+The call puts 7.0 in a floating-point register, `sq` reads an integer
+register and returns its answer in another, and `printf` prints
+whatever was left behind: `7.000000` on this machine.
+
+<Prompts ids={['sc-what', 'sc-decl', 'sc-u', 'sc-rebuild', 'sc-lie']} />
+
+## Why the names get mangled
+
+An ELF symbol table, the list `nm` printed, is a flat list of plain
+strings, and a linker joins a use to a definition when the strings are
+equal<Cite id="elf-gabi" />. C fits that well: one function per name,
+in one global space. C++ does not: it allows two functions called
+`add`, one for `int`s and one for `double`s (**overloading**), and
+functions inside namespaces, like `geo::area`. If both `add`s were
+written as `add`, the linker would see a duplicate symbol. So the
+compiler writes each function's full identity, its scopes, its name
+and its parameter types, into the symbol itself:
+
+<Figure takeaway="A mangled name spells out where a function lives and what it takes." caption="The Itanium C++ ABI's encoding, used by clang and GCC on Linux and macOS, for geo::area(double).">
+  <ManglingFigure />
+</Figure>
+
+<Analogy title="a full postal address">
+Two houses can both be "5 High Street", so a letter adds the town and
+the postcode, written in a fixed order, and the sorting office matches
+the whole line.
+<span slot="breaks">People read addresses; mangled names are made for
+a machine to compare, so reading one needs a tool such as
+`c++filt`.</span>
+</Analogy>
+
+<Analogy title="a library shelf mark">
+A shelf mark such as "QA76.73 C15 S7" encodes the subject, the author
+and the edition, so two books both called *C++* still go to different
+places on the shelf.
+<span slot="breaks">A librarian can pick any free number; a mangling
+scheme is a fixed rule, so every compiler following the same ABI must
+produce exactly the same string for the same declaration.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Name mangling** encodes a function's or variable's full identity
+(its enclosing scopes, its name and, for overloadable functions, its
+parameter types) into one symbol string that is unique and safe for
+the object file and the linker. The rules are part of the platform's
+ABI: for C++ on Linux and macOS, the Itanium C++ ABI, which writes
+each name as its length followed by its letters, so `area` becomes
+`4area`, wraps nested names in `N…E` and appends one letter per
+parameter type (`i` for `int`, `d` for `double`, `v` for no
+parameters)<Cite id="itanium-cxx-abi" />.
+</Callout>
+
+<Formal title="The core of the Itanium grammar">
+
+```text
+<mangled-name> ::= _Z <encoding>
+<encoding> ::= <name>
+               <bare-function-type>
+<nested-name> ::= N <prefix>
+                  <unqualified-name> E
+<source-name> ::= <length> <identifier>
+```
+
+<span slot="read">A mangled name is _Z followed by an encoding; an
+encoding is the function's name followed by its parameter types; a
+name inside a namespace is N, the namespaces, the name, then E; and
+each plain name is its length followed by its letters. The four lines
+are quoted from the ABI's grammar, with optional parts left
+out.</span>
+</Formal>
+
+<Examples of="name-mangling">
+
+```text
+$ clang++ -c g.cpp && nm g.o
+T _Z3adddd         add(double, double)
+T _Z3addii         add(int, int)
+T _ZN3geo4areaEd   geo::area(double)
+T sq               extern "C" int sq(int)
+```
+
+```text
+// use.cpp declares long add(long, long)
+undefined reference to `add(long, long)'
+```
+
+```text
+Rust 1.97:  _RNvCs3zHTBHlaAxl_4demo3add
+Go 1.24:    main.add
+Java 21:    Method add:(II)I
+```
+
+</Examples>
+
+The first is real `nm` output (addresses removed) with the demangled
+form printed by `c++filt` beside each symbol: the two `add`s no longer clash, and the
+`extern "C"` function keeps its plain name, which is how C++ code
+offers functions that C can call. The second is the lie from the last
+section, told in C++: the caller's symbol is `_Z3addll`, nobody
+defines it, and the mismatch that C silently allowed becomes a link
+error. The third shows three other languages (real output, trimmed).
+rustc 1.97 uses its own "v0" scheme by default, with `_R`, the crate
+`demo` and a hash that tells versions of a crate apart (the
+`-C symbol-mangling-version` option chooses the scheme)<Cite id="rustc-symbol-mangling" />;
+Go writes a package path and a name, since Go has no overloading; and
+the JVM never mangles at all, because a class file keeps each method's
+name and its **descriptor** (`(II)I` reads "two `int`s, returning an
+`int`") side by side, as `javap` shows.
+
+Mangling also explains a detail of chapter 297: every specialised copy
+of a generic function is a different function, so its type arguments
+go into its symbol too.
+
+<Run id="link-mangled" />
+
+Each object file is reduced to the symbols it defines and needs, and
+`link` checks that every need is defined somewhere. It prints
+`linked 3`, then `undefined: _Z3addll`: the caller that wanted
+`add(long, long)` finds only the `int` and `double` versions.
+
+<Prompts ids={['mg-why', 'mg-read', 'mg-externc', 'mg-catch']} />
+
+## Your turn
+
+<Exercise id="mangle" />
+
+## What you learned
+
+- **Separate compilation** compiles each file alone, against the
+  declarations of the others, and links later, so an edit costs one
+  compile and one link.
+- An object file lists the symbols it defines (`T`) and the ones it
+  needs (`U`); the linker matches them by name and nothing else.
+- **Name mangling** writes scopes and parameter types into each symbol
+  (`_ZN3geo4areaEd`), so overloads and namespaces survive a flat symbol
+  table, and mismatched declarations fail at link time.
+
+Next: a program's modules form a graph, and the order you compile and
+run them in is read off that graph.
+
+<Quiz />

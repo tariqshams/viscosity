@@ -1,0 +1,230 @@
+---
+n: 319
+day: 80
+part: X
+title: 'Reflection, eval and proxies'
+tagline: 'A test runner finds your test methods by name; a JSON library prints objects it has never seen. Both need a program that can look at itself while it runs, and that only works if the compiler leaves a description of the types behind.'
+objectives:
+  - Say what reflection is, and tell introspection from intercession.
+  - Explain what runtime type information a compiler must keep, and read the records clang emits for a C++ class.
+  - Implement a dynamic_cast and a reflective printer over type descriptors.
+  - Compare what C++, Java, Go, Rust and JavaScript keep for run time, from real output.
+introduces: [reflection, runtime-type-info]
+uses: [object, property, class, extends, instanceof, typeof, prototype-chain, type-erasure, type-checking, shape, natives-syntax, vtable, object-layout, dynamic-dispatch, name-mangling, recursion, array, map-filter-reduce, template-literal, function, test]
+sources: [mdn-reflect, itanium-cxx-abi, openjdk-class-reflection, go-reflect, rust-std-any]
+---
+import RttiLayout from '../../../components/diagrams/ch319/RttiLayout';
+import CastSteps from '../../../components/diagrams/ch319/CastSteps';
+
+## A program that looks at itself
+
+Suppose you want one function that prints *any* object, field by field,
+the way `console.log` does; or a test runner that finds every method
+whose name starts with `test` and calls it; or a JSON library that
+turns a `Point` into `{"x":3,"y":4}` without being told what a `Point`
+is. None of these can be written by naming the fields in your code,
+because the code runs on types it has never seen; it has to *ask the
+value* what it is, while the program runs.
+
+## Reflection
+
+<Analogy title="the floor plan by the lifts">
+A large office building keeps its floor plan on the wall by the lifts,
+so that a visitor who has never been there can find any room by reading
+it. A building with no posted plan works just as well for the people
+who already know their way.
+<span slot="breaks">A floor plan is drawn once and goes out of date;
+a program's description of its own types is produced by the compiler,
+so it always matches the program that is running.</span>
+</Analogy>
+
+<Analogy title="a mirror">
+You cannot see your own face directly, but a mirror shows it to you,
+and then you can comb your hair.
+<span slot="breaks">A mirror only shows; it cannot change you. Some
+reflection can also change the program, setting a field chosen by name
+or catching every read of an object, which no mirror can do.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Reflection** is a program inspecting, and possibly changing, its own
+structure while it runs: the type of a value, its fields and methods,
+its class and that class's parents. Reading the structure is called
+**introspection**; changing or intercepting it (setting a field chosen
+by name, catching every property read) is called **intercession**.
+</Callout>
+
+In JavaScript, introspection is everywhere: `typeof v` names a value's
+basic type, `Object.keys(v)` lists its own properties, and
+`Object.getPrototypeOf(v)` finds its class through the prototype chain;
+the `Reflect` object gathers the same operations as plain
+functions<Cite id="mdn-reflect" />.
+
+<Examples of="reflection">
+
+```js
+typeof 3;               // 'number'
+Object.keys({ x: 1 });  // ['x']
+```
+
+```js
+const p = new Point(3, 4);
+p.constructor.name;    // 'Point'
+p instanceof Point;    // true
+```
+
+```java
+for (Field f : Point.class
+       .getDeclaredFields())
+  println(f.getName() + " " + f.get(p));
+// x 3
+// y 4.0
+```
+
+</Examples>
+
+The first two lines ask a number for its type and an object for its
+property names. The second asks an object for its class by name and
+whether it belongs to one. The third is Java (trimmed): the class
+object hands back one `Field` per declared field, including private
+ones, and `f.get(p)` reads the field's value from `p` by
+name<Cite id="openjdk-class-reflection" />; run here with Java 21, it
+printed `x : int = 3` and `y : double = 4.0`. Here is a printer for any
+JavaScript value, written entirely by asking:
+
+<Run id="describe" />
+
+`describe` checks `typeof` first: anything that is not an object (or is
+`null`) prints as its type and value. Arrays are described element by
+element, recursively. For any other object it finds the class name
+through the prototype, lists the own properties with `Object.keys`, and
+describes each value, so it prints `Point { x: number 3, y: number 4 }`
+for a class it was never told about.
+
+<Prompts ids={['rf-what', 'rf-two', 'rf-js']} />
+
+## What the compiler has to keep
+
+A JavaScript engine can answer these questions at no extra cost, because
+every object already points to a description of its properties (V8's
+hidden class, or map, from chapter 168). `%DebugPrint` in Node 22 shows
+it (trimmed):
+
+```text
+DebugPrint: [JS_OBJECT_TYPE]
+ - map: <Map[40](HOLEY_ELEMENTS)>
+ - All own properties: {
+    #x: 3 (const data field 0)
+    #y: 4 (const data field 1)
+```
+
+A compiled, statically typed language is different: its compiler uses
+types to check the program and then, by default, drops them (chapter
+28's erasure), so a machine-code program has no idea that a word in
+memory is a `Point`. To answer questions about types at run time, the
+compiler must write some of what it knew into the program.
+
+<Callout kind="definition">
+**Runtime type information** (RTTI) is data a compiler emits into the
+running program to describe types: their names, their parent types,
+and sometimes their fields and methods. Each object can reach its
+type's record (in C++ through the vtable, in JavaScript through the
+hidden class it points to), so `typeid`, `dynamic_cast`, `instanceof` and
+reflection libraries can read it.
+</Callout>
+
+For C++, clang 18 (`clang++ -O1 -S`, trimmed) turns
+`struct Circle : Shape` into these records, laid out as the Itanium C++
+ABI prescribes<Cite id="itanium-cxx-abi" /> (the long first `.quad`
+shortened in brackets):
+
+```text
+_ZTS6Circle:
+  .asciz "6Circle"
+_ZTI6Circle:
+  .quad  (vtable of __si_class_type_info)
+  .quad  _ZTS6Circle
+  .quad  _ZTI5Shape
+_ZTV6Circle:
+  .quad  0
+  .quad  _ZTI6Circle
+  .quad  _ZN5ShapeD2Ev
+```
+
+`_ZTS6Circle` is the type's name, mangled (chapter 307). `_ZTI6Circle`
+is its **typeinfo**: what kind of record it is (a class with one base),
+a pointer to the name, and a pointer to `Shape`'s typeinfo. And the
+vtable for `Circle` keeps a pointer to that typeinfo in the slot just
+before the methods, which is how an object finds its own type.
+
+<Figure takeaway="From any object, two loads reach its typeinfo; base pointers then lead up the class hierarchy." caption="The records clang emits for Circle and Shape, and how an object reaches them.">
+  <RttiLayout />
+</Figure>
+
+`dynamic_cast<Circle*>(s)` compiles to a call into the C++ runtime with
+both typeinfo addresses; the runtime starts from the object's real type
+and walks the base pointers looking for the target:
+
+<CastSteps client:visible />
+
+None of this is free, and C++ lets you switch it off with `-fno-rtti`,
+after which clang refuses the cast: `error: use of dynamic_cast
+requires -frtti`.
+
+<Examples of="runtime-type-info">
+
+```text
+class Refl$Point {     (javap -p)
+  int x;
+  double y;
+  Refl$Point();
+}
+```
+
+```go
+t := reflect.TypeOf(Point{3, 4})
+f := t.Field(0)
+// f.Name, f.Type, f.Tag.Get("json")
+// X int x
+```
+
+```rust
+type_name::<Vec<i32>>()
+// "alloc::vec::Vec<i32>"
+TypeId::of::<i32>() == TypeId::of::<u32>()
+// false
+```
+
+</Examples>
+
+The first is Java: the class file keeps every field's name and type as
+metadata, which `javap -p` lists and `getDeclaredFields` reads. The
+second is Go 1.24, whose compiler keeps a descriptor for each type,
+including field names and struct tags, and whose `reflect` package
+"extract[s] its dynamic type information" from a value through
+`TypeOf`<Cite id="go-reflect" />; that is how `encoding/json` finds the
+`json:"x"` tag. The third is Rust 1.97, which keeps very little: a
+`TypeId` per type, a name for debugging, and `Any::downcast_ref`, which
+can test whether a value is one exact type but cannot list fields, nor
+test "implements this trait"<Cite id="rust-std-any" />.
+
+<Prompts ids={['rtti-what', 'rtti-erasure', 'rtti-cpp', 'rtti-norrti', 'rtti-java', 'rtti-rust', 'rtti-v8']} />
+
+So far reflection has only *looked*. The next chapter covers the
+two features that let a program change how its own code behaves while
+it runs, `eval` and proxies, and what they cost an optimiser.
+
+## Your turn
+
+<Exercise id="rtti" />
+
+## What you learned
+
+- **Reflection** lets a program inspect (**introspection**) or change
+  (**intercession**) its own structure at run time.
+- It needs **runtime type information**: dynamic languages have it in
+  every object; compiled languages emit records such as C++'s typeinfo.
+- Languages keep very different amounts: field lists and tags in Java
+  and Go, a base chain in C++, almost nothing in Rust.
+
+<Quiz />

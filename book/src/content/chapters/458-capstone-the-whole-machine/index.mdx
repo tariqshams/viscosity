@@ -1,0 +1,280 @@
+---
+n: 458
+day: 115
+part: XIV
+title: 'Capstone: the whole machine'
+tagline: 'You started with a function that doubles a number, and you finish with an optimizing compiler built twice, in two languages, checked byte for byte and published. Here is the whole book in one picture, one program through every stage of the machine, what is still open, and where you might take it next.'
+objectives:
+  - Say what each part of the book built or taught, and how the two tracks fit together.
+  - Trace one program through the Rust engine, naming the stage and the chapter behind each step of its output.
+  - Say how each implementation in the book is checked against another, and tell an open chore from an open research question.
+  - Rebuild a piece of the machine, the planner’s decision, from memory, and know how you would check it.
+introduces: [mastery]
+uses: [capstone, rust, cargo, crate, workspace, ownership, borrow-checker, enum, match, trait, arena, typed-index, rust-soa, drip-rs, arena-gc, shared-corpus, implementation-comparison, rust-tradeoffs, tree-walking-interpreter, virtual-machine, bytecode, viscosity-pipeline, vir, ssa, language-plugin, aos-vs-soa, cost-model, open-problems, differential-testing, webassembly, viscosity-rs, ir-arena, plugin-trait, oxc, rust-ssa, generic-dataflow, rust-collections-pass, rust-shape-pass, rust-escape-pass, rust-access-pass, rust-cost-model, rust-soa-codegen, rust-aosoa, rust-explain, rust-pgo, rust-python-plugin, engine-parity, wasm-pack, native-vs-wasm, playground, compile-time-performance, coverage-guided-fuzzing, diagnostic, data-parallelism, continuous-integration, cli, argument-parsing, release-process, benchmark-matrix, struct, vec, string-vs-str]
+sources: [v8-react-cliff]
+---
+import BookSteps from '../../../components/diagrams/ch458/BookSteps';
+import WholeMachineSteps from '../../../components/diagrams/ch458/WholeMachineSteps';
+import Outline from '../../../components/diagrams/ch458/Outline';
+import Num from '../../../components/diagrams/ch457/Num';
+import Playground from '../../../components/playground/Playground';
+
+## Where you started, and where you are
+
+The first chapter of this book asked you to write `double(n)`, a function
+that hands back twice what you give it. Since then you have worked
+through <Outline k="total" /> chapters in <Outline k="parts" /> parts, and
+they have all been heading towards one question I could not
+shake: can a compiler quietly rearrange an array of objects into columns,
+prove that nothing changes, and make the loop faster? This last chapter
+looks back at the whole road, follows one program through the finished
+machine, and then hands the machine to you.
+
+<Analogy title="an apprentice's second chair">
+An apprentice builds a chair with the master watching, then builds the
+same chair again, alone, in a harder wood. The second chair is no more
+useful than the first; it is the proof that the apprentice knows why
+every joint sits where it does.
+<span slot="breaks">A chair is finished when it stands. Viscosity is
+never quite finished: the second build turned up bugs in the first, and
+both keep changing, with tests holding them together.</span>
+</Analogy>
+
+<Analogy title="driving a road you have never seen">
+You have learned to drive not when you can repeat the route of your test,
+but when you can drive a town you have never visited, because you know
+what the signs mean and what to check at each junction.
+<span slot="breaks">Roads come with signs. A new language or a new
+optimization often does not, and part of the skill is writing the tests
+that will act as the signs.</span>
+</Analogy>
+
+## The whole book, in one picture
+
+<BookSteps client:visible />
+
+**Track A** (<Outline k="track:A" />) built everything in TypeScript.
+Part I (<Outline k="part:I" />) taught JavaScript and TypeScript in
+depth, from a first function to modules, types and tests. Part II
+(<Outline k="part:II" />) went underneath, to memory, caches and the way
+engines store numbers and objects, and measured AoS against SoA honestly.
+Part III (<Outline k="part:III" />, the longest part, with
+<Outline k="n:III" /> chapters) built Drip's front end and taught the
+full theory of parsing, meaning and types along the way. Part IV
+(<Outline k="part:IV" />) compiled Drip to bytecode and ran it on a VM
+of our own, collector and all. Part V (<Outline k="part:V" />) opened up
+real JavaScript engines; Part VI (<Outline k="part:VI" />) taught the
+middle end, from SSA and dataflow to alias and escape analysis; and Part
+VII (<Outline k="part:VII" />) went all the way down to a native RISC-V
+back end. Part VIII (<Outline k="part:VIII" />) built Viscosity itself,
+Part IX (<Outline k="part:IX" />) took it beyond JavaScript, and Part X
+(<Outline k="part:X" />) showed how real languages implement their
+features, from objects and generics to async and garbage collectors.
+
+**Track B** (<Outline k="track:B" />) learned Rust and built it all
+again. Part XI (<Outline k="part:XI" />) taught Rust in depth, Part XII
+(<Outline k="part:XII" />) rebuilt the Drip VM as drip-rs, Part XIII
+(<Outline k="part:XIII" />) ported Viscosity to Rust, and Part XIV
+(<Outline k="part:XIV" />), which ends here, shipped it.
+
+Every one of these is checked against another. drip-rs runs the corpus
+the TypeScript VM runs; the Rust engine reproduces every stored output of
+the TypeScript engine byte for byte, and the fuzzer keeps generating
+programs to compare them on; and every compiled program is run against
+its original. That chain of checks is what makes "the same machine, in
+Rust" a claim you can test rather than a hope.
+
+<Formal title="The two promises every check tests">
+
+```text
+∀ p ∈ Programs:  out(p) = out(compile(p))
+∀ p ∈ Corpus, b ∈ {check, assume}:
+    TS(p, b) = Rust(p, b)
+```
+
+<span slot="read">For every program p, running the compiled program
+prints exactly what running the original prints (the upside-down A reads
+"for every"). And for every corpus program and both bounds modes, the
+TypeScript engine and the Rust engine produce the same code and the same
+explain text.</span>
+</Formal>
+
+<Prompts ids={['m-three-drips', 'm-checks']} />
+
+## One program, all the way through
+
+Here is a small program with two collections, one worth transforming and
+one that cannot be. The step-through follows it through the Rust engine.
+The VIR comes from a small program of mine (not in the repository) that
+calls the crates directly; the code and the report come from the
+`viscosity` CLI; I re-ran all of it here against the current crates, and
+it is trimmed only to fit:
+
+<WholeMachineSteps client:visible />
+
+Read the stages against the book. oxc parsed the source (*Parsing with
+oxc*), and the plugin lowered it to VIR in SSA form, where line 6's
+`for…of` became a phi, a length check, an `index.get`, two `field.get`s
+and a `field.set` (*Lowering oxc's AST to VIR*). The analyses saw only
+VIR: two collections, three numeric fields each, and an escape for `qs`
+when `qs[0]` was handed to `console.log` (*Escape and alias analysis in
+Rust*). The cost model wrote its reasons as it decided (*The cost model in
+Rust*), the emitter turned `ps` into three `Float64Array` columns (*SoA
+code generation in Rust*), and `explain --frames` put carets under
+`qs[0]` (*explain in Rust*). Both programs print `509500 { x: 0, vx: 1,
+hp: 3 }`, and the TypeScript CLI prints the same report, byte for byte.
+
+Run it yourself, on the Rust engine compiled to WebAssembly (the toggle
+switches to TypeScript, and the decisions do not change):
+
+<Playground client:visible engine="rust" title="The whole machine, in Rust" initial={`const ps = [];
+for (let i = 0; i < 1000; i++) {
+  ps.push({ x: i, vx: 1, hp: 3 });
+}
+for (let t = 0; t < 10; t++) {
+  for (const p of ps) p.x += p.vx;
+}
+const qs = [];
+for (let i = 0; i < 100; i++) {
+  qs.push({ x: i, vx: 1, hp: 3 });
+}
+let s = 0;
+for (const p of ps) s += p.x;
+console.log(s, qs[0]);`} />
+
+<Prompts ids={['m-stages', 'm-qs']} />
+
+## What mastery looks like
+
+Being able to build it again is not the same as remembering every line;
+it is being able to predict what the machine will do, and to say which
+test would prove you right.
+
+<Callout kind="definition">
+**Mastery**, as this book means it, is being able to build the thing
+again yourself: to start from an empty folder and get back to a working
+version, knowing why each piece is there and how you would check it. It
+is not remembering every line; it is knowing which questions to ask, and
+which test would answer each one.
+</Callout>
+
+<Examples of="mastery">
+
+```
+for (let i = 0; i < 10; i++) ps.push(...)
+→ about 10 elements: below the
+  64-element threshold, where the
+  benefit is too small
+```
+
+```
+console.log(s, qs[0].hp);
+→ qs: no loop reads or writes its
+  fields, so a new layout cannot pay off
+```
+
+```
+$ cd engine/ts && npm test
+$ cd engine/rust && cargo test --workspace
+```
+
+</Examples>
+
+The first is a prediction you can now make before running anything: a
+collection of ten elements falls under the planner's default threshold of
+64, so it is kept, and the explanation says so in those words (I ran the
+Rust CLI on it to check). The second changes one line of the Playground's
+program: `qs[0].hp` reads a number, so no element escapes any more, yet
+`qs` is still kept, for a different reason, because no loop touches its
+fields. The third is the realistic one: before you believe any change to
+the machine, you run both engines' test suites, which hold the corpus, the
+parity fixtures and the differential tests. (When I ran `cargo test
+--workspace` for this chapter, all 77 of its tests passed.)
+
+<Prompts ids={['m-try', 'm-mastery']} />
+
+## What is still open
+
+An honest capstone lists what is not done; some items are chores, and
+some are research.
+
+- **No changelog.** Every package is on its registry at 0.0.1 (*Release
+  engineering*), but the commit history is still the only record of what
+  changed.
+- **The port has gaps.** It refuses TypeScript input, its syntax errors
+  are worded by oxc rather than acorn, and neither engine profiles Python.
+- **The cost model cannot see the engine.** The same compiled heat gained
+  <Num k="heatNode" /> on V8 and <Num k="heatBun" /> (within the noise)
+  on JavaScriptCore. The likely cause, V8 keeping a double field in a
+  separate box on the heap<Cite id="v8-react-cliff" />, is still a
+  hypothesis without an engine trace (*The final benchmark matrix*).
+- **Many ordinary programs are refused**, as *The research frontier*
+  listed: sorting, classes used as records, varying shapes, exported
+  arrays.
+- **Every version emits source code.** WebAssembly runs the compiler,
+  not its output; *WebAssembly as a target* sketched the other way.
+
+<Prompts ids={['m-open', 'm-chore']} />
+
+<Callout kind="engine" label="Under the hood">
+Porting and then fuzzing paid for themselves. `engine/rust/README.md`
+numbers twenty-two bugs: ten in the TypeScript reference found while
+porting, five found by the fuzzer in both engines, and seven found while
+writing this book. Five of them were soundness bugs, where a compiled
+program would have behaved differently from its original; every one is
+fixed in both engines and has a corpus program that keeps it fixed.
+</Callout>
+
+## Your turn
+
+The core exercise rebuilds the heart of the planner from memory: the
+order of its questions and the exact words of its answers.
+
+<Exercise id="plan" />
+
+## Where to go from here
+
+If you want to keep going, each of these starts from code you have read,
+and the repository's `CONTRIBUTING.md` says what a change needs before it
+goes in: differential tests for every transform (the original and the
+transformed program must print the same thing), committed numbers for
+every performance claim, and, for the book, a clean run of the chapter
+checker.
+
+- **Confirm or refute the heat hypothesis**, with a trace of heat's
+  objects on V8 (*Watching the engine work*).
+- **Teach the cost model about engines**: run the matrix on more machines
+  and engines, and see whether a per-engine threshold would have
+  predicted Bun's results.
+- **Add a third language.** The plugin trait (*The plugin trait*) is the
+  whole contract, and the Python plugin shows the minimum.
+- **Grow the subset.** Pick one refusal from *The research frontier*,
+  prove it safe, and let the fuzzer tell you whether you were right.
+- **Build your own.** You now know every layer from the bytes to the
+  release: a language of your own, a VM, a back end, an optimizer.
+
+## What you learned
+
+- The book built **Drip three times** and **Viscosity twice**, in
+  TypeScript (Track A) and then in Rust (Track B), and shipped the
+  compiler as a native CLI, an npm package and the WebAssembly in this
+  book's Playground.
+- Every implementation is **checked against another**: the shared corpus,
+  byte-identical fixtures, the fuzzer and original-against-compiled runs.
+- One program passes through **parse, lower, analyze, plan, emit and
+  explain**, and each line of its output traces back to a chapter.
+- What is **open** is written down, and **mastery** is being able to
+  build it again and to say how you would know it works.
+
+That is the end of the book, and I want to thank you for reading it. It
+began with a question about where an array of objects sits in memory, and
+every chapter since has been one step towards answering it with a tool
+you understand all the way down; the code is in the repository, the
+numbers are in its results files, and the rough edges are listed above.
+I wrote it first so that I would understand every layer of what I was
+building, and if it has done the same for you, then the best thing you
+can do with it is build something: send a change to Viscosity, or start
+the language you have been thinking about since Part III. Fifteen minutes
+at a time, you built the whole machine; now it is yours.
+
+<Quiz />

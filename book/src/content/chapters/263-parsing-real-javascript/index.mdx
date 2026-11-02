@@ -1,0 +1,213 @@
+---
+n: 263
+day: 66
+part: VIII
+title: 'Parsing real JavaScript'
+tagline: 'Drip’s parser read a language you designed. Viscosity has to read the JavaScript people really write, and the first step is agreeing with the rest of the world on what a JavaScript syntax tree looks like.'
+objectives:
+  - Describe ESTree, the shared tree format for JavaScript, and read a small ESTree tree.
+  - Tell apart p.x and p[x] in a tree, and say what each node's start and end offsets cover.
+  - Explain why Viscosity depends on ESTree rather than on any particular parser.
+  - Write a small recursive-descent parser that produces ESTree.
+introduces: [estree]
+uses: [language-plugin, viscosity-pipeline, vir, parser, recursive-descent, ast, ast-node, scanner, token, syntax-error, grammar, discriminated-union, interface, object, recursion, lowering, source-location]
+sources: [estree, estree-readme, acorn, ecma262]
+---
+import OffsetsSteps from '../../../components/diagrams/ch263/OffsetsSteps';
+import MemberTree from '../../../components/diagrams/ch263/MemberTree';
+
+## A bigger language
+
+Drip's grammar fits on a page. JavaScript's specification is hundreds of
+pages long<Cite id="ecma262" />, and it grows every year: classes,
+getters, optional chaining, template literals, regular expressions,
+modules. Writing a complete JavaScript parser is a project in itself,
+and it is not the project Viscosity is about; what Viscosity needs is a
+syntax tree, as in the chapter *Syntax trees*, that its plugin can lower
+to VIR. The real question, then, is not "how do we parse?" but "what
+shape should the tree be?", because if we pick a shape that other
+parsers already produce, we can use theirs.
+
+<Analogy title="a shipping container">
+A shipping container has a standard size. Ships, cranes, trains and
+lorries were all built around it, so any of them can carry any
+container, and none of them needs to know who packed it. ESTree is the
+standard container for JavaScript syntax trees: many parsers fill it, and
+many tools unload it.
+<span slot="breaks">A container's contents are hidden and anything fits
+inside; an ESTree node's contents are the whole point, and each kind of
+node has exactly the fields its type promises.</span>
+</Analogy>
+
+<Analogy title="sheet music">
+A composer in Vienna and a pianist in Lagos have never met, yet she can
+play his piece, because both use the same notation: a note's shape
+says how long it lasts, its place on the staff says how high. ESTree is a
+notation for programs: the parser writes it, the compiler reads it, and
+neither cares who wrote the other.
+<span slot="breaks">A pianist interprets, adding her own timing and
+feeling; a tool reading ESTree takes every field exactly as written,
+with no room for interpretation.</span>
+</Analogy>
+
+## ESTree
+
+ESTree began as the documented output of the parser built into Firefox's
+SpiderMonkey engine, and caught on as the common format for tools that
+work on JavaScript source<Cite id="estree-readme" />. Every node is a
+plain object whose `type` field says which kind of node it is (a tagged
+union, as in the chapter *Tagged unions: the shape of every syntax
+tree*), plus the fields that type promises<Cite id="estree" />. Here is
+the real tree that acorn, a widely used JavaScript parser, builds for
+`p.x += p.vx;`, without its positions:
+
+```
+ExpressionStatement
+  expression: AssignmentExpression
+    operator: "+="
+    left: MemberExpression
+      object: Identifier "p"
+      property: Identifier "x"
+      computed: false
+    right: MemberExpression
+      object: Identifier "p"
+      property: Identifier "vx"
+      computed: false
+```
+
+Read it from the top. The whole line is an *expression statement* (an
+expression used as a statement), whose expression is an assignment with
+the operator `+=`. Its left side, `p.x`, is a `MemberExpression` (a
+property read) whose object is the name `p` and whose property is the
+name `x`; the right side is the same shape for `p.vx`. `computed: false`
+is how ESTree tells `p.x` from `p[x]`: in the first, `x` is a field's
+name, and in the second, `x` is a variable whose *value* picks the
+field.
+
+<Callout kind="definition">
+**ESTree** is the standard format for JavaScript syntax trees, shared by
+parsers such as acorn and by tools that read their output. Each node is
+an object with a string `type` (`Identifier`, `MemberExpression`, …)
+plus fields specific to that type, and usually `start`/`end` source
+offsets and a `loc` with lines and columns.
+</Callout>
+
+<Examples of="estree">
+
+```js
+x
+// Identifier { name: "x" }
+```
+
+```js
+p.x   // MemberExpression,
+      //   computed: false
+p[x]  // MemberExpression,
+      //   computed: true
+```
+
+```js
+ps[i].x
+// MemberExpression (computed: false)
+//   object: MemberExpression
+//           (computed: true)
+//     object: Identifier "ps"
+//     property: Identifier "i"
+//   property: Identifier "x"
+```
+
+</Examples>
+
+The first is the smallest node there is: a name. The second is the one
+flag that matters most to Viscosity, since `p.x` names a field it might
+turn into a column, while `p[x]` could be any field at all. The third is
+the shape of every element access in a particle loop: an outer,
+non-computed `MemberExpression` (`.x`) whose object is an inner,
+computed one (`ps[i]`). Here it is as a picture, with the character
+offsets of each node:
+
+<Figure caption="The ESTree tree of ps[i].x, with each node's start–end offsets." takeaway="An element access is two nested MemberExpressions, told apart by computed.">
+  <MemberTree />
+</Figure>
+
+<Prompts ids={['es-what', 'es-type', 'es-computed', 'es-member']} />
+
+## Every node knows its characters
+
+Each node also has `start` and `end`: offsets into the source text,
+counting characters from the start of the file, with `end` one past the
+last character. Ask acorn for `locations: true`, and each node gets a
+`loc` with line and column numbers too. Those offsets are what VIR's
+source references point at, and what emit replaces, so they matter as
+much to Viscosity as the tree itself. Step through the nodes of
+`p.x += p.vx;`:
+
+<OffsetsSteps client:visible />
+
+<Formal title="Nodes cover ranges, and children nest">
+
+```text
+text(n) = source[n.start .. n.end)
+c a child of n  ⟹
+  n.start ≤ c.start ≤ c.end ≤ n.end
+```
+
+<span slot="read">The text of a node n is the slice of the source from
+n.start up to, but not including, n.end. If c is a child of n, then c's
+range lies inside n's: it starts no earlier and ends no later. (The
+square bracket means "including", the round one "not including".)</span>
+</Formal>
+
+You can check the rule on any node: in `p.x += p.vx;`, the right side
+covers 7 to 11, and `source.slice(7, 11)` is exactly `p.vx`. The
+runnable example walks a hand-made tree and prints each node's text;
+add a node with a wrong range and see the slice come out wrong.
+
+<Run id="slices" />
+
+<Prompts ids={['es-offsets', 'es-loc', 'es-nest']} />
+
+## Why depend on a format
+
+Every file in Viscosity's JavaScript plugin after the parser reads only
+ESTree: `estree.ts` describes "the small slice of ESTree types the
+front-end touches", a `Node` with a `type`, `start`, `end` and an
+optional `loc`, plus three helpers (`children`, `isFunction` and
+`patternNames`). Nothing there mentions acorn. That one decision is what
+makes the parser replaceable, and the next chapter swaps it for a
+hand-written one. It also means the plugin speaks the same language as
+the rest of the JavaScript world, so the shapes you learn here (an
+`ArrowFunctionExpression`, a `ForOfStatement`) are the ones every linter
+and bundler uses too.
+
+<Prompts ids={['es-why']} />
+
+<Callout kind="engine" label="Under the hood">
+acorn is a small, fast parser written in JavaScript that returns ESTree,
+with `start` and `end` offsets on every node<Cite id="acorn" />. It
+follows the specification closely and handles all of modern JavaScript,
+so it is the default for Viscosity's command line and for the Playground
+in this book. (An engine parses for itself, as the chapter *Parsing
+JavaScript for real* showed; Viscosity only needs the tree.)
+</Callout>
+
+## Your turn
+
+Write a tiny recursive-descent parser, as in the chapter *Recursive
+descent parsing*, but have it build ESTree nodes.
+
+<Exercise id="parseLet" />
+
+## What you learned
+
+- **ESTree** is the shared tree format for JavaScript: objects tagged
+  by `type`, with the fields that type promises.
+- `computed` tells `p.x` (a field's name) from `p[x]` (a value that
+  picks the field).
+- Every node has `start`/`end` offsets, and children nest inside their
+  parent's range; VIR's source references and emit's edits use them.
+- Viscosity's plugin depends on ESTree alone, not on any one parser.
+
+Next: the adapter that wraps acorn, and a parser you can read end to end.
+
+<Quiz />

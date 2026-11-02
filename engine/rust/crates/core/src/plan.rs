@@ -1,4 +1,4 @@
-//! The planner and cost model (book chapters 100–101): decide, for every
+//! The planner and cost model (the book's chapters “What Viscosity refuses to touch” to “The cost model”): decide, for every
 //! collection, which layout to use and record *why*, so `viscosity explain`
 //! can tell the programmer.
 
@@ -240,7 +240,7 @@ fn describe(c: &Collection, size: Option<f64>, measured: bool, language: &str) -
     r
 }
 
-/// The text of `viscosity explain` (book chapter 110).
+/// The text of `viscosity explain` (the book's chapter “viscosity explain”).
 pub fn explain(p: &Plan) -> String {
     explain_text(p, None)
 }

@@ -2163,7 +2163,7 @@ export const references = [
     "url": "https://github.com/acornjs/acorn/tree/master/acorn",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/acornjs/acorn/master/acorn/README.md (“A tiny, fast JavaScript parser written in JavaScript”; MIT license; `parse(input, options)` returns “an abstract syntax tree object as specified by the ESTree spec”; options ecmaVersion (“latest”), sourceType, locations, onComment; only stage-4 features are implemented; LICENSE: MIT, “various contributors (see AUTHORS)”)",
-    "shaped": "Chapter 245: the default parser of Viscosity’s JavaScript plugin, wrapped behind the plugin API."
+    "shaped": "Chapter 263: the default parser of Viscosity’s JavaScript plugin, wrapped behind the plugin API."
   },
   {
     "id": "estree-readme",
@@ -2177,7 +2177,7 @@ export const references = [
     "url": "https://github.com/estree/estree",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/estree/estree/master/README.md (began as the documented format of the SpiderMonkey Parser API in Firefox, which “caught on as a lingua franca for tools that manipulate JavaScript source code”; now a community standard with a steering committee from ESLint, Acorn and Babel)",
-    "shaped": "Chapter 245: where ESTree came from, and why parsers and tools share it."
+    "shaped": "Chapter 263: where ESTree came from, and why parsers and tools share it."
   },
   {
     "id": "sucrase",
@@ -2192,7 +2192,7 @@ export const references = [
     "url": "https://github.com/alangpierce/sucrase",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/alangpierce/sucrase/main/README.md (an alternative to Babel focused on compiling non-standard extensions: JSX, TypeScript and Flow; parser forked from Babel’s; options disableESTransforms and keepUnusedImports; package.json author Alan Pierce)",
-    "shaped": "Chapter 245: how Viscosity strips TypeScript types before parsing JavaScript."
+    "shaped": "Chapter 263: how Viscosity strips TypeScript types before parsing JavaScript."
   },
   {
     "id": "recast",
@@ -2207,7 +2207,7 @@ export const references = [
     "url": "https://github.com/benjamn/recast",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://github.com/benjamn/recast (README: tagline “JavaScript syntax tree transformer, nondestructive pretty-printer, and automatic source map generator”; recast.print “reprints only those parts of the syntax tree that you modify”, and printing an unmodified tree gives back the original source; recast.prettyPrint drops the original formatting)",
-    "shaped": "Chapter 247: a tree-based printer that, like Viscosity’s splicing emitter, keeps the original text wherever nothing changed."
+    "shaped": "Chapter 266: a tree-based printer that, like Viscosity’s splicing emitter, keeps the original text wherever nothing changed."
   },
   {
     "id": "node-vm",
@@ -2221,7 +2221,7 @@ export const references = [
     "url": "https://nodejs.org/api/vm.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://nodejs.org/api/vm.html (vm.createContext: inside scripts run in the context, “the global object will be wrapped by the contextObject … also having the built-in objects and functions any standard global object has”; “Outside of scripts run by the vm module, global variables will remain unchanged”; warning: “The node:vm module is not a security mechanism. Do not use it to run untrusted code.”)",
-    "shaped": "Chapter 248: why each run in Viscosity’s differential test gets its own fresh global object, and why that is isolation for testing, not a sandbox."
+    "shaped": "Chapter 267: why each run in Viscosity’s differential test gets its own fresh global object, and why that is isolation for testing, not a sandbox."
   },
   {
     "id": "mdn-typedarray-set",
@@ -2235,7 +2235,7 @@ export const references = [
     "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray/set",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/typedarray/set/index.md (“stores multiple values in the typed array, reading input values from a specified array”; targetOffset defaults to 0; RangeError if the values would be stored beyond the end)",
-    "shaped": "Chapter 258: grow() copies an old column into its bigger replacement with one set() call."
+    "shaped": "Chapter 277: grow() copies an old column into its bigger replacement with one set() call."
   },
   {
     "id": "rust-reference-destructors",
@@ -2249,7 +2249,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/destructors.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/destructors.md on the master branch of github.com/rust-lang/reference, read raw: “When an initialized variable or temporary goes out of scope, its destructor is run or it is dropped. Assignment also runs the destructor of its left-hand operand, if it’s initialized” (destructors.intro); “When control flow leaves a drop scope all variables associated to that scope are dropped in reverse order of declaration” (destructors.scope.intro). The reverse order was also checked by running a program with rustc 1.97.0.",
-    "shaped": "Chapter 301: when values are dropped (end of scope, reverse declaration order, on assignment)."
+    "shaped": "Chapter 335: when values are dropped (end of scope, reverse declaration order, on assignment)."
   },
   {
     "id": "rustref-ub",
@@ -2347,7 +2347,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/option/",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/option.rs on the main branch of github.com/rust-lang/rust, read raw: the “Representation” section (Rust guarantees that Option<T> has the same size, alignment and call ABI as T for Box<U>, &U, &mut U, fn pointers, NonZero integers and NonNull<U>; for these, the all-zero bit pattern is None; “This is called the null pointer optimization or NPO”) and the module docs on using ? with Option for early return of None.",
-    "shaped": "Chapter 306: why Option<&T> costs no extra space."
+    "shaped": "Chapter 345: why Option<&T> costs no extra space."
   },
   {
     "id": "rust-std-vec",
@@ -2361,7 +2361,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/vec/struct.Vec.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/alloc/src/vec/mod.rs on the main branch of github.com/rust-lang/rust, read raw: “Capacity and reallocation” and “Guarantees” (a Vec is a pointer to a heap allocation, a length and a capacity; the allocation is a contiguous block; push reallocates only when len == capacity; Vec does not guarantee any particular growth strategy, but push is amortized O(1); vec![x; n] and Vec::with_capacity(n) request exactly n elements; a Vec never shrinks automatically).",
-    "shaped": "Chapter 307: what a Vec is in memory, and what its growth does and doesn’t promise."
+    "shaped": "Chapter 347: what a Vec is in memory, and what its growth does and doesn’t promise."
   },
   {
     "id": "rust-std-hashmap",
@@ -2375,7 +2375,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/collections/struct.HashMap.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/std/src/collections/hash/map.rs on the main branch of github.com/rust-lang/rust, read raw: the type’s doc comment (“implemented with quadratic probing and SIMD lookup”; a randomly seeded hashing algorithm chosen to resist HashDoS; “currently SipHash 1-3, though this is subject to change”; keys must implement Eq and Hash, with k1 == k2 implying equal hashes; “a Rust port of Google’s SwissTable”), and the iteration methods (“visiting all keys in arbitrary order”).",
-    "shaped": "Chapter 307: how std’s hash map differs from Drip’s table, and why its order is arbitrary."
+    "shaped": "Chapter 347: how std’s hash map differs from Drip’s table, and why its order is arbitrary."
   },
   {
     "id": "rust-reference-trait-object",
@@ -2389,7 +2389,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/types/trait-object.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/types/trait-object.md on the master branch of github.com/rust-lang/reference, read raw: trait objects are dynamically sized and used behind a pointer such as &dyn SomeTrait or Box<dyn SomeTrait>; each such pointer holds a pointer to the value and a pointer to a vtable containing, for each method of the trait and its supertraits, a pointer to the type’s implementation; calling a method loads a function pointer from the vtable and calls it indirectly (“virtual dispatch”).",
-    "shaped": "Chapters 308 and 309: the fat pointer and vtable behind dyn Trait."
+    "shaped": "Chapters 349 and 351: the fat pointer and vtable behind dyn Trait."
   },
   {
     "id": "llvm-readme",
@@ -2403,7 +2403,7 @@ export const references = [
     "url": "https://github.com/llvm/llvm-project",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/llvm/llvm-project/main/README.md (“a toolkit for the construction of highly optimized compilers, optimizers, and run-time environments”; the core, itself called “LLVM”, “contains all of the tools, libraries, and header files needed to process intermediate representations and convert them into object files”; “C-like languages use the Clang frontend. This component compiles C, C++, Objective-C, and Objective-C++ code into LLVM bitcode”)",
-    "shaped": "Chapter 266: a well-known compiler split into per-language front-ends and a shared core working on one IR."
+    "shaped": "Chapter 285: a well-known compiler split into per-language front-ends and a shared core working on one IR."
   },
   {
     "id": "python-lexical",
@@ -2417,7 +2417,7 @@ export const references = [
     "url": "https://docs.python.org/3.13/reference/lexical_analysis.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/reference/lexical_analysis.rst (sections “Implicit line joining”: expressions in parentheses, brackets or braces can span lines, with no NEWLINE token between them; “Blank lines”; “Indentation”: tabs replaced by one to eight spaces up to a multiple of eight; INDENT and DEDENT generated “using a stack”, a single zero pushed first and never popped, a larger level pushed with one INDENT, a smaller one must be on the stack and each popped number gives a DEDENT, remaining levels popped at end of file; only the inconsistent dedent is found by the lexical analyzer, the other indentation errors by the parser)",
-    "shaped": "Chapter 267: the INDENT/DEDENT algorithm Viscosity’s Python tokenizer implements, and implicit line joining inside brackets."
+    "shaped": "Chapter 286: the INDENT/DEDENT algorithm Viscosity’s Python tokenizer implements, and implicit line joining inside brackets."
   },
   {
     "id": "cpython-tokenize",
@@ -2431,7 +2431,7 @@ export const references = [
     "url": "https://docs.python.org/3.13/library/tokenize.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/library/tokenize.rst (“provides a lexical scanner for Python source code, implemented in Python”; generate_tokens(readline) for str input). The token stream for the chapter’s example was produced locally with Python 3.13.18’s tokenize.generate_tokens and compared with Viscosity’s tokenizer.",
-    "shaped": "Chapter 267: comparing Viscosity’s INDENT/DEDENT/NEWLINE tokens with CPython’s own."
+    "shaped": "Chapter 286: comparing Viscosity’s INDENT/DEDENT/NEWLINE tokens with CPython’s own."
   },
   {
     "id": "python-expressions",
@@ -2445,7 +2445,7 @@ export const references = [
     "url": "https://docs.python.org/3.13/reference/expressions.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/reference/expressions.rst (“Comparisons can be chained arbitrarily, e.g., x < y <= z is equivalent to x < y and y <= z”; subscriptions: built-in sequences interpret negative indices by adding the length; “Division of integers yields a float, while floor division of integers results in an integer”)",
-    "shaped": "Chapters 267 and 268: chained comparisons, negative indexing and division, where Python and JavaScript differ."
+    "shaped": "Chapters 286 and 288: chained comparisons, negative indexing and division, where Python and JavaScript differ."
   },
   {
     "id": "python-dataclasses",
@@ -2459,7 +2459,7 @@ export const references = [
     "url": "https://docs.python.org/3.13/library/dataclasses.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/library/dataclasses.rst (“provides a decorator and functions for automatically adding generated special methods such as __init__”; the InventoryItem example’s generated __init__ assigns each annotated field in order, with defaults for fields that have them; the decorator “examines the class to find fields”)",
-    "shaped": "Chapter 268: why a dataclass call is the Python equivalent of a record, and how its arguments map to fields."
+    "shaped": "Chapter 288: why a dataclass call is the Python equivalent of a record, and how its arguments map to fields."
   },
   {
     "id": "python-array",
@@ -2473,7 +2473,7 @@ export const references = [
     "url": "https://docs.python.org/3.13/library/array.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/library/array.rst (“compactly represent an array of basic values”; arrays “behave very much like lists, except that the type of objects stored in them is constrained”, the type being fixed by a type code at creation; type code 'd': C double, Python float, minimum size 8 bytes; the itemsize attribute; ordinary mutable sequence operations: indexing, slicing, concatenation, multiplication). Behaviour shown in the chapter (int stored and read back as 1.0, TypeError for a str, OverflowError for array('q', [2**63])) was run locally with Python 3.13.18.",
-    "shaped": "Chapter 269: the typed columns the Python emitter generates, and why only floats go in them."
+    "shaped": "Chapter 289: the typed columns the Python emitter generates, and why only floats go in them."
   },
   {
     "id": "cpython-arraymodule",
@@ -2487,7 +2487,7 @@ export const references = [
     "url": "https://github.com/python/cpython/blob/3.13/Modules/arraymodule.c",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Modules/arraymodule.c (d_getitem: “return PyFloat_FromDouble(((double *)ap->ob_item)[i]);”, so each read of an array('d') item builds a new float object; d_setitem parses the value as a double)",
-    "shaped": "Chapter 269: why array('d') columns measured slower per element than dataclass objects in CPython."
+    "shaped": "Chapter 289: why array('d') columns measured slower per element than dataclass objects in CPython."
   },
   {
     "id": "python-datamodel",
@@ -2501,7 +2501,7 @@ export const references = [
     "url": "https://docs.python.org/3.13/reference/datamodel.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/reference/datamodel.rst (Integers (int): “These represent numbers in an unlimited range, subject to available (virtual) memory only”; __slots__ “allow us to explicitly declare data members … and deny the creation of __dict__ and __weakref__”, reserving space for the declared variables)",
-    "shaped": "Chapter 269: why the generated container uses __slots__, and why int fields can’t use a fixed-width integer column."
+    "shaped": "Chapter 289: why the generated container uses __slots__, and why int fields can’t use a fixed-width integer column."
   },
   {
     "id": "wasm-spec-core",
@@ -2515,7 +2515,7 @@ export const references = [
     "url": "https://webassembly.github.io/spec/core/",
     "accessed": "2026-10-31",
     "checkedAgainst": "Sources in github.com/WebAssembly/spec, read raw: document/core/intro/introduction.rst and conf.py on main (version 3.0; “safe, portable, low-level code format”); on the wg-2.0 tag: intro/overview.rst (stack machine; linear memory is a contiguous, mutable array of raw bytes; a trap on out-of-bounds access), binary/modules.rst (preamble 00 61 73 6D, version 01 00 00 00; a section is a one-byte id, a u32 size and the contents; ids 1 type, 3 function, 5 memory, 7 export, 10 code; at most one memory per module in that version), binary/types.rst (0x60 function type; 0x7F i32, 0x7C f64; limits 0x00 min), binary/instructions.rst (0x20 local.get, 0x41 i32.const, 0x6A i32.add, 0x6C i32.mul, 0x2B f64.load with a memarg of align and offset, 0x0B end), binary/values.rst (LEB128 integers; IEEE 754 floats in little-endian order), exec/runtime.rst (page size 65536) and exec/numerics.rst (iadd modulo 2^N; little-endian stores).",
-    "shaped": "Chapter 270: the hand-written module, byte by byte; linear memory, pages and traps; how SoA columns would sit in one memory."
+    "shaped": "Chapter 290: the hand-written module, byte by byte; linear memory, pages and traps; how SoA columns would sit in one memory."
   },
   {
     "id": "wasm-spec-jsapi",
@@ -2529,7 +2529,7 @@ export const references = [
     "url": "https://webassembly.github.io/spec/js-api/",
     "accessed": "2026-10-31",
     "checkedAgainst": "document/js-api/index.bs on the wg-2.0 tag of github.com/WebAssembly/spec, read raw: WebAssembly.instantiate(bytes, importObject) asynchronously compiles and instantiates; the exports object is frozen; Memory.prototype.buffer is an ArrayBuffer over the memory; growing a memory detaches a fixed-length buffer and creates a new one (“refresh the Memory buffer”).",
-    "shaped": "Chapter 270: calling a module from JavaScript, and why a Float64Array view of linear memory must be rebuilt after memory.grow."
+    "shaped": "Chapter 290: calling a module from JavaScript, and why a Float64Array view of linear memory must be rebuilt after memory.grow."
   },
   {
     "id": "odin-overview-soa",
@@ -2543,7 +2543,7 @@ export const references = [
     "url": "https://odin-lang.org/docs/overview/#soa-data-types",
     "accessed": "2026-10-31",
     "checkedAgainst": "content/docs/overview.md in github.com/odin-lang/odin-lang.org (master), read raw: section “SOA data types”: `v_soa: #soa[N]Vector3` is used with the same indexing syntax as an ordinary array (`v_soa[0].x = 1`), and `v_soa.x[0]` reaches the column directly; “Same pointer addresses with both syntaxes”.",
-    "shaped": "Chapter 271: a language where the programmer chooses SoA with one keyword, the opposite of Viscosity’s automatic choice."
+    "shaped": "Chapter 291: a language where the programmer chooses SoA with one keyword, the opposite of Viscosity’s automatic choice."
   },
   {
     "id": "semver2",
@@ -2557,7 +2557,7 @@ export const references = [
     "url": "https://semver.org/spec/v2.0.0.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "semver.md in github.com/semver/semver (master), read raw: MAJOR for incompatible API changes, MINOR for backward compatible functionality, PATCH for backward compatible bug fixes; a public API must be declared; a released version’s contents must not be modified; 0.y.z is initial development where anything may change; patch and minor reset to 0; pre-release versions (1.0.0-alpha) have lower precedence; build metadata is ignored for precedence; numbers compare numerically.",
-    "shaped": "Chapter 272: the rules for Viscosity’s version numbers, and what its public API is."
+    "shaped": "Chapter 292: the rules for Viscosity’s version numbers, and what its public API is."
   },
   {
     "id": "node-semver-ranges",
@@ -2571,7 +2571,7 @@ export const references = [
     "url": "https://github.com/npm/node-semver#caret-ranges-123-025-004",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md in github.com/npm/node-semver (main), read raw: ^1.2.3 := >=1.2.3 <2.0.0-0; ^0.2.3 := >=0.2.3 <0.3.0-0; ^0.0.3 := >=0.0.3 <0.0.4-0; caret “allows changes that do not modify the left-most non-zero element”; ~1.2.3 := >=1.2.3 <1.3.0-0.",
-    "shaped": "Chapter 272: what a user’s `^0.1.0` dependency on Viscosity would accept."
+    "shaped": "Chapter 292: what a user’s `^0.1.0` dependency on Viscosity would accept."
   },
   {
     "id": "npm-package-json",
@@ -2585,7 +2585,7 @@ export const references = [
     "url": "https://docs.npmjs.com/cli/configuring-npm/package-json",
     "accessed": "2026-10-31",
     "checkedAgainst": "docs/lib/content/configuring-npm/package-json.md in github.com/npm/cli (latest branch), read raw: name and version are required to publish and together identify the package; version must be parseable by node-semver; “files” defaults to everything, and package.json, README, LICENSE and the bin files are always included; “bin” maps a command to a file, which must start with #!/usr/bin/env node; dependencies map names to version ranges; \"private\": true prevents accidental publication.",
-    "shaped": "Chapter 272: the fields a publishable @viscosity/cli needs."
+    "shaped": "Chapter 292: the fields a publishable @viscosity/cli needs."
   },
   {
     "id": "npm-publish-docs",
@@ -2599,7 +2599,7 @@ export const references = [
     "url": "https://docs.npmjs.com/cli/commands/npm-publish",
     "accessed": "2026-10-31",
     "checkedAgainst": "docs/lib/content/commands/npm-publish.md and docs/lib/content/using-npm/scope.md in github.com/npm/cli (latest branch), read raw: “Once a package is published with a given name and version, that specific name and version combination can never be used again, even if it is removed with npm unpublish”; `npm pack --dry-run` shows what will be included; scoped packages are not public by default and need --access public; publishing to an organization scope needs that organization.",
-    "shaped": "Chapter 272: versions are immutable once published, and what publishing @viscosity/cli would require."
+    "shaped": "Chapter 292: versions are immutable once published, and what publishing @viscosity/cli would require."
   },
   {
     "id": "node-typescript-docs",
@@ -2613,7 +2613,7 @@ export const references = [
     "url": "https://nodejs.org/docs/latest-v22.x/api/typescript.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/api/typescript.md in github.com/nodejs/node (v22.x branch), read raw: type stripping is enabled by default from v22.18.0; inline types are replaced with whitespace, nothing is type-checked, features that need transformation (such as enums) are not run by default, and no source maps are needed; “To discourage package authors from publishing packages written in TypeScript, Node.js refuses to handle TypeScript files inside folders under a node_modules path.” Confirmed by installing the packed @viscosity/cli tarball, which fails with ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING on Node v22.23.4.",
-    "shaped": "Chapter 272: why the CLI must be compiled to JavaScript before it can be published."
+    "shaped": "Chapter 292: why the CLI must be compiled to JavaScript before it can be published."
   },
   {
     "id": "rustref-lifetime-elision",
@@ -2627,7 +2627,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/lifetime-elision.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/lifetime-elision.md on the master branch of github.com/rust-lang/reference, read raw: “Each elided lifetime in the parameters becomes a distinct lifetime parameter” (lifetime-elision.function.implicit-lifetime-parameters); “If there is exactly one lifetime used in the parameters (elided or not), that lifetime is assigned to all elided output lifetimes” (…output-lifetime); in methods, “If the receiver has type &Self or &mut Self, then the lifetime of that reference to Self is assigned to all elided output lifetime parameters” (…receiver-lifetime); “It is an error to elide lifetime parameters that cannot be inferred.”",
-    "shaped": "Chapter 310: the three elision rules, and why rule 3 is the wrong default for a scanner."
+    "shaped": "Chapter 353: the three elision rules, and why rule 3 is the wrong default for a scanner."
   },
   {
     "id": "rustref-closure-types",
@@ -2641,7 +2641,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/types/closure.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/types/closure.md on the master branch of github.com/rust-lang/reference, read raw: “A closure expression produces a closure value with a unique, anonymous type that cannot be written out. A closure type is approximately equivalent to a struct which contains the captured values” (type.closure.intro, with an illustrative struct holding &mut captures and an FnOnce impl); “Closure types all implement FnOnce … A closure which does not move out of any captured variables implements FnMut” (type.closure.call); the note that move closures may still implement Fn or FnMut, because the traits depend on what the closure does with captures, not how it captures them.",
-    "shaped": "Chapter 311: a closure as a struct of its captures, and which Fn traits it gets."
+    "shaped": "Chapter 355: a closure as a struct of its captures, and which Fn traits it gets."
   },
   {
     "id": "rust-std-iter",
@@ -2655,7 +2655,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/iter/",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/iter/mod.rs on the main branch of github.com/rust-lang/rust, read raw: the section “for loops and IntoIterator” (“Rust’s for loop syntax is actually sugar for iterators”, with the de-sugaring into IntoIterator::into_iter and a loop calling next until None); “Iterating by reference” (for x in &values is the same as values.iter(), &mut values as iter_mut()); “Adapters”; and “Laziness” (“Iterators (and iterator adapters) are lazy … Nothing really happens until you call next”, with the warning “iterators are lazy and do nothing unless consumed”).",
-    "shaped": "Chapter 311: how for uses IntoIterator, and why adapter chains are lazy."
+    "shaped": "Chapter 355: how for uses IntoIterator, and why adapter chains are lazy."
   },
   {
     "id": "rustref-visibility",
@@ -2669,7 +2669,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/visibility-and-privacy.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/visibility-and-privacy.md on the master branch of github.com/rust-lang/reference, read raw: the Visibility grammar (pub, pub(crate), pub(self), pub(super), pub(in path)); vis.default: “By default, everything is private, with two exceptions: Associated items in a pub Trait are public by default; Enum variants in a pub enum are also public by default”; vis.access: a public item “can be accessed externally from some module m if you can access all the item’s ancestor modules from m”, and a private item “may be accessed by the current module and its descendants”, with the unit-test idiom of a child mod test reaching its parent’s private items.",
-    "shaped": "Chapter 312: the exact privacy rule, and why a tests module can see private items."
+    "shaped": "Chapter 357: the exact privacy rule, and why a tests module can see private items."
   },
   {
     "id": "rust-std-rc",
@@ -2683,7 +2683,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/rc/index.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/alloc/src/rc.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: the module docs (“Rc<T> provides shared ownership of a value of type T, allocated in the heap”; clone “produces a new pointer to the same allocation”; when the last Rc is destroyed the inner value is dropped; “you cannot generally obtain a mutable reference to something inside an Rc. If you need mutability, put a Cell or RefCell inside the Rc”; “A cycle between Rc pointers will never be deallocated. For this reason, Weak is used to break cycles”, with strong parent-to-child and Weak child-to-parent pointers as the example).",
-    "shaped": "Chapter 314: what Rc::clone copies, when the value is dropped, why Rc gives only shared access, and why cycles leak."
+    "shaped": "Chapter 361: what Rc::clone copies, when the value is dropped, why Rc gives only shared access, and why cycles leak."
   },
   {
     "id": "rust-std-cell",
@@ -2697,7 +2697,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/cell/index.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/cell.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: the module docs (“RefCell<T> uses Rust’s lifetimes to implement dynamic borrowing”; “Borrows for RefCell<T>s are tracked at runtime, unlike Rust’s native reference types which are entirely tracked statically, at compile time”; borrow and borrow_mut first verify that any number of immutable borrows or a single mutable borrow is allowed, “If a borrow is attempted that would violate these rules, the thread will panic”) and the panic messages “RefCell already borrowed” and “RefCell already mutably borrowed”. The second message was also seen by running a program with rustc 1.97.0.",
-    "shaped": "Chapter 314: RefCell’s run-time borrow checking and its double-borrow panic."
+    "shaped": "Chapter 361: RefCell’s run-time borrow checking and its double-borrow panic."
   },
   {
     "id": "rust-std-size-of",
@@ -2711,7 +2711,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/mem/fn.size_of.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/mem/mod.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: the doc comment of size_of (“the offset in bytes between successive elements in an array with that item type including alignment padding”, so [T; n] has size n * size_of::<T>(); “the size of a type is not stable across compilations, but specific types such as primitives are”; the table of primitive sizes; *const T, &T, Box<T>, Option<&T> and Option<Box<T>> all have the same size; the #[repr(C)] struct algorithm: add each field’s size, round up to the next field’s alignment, finally round to the struct’s alignment, “usually the largest alignment of all its fields”). Sizes quoted in the chapter were measured with rustc 1.97.0 on x86-64 Linux.",
-    "shaped": "Chapter 316: what size_of measures, and the repr(C) size rule."
+    "shaped": "Chapter 365: what size_of measures, and the repr(C) size rule."
   },
   {
     "id": "rust-std-black-box",
@@ -2725,7 +2725,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/hint/fn.black_box.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/hint.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: the doc comment of black_box (“only (and can only be) provided on a best-effort basis”; it “can generally be relied upon for benchmarking, and should be used there”; when benchmarking “you usually want to wrap its inputs in black_box so the compiler cannot make optimizations that would be unrealistic”; it treats its argument as unpredictable and its result as used, so a pure call whose result is otherwise unused is not removed).",
-    "shaped": "Chapter 317: why the hand-made benchmark wraps its data in black_box."
+    "shaped": "Chapter 367: why the hand-made benchmark wraps its data in black_box."
   },
   {
     "id": "rustref-unsafety",
@@ -2739,7 +2739,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/unsafety.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/unsafety.md in github.com/rust-lang/reference (master), read raw: unsafe operations are those that can potentially violate memory safety; the list is dereferencing a raw pointer, reading or writing a mutable or unsafe external static, accessing a union field other than to assign to it, calling an unsafe function, calling a target_feature function from one without those features, implementing an unsafe trait, declaring an extern block (unsafe from the 2024 edition), and applying an unsafe attribute.",
-    "shaped": "Chapter 318: the full list of what unsafe unlocks, beyond the Rust book’s five."
+    "shaped": "Chapter 368: the full list of what unsafe unlocks, beyond the Rust book’s five."
   },
   {
     "id": "rustref-raw-pointer",
@@ -2753,7 +2753,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/types/pointer.html#raw-pointers-const-and-mut",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/types/pointer.md in github.com/rust-lang/reference (master), read raw: raw pointers are pointers without safety or liveness guarantees, written *const T or *mut T; copying or dropping one has no effect on the lifecycle of any other value; dereferencing one is an unsafe operation; they are compared by address; they can be created directly with &raw const and &raw mut.",
-    "shaped": "Chapter 318: what a raw pointer is and isn’t, and how to make one."
+    "shaped": "Chapter 368: what a raw pointer is and isn’t, and how to make one."
   },
   {
     "id": "cargo-profiles",
@@ -2767,7 +2767,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/reference/profiles.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/reference/profiles.md in github.com/rust-lang/cargo (master), read raw: opt-level 0 means no optimizations and 3 all optimizations; overflow-checks makes overflow panic; the default dev profile has opt-level = 0, debug-assertions = true, overflow-checks = true, codegen-units = 256; the release profile (used with --release) has opt-level = 3, debug-assertions = false, overflow-checks = false, codegen-units = 16; the bench profile inherits from release; lto = true is “fat” whole-graph LTO; more codegen units may produce slower code.",
-    "shaped": "Chapter 319: what a release build changes, and drip-rs’s lto and codegen-units settings."
+    "shaped": "Chapter 370: what a release build changes, and drip-rs’s lto and codegen-units settings."
   },
   {
     "id": "rustref-int-overflow",
@@ -2781,7 +2781,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/expressions/operator-expr.html#overflow",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/expressions/operator-expr.md in github.com/rust-lang/reference (master), read raw: “Integer operators will panic when they overflow when compiled in debug mode”, controlled by -C debug-assertions and -C overflow-checks. The wrap to 0 in an optimized build was observed by running the chapter’s program with rustc 1.97 -O.",
-    "shaped": "Chapter 319: overflow panics in a debug build and wraps in a release build."
+    "shaped": "Chapter 370: overflow panics in a debug build and wraps in a release build."
   },
   {
     "id": "cargo-bench-docs",
@@ -2795,7 +2795,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/commands/cargo-bench.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/commands/cargo-bench.md and doc/book/src/reference/cargo-targets.md in github.com/rust-lang/cargo (master), read raw: the #[bench] attribute is unstable and only available on nightly; packages on crates.io such as Criterion help with benchmarks on stable; harness = false means the bench target supplies its own main; cargo bench uses the bench profile, which enables optimizations.",
-    "shaped": "Chapter 319: why stable Rust benchmarks use criterion, and how a benches/ target with harness = false runs."
+    "shaped": "Chapter 370: why stable Rust benchmarks use criterion, and how a benches/ target with harness = false runs."
   },
   {
     "id": "criterion-analysis",
@@ -2810,7 +2810,7 @@ export const references = [
     "url": "https://criterion-rs.github.io/book/index.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "book/src/analysis.md in github.com/criterion-rs/criterion.rs (master; identical in bheisler/criterion.rs), read raw: warm-up runs the routine 1, 2, 4… times until the warm-up time has passed; samples have d, 2d, … Nd iterations; Tukey’s fences at 1.5 IQR and extra fences at 3 IQR for severe outliers, which are not dropped; a line is fitted and bootstrap resampling gives a confidence interval for the slope; runs are compared with a bootstrapped T-test; the comparison is very sensitive on small deterministic benchmarks, with a configurable noise threshold. Defaults (3 s warm-up, 5 s measurement, 100 samples, 100,000 resamples, noise threshold 0.01, significance 0.05) read from src/lib.rs of the criterion 0.5.1 crate source that cargo 1.97 downloaded.",
-    "shaped": "Chapter 319: what criterion measures, its output, and why it can report noise as a change."
+    "shaped": "Chapter 370: what criterion measures, its output, and why it can report noise as a change."
   },
   {
     "id": "wasm-bindgen-guide",
@@ -2824,7 +2824,7 @@ export const references = [
     "url": "https://wasm-bindgen.github.io/wasm-bindgen/",
     "accessed": "2026-10-31",
     "checkedAgainst": "guide/src in github.com/wasm-bindgen/wasm-bindgen (main), read raw: introduction.md (a Rust library and CLI tool for high-level interactions between Wasm modules and JavaScript: strings, objects, classes); reference/types/str.md (a &str parameter is copied into Wasm linear memory with TextEncoder; unpaired surrogates in the JS string are replaced with U+FFFD); reference/types/result.md (an exported function’s Err is thrown as a JS exception, and the Err type must implement Into<JsValue>); reference/attributes/on-rust-exports/getter_with_clone.md (getters normally require Copy fields; getter_with_clone requires Clone instead); reference/deployment.md (the bundler, web, no-modules and nodejs targets). The generated glue described in the chapter was produced by running wasm-bindgen-cli 0.2.106 on engine/rust’s viscosity-wasm crate.",
-    "shaped": "Chapter 320: what #[wasm_bindgen] and the CLI generate, how strings and Results cross, and the getter_with_clone attribute the engine uses."
+    "shaped": "Chapter 372: what #[wasm_bindgen] and the CLI generate, how strings and Results cross, and the getter_with_clone attribute the engine uses."
   },
   {
     "id": "rust-std-from",
@@ -2838,7 +2838,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/convert/trait.From.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/convert/mod.rs in github.com/rust-lang/rust (main), read raw: From<U> for T implies Into<T> for U through a blanket implementation, so library authors should implement From rather than Into; From and Into are reflexive; From is “very useful when performing error handling”, letting a function return a single error type that encapsulates several, and “the ? operator automatically converts the underlying error type to our custom error type with From::from”, with a CliError enum wrapping io::Error and ParseIntError as the example.",
-    "shaped": "Chapter 321: From, the free Into, and how ? uses From to convert errors into an error enum."
+    "shaped": "Chapter 373: From, the free Into, and how ? uses From to convert errors into an error enum."
   },
   {
     "id": "thiserror-readme",
@@ -2852,7 +2852,7 @@ export const references = [
     "url": "https://github.com/dtolnay/thiserror",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md of the thiserror 2.0.21 crate source, as downloaded by cargo 1.97 from crates.io (repository field: https://github.com/dtolnay/thiserror): a derive macro for std::error::Error; a Display impl is generated from #[error(\"...\")]; a From impl is generated for each variant containing a #[from] field.",
-    "shaped": "Chapter 321: the crate that writes an error enum’s Display and From impls for you."
+    "shaped": "Chapter 373: the crate that writes an error enum’s Display and From impls for you."
   },
   {
     "id": "rust-std-str",
@@ -2866,7 +2866,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/primitive.str.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/str/mod.rs on the main branch of github.com/rust-lang/rust, read raw: as_bytes (“Converts a string slice to a byte slice”) and is_char_boundary (“Checks that index-th byte is the first byte in a UTF-8 code point sequence or the end of the string”, with the examples that the second byte of ö and the third byte of 老 are not boundaries); and library/core/src/num/mod.rs, u8::is_utf8_char_boundary, whose comment reads “This is bit magic equivalent to: b < 128 || b >= 192”.",
-    "shaped": "Chapter 334: a byte is inside a character exactly when it is a continuation byte (128 to 191, bit pattern 10xxxxxx), which is what drip-rs’s is_continuation tests."
+    "shaped": "Chapter 393: a byte is inside a character exactly when it is a continuation byte (128 to 191, bit pattern 10xxxxxx), which is what drip-rs’s is_continuation tests."
   },
   {
     "id": "rust-std-flt2dec",
@@ -2880,7 +2880,7 @@ export const references = [
     "url": "https://github.com/rust-lang/rust/blob/master/library/core/src/num/imp/flt2dec/mod.rs",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/num/imp/flt2dec/mod.rs and library/core/src/fmt/float.rs (master), read raw. flt2dec’s module doc defines the “shortest” mode: digits that are correctly rounded when parsed back, with no shorter such representation. fmt/float.rs: Display for f64 calls float_to_decimal_common_shortest and LowerExp calls float_to_exponential_common_shortest when no precision is given, both via flt2dec::strategy::grisu::format_shortest.",
-    "shaped": "Chapter 336: why Rust’s `{}` and `{:e}` give the same digits as JavaScript’s String(n), so drip-rs’s format_number only has to change the layout."
+    "shaped": "Chapter 395: why Rust’s `{}` and `{:e}` give the same digits as JavaScript’s String(n), so drip-rs’s format_number only has to change the layout."
   },
   {
     "id": "rustref-fn-pointer",
@@ -2894,7 +2894,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/types/function-pointer.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/types/function-pointer.md (read raw): “A function pointer type, written using the `fn` keyword, refers to a function whose identity is not necessarily known at compile-time”; the `type Binop = fn(i32, i32) -> i32; let bo: Binop = add;` example; function pointers can be created by coercion from function items and non-capturing closures.",
-    "shaped": "Chapter 338: the cells of drip-rs’s parse-rule table are `fn(&mut Compiler, bool)` pointers."
+    "shaped": "Chapter 397: the cells of drip-rs’s parse-rule table are `fn(&mut Compiler, bool)` pointers."
   },
   {
     "id": "rust-std-fn-primitive",
@@ -2908,7 +2908,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/primitive.fn.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/primitive_docs.rs in rust-lang/rust (master), read raw: “Like references, function pointers are, among other things, assumed to not be null, so if you want to pass a function pointer over FFI and be able to accommodate null pointers, make your type Option<fn()>”.",
-    "shaped": "Chapter 338: why Option<fn(..)> is the same size as a bare function pointer."
+    "shaped": "Chapter 397: why Option<fn(..)> is the same size as a bare function pointer."
   },
   {
     "id": "rust-std-ord",
@@ -2922,7 +2922,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/cmp/trait.Ord.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/cmp.rs in rust-lang/rust (master), read raw: “When derived on enums, variants are ordered primarily by their discriminants … By default, the discriminant is smallest for variants at the top, and largest for variants at the bottom.”",
-    "shaped": "Chapter 338: drip-rs’s Precedence enum derives Ord, so precedences compare by declaration order."
+    "shaped": "Chapter 397: drip-rs’s Precedence enum derives Ord, so precedences compare by declaration order."
   },
   {
     "id": "rust-std-ops-index",
@@ -2936,7 +2936,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/ops/trait.Index.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/ops/index.rs on the master branch of github.com/rust-lang/rust, read raw: “`container[index]` is actually syntactic sugar for `*container.index(index)`, but only when used as an immutable value. If a mutable value is requested, [`IndexMut`] is used instead. This allows nice things such as `let value = v[index]` if the type of `value` implements [`Copy`].”",
-    "shaped": "Chapter 340: heap[handle] calls drip-rs’s Index and IndexMut impls for Heap."
+    "shaped": "Chapter 399: heap[handle] calls drip-rs’s Index and IndexMut impls for Heap."
   },
   {
     "id": "rust-std-type-name",
@@ -2950,7 +2950,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/any/fn.type_name.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/any.rs on the master branch of github.com/rust-lang/rust, read raw: “This is intended for diagnostic use. The exact contents and format of the string returned are not specified, other than being a best-effort description of the type.” and “the output may change between versions of the compiler.”",
-    "shaped": "Chapter 340: drip-rs names the freed type in its use-after-free panic; the text is for people, not for code to compare."
+    "shaped": "Chapter 399: drip-rs names the freed type in its use-after-free panic; the text is for people, not for code to compare."
   },
   {
     "id": "rust-std-string",
@@ -2964,7 +2964,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/string/struct.String.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/alloc/src/string.rs on the master branch of github.com/rust-lang/rust, read raw: String::into_boxed_str, “Before doing the conversion, this method discards excess capacity like [`shrink_to_fit`]. Note that this call may reallocate and copy the bytes of the string.” And library/alloc/src/str.rs, join_generic_copy (behind [str]::concat): it computes `reserved_len`, the total length, and allocates `Vec::with_capacity(reserved_len)` before copying the pieces in.",
-    "shaped": "Chapter 342: intern_owned keeps the String the VM built for `+`, because concat reserves exactly the joined length and into_boxed_str only reallocates to drop spare capacity."
+    "shaped": "Chapter 401: intern_owned keeps the String the VM built for `+`, because concat reserves exactly the joined length and into_boxed_str only reallocates to drop spare capacity."
   },
   {
     "id": "rustref-numeric-cast",
@@ -2978,7 +2978,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/expressions/operator-expr.html#numeric-cast",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/expressions/operator-expr.md in github.com/rust-lang/reference (master), read raw, rule expr.as.numeric.int-truncation: “Casting from a larger integer to a smaller integer (e.g. u32 -> u8) will truncate”, with the examples 1234u16 as u8 == 210 and 0xabcdu16 as u8 == 0xcd.",
-    "shaped": "Chapter 344: patch_jump writes `(jump >> 8) as u8` and `jump as u8`, where the TypeScript compiler masks with & 0xff."
+    "shaped": "Chapter 403: patch_jump writes `(jump >> 8) as u8` and `jump as u8`, where the TypeScript compiler masks with & 0xff."
   },
   {
     "id": "rust-std-vec-insert",
@@ -2992,7 +2992,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/vec/struct.Vec.html#method.insert",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/alloc/src/vec/mod.rs on the master branch of github.com/rust-lang/rust, read raw: the doc comment of Vec::insert (“Inserts an element at position `index` within the vector, shifting all elements after it to the right”; “Panics if `index > len`”; “Takes *O*([`Vec::len`]) time. All items after the insertion index must be shifted to the right. In the worst case, all elements are shifted when the insertion index is 0.”).",
-    "shaped": "Chapter 346: what inserting into drip-rs’s sorted open-upvalue list costs."
+    "shaped": "Chapter 405: what inserting into drip-rs’s sorted open-upvalue list costs."
   },
   {
     "id": "rust-std-mem-take",
@@ -3006,7 +3006,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/mem/fn.take.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/mem/mod.rs on the master branch of github.com/rust-lang/rust, read raw: the doc comment of take (“Replaces `dest` with the default value of `T`, returning the previous `dest` value.”; “`take` allows taking ownership of a struct field by replacing it with an \\\"empty\\\" value”, with the Buffer example where `let buf = self.buf;` fails with E0507 and `mem::take(&mut self.buf)` works).",
-    "shaped": "Chapter 347: drip-rs lifts the mark bitmap out of the heap with mem::take for the length of a collection."
+    "shaped": "Chapter 406: drip-rs lifts the mark bitmap out of the heap with mem::take for the length of a collection."
   },
   {
     "id": "rustref-keywords",
@@ -3020,7 +3020,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/keywords.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/keywords.md on the master branch of github.com/rust-lang/reference, read raw: the three categories (strict, reserved, weak); the strict list (_, as, async, await, break, const, continue, crate, dyn, else, enum, extern, false, fn, for, if, impl, in, let, loop, match, mod, move, mut, pub, ref, return, self, Self, static, struct, super, trait, true, type, unsafe, use, where, while), the reserved list (abstract, become, box, do, final, gen, macro, override, priv, try, typeof, unsized, virtual, yield) and the weak list ('static, macro_rules, raw, safe, union). `class` is in none of them.",
-    "shaped": "Chapter 348: drip-rs can name the field `class`, where the TypeScript VM needed `klass`."
+    "shaped": "Chapter 407: drip-rs can name the field `class`, where the TypeScript VM needed `klass`."
   },
   {
     "id": "rust-std-exitcode",
@@ -3034,7 +3034,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/process/struct.ExitCode.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/std/src/process.rs on the master branch of github.com/rust-lang/rust, read raw: “This type represents the status code the current process can return to its parent under normal termination.”, “The standard library provides the canonical `SUCCESS` and `FAILURE` exit codes as well as `From<u8> for ExitCode` for constructing other arbitrary exit codes.”, the example `fn main() -> ExitCode { ... return ExitCode::from(42); ... }`, and `impl From<u8> for ExitCode` (“Constructs an `ExitCode` from an arbitrary u8 value.”).",
-    "shaped": "Chapter 351: drip-rs’s main returns ExitCode::from(outcome.exit_code as u8)."
+    "shaped": "Chapter 410: drip-rs’s main returns ExitCode::from(outcome.exit_code as u8)."
   },
   {
     "id": "cargo-targets",
@@ -3048,7 +3048,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/reference/cargo-targets.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/reference/cargo-targets.md in github.com/rust-lang/cargo (master), read raw: “Files located under the `tests` directory are integration tests. When you run `cargo test`, Cargo will compile each of these files as a separate crate, and execute them.”; “If you want to share code among multiple integration tests, you can place it in a separate module such as `tests/common/mod.rs` and then put `mod common;` in each test to import it.”; the harness field: “If set to `false`, then you are responsible for defining a `main()` function to run tests and benchmarks.”; and “The `CARGO_BIN_EXE_<name>` environment variable is set when the integration test is built and run”.",
-    "shaped": "Chapter 352: drip-rs’s tests/corpus.rs and tests/stress_gc.rs are integration tests with harness = false that share tests/common/mod.rs."
+    "shaped": "Chapter 411: drip-rs’s tests/corpus.rs and tests/stress_gc.rs are integration tests with harness = false that share tests/common/mod.rs."
   },
   {
     "id": "valgrind-callgrind-manual",
@@ -3062,8 +3062,8 @@ export const references = [
     "doi": null,
     "url": "https://valgrind.org/docs/manual/cl-manual.html",
     "accessed": "2026-10-31",
-    "checkedAgainst": "valgrind.org could not be reached from the book’s VM, so the text was read from the same file, callgrind/docs/cl-manual.xml, in a GitHub mirror of the Valgrind tree (raw.githubusercontent.com/LouisBrunner/valgrind-macos/main/callgrind/docs/cl-manual.xml): “By default, the collected data consists of the number of instructions executed, their relationship to source lines, the caller/callee relationship between functions, and the numbers of such calls.”; “This cost attribution mechanism is called self or exclusive attribution.”; inclusive costs, “where the cost of each function includes the costs of all functions it called, directly or indirectly”; “the inclusive cost of main should be almost 100 percent”; “--inclusive=yes: Instead of using exclusive cost of functions as sorting order, use and show inclusive cost.”; and the section on cycles: “inclusive costs for calls inside of a cycle are meaningless”. The commands and output in chapter 353 were run with the local valgrind 3.22.0.",
-    "shaped": "Chapter 353: self versus inclusive cost, and what callgrind counts."
+    "checkedAgainst": "valgrind.org could not be reached from the book’s VM, so the text was read from the same file, callgrind/docs/cl-manual.xml, in a GitHub mirror of the Valgrind tree (raw.githubusercontent.com/LouisBrunner/valgrind-macos/main/callgrind/docs/cl-manual.xml): “By default, the collected data consists of the number of instructions executed, their relationship to source lines, the caller/callee relationship between functions, and the numbers of such calls.”; “This cost attribution mechanism is called self or exclusive attribution.”; inclusive costs, “where the cost of each function includes the costs of all functions it called, directly or indirectly”; “the inclusive cost of main should be almost 100 percent”; “--inclusive=yes: Instead of using exclusive cost of functions as sorting order, use and show inclusive cost.”; and the section on cycles: “inclusive costs for calls inside of a cycle are meaningless”. The commands and output in chapter 412 were run with the local valgrind 3.22.0.",
+    "shaped": "Chapter 412: self versus inclusive cost, and what callgrind counts."
   },
   {
     "id": "gregg-flamegraph",
@@ -3077,7 +3077,7 @@ export const references = [
     "url": "https://github.com/brendangregg/FlameGraph",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md and flamegraph.pl on the master branch, read raw from raw.githubusercontent.com/brendangregg/FlameGraph/master/. The README: flame graphs are made in three steps, “Capture stacks”, “Fold stacks”, “flamegraph.pl”. The header of flamegraph.pl: “The input is stack frames and sample counts formatted as single lines. Each frame in the stack is semicolon separated, with a space and count at the end of the line”; “The ordering on the x-axis has no meaning; since the data is samples, time order of events is not known. The order used sorts function names alphabetically.”; “While intended to process stack samples, this can also process stack traces.”",
-    "shaped": "Chapter 353: folded stacks, box widths, and the meaningless x order."
+    "shaped": "Chapter 412: folded stacks, box widths, and the meaningless x order."
   },
   {
     "id": "rust-std-slice-get-unchecked",
@@ -3091,7 +3091,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/primitive.slice.html#method.get_unchecked",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/slice/mod.rs on the master branch of github.com/rust-lang/rust, read raw: the doc comment of `pub const unsafe fn get_unchecked` (“Returns a reference to an element or subslice, without doing bounds checking.”; “For a safe alternative see [`get`].”; “Calling this method with an out-of-bounds index is *[undefined behavior]* even if the resulting reference is not used.”; “You can think of this like `.get(index).unwrap_unchecked()`.”).",
-    "shaped": "Chapter 354: what an unchecked read in drip-rs would require."
+    "shaped": "Chapter 413: what an unchecked read in drip-rs would require."
   },
   {
     "id": "rust-std-array-tryfrom-slice",
@@ -3105,7 +3105,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/primitive.array.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/array/mod.rs on the master branch of github.com/rust-lang/rust, read raw: “Tries to create an array ref `&[T; N]` from a slice ref `&[T]`. Succeeds if `slice.len() == N`.”, with the example `let bytes_tail: &[u8; 2] = bytes[1..3].try_into().unwrap();`; stable since 1.34.0.",
-    "shaped": "Chapter 354: one length check up front turns a slice into a fixed-size array, so u8 indexes need no checks."
+    "shaped": "Chapter 413: one length check up front turns a slice into a fixed-size array, so u8 indexes need no checks."
   },
   {
     "id": "cargo-workspaces",
@@ -3119,7 +3119,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/reference/workspaces.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/reference/workspaces.md in github.com/rust-lang/cargo (master), read raw: all packages share a common Cargo.lock and output directory (`target` in the workspace root); “The [patch], [replace] and [profile.*] sections in Cargo.toml are only recognized in the root manifest, and ignored in member crates’ manifests”; “The workspace.package table is where you define keys that can be inherited by members of a workspace. These keys can be inherited by defining them in the member package with {key}.workspace = true” (supported keys include edition, license, rust-version and version); the workspace.dependencies table, inherited with `dep.workspace = true`, also from [dev-dependencies].",
-    "shaped": "Chapter 357: how engine/rust’s members inherit versions and dependencies key by key, and why its profiles live in the root manifest."
+    "shaped": "Chapter 416: how engine/rust’s members inherit versions and dependencies key by key, and why its profiles live in the root manifest."
   },
   {
     "id": "cargo-specifying-deps",
@@ -3133,7 +3133,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/reference/specifying-dependencies.md in github.com/rust-lang/cargo (master), read raw: “Default requirements” (“Versions are considered compatible if their left-most non-zero major/minor/patch component is the same”, with the table `0.2 := >=0.2.0, <0.3.0` and `1.2 := >=1.2.0, <2.0.0`) and “Comparison requirements”, including the exact form `= 1.2.3`.",
-    "shaped": "Chapter 357: what `\"0.156\"`, `\"2\"` and `\"=0.2.106\"` accept in engine/rust’s Cargo.toml."
+    "shaped": "Chapter 416: what `\"0.156\"`, `\"2\"` and `\"=0.2.106\"` accept in engine/rust’s Cargo.toml."
   },
   {
     "id": "cargo-config",
@@ -3147,7 +3147,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/reference/config.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/reference/config.md in github.com/rust-lang/cargo (master), read raw: “Hierarchical structure” (“It looks for configuration files in the current directory and all parent directories”, e.g. /projects/foo/bar/baz/.cargo/config.toml up to /.cargo/config.toml and then $CARGO_HOME/config.toml; deeper directories take precedence) and the `[profile]` section (“can be used to globally change profile settings, and override settings specified in Cargo.toml”).",
-    "shaped": "Chapter 357: where cargo finds engine/rust/.cargo/config.toml, and how its [profile.dev] and [profile.test] tables override the manifest."
+    "shaped": "Chapter 416: where cargo finds engine/rust/.cargo/config.toml, and how its [profile.dev] and [profile.test] tables override the manifest."
   },
   {
     "id": "cargo-profiles-debug-lto",
@@ -3161,7 +3161,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/reference/profiles.html#debug",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/reference/profiles.md in github.com/rust-lang/cargo (master), read raw: `debug`: “0, false, or \"none\": no debug info at all, default for release” and “2, true, or \"full\": full debug info, default for dev”; `lto`: “\"thin\": Performs \"thin\" LTO. This is similar to \"fat\", but takes substantially less time to run while still achieving performance gains similar to \"fat\".”",
-    "shaped": "Chapter 357: what `debug = 0` in engine/rust’s config turns off, and what `lto = \"thin\"` in its release profile does."
+    "shaped": "Chapter 416: what `debug = 0` in engine/rust’s config turns off, and what `lto = \"thin\"` in its release profile does."
   },
   {
     "id": "wasm-bindgen-schema",
@@ -3175,7 +3175,7 @@ export const references = [
     "url": "https://crates.io/crates/wasm-bindgen-cli-support/0.2.106",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/wit/mod.rs of the published wasm-bindgen-cli-support 0.2.106 crate (as downloaded by cargo), read in full around the error: “it looks like the Rust project used to create this Wasm file was linked against version of wasm-bindgen that uses a different bindgen format than this binary … Currently the bindgen format is unstable enough that these two schema versions must exactly match.” The installed CLI on the writing machine reported `wasm-bindgen 0.2.106`.",
-    "shaped": "Chapter 357: why engine/rust pins wasm-bindgen with \"=0.2.106\"."
+    "shaped": "Chapter 416: why engine/rust pins wasm-bindgen with \"=0.2.106\"."
   },
   {
     "id": "indexmap-docs",
@@ -3189,7 +3189,7 @@ export const references = [
     "url": "https://docs.rs/indexmap/2/indexmap/",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/lib.rs and src/map.rs of the published indexmap 2.14.2 crate (as downloaded by cargo for engine/rust), read raw: “IndexMap is a hash table where the iteration order of the key-value pairs is independent of the hash values of the keys”; map.rs “Order”: “a consistent order that is determined by the sequence of insertion and removal calls on the map. The order does not depend on the keys or the hash function at all … The insertion order is preserved, with notable exceptions like the .remove() or .swap_remove() methods.”",
-    "shaped": "Chapter 357: why the port keeps the reference’s insertion-ordered Map and Set with IndexMap and IndexSet."
+    "shaped": "Chapter 416: why the port keeps the reference’s insertion-ordered Map and Set with IndexMap and IndexSet."
   },
   {
     "id": "rustc-hash-readme",
@@ -3203,7 +3203,7 @@ export const references = [
     "url": "https://github.com/rust-lang/rustc-hash",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/rust-lang/rustc-hash/master/README.md and the README.md of the published 2.1.3 crate: “The hash map in std uses SipHash by default, which provides resistance against DOS attacks. These attacks aren’t a concern in the compiler so we prefer to use a quicker, non-cryptographic hash algorithm”; “This crate provides FxHashMap and FxHashSet as collections. They are simply type aliases for their std::collection counterparts using the Fx hasher.”",
-    "shaped": "Chapter 357: why the port uses FxHashMap where iteration order is never observed."
+    "shaped": "Chapter 416: why the port uses FxHashMap where iteration order is never observed."
   },
   {
     "id": "rustref-dyn-compatibility",
@@ -3217,7 +3217,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/items/traits.md on the master branch of github.com/rust-lang/reference, read raw, section items.traits.dyn-compatible: “A dyn-compatible trait can be the base trait of a trait object”; the conditions: all supertraits dyn compatible; Sized not a supertrait; “It must not have any associated constants”; “It must not have any associated types with generics”; every associated function dispatchable (no type parameters, a method that does not use Self except in the type of the receiver, a receiver such as &Self, &mut Self, Box<Self>, Rc<Self>, Arc<Self> or Pin<P>, no opaque return type, no where Self: Sized) or explicitly non-dispatchable. Also checked with rustc 1.97: `&dyn LanguagePlugin<Extra = JsExtra>` compiles against engine/rust’s crates.",
-    "shaped": "Chapter 359: LanguagePlugin is dyn compatible; what stops one trait-object type for both plugins is its associated type, not the trait’s methods."
+    "shaped": "Chapter 418: LanguagePlugin is dyn compatible; what stops one trait-object type for both plugins is its associated type, not the trait’s methods."
   },
   {
     "id": "rustc-e0191",
@@ -3231,7 +3231,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/error_codes/E0191.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "compiler/rustc_error_codes/src/error_codes/E0191.md on the main branch of github.com/rust-lang/rust, read raw: “An associated type wasn’t specified for a trait object”, with the example `type Foo = dyn Trait;` (“the value of the associated type `Bar` (from the trait `Trait`) must be specified”), “Trait objects need to have all associated types specified”, and the fix `dyn Trait<Bar=i32>`. The same error, worded “the value of the associated type `Extra` in `LanguagePlugin` must be specified”, was produced with rustc 1.97 against engine/rust.",
-    "shaped": "Chapter 359: why Vec<&dyn LanguagePlugin> doesn’t compile."
+    "shaped": "Chapter 418: why Vec<&dyn LanguagePlugin> doesn’t compile."
   },
   {
     "id": "oxc-project",
@@ -3246,7 +3246,7 @@ export const references = [
     "url": "https://github.com/oxc-project/oxc",
     "accessed": "2026-10-31",
     "checkedAgainst": "https://raw.githubusercontent.com/oxc-project/oxc/main/README.md (“The Oxidation Compiler is a collection of high-performance tools for JavaScript and TypeScript written in Rust”; tools listed: Oxlint, Oxfmt, Parser, Transformer, Minifier, Resolver) and LICENSE (“MIT License. Copyright (c) 2024-present VoidZero Inc. & Contributors. Copyright (c) 2023 Boshen”). oxc.rs itself was not opened.",
-    "shaped": "Chapter 360: what oxc is, and which of its parts the Rust port uses."
+    "shaped": "Chapter 419: what oxc is, and which of its parts the Rust port uses."
   },
   {
     "id": "oxc-parser-docs",
@@ -3261,7 +3261,7 @@ export const references = [
     "url": "https://docs.rs/oxc_parser/0.156.0/oxc_parser/",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/lib.rs of the published oxc_parser 0.156.0 crate (as downloaded by cargo for engine/rust), read raw: the crate docs (“The parser has a minimal API with three inputs (a memory arena, a source string, and a SourceType) and one return struct (a ParserReturn)”; performance: “AST is allocated in a memory arena (oxc_allocator) for fast AST drop”, “oxc_span::Span offsets uses u32 instead of usize”, “Scope binding, symbol resolution and complicated syntax errors are not done in the parser, they are delegated to the semantic analyzer”); ParserReturn’s docs on `diagnostics` (“Syntax errors encountered while parsing. This list is not comprehensive. Oxc offloads more-expensive checks to semantic analysis”). And oxc_span 0.156.0 src/span.rs: Span holds u32 start and end offsets, with the example `&text[span]`. That spans are UTF-8 byte offsets was confirmed by parsing engine/rust/tests/extra/unicode_offsets.js (const ps = []; at 126..140).",
-    "shaped": "Chapter 360: oxc’s parser API, its byte-offset spans, and which syntax errors it leaves to semantic analysis."
+    "shaped": "Chapter 419: oxc’s parser API, its byte-offset spans, and which syntax errors it leaves to semantic analysis."
   },
   {
     "id": "oxc-allocator-docs",
@@ -3276,7 +3276,7 @@ export const references = [
     "url": "https://docs.rs/oxc_allocator/0.156.0/oxc_allocator/struct.Allocator.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/lib.rs and src/allocator.rs of the published oxc_allocator 0.156.0 crate (as downloaded by cargo for engine/rust), read raw: “Oxc uses a bump-based memory arena for faster AST allocations”, with arena versions of Box, Vec, String, HashMap and HashSet; Allocator’s docs (“A bump-allocated memory arena”, built from chunks that each at least double; “For good performance, it’s ideal to create an Allocator, and re-use it over and over”, with reset between uses; “No Drops”: “Objects allocated into Oxc memory arenas are never Dropped. Memory is released in bulk when the allocator is dropped”, and alloc, Box::new_in, Vec::new_in and HashMap::new_in “will refuse to compile if called with a Drop type”).",
-    "shaped": "Chapter 360: the arena behind oxc’s AST, why its nodes are never dropped one by one, and the advice to reuse allocators."
+    "shaped": "Chapter 419: the arena behind oxc’s AST, why its nodes are never dropped one by one, and the advice to reuse allocators."
   },
   {
     "id": "oxc-ast-visit",
@@ -3291,7 +3291,7 @@ export const references = [
     "url": "https://github.com/oxc-project/oxc/blob/main/crates/oxc_ast_visit/src/generated/visit.rs",
     "accessed": "2026-10-31",
     "checkedAgainst": "crates/oxc_ast_visit/src/generated/visit.rs on the main branch, read raw from raw.githubusercontent.com, and the same file in the oxc_ast_visit 0.156.0 crate source downloaded by cargo: the file header says “Auto-generated code, DO NOT EDIT DIRECTLY!” and “Visitor Pattern”; `pub trait Visit<'a>: Sized`; every visit method has a default body calling the matching walk function, e.g. `fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) { walk_identifier_reference(self, it); }`. Counted in 0.156.0: 263 `fn visit_` methods in the trait.",
-    "shaped": "Chapter 361: the visitor pattern as oxc implements it, and the claim that its defaults walk every node’s children so a visitor overrides only a few methods."
+    "shaped": "Chapter 420: the visitor pattern as oxc implements it, and the claim that its defaults walk every node’s children so a visitor overrides only a few methods."
   },
   {
     "id": "rust-std-fmt-write",
@@ -3305,7 +3305,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/fmt/trait.Write.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "Read raw from github.com/rust-lang/rust (master): library/core/src/fmt/mod.rs, `pub trait Write` (“A trait for writing or formatting into Unicode-accepting buffers or streams. This trait only accepts UTF-8–encoded data and is not flushable”), whose required method is `fn write_str(&mut self, s: &str) -> Result;`, with default bodies for `write_char` and `write_fmt`; library/alloc/src/fmt.rs, `pub fn format(args: Arguments<'_>) -> string::String`, whose inner function creates `String::with_capacity(args.estimated_capacity())` and calls `output.write_fmt(args)`; library/alloc/src/string.rs, `impl fmt::Write for String`, where `write_str` calls `self.push_str(s)` and returns `Ok(())`.",
-    "shaped": "Chapter 362: fmt::Write as the way to build output text, format! as write! into a new String, and why unwrap on write! into a String cannot fail."
+    "shaped": "Chapter 421: fmt::Write as the way to build output text, format! as write! into a new String, and why unwrap on write! into a String cannot fail."
   },
   {
     "id": "rust-std-string-replace-range",
@@ -3319,7 +3319,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/string/struct.String.html#method.replace_range",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/alloc/src/string.rs on master, read raw: “Removes the specified range in the string, and replaces it with the given string. The given string doesn’t need to be the same length as the range.” and “Panics if the range has `start_bound > end_bound`, or, if the range is bounded on either end and does not lie on a [`char`] boundary.” Also run locally with rustc 1.97: replacing 4..5 of \"// é😀\\nps[i].x\" panics with “start of range should be a character boundary”.",
-    "shaped": "Chapter 362: emit.rs applies each edit with replace_range on byte offsets, and a mis-cut offset panics."
+    "shaped": "Chapter 421: emit.rs applies each edit with replace_range on byte offsets, and a mis-cut offset panics."
   },
   {
     "id": "rust-std-slice-sort-by-key",
@@ -3333,7 +3333,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/primitive.slice.html#method.sort_by_key",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/alloc/src/slice.rs on master, read raw, the documentation of `pub fn sort_by_key`: “This sort is stable (i.e., does not reorder equal elements) and O(m * n * log(n)) worst-case, where the key function is O(m).”",
-    "shaped": "Chapter 362: the emitter sorts edits with sort_by_key(Reverse(start)) and relies on the sort being stable."
+    "shaped": "Chapter 421: the emitter sorts edits with sort_by_key(Reverse(start)) and relies on the sort being stable."
   },
   {
     "id": "ecma262-sort-stable",
@@ -3347,7 +3347,7 @@ export const references = [
     "url": "https://tc39.es/ecma262/#sec-array.prototype.sort",
     "accessed": "2026-10-31",
     "checkedAgainst": "spec.html on the main branch of github.com/tc39/ecma262, read raw: the introduction says ECMAScript 2019 included “requiring that `Array.prototype.sort` be a stable sort”; the sort’s requirements end “if ℝ(_sortCompare_(old[_j_], old[_k_])) = 0, then π(_j_) < π(_k_); i.e., the sort is stable.”",
-    "shaped": "Chapter 362: the TypeScript emitter’s edit sort is stable, as Rust’s is, so ties are applied in the same order."
+    "shaped": "Chapter 421: the TypeScript emitter’s edit sort is stable, as Rust’s is, so ties are applied in the same order."
   },
   {
     "id": "rust-std-hashset-insert",
@@ -3361,7 +3361,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.insert",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/std/src/collections/hash/set.rs on master, read raw: the documentation of `pub fn insert(&mut self, value: T) -> bool`: “Returns whether the value was newly inserted. That is: If the set did not previously contain this value, `true` is returned. If the set already contained this value, `false` is returned, and the set is not modified”, with the example `assert_eq!(set.insert(2), true); assert_eq!(set.insert(2), false);`.",
-    "shaped": "Chapter 369: non_neg_int in analysis.rs uses `if !seen.insert(v.id) { return true; }` both to stop at cycles through phis and to assume the repeated value is fine."
+    "shaped": "Chapter 428: non_neg_int in analysis.rs uses `if !seen.insert(v.id) { return true; }` both to stop at cycles through phis and to assume the repeated value is fine."
   },
   {
     "id": "rust-std-option-or",
@@ -3375,7 +3375,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/option/enum.Option.html#method.or",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/option.rs on master, read raw: the documentation of `or`: “Returns the option if it contains a value, otherwise returns `optb`. Arguments passed to `or` are eagerly evaluated”, with the examples `Some(2).or(None) == Some(2)`, `None.or(Some(100)) == Some(100)` and `Some(2).or(Some(100)) == Some(2)`.",
-    "shaped": "Chapter 370: plan_one takes `measured.or(c.size_estimate)`, so a profiled size wins over the static estimate."
+    "shaped": "Chapter 430: plan_one takes `measured.or(c.size_estimate)`, so a profiled size wins over the static estimate."
   },
   {
     "id": "rust-std-is-power-of-two",
@@ -3389,7 +3389,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/primitive.u64.html#method.is_power_of_two",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/num/uint_macros.rs on master, read raw: `is_power_of_two`: “Returns `true` if and only if `self == 2^k` for some unsigned integer `k`”, implemented as `self.count_ones() == 1` (so 1 = 2^0 is a power of two and 0 is not); `trailing_zeros`: “Returns the number of trailing zeros in the binary representation of `self`”, with the example `0b0101000.trailing_zeros() == 3`.",
-    "shaped": "Chapters 370 and 372: the planner refuses aosoa(N) unless N >= 2 and N.is_power_of_two(), and the emitter takes the shift as N.trailing_zeros()."
+    "shaped": "Chapters 430 and 434: the planner refuses aosoa(N) unless N >= 2 and N.is_power_of_two(), and the emitter takes the shift as N.trailing_zeros()."
   },
   {
     "id": "ecma262-assignment-order",
@@ -3403,7 +3403,7 @@ export const references = [
     "url": "https://tc39.es/ecma262/#sec-assignment-operators-runtime-semantics-evaluation",
     "accessed": "2026-10-31",
     "checkedAgainst": "spec.html on the main branch of github.com/tc39/ecma262, read raw. For `LeftHandSideExpression = AssignmentExpression`: “Let _leftRef_ be ? Evaluation of |LeftHandSideExpression|”, then “Let _rightRef_ be ? Evaluation of |AssignmentExpression|”, “Let _rightValue_ be ? GetValue(_rightRef_)”, then “Perform ? PutValue(_leftRef_, _rightValue_)”. For compound assignment, “Let _leftValue_ be ? GetValue(_leftRef_)” comes before the right-hand side is evaluated. PutValue (sec-putvalue): for a property reference, “Let _baseObj_ be ? ToObject(_refRecord_.[[Base]])”, which throws for undefined.",
-    "shaped": "Chapter 371: why `ps[i].x = rhs` out of bounds runs rhs before failing, why `ps.x[i] = rhs` fetches the column and runs the index check before rhs, and why `+=` reads first."
+    "shaped": "Chapter 432: why `ps[i].x = rhs` out of bounds runs rhs before failing, why `ps.x[i] = rhs` fetches the column and runs the index check before rhs, and why `+=` reads first."
   },
   {
     "id": "rustc-e0499",
@@ -3417,7 +3417,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/error_codes/E0499.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "compiler/rustc_error_codes/src/error_codes/E0499.md on master, read raw: “A variable was borrowed as mutable more than once”, with the example `let mut x = &mut i; let mut a = &mut i; x;` (“error: cannot borrow `i` as mutable more than once at a time”) and “in Rust, you can either have many immutable references, or one mutable reference”. The same error, “cannot borrow `ps` as mutable more than once at a time”, was produced with rustc 1.97 on the chapter’s example.",
-    "shaped": "Chapter 371: Rust rejects the order that lost a write in the old emitter’s output (hold a column, grow the container, store into the column)."
+    "shaped": "Chapter 432: Rust rejects the order that lost a write in the old emitter’s output (hold a column, grow the container, store into the column)."
   },
   {
     "id": "ecma262-signed-right-shift",
@@ -3431,7 +3431,7 @@ export const references = [
     "url": "https://tc39.es/ecma262/#sec-numeric-types-number-signedRightShift",
     "accessed": "2026-10-31",
     "checkedAgainst": "spec.html on the main branch of github.com/tc39/ecma262, read raw, clause sec-numeric-types-number-signedRightShift: “Let _leftNumber_ be ! ToInt32(_x_). Let _rightNumber_ be ! ToUint32(_y_). Let _shiftCount_ be ℝ(_rightNumber_) modulo 32.”, then a sign-extending right shift by _shiftCount_ bits.",
-    "shaped": "Chapter 372: the AoSoA index `(i >> sh) * stride + off + (i & mask)` is only right while sh < 32, because JavaScript takes shift counts modulo 32."
+    "shaped": "Chapter 434: the AoSoA index `(i >> sh) * stride + off + (i & mask)` is only right while sh < 32, because JavaScript takes shift counts modulo 32."
   },
   {
     "id": "wasm-pack-book",
@@ -3445,7 +3445,7 @@ export const references = [
     "url": "https://wasm-bindgen.github.io/wasm-pack/book/commands/build.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md, docs/src/commands/build.md and docs/src/cargo-toml-configuration.md on the master branch of github.com/wasm-bindgen/wasm-pack, read raw (rustwasm/wasm-pack’s README now says “This repository has moved to wasm-bindgen/wasm-pack”). README: a tool to build Rust-generated WebAssembly packages “that you could publish to the npm registry”; commands new, build, test, pack and publish. build.md: “creates the files necessary for JavaScript interoperability and for publishing a package to npm”, compiling to wasm and generating a pkg folder with the wasm binary, a JS wrapper file, the README and a package.json; profiles --dev, --profiling and --release (the default); one --target per build: bundler (the default), nodejs, web, no-modules, deno; “By default, Rust panics in WebAssembly compile with panic=abort, which aborts the WebAssembly instance on panic”, and --panic-unwind needs nightly and -Z build-std. cargo-toml-configuration.md: per-profile wasm-opt arguments, and wasm-opt is on by default for the release profile.",
-    "shaped": "Chapters 377 and 379: what wasm-pack automates, which of its steps build.mjs does by hand, and what a panic does to a WebAssembly instance by default."
+    "shaped": "Chapters 442 and 444: what wasm-pack automates, which of its steps build.mjs does by hand, and what a panic does to a WebAssembly instance by default."
   },
   {
     "id": "binaryen-readme",
@@ -3459,7 +3459,7 @@ export const references = [
     "url": "https://github.com/WebAssembly/binaryen",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md on the main branch of github.com/WebAssembly/binaryen, read raw: “a compiler and toolchain infrastructure library for WebAssembly, written in C++”; its optimizer “has many passes … that can improve code size and speed”; wasm-opt “Loads WebAssembly and runs Binaryen IR passes on it”; “Builds are distributed by the various toolchains that use Binaryen, like Emscripten, `wasm-pack`, etc.”, official releases for Linux-x86_64, Linux-arm64, MacOS-x86_64, MacOS-arm64 and Windows-x86_64, and an experimental Node.js build, “A port of wasm-opt to JavaScript+WebAssembly … on any platform that Node.js runs on. Requires Node.js 18+”. The npm package binaryen 132.0.0 installed by engine/rust/packages/wasm was inspected: its bin/wasm-opt is one 11,279,933-byte file, a #!/usr/bin/env node loader with a WebAssembly module embedded at byte 3,456, and reports “wasm-opt version 132 (version_132)”.",
-    "shaped": "Chapters 377 and 378: what wasm-opt is, and the npm wasm-opt as an example of a native tool shipped as WebAssembly."
+    "shaped": "Chapters 442 and 443: what wasm-opt is, and the npm wasm-opt as an example of a native tool shipped as WebAssembly."
   },
   {
     "id": "wasm-bindgen-cli-descriptors",
@@ -3473,7 +3473,7 @@ export const references = [
     "url": "https://crates.io/crates/wasm-bindgen-cli-support/0.2.106",
     "accessed": "2026-10-31",
     "checkedAgainst": "The published crate source as downloaded by cargo 1.97, read locally. descriptors.rs: “Execute all `__wbindgen_describe_*` functions in a module, inserting a custom section which represents the executed value of each descriptor. Afterwards this will delete all descriptor functions from the module.” interpreter/mod.rs: “A tiny and incomplete Wasm interpreter … only used to execute the various descriptor functions for wasm-bindgen”, which the macro generates as “a mapping of rustc’s trait resolution in executable code”. wit/mod.rs removes the “__wasm_bindgen_unstable” custom sections and decodes them. The counts in the chapter (75 exports, 58 of them __wbindgen_describe_ functions, 15 after the CLI) were read from the author’s build of engine/rust at commit c68daec with WebAssembly.Module.exports in Node v22.23.4.",
-    "shaped": "Chapter 377: what wasm-bindgen removes from the .wasm and why the file shrinks."
+    "shaped": "Chapter 442: what wasm-bindgen removes from the .wasm and why the file shrinks."
   },
   {
     "id": "rustc-wasm32-unknown-unknown",
@@ -3487,7 +3487,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "The page’s source on the master branch of github.com/rust-lang/rust, read raw: the target “does not import any functions from the host for the standard library”; it “has support for the Rust standard library but many parts of the standard library do not work and return errors. For example `println!` does nothing, `std::fs` always return errors, and `std::thread::spawn` will panic”; the proposals enabled by default are multivalue, mutable-globals, reference-types, sign-ext, nontrapping-fptoint and bulk-memory (the last two since Rust 1.87). These six are exactly the --enable flags build.mjs passes to wasm-opt.",
-    "shaped": "Chapters 377 and 378: the features build.mjs passes to wasm-opt, and what the WebAssembly build cannot do (threads, files)."
+    "shaped": "Chapters 442 and 443: the features build.mjs passes to wasm-opt, and what the WebAssembly build cannot do (threads, files)."
   },
   {
     "id": "node-packages-exports",
@@ -3501,7 +3501,7 @@ export const references = [
     "url": "https://nodejs.org/docs/latest-v22.x/api/packages.html#conditional-exports",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/api/packages.md on the v22.x branch of github.com/nodejs/node, read raw. Conditional exports: Node implements \"node-addons\", \"node\", \"import\", \"require\", \"module-sync\" and \"default\" (“the generic fallback that always matches … This condition should always come last”); “Within the \"exports\" object, key order is significant. During condition matching, earlier entries have higher priority and take precedence over later entries”; nested conditions: “If a nested condition does not have any mapping it will continue checking the remaining conditions of the parent condition.” Community conditions: \"types\" (“should always be included first”) and \"browser\" (“any web browser environment”).",
-    "shaped": "Chapter 378: how @viscosity/wasm’s exports map sends Node and browsers to different glue, and why the order of keys matters."
+    "shaped": "Chapter 443: how @viscosity/wasm’s exports map sends Node and browsers to different glue, and why the order of keys matters."
   },
   {
     "id": "ts-modules-reference",
@@ -3515,7 +3515,7 @@ export const references = [
     "url": "https://www.typescriptlang.org/docs/handbook/modules/reference.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "Reference.md on the v2 branch of github.com/microsoft/TypeScript-Website, read raw: “When resolving through conditional \"exports\", TypeScript always matches the \"types\" and \"default\" conditions if present”; other conditions depend on moduleResolution, and the worked examples use [\"types\", \"node\", \"import\"] and [\"types\", \"node\", \"require\"]; customConditions adds more.",
-    "shaped": "Chapter 378: which .d.ts file TypeScript picks from the same exports map."
+    "shaped": "Chapter 443: which .d.ts file TypeScript picks from the same exports map."
   },
   {
     "id": "npm-package-json-platform",
@@ -3529,7 +3529,7 @@ export const references = [
     "url": "https://docs.npmjs.com/cli/configuring-npm/package-json",
     "accessed": "2026-10-31",
     "checkedAgainst": "package-json.md on the latest branch of github.com/npm/cli, read raw: optionalDependencies — “If a dependency can be used, but you would like npm to proceed if it cannot be found or fails to install”, and “build failures do not cause installation to fail”; os — “You can specify which operating systems your module will run on”, determined by process.platform; cpu — “If your code only runs on certain cpu architectures”, determined by process.arch; libc applies only when os is linux; exports allows “conditional entry resolution support between environments”. Seen in practice in book/node_modules: esbuild 0.27.7 lists 26 @esbuild/* packages as optionalDependencies, and only @esbuild/linux-x64 (os [\"linux\"], cpu [\"x64\"], an 11,120,788-byte binary) was installed on the Linux x64 machine.",
-    "shaped": "Chapter 378: how a native tool ships one binary per platform through npm."
+    "shaped": "Chapter 443: how a native tool ships one binary per platform through npm."
   },
   {
     "id": "mdn-web-workers",
@@ -3543,7 +3543,7 @@ export const references = [
     "url": "https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers",
     "accessed": "2026-10-31",
     "checkedAgainst": "The page source on the main branch of github.com/mdn/content, read raw: “Web Workers are a simple means for web content to run scripts in background threads. The worker thread can perform tasks without interfering with the user interface”; workers can’t manipulate the DOM; “Data is sent between workers and the main thread via a system of messages — both sides send their messages using the postMessage() method, and respond to messages via the onmessage event handler”; messages are copied or transferred, not shared; “If you need to immediately terminate a running worker from the main thread, you can do so by calling the worker’s terminate method”; workers can use fetch().",
-    "shaped": "Chapter 379: why the Rust engine compiles in a worker, how the page talks to it, and how a broken worker is thrown away."
+    "shaped": "Chapter 444: why the Rust engine compiles in a worker, how the page talks to it, and how a broken worker is thrown away."
   },
   {
     "id": "mdn-wasm-runtimeerror",
@@ -3557,7 +3557,7 @@ export const references = [
     "url": "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/RuntimeError",
     "accessed": "2026-10-31",
     "checkedAgainst": "The page source on the main branch of github.com/mdn/content, read raw: “The WebAssembly.RuntimeError object is the error type that is thrown whenever WebAssembly specifies a trap.” A Rust panic in a wasm-bindgen 0.2.106 module built for wasm32-unknown-unknown was observed by the author (Node v22.23.4) to throw a WebAssembly.RuntimeError with the message “unreachable”.",
-    "shaped": "Chapter 379: what a Rust panic looks like from JavaScript, and how play.worker.ts recognizes one."
+    "shaped": "Chapter 444: what a Rust panic looks like from JavaScript, and how play.worker.ts recognizes one."
   },
   {
     "id": "rust-std-catch-unwind",
@@ -3571,7 +3571,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/panic/fn.catch_unwind.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/std/src/panic.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: “Invokes a closure, capturing the cause of an unwinding panic if one occurs”; it returns Err(cause) if the closure panics; “It is **not** recommended to use this function for a general try/catch mechanism”; the closure must be UnwindSafe, and AssertUnwindSafe asserts it; “This function **might not catch all Rust panics**. A Rust panic is not always implemented via unwinding, but can be implemented by aborting the process as well. This function *only* catches unwinding panics.”",
-    "shaped": "Chapter 379: the native contrast to a panic in WebAssembly, where nothing unwinds."
+    "shaped": "Chapter 444: the native contrast to a panic in WebAssembly, where nothing unwinds."
   },
   {
     "id": "afl-technical-details",
@@ -3585,7 +3585,7 @@ export const references = [
     "url": "https://github.com/google/AFL/blob/master/docs/technical_details.txt",
     "accessed": "2026-10-31",
     "checkedAgainst": "docs/technical_details.txt and README.md on the master branch of github.com/google/AFL, read raw. README: “Originally developed by Michal Zalewski”. technical_details.txt, section 1 (Coverage measurements): the instrumentation “captures branch (edge) coverage, along with coarse branch-taken hit counts”, essentially `cur_location = <COMPILE_TIME_RANDOM>; shared_mem[cur_location ^ prev_location]++; prev_location = cur_location >> 1;`; “The shared_mem[] array is a 64 kB SHM region”; edge tuples distinguish A -> B -> C -> D -> E from A -> B -> D -> C -> E. Section 2 (Detecting new behaviors): “When a mutated input produces an execution trace containing new tuples, the corresponding input file is preserved and routed for additional processing later on … Inputs that do not trigger new local-scale state transitions … are discarded”; hit counts are bucketed 1, 2, 3, 4-7, 8-15, 16-31, 32-127, 128+.",
-    "shaped": "Chapter 381: what coverage-guided fuzzing keeps and why it counts edges rather than blocks."
+    "shaped": "Chapter 446: what coverage-guided fuzzing keeps and why it counts edges rather than blocks."
   },
   {
     "id": "cargo-fuzz-book",
@@ -3599,7 +3599,7 @@ export const references = [
     "url": "https://rust-fuzz.github.io/book/cargo-fuzz.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/cargo-fuzz.md, src/cargo-fuzz/setup.md and src/cargo-fuzz/tutorial.md on the master branch of github.com/rust-fuzz/book, read raw. cargo-fuzz.md: “cargo-fuzz is itself not a fuzzer, but a tool to invoke a fuzzer. Currently, the only fuzzer it supports is libFuzzer”. setup.md: “This project requires the nightly compiler since it uses the `-Z` compiler flag to provide address sanitization”; `cargo install cargo-fuzz`. tutorial.md: `cargo fuzz init`, a target `fuzz_target!(|data: &[u8]| { ... })` that libFuzzer “is going to repeatedly call … with a slice of pseudo-random bytes, until your program hits an error condition (segfault, panic, etc)”, run with `cargo fuzz run <fuzz target name>`, with sample output lines “NEW cov: 2066 corp: 110/4713b …”.",
-    "shaped": "Chapter 381: what a coverage-guided harness for the Rust engine would look like, and what it needs (nightly, a byte-slice target)."
+    "shaped": "Chapter 446: what a coverage-guided harness for the Rust engine would look like, and what it needs (nightly, a byte-slice target)."
   },
   {
     "id": "rustc-dev-guide-diagnostics",
@@ -3613,7 +3613,7 @@ export const references = [
     "url": "https://rustc-dev-guide.rust-lang.org/diagnostics.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/diagnostics.md on the master branch of github.com/rust-lang/rustc-dev-guide, read raw. “Diagnostic structure”: “The main parts of a diagnostic error are the following”: Level (“error, warning, etc.”), Code (“for example, for “mismatched types”, it is E0308”; “Not all diagnostic have a code”), Message (“It should be general and able to stand on its own”), and the Diagnostic window (“The path, line number and column of the beginning of the primary span”, “The users’ affected code”, “Primary and secondary spans … can optionally contain one or more labels”; “Primary spans should have enough text to describe the problem in such a way that if it were the only thing being displayed (for example, in an IDE) it would still make sense”). “Error codes and explanations”: codes link to long-form explanations that “may be viewed with the `--explain` flag”, and “give an error a code … if the explanation would give more information than the error itself”.",
-    "shaped": "Chapter 382: what a diagnostic consists of, and what Viscosity’s frames and errors have and lack."
+    "shaped": "Chapter 448: what a diagnostic consists of, and what Viscosity’s frames and errors have and lack."
   },
   {
     "id": "rust-std-thread-scope",
@@ -3627,7 +3627,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/thread/fn.scope.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/std/src/thread/scoped.rs on the master branch of github.com/rust-lang/rust, read raw: “Creates a scope for spawning scoped threads.”, “Unlike non-scoped threads, scoped threads can borrow non-`’static` data, as the scope guarantees all threads will be joined at the end of the scope.”, “All threads spawned within the scope that haven’t been manually joined will be automatically joined before this function returns.”, “If any of the automatically joined threads panicked, this function will panic.”; stable since 1.63.0. Scope::spawn: “Unlike non-scoped threads, threads spawned with this function may borrow non-`’static` data from outside the scope.”",
-    "shaped": "Chapter 383: why the CLI’s worker threads may borrow the file list, the counter and the result slots."
+    "shaped": "Chapter 450: why the CLI’s worker threads may borrow the file list, the counter and the result slots."
   },
   {
     "id": "rust-std-atomic-fetch-add",
@@ -3641,7 +3641,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/sync/atomic/struct.AtomicUsize.html#method.fetch_add",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/core/src/sync/atomic.rs on the master branch of github.com/rust-lang/rust, read raw. fetch_add (in the atomic integer macro): “Adds to the current value, returning the previous value.”, “This operation wraps around on overflow.”, “`fetch_add` takes an [`Ordering`] argument which describes the memory ordering of this operation. All ordering modes are possible.” enum Ordering: “Memory orderings specify the way atomic operations synchronize memory. In its weakest [`Ordering::Relaxed`], only the memory directly touched by the operation is synchronized.”; Relaxed: “No ordering constraints, only atomic operations.”; “Rust’s memory orderings are the same as those of C++20”.",
-    "shaped": "Chapter 383: the shared work counter, and why Relaxed is enough for it."
+    "shaped": "Chapter 450: the shared work counter, and why Relaxed is enough for it."
   },
   {
     "id": "rust-std-mutex",
@@ -3655,7 +3655,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/sync/struct.Mutex.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/std/src/sync/poison/mutex.rs on the master branch of github.com/rust-lang/rust, read raw: “A mutual exclusion primitive useful for protecting shared data”, “This mutex will block threads waiting for the lock to become available.”, “The data can only be accessed through the RAII guards returned from [`lock`] and [`try_lock`], which guarantees that the data is only ever accessed when the mutex is locked.” Poisoning: “a mutex becomes poisoned if it recognizes that the thread holding it has panicked”, after which `lock` and `try_lock` “return a [`Result`] which indicates whether a mutex has been poisoned or not. Most usage of a mutex will simply [`unwrap()`] these results”.",
-    "shaped": "Chapter 383: the result slots, and why the CLI’s `expect` on `lock()` cannot fire."
+    "shaped": "Chapter 450: the result slots, and why the CLI’s `expect` on `lock()` cannot fire."
   },
   {
     "id": "rust-std-available-parallelism",
@@ -3669,7 +3669,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/thread/fn.available_parallelism.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/std/src/thread/functions.rs on the master branch of github.com/rust-lang/rust, read raw: “Returns an estimate of the default amount of parallelism a program should use.”; Limitations: it “does not account for differences in (co)processor capabilities or current system load”; “The value returned by this function should be considered a simplified approximation of the actual amount of parallelism available at any given time.”; On all targets: “It may overcount the amount of parallelism available when running in a VM with CPU usage limits (e.g. an overcommitted host).”",
-    "shaped": "Chapter 383: the default for --jobs, and why it can overcount on a shared VM."
+    "shaped": "Chapter 450: the default for --jobs, and why it can overcount on a shared VM."
   },
   {
     "id": "npm-ci-docs",
@@ -3683,7 +3683,7 @@ export const references = [
     "url": "https://docs.npmjs.com/cli/commands/npm-ci",
     "accessed": "2026-10-31",
     "checkedAgainst": "docs/lib/content/commands/npm-ci.md on the latest branch of github.com/npm/cli, read raw: “This command is similar to npm install, except it’s meant to be used in automated environments such as test platforms, continuous integration, and deployment”; “The project **must** have an existing `package-lock.json`”; “If dependencies in the package lock do not match those in `package.json`, `npm ci` will exit with an error, instead of updating the package lock.”; “If a `node_modules` is already present, it will be automatically removed before `npm ci` begins its install.”; “It will never write to `package.json` or `package-lock.json`: installs are essentially frozen.” The behaviour was also reproduced locally with npm 10.9.9 on engine/ts at commit cff36bb^ (EUSAGE, “Missing: @viscosity/cli@0.1.0 from lock file”).",
-    "shaped": "Chapter 384: why the out-of-sync engine/ts lockfile broke a clean install but not the development machine."
+    "shaped": "Chapter 452: why the out-of-sync engine/ts lockfile broke a clean install but not the development machine."
   },
   {
     "id": "gha-concurrency",
@@ -3697,7 +3697,7 @@ export const references = [
     "url": "https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency",
     "accessed": "2026-10-31",
     "checkedAgainst": "The page source and the reusables it includes (data/reusables/actions/jobs/section-using-concurrency.md and actions-group-concurrency.md) on the main branch of github.com/github/docs, read raw: “Use `concurrency` to ensure that only a single job or workflow using the same concurrency group will run at a time. A concurrency group can be any string or expression”; the expression may use the `github`, `inputs` and `vars` contexts; “When a concurrent job or workflow is queued, if another job or workflow using the same concurrency group in the repository is in progress, the queued job or workflow will be `pending`”; “To also cancel any currently running job or workflow in the same concurrency group, specify `cancel-in-progress: true`.”",
-    "shaped": "Chapter 384: what the workflow’s concurrency group does to an older run on the same branch."
+    "shaped": "Chapter 452: what the workflow’s concurrency group does to an older run on the same branch."
   },
   {
     "id": "setup-node-readme",
@@ -3711,7 +3711,7 @@ export const references = [
     "url": "https://github.com/actions/setup-node",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md on the main branch of github.com/actions/setup-node, read raw, section “Caching global packages data”: “It uses actions/cache under the hood for caching global packages data”; “The action defaults to search for the dependency file (`package-lock.json`, `npm-shrinkwrap.json` or `yarn.lock`) in the repository root, and uses its hash as a part of the cache key. Use `cache-dependency-path` for cases when multiple dependency files are used, or they are located in different subdirectories.”; “**Note:** The action does not cache `node_modules`”.",
-    "shaped": "Chapter 384: how the npm cache in ci.yml is keyed, per lockfile."
+    "shaped": "Chapter 452: how the npm cache in ci.yml is keyed, per lockfile."
   },
   {
     "id": "rust-cache-readme",
@@ -3725,7 +3725,7 @@ export const references = [
     "url": "https://github.com/Swatinem/rust-cache",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md on the master branch of github.com/Swatinem/rust-cache, read raw: “A GitHub Action that implements smart caching for rust/cargo projects”; “This action only caches the _dependencies_ of a crate”; it caches “`~/.cargo` (installed binaries, the cargo registry, cache, and git dependencies)” and “`./target` (build artifacts of dependencies)”; the key includes “the rustc release / host / hash”; “the workspace crates themselves are not cached since doing so is generally not effective”, and it sets `CARGO_INCREMENTAL=0`. The repository owner is github.com/Swatinem.",
-    "shaped": "Chapter 384: what the Rust jobs’ cache keeps and what is rebuilt on every run."
+    "shaped": "Chapter 452: what the Rust jobs’ cache keeps and what is rebuilt on every run."
   },
   {
     "id": "clippy-readme",
@@ -3739,7 +3739,7 @@ export const references = [
     "url": "https://github.com/rust-lang/rust-clippy",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md on the master branch of github.com/rust-lang/rust-clippy, read raw, CI section: “Note that setting `CARGO_BUILD_WARNINGS=deny` will cause your build to fail if **any** warnings are found in your code”; “Also note that before Cargo 1.97, the usual way to deny all warnings was by using `-D warnings`: cargo clippy -- -D warnings”; “However, `CARGO_BUILD_WARNINGS` has the benefit of not invalidating build caches, and is thus to be preferred going forward.”",
-    "shaped": "Chapter 384: the clippy gate and a cache-friendlier way to deny warnings."
+    "shaped": "Chapter 452: the clippy gate and a cache-friendlier way to deny warnings."
   },
   {
     "id": "rustfmt-readme",
@@ -3753,7 +3753,7 @@ export const references = [
     "url": "https://github.com/rust-lang/rustfmt",
     "accessed": "2026-10-31",
     "checkedAgainst": "README.md on the master branch of github.com/rust-lang/rustfmt, read raw: “When running with `--check`, Rustfmt will exit with `0` if Rustfmt would not make any formatting changes to the input, and `1` if Rustfmt would make changes.”; “Checking style on a CI server: To keep your code base consistently formatted, it can be helpful to fail the CI build when a pull request contains unformatted code. Using `--check` instructs rustfmt to exit with an error code if the input is not formatted correctly.”; the example `cargo fmt --all -- --check`.",
-    "shaped": "Chapter 384: the formatting check the workflow doesn’t run."
+    "shaped": "Chapter 452: the formatting check the workflow doesn’t run."
   },
   {
     "id": "rust-book-ch12-cli",
@@ -3769,7 +3769,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/book/ch12-00-an-io-project.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "src/ch12-01-accepting-command-line-arguments.md, src/ch12-03-improving-error-handling-and-modularity.md and src/ch12-06-writing-to-stderr-instead-of-stdout.md on the main branch of github.com/rust-lang/book, read raw. 12-01: std::env::args returns an iterator of the arguments, collected into a Vec; the note “The args Function and Invalid Unicode”: std::env::args will panic if any argument contains invalid Unicode, and std::env::args_os returns OsString values instead. 12-03: “A nonzero exit status is a convention to signal to the process that called our program that the program exited with an error state”; process::exit returns the number passed as the exit status code. 12-06: “there are two kinds of output: standard output (stdout) for general information and standard error (stderr) for error messages. This distinction enables users to choose to direct the successful output of a program to a file but still print error messages to the screen.”",
-    "shaped": "Chapter 385: what a CLI receives and returns: arguments, stdout and stderr, and a non-zero exit status for failure."
+    "shaped": "Chapter 454: what a CLI receives and returns: arguments, stdout and stderr, and a non-zero exit status for failure."
   },
   {
     "id": "rust-std-env-args",
@@ -3783,7 +3783,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/std/env/fn.args.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "library/std/src/env.rs on the main branch of github.com/rust-lang/rust, read raw: “Returns the arguments that this program was started with (normally passed via the command line). The first element is traditionally the path of the executable”; “# Panics: The returned iterator will panic during iteration if any argument to the process is not valid Unicode. If this is not desired, use the [`args_os`] function instead.”; `pub fn args() -> Args { Args { inner: args_os() } }`. Checked against the Viscosity CLI built with rustc 1.97: an argument containing the byte 0xFF panics in main with “called `Result::unwrap()` on an `Err` value” and exit status 101.",
-    "shaped": "Chapter 385: the CLI’s arguments come from std::env::args, and a non-UTF-8 argument panics before parsing."
+    "shaped": "Chapter 454: the CLI’s arguments come from std::env::args, and a non-UTF-8 argument panics before parsing."
   },
   {
     "id": "clap-readme",
@@ -3796,8 +3796,8 @@ export const references = [
     "doi": null,
     "url": "https://github.com/clap-rs/clap",
     "accessed": "2026-10-31",
-    "checkedAgainst": "README.md on the master branch of github.com/clap-rs/clap, read raw: “Command Line Argument Parser for Rust”; “Create your command-line parser, with all of the bells and whistles, declaratively or procedurally.”; dual-licensed Apache 2.0 or MIT. clap_builder/src/util/mod.rs at tag v4.6.7, read raw: `SUCCESS_CODE: i32 = 0` and `USAGE_CODE: i32 = 2`, with the comment “While sysexists.h defines EX_USAGE as 64, this doesn’t seem to be used much in practice but instead 2 seems to be frequently used. Examples - GNU `ls` returns 2 - Python’s `argparse` returns 2”. The derive example in chapter 385 was compiled against clap 4.6.7 (features = [\"derive\"]) with rustc 1.97 and run: exit status 2 and “error: unexpected argument '--bogus' found” for an unknown flag; “invalid float literal” for --min-size 0x10; --min-size inf accepted.",
-    "shaped": "Chapter 385: what clap is, the status it exits with on a usage error, and how a clap version of the CLI would differ from the hand-written one."
+    "checkedAgainst": "README.md on the master branch of github.com/clap-rs/clap, read raw: “Command Line Argument Parser for Rust”; “Create your command-line parser, with all of the bells and whistles, declaratively or procedurally.”; dual-licensed Apache 2.0 or MIT. clap_builder/src/util/mod.rs at tag v4.6.7, read raw: `SUCCESS_CODE: i32 = 0` and `USAGE_CODE: i32 = 2`, with the comment “While sysexists.h defines EX_USAGE as 64, this doesn’t seem to be used much in practice but instead 2 seems to be frequently used. Examples - GNU `ls` returns 2 - Python’s `argparse` returns 2”. The derive example in chapter 454 was compiled against clap 4.6.7 (features = [\"derive\"]) with rustc 1.97 and run: exit status 2 and “error: unexpected argument '--bogus' found” for an unknown flag; “invalid float literal” for --min-size 0x10; --min-size inf accepted.",
+    "shaped": "Chapter 454: what clap is, the status it exits with on a usage error, and how a clap version of the CLI would differ from the hand-written one."
   },
   {
     "id": "cargo-publishing-guide",
@@ -3811,7 +3811,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/reference/publishing.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/reference/publishing.md on the master branch of github.com/rust-lang/cargo, read raw: “Take care when publishing a crate, because a publish is generally permanent. The version can never be overwritten, and the code cannot be deleted.”; crate names are first-come-first-serve; before publishing fill out `license` or `license-file`, `description`, `homepage`, `repository` and `readme`; `cargo publish` verifies the package, compresses it into a .crate file, extracts it and verifies that it compiles, then uploads it; run `cargo publish --dry-run` (or `cargo package`, which is equivalent) first; `cargo yank` does not delete any code. Also checked against cargo 1.97 run on engine/rust: `cargo package -p viscosity-core` stops with “all dependencies must have a version requirement specified when packaging. dependency `viscosity-vir` does not specify a version”, and `cargo package -p viscosity-vir --list` lists .cargo_vcs_info.json, Cargo.lock, Cargo.toml, Cargo.toml.orig and src/ only.",
-    "shaped": "Chapter 386: that publishing a crate is permanent, the metadata a crate should have, and what cargo package checks."
+    "shaped": "Chapter 456: that publishing a crate is permanent, the metadata a crate should have, and what cargo package checks."
   },
   {
     "id": "cargo-semver-guide",
@@ -3825,7 +3825,7 @@ export const references = [
     "url": "https://doc.rust-lang.org/cargo/reference/semver.html",
     "accessed": "2026-10-31",
     "checkedAgainst": "doc/book/src/reference/semver.md on the master branch of github.com/rust-lang/cargo, read raw: “This guide uses the terms ‘major’ and ‘minor’ assuming this relates to a ‘1.0.0’ release or later. Initial development releases starting with ‘0.y.z’ can treat changes in ‘y’ as a major release, and ‘z’ as a minor release. ‘0.0.z’ releases are always major changes. This is because Cargo uses the convention that only changes in the left-most non-zero component are considered incompatible.”; the change categories major, minor and possibly-breaking; “These are only guidelines”.",
-    "shaped": "Chapter 386: how a 0.y.z crate’s version should change for a breaking change, a feature and a fix."
+    "shaped": "Chapter 456: how a 0.y.z crate’s version should change for a breaking change, a feature and a fix."
   },
   {
     "id": "mdn-array",
@@ -3867,7 +3867,7 @@ export const references = [
     "url": "https://tdop.github.io/",
     "accessed": "2026-11-01",
     "checkedAgainst": "The paper itself, in github.com/tdop/tdop.github.io (master), read raw: original.pdf, an archived copy of the ACM scan (PDF metadata: title “Top Down Operator Precedence”, author “V. Pratt”, subject “First ACM Symposium on Principles of Programming Languages”, produced by Sony Electronic Publishing Services in 1997 as ACM’s own back-file scans were); its 11 pages carry page numbers 42 to 51 from the second page on, so it runs 41–51; author line “Vaughan R. Pratt, Massachusetts Institute of Technology”. The repository’s remastered index.html (the page served at tdop.github.io) gives “Vaughan R. Pratt, Massachusetts Institute of Technology 1973”, and its README calls it “Vaughan Pratt’s original 1973 paper”. No DOI is given: the ACM Digital Library and doi.org were unreachable, so none was confirmed.",
-    "shaped": "Chapter 85’s Pratt parser, and every parser built on it after that: chapter 142’s single-pass compiler, chapter 245’s JavaScript expressions and the Rust compiler in chapters 338–339."
+    "shaped": "Chapter 85’s Pratt parser, and every parser built on it after that: chapter 142’s single-pass compiler, chapter 263’s JavaScript expressions and the Rust compiler in chapters 397–398."
   },
   {
     "id": "cytron1991",
@@ -3920,7 +3920,7 @@ export const pending = [
   { id: 'swellercooper1985', what: 'Sweller & Cooper, worked examples in algebra, Cognition and Instruction 2(1), 1985', why: 'The DOI comes only from secondary sources.', note: '2026-11-01: tandfonline.com, doi.org and crossref unreachable; no primary source on GitHub.' },
   { id: 'drepper2007', what: 'Ulrich Drepper, What Every Programmer Should Know About Memory, 2007', why: 'Couldn’t confirm the PDF is still live.', note: '2026-11-01: akkadia.org (the author’s site) and people.freebsd.org refused by the proxy (403); copies in third-party GitHub repositories are not the author’s and were not used.' },
   { id: 'deutschschiffman1984', what: 'Deutsch & Schiffman, “Efficient Implementation of the Smalltalk-80 System”, POPL 1984', why: 'The DOI is unconfirmed.', note: '2026-11-01: dl.acm.org, doi.org and dblp unreachable; the only copies found by web search (cs.tufts.edu course archive) were unreachable, and no copy of the paper or authors’ page on GitHub was found. Web search alone (pp. 297–302, January 1984) is not a primary source.' },
-  { id: 'cooperharveykennedy2001', what: 'Keith D. Cooper, Timothy J. Harvey & Ken Kennedy, “A Simple, Fast Dominance Algorithm” (Rice University; usually cited as Software Practice & Experience 4, 2001)', why: 'Named in chapter 364 and in engine/ts/packages/core/src/cfg.ts and engine/rust/crates/core/src/cfg.rs, but never checked.', note: '2026-11-01: the authors’ copy at cs.rice.edu, the cs.tufts.edu archive copy, dblp and doi.org were all unreachable, and no copy on GitHub was found. The venue given in library docs (networkx: “Software Practice & Experience 4:110”) is secondary and looks garbled, so it was not used.' },
+  { id: 'cooperharveykennedy2001', what: 'Keith D. Cooper, Timothy J. Harvey & Ken Kennedy, “A Simple, Fast Dominance Algorithm” (Rice University; usually cited as Software Practice & Experience 4, 2001)', why: 'Named in chapter 423 and in engine/ts/packages/core/src/cfg.ts and engine/rust/crates/core/src/cfg.rs, but never checked.', note: '2026-11-01: the authors’ copy at cs.rice.edu, the cs.tufts.edu archive copy, dblp and doi.org were all unreachable, and no copy on GitHub was found. The venue given in library docs (networkx: “Software Practice & Experience 4:110”) is secondary and looks garbled, so it was not used.' },
 ];
 
 export function byId(id) {

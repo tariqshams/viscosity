@@ -1,4 +1,4 @@
-// The parser turns tokens into a syntax tree (book chapters 30–34).
+// The parser turns tokens into a syntax tree (the book's chapters “Grammars” to “Syntax errors and recovery”).
 // Statements use recursive descent: one function per grammar rule.
 // Expressions use Pratt parsing: each token has a prefix rule, an infix
 // rule and a precedence.

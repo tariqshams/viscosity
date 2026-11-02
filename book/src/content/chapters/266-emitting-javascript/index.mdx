@@ -1,0 +1,308 @@
+---
+n: 266
+day: 67
+part: VIII
+title: 'Emitting JavaScript'
+tagline: 'Viscosity has decided to store your particles as columns. Now it has to hand you JavaScript again, and it does that without printing a single line it did not have to: a handful of small edits, applied from the end of the file backwards.'
+objectives:
+  - Contrast printing code from a tree with splicing edits into the original source, and say what each keeps.
+  - Apply a list of range edits back to front, and explain why overlaps are treated as bugs.
+  - Explain why field edits are merged by range for compound assignments, and where the prelude is inserted.
+  - Read the generated container class and bounds check in Viscosity's output.
+introduces: [codegen, pretty-printing]
+uses: [ast-to-ir, vir, record-collection-nodes, viscosity-pipeline, source-to-source, language-plugin, layout-strategy, estree, ast, ast-node, source-location, tree-printer, emit, lowering, aos-vs-soa, typed-array, float64, class, push, for-of, string-methods, template-literal, error-object, throw, round-trip-testing, differential-testing]
+sources: [recast, acorn, mdn-strict-mode]
+---
+import EditSteps from '../../../components/diagrams/ch266/EditSteps';
+import PrintVsSplice from '../../../components/diagrams/ch266/PrintVsSplice';
+import Playground from '../../../components/playground/Playground';
+
+## Back to JavaScript
+
+You have VIR, the analyses have run, and the plan says: store `ps` as a
+struct of arrays. The program still has to *run*, so the plugin must
+produce JavaScript again, and that last step of every compiler has a
+name.
+
+<Callout kind="definition">
+**Code generation** (codegen) turns the compiler's internal form back
+into output text: machine code for a native compiler, bytecode for a
+virtual machine, or source code for a source-to-source compiler like
+Viscosity.
+</Callout>
+
+The obvious way is to *print*: walk a tree (or the IR) and write out text
+for every node, as you did in the chapter *Printing trees*. For real
+programs, printing has a catch: the tree does not remember where the line
+breaks were, how much space was around `=`, or where the comments sat, so
+a printer must decide all of that again.
+
+<Callout kind="definition">
+**Pretty-printing** is emitting code from a tree in a readable,
+consistently formatted style: chosen indentation, line breaks and
+brackets. It is how code formatters work, and it throws away the
+original layout. **Splicing** instead replaces only the changed ranges
+of the original text and copies everything else.
+</Callout>
+
+<Analogy title="retyping a letter, or correction fluid">
+To fix one word in a typed letter you can retype the whole page, which
+changes every line break and probably a few spaces too, or you can dab
+correction fluid on that one word and type over it, and the rest of the
+page stays exactly as it was. A pretty-printer retypes; Viscosity uses
+correction fluid.
+<span slot="breaks">Correction fluid only works if the new word fits in
+the old space; a splice can replace two characters with twenty, because
+text in a computer moves aside to make room.</span>
+</Analogy>
+
+<Analogy title="restoring a painting">
+A restorer repairs a damaged corner of an old painting and leaves every
+other brushstroke alone, rather than repainting the whole canvas in her
+own style, because the owner wants *their* painting back, with only the
+damage fixed.
+<span slot="breaks">A restorer's job is to make the repair invisible;
+Viscosity's edits are meant to be read, and each changed line looks
+plainly different (`ps.x[p]` rather than `p.x`).</span>
+</Analogy>
+
+<Figure caption="Printing a new tree decides the layout again; splicing keeps yours." takeaway="Splicing keeps every comment and space that the plan does not touch.">
+  <PrintVsSplice />
+</Figure>
+
+Viscosity splices: your comments, blank lines and odd spacing survive
+because nothing ever re-prints them. Even the generated container class
+at the top is not pretty-printed; it is built from template strings, one
+method per line.
+
+<Examples of="codegen pretty-printing">
+
+```
+# a native back end, for x = a + b
+add a0, a0, a1
+```
+
+```js
+let x=1+2   // as typed
+let x = 1 + 2; // pretty-printed
+```
+
+```js
+// spliced: ps.push({ x: i, vx: 1 })
+ps.push(i, 1)
+```
+
+</Examples>
+
+The first is code generation for a machine, the RISC-V of Part VII:
+one instruction that adds two registers. The second is pretty-printing
+as a formatter does it: the tree for `x = 1 + 2` is the same either way,
+and the printer chooses its own spaces and adds a semicolon. The third is
+Viscosity's kind of code generation, real output: only the object
+literal inside the call was rewritten, and `ps.push(` and the closing
+bracket are your own characters, untouched.
+
+<Prompts ids={['codegen-what', 'pretty-what', 'splice-why']} />
+
+## The edit list
+
+An edit is a range of the original text and the text to put there
+instead:
+
+```ts
+interface Edit {
+  start: number; // source offsets
+  end: number;
+  text: string;
+}
+```
+
+The offsets come from lowering: every instruction made from a piece of
+source got a `src`, the ESTree node with its `start` and `end`. So the
+emitter can walk the plan's collections, find each instruction it needs
+to change, and go straight back to the exact characters. For a
+collection planned as SoA, `emit.ts` makes these edits:
+
+```
+const ps = []    →  new __Vsc_ps()
+ps.push({x:a,y:b})  →  ps.push(a, b)
+ps[i].x          →  ps.x[i]
+const p = ps[i]  →  const p = i
+p.x              →  ps.x[p]
+for (const p of ps)
+  → for (let p = 0; p < ps.length; p++)
+```
+
+Notice the trick with elements: once `p` holds an *index* instead of an
+object, `p.x` becomes `ps.x[p]`. Here is a real program and its real
+output, without the generated class (the last line is one line in the
+real output):
+
+```js
+const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i, vx: 1 });
+for (const p of ps) p.x += p.vx;
+```
+
+```js
+const ps = new __Vsc_ps();
+for (let i = 0; i < 100; i++)
+  ps.push(i, 1);
+for (let p = 0; p < ps.length; p++)
+  ps.x[p] += ps.vx[p];
+```
+
+<Prompts ids={['src-ref', 'forof-rewrite']} />
+
+## Back to front
+
+Applying the edits is a short loop at the end of `emitJs` (trimmed):
+
+```ts
+edits.sort((x, y) => y.start - x.start
+  || y.end - x.end || …);
+let out = source;
+let lastStart = Infinity;
+for (const e of edits) {
+  if (e.end > lastStart) throw new Error(
+    `internal error: overlapping ` +
+    `rewrites at ${e.start}-${e.end}`);
+  out = out.slice(0, e.start) + e.text
+    + out.slice(e.end);
+  lastStart = e.start;
+}
+```
+
+Edits are sorted by start offset, **last first**. Replacing `[]` with
+`new __Vsc_ps()` adds 12 characters and would push every later offset
+out of place; working from the end, each edit only shifts text that has
+already been handled. Step through the seven real edits for the program
+above (the push is rewritten in three small edits around its values):
+
+<EditSteps client:visible />
+
+Two edits that overlap would mean two parts of the emitter want to
+rewrite the same characters. No order of applying them can be right, so
+the emitter refuses with an internal error rather than produce broken
+code.
+
+<Formal title="Splicing disjoint edits">
+
+```text
+edits e₁ … eₙ sorted by start, with
+  eₖ.end ≤ eₖ₊₁.start   (no overlap)
+out = s[0, e₁.start) + e₁.text
+    + s[e₁.end, e₂.start) + e₂.text
+    + … + eₙ.text + s[eₙ.end, |s|)
+```
+
+<span slot="read">Sort the edits from first to last in the source; no
+edit may end after the next one starts. Then the output is the source up
+to the first edit, the first edit's text, the source between the first
+and second edits, the second edit's text, and so on, ending with the
+source after the last edit (|s| is the length of s). Applying them back
+to front builds exactly this.</span>
+</Formal>
+
+The runnable version applies the push's three real edits back to front;
+try sorting them front to back instead and see the text come out
+garbled.
+
+<Run id="splice" />
+
+<Prompts ids={['back-to-front', 'overlap-bug']} />
+
+## One member, two edits
+
+`p.x += p.vx` both reads and writes `p.x`: lowering made a `field.get`
+*and* a `field.set` for it, and both point at the same source range. So
+field edits are collected in a map keyed by range, and one survives:
+
+```ts
+const fieldEdit = (e, kind) => {
+  const k = `${e.start}:${e.end}`;
+  const prev = fieldEdits.get(k);
+  const rank = kind === 'write' ? 0
+    : kind === 'read' ? 1 : 2;
+  if (!prev || rank > prev.kind)
+    fieldEdits.set(k, { ...e, kind: rank });
+};
+```
+
+A read beats a write, because JavaScript reads `p.x` before it writes
+it, so out of bounds, `ps[k].x += 1` must throw "Cannot read properties
+of undefined (reading 'x')", in the original and the compiled code alike.
+The third kind, `late`, is for a write whose right side may run code,
+such as `p.x = Math.sqrt(f(p.vx))`, where calling `f` could even grow the
+columns. The real output is
+`__vsc_set(ps, 'x', p, Math.sqrt(f(ps.vx[p])), 'x')`: a helper that
+stores only after the right side has run, into the column as it is by
+then, just as the original assigns after evaluating its right side; it
+covers the read too, so it wins over both.
+
+<Prompts ids={['dedupe-why']} />
+
+## The prelude
+
+The rewritten code needs the container class, so the class goes in
+front, followed by a bounds-check helper if any element access is not
+proven in bounds (it throws the same `TypeError` message the original
+would have). Where exactly does the prelude go? Not always at offset 0.
+A `"use strict"` directive only counts if it comes first in the
+script<Cite id="mdn-strict-mode" />, so putting a class above it would
+quietly turn strict mode off; the emitter matches an optional shebang
+line and an optional directive with a regular expression, and inserts
+the prelude after them. And if no collection is transformed, there is no
+prelude, and `emitJs` returns the source itself, untouched; the next
+chapter turns that into a test.
+
+<Prompts ids={['prelude-strict']} />
+
+## Try it
+
+Add a comment, odd spacing or a `'use strict';` line at the top, and see
+where everything ends up in the compiled code.
+
+<Playground client:visible title="Edits, not reprinting" initial={`'use strict';
+const ps = [];
+for (let i = 0; i < 1000; i++) {
+  ps.push({ x: i, vx: 1 }); // spawn
+}
+for (const p of ps) p.x   +=   p.vx;
+console.log(ps[5].x);`} />
+
+<Callout kind="engine" label="Under the hood">
+Splicing depends on the parser recording offsets: acorn stores the start
+and end character offsets of every node in `start` and
+`end`<Cite id="acorn" />, and those flow into VIR's `src`. The same idea,
+keeping the original text wherever nothing changed, is what Recast calls
+a nondestructive pretty-printer: it reprints only the parts of the tree
+you modify<Cite id="recast" />. Viscosity goes further: it never builds
+new tree nodes at all, only text edits.
+</Callout>
+
+## Your turn
+
+The core exercise is the edit loop itself; the second, extra practice,
+is the merge of field edits by range.
+
+<Exercise id="applyEdits" />
+
+<Exercise id="dedupe" />
+
+## What you learned
+
+- **Code generation** turns the IR back into output; for a
+  source-to-source compiler, that output is source code.
+- **Pretty-printing** writes code from a tree in a chosen style and
+  loses the original layout; Viscosity **splices** range edits into the
+  original text instead.
+- Edits are applied **back to front**, so earlier offsets stay valid,
+  and **overlapping** edits are an internal error.
+- Field edits are merged by range: a read beats a write, and a late
+  store beats both.
+- The **prelude** goes after any shebang and `"use strict"`; with
+  nothing to transform, the source comes back unchanged.
+
+<Quiz />

@@ -1,4 +1,4 @@
-// Lowering JavaScript (ESTree) to VIR (book chapter 93).
+// Lowering JavaScript (ESTree) to VIR (the book's chapter “Lowering JavaScript to VIR”).
 //
 // Each function becomes a VIR Func: a control-flow graph in SSA form. Local
 // variables that no closure captures become SSA values. Captured variables,
@@ -280,7 +280,7 @@ export function lower(program: Node, source: string, res: Resolution): Lowered {
           loop(() => {}, s.test, s.body, s.update, label);
           return;
         case 'ForOfStatement': {
-          // for (const p of arr) body  ==>  index loop over arr (chapter 93).
+          // for (const p of arr) body  ==>  index loop over arr (chapter “Lowering JavaScript to VIR”).
           const arr = expr(s.right);
           const idxKey = `forof${s.start}`;
           fb.writeVariable(idxKey, fb.current.id, fb.constant(0, src(s)));

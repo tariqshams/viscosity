@@ -1,0 +1,231 @@
+---
+n: 374
+day: 94
+part: XI
+title: 'From and the question mark'
+tagline: 'An error enum is only pleasant if every library error turns into it without ceremony. One impl From per source error, and ? does the converting on every early return; leave one out and the compiler says exactly which.'
+objectives:
+  - Implement From so that ? converts each source error into your error enum.
+  - Write out what ? does with an Err, and read error E0277 when a conversion is missing.
+  - Use the Into you get for free, and recognise the From impls the standard library already has.
+  - Find From, Into and map_err at work in drip-rs and engine/rust.
+introduces: [from-trait]
+uses: [error-enum, rust, crate, rust-functions, struct, impl, self-receiver, enum, match, pattern, option, result, question-mark, trait, rust-generics, string-vs-str, vec, rust-closure, rust-module, runtime-error, syntax-error, error-propagation, try-catch, error-object, compiler, virtual-machine, drip, language-plugin]
+sources: [klabnik2026, rust-std-from, rustref-try-propagation]
+---
+import FromSteps from '../../../components/diagrams/ch374/FromSteps';
+import ConversionMap from '../../../components/diagrams/ch374/ConversionMap';
+
+## Converting by hand, every time
+
+*Error handling at scale* gave a crate one error enum and converted
+each library error into it with `map_err`, one call at a time. In a
+crate with a hundred fallible calls that is a hundred closures saying
+the same thing: an `io::Error` becomes `CliError::Io`, a
+`ParseIntError` becomes `CliError::Num`. Rust lets you say each of
+those once, and then `?` uses it everywhere.
+
+<Analogy title="a currency exchange at the border">
+Every currency you might arrive with has a posted rate at the exchange
+desk, and the queue to leave the airport walks you past the desk
+whether you think about it or not. `impl From<io::Error> for CliError`
+is the posted rate; `?` is the queue.
+<span slot="breaks">An exchange always takes a fee; a From impl may
+keep everything (wrapping the original error, as here) or throw detail
+away (turning it into a `String`), and that is your choice, made once
+for the whole crate.</span>
+</Analogy>
+
+<Analogy title="travel plug adapters">
+Pack one adapter for each kind of socket you will meet, and every
+device plugs in without a second thought. Forget the adapter for one
+country, and you find out the moment you try to plug in there.
+<span slot="breaks">A traveller finds out at the socket, late; rustc
+finds out when it compiles, and names the exact missing adapter
+(`From<ParseIntError>` is not implemented for `CliError`).</span>
+</Analogy>
+
+## What ? does with an Err
+
+Here is the function from the last chapter's first example, now
+written with `?` alone:
+
+```rust
+fn min_size(path: &Path)
+    -> Result<u32, CliError> {
+    let s = fs::read_to_string(path)?;
+    let n = s.trim().parse::<u32>()?;
+    Ok(n)
+}
+```
+
+`read_to_string` fails with an `io::Error`, not a `CliError`, and
+`parse` with a `ParseIntError`. This is the detail *Option and Result*
+mentioned in passing: on an `Err`, `?` first passes the error through
+`From::from`, converting it into the function's own error type, and
+*then* returns it<Cite id="klabnik2026" />. So you tell Rust how each
+conversion goes, and step through one:
+
+<FromSteps client:visible />
+
+<Examples of="from-trait">
+
+```rust
+impl From<io::Error> for CliError {
+    fn from(e: io::Error) -> Self {
+        CliError::Io(e)
+    }
+}
+```
+
+```rust
+let a = String::from("fib");
+let b: String = "fib".into();
+let c: CliError = io_err.into();
+```
+
+<Run id="cli-error" />
+
+</Examples>
+
+The first is the whole impl for one source error: a single function,
+`from`, that takes an `io::Error` by value and wraps it in the `Io`
+variant; the same five lines with `ParseIntError` and `Num` cover the
+second. The second block shows the other side of the trait. You have
+used `String::from("fib")` since *Ownership*; it is this same
+trait, implemented by the standard library for `&str`. And every
+`impl From<A> for B` gives you `Into<B>` for `A` for free, so
+`"fib".into()` and `io_err.into()` work too, as long as the type you
+want is written down somewhere (here, on the `let`)<Cite id="rust-std-from" />.
+The runnable one puts it together: two `From` impls, `min_size` with
+two plain `?`s, and a `main` that tries three files, one fine, one
+holding `lots`, one missing. It prints `ok: 64`, `bad: num: invalid
+digit found in string` and `gone: io: No such file or directory (os
+error 2)`, the last two chosen by matching the variant.
+
+<Callout kind="definition">
+**`From<T>`** is the standard trait for converting a `T` into `Self`,
+through one function, `fn from(value: T) -> Self`. The **`?`
+operator** calls `From::from` on every error it returns early, so one
+`impl From<SourceError> for MyError` per source error lets `?` work on
+all of them. Implementing `From` also gives you the matching `Into`
+for free<Cite id="rust-std-from" />.
+</Callout>
+
+<Formal title="What ? means">
+
+```text
+e?   ≈   match e {
+           Ok(v)  => v,
+           Err(x) => return Err(
+                       From::from(x)),
+         }
+```
+
+<span slot="read">Writing e followed by a question mark behaves like a
+match on e: if it is Ok holding v, the whole expression is v and the
+function carries on; if it is Err holding x, the function returns at
+once with an Err holding x converted by From::from into the function's
+own error type<Cite id="rustref-try-propagation" />.</span>
+</Formal>
+
+Leave out the `ParseIntError` impl and the second `?` stops compiling.
+rustc 1.97 says (trimmed):
+
+```text
+error[E0277]: `?` couldn't convert the
+  error to `CliError`
+  the trait `From<ParseIntError>` is not
+  implemented for `CliError`
+  = note: the question mark operation
+  (`?`) implicitly performs a conversion
+  on the error value using the `From`
+  trait
+help: ... but trait
+  `From<std::io::Error>` is implemented
+  for it
+```
+
+It names the missing impl, and even points at the one you did write.
+The fix is the impl, or, for a one-off, a `map_err` before the `?`.
+
+<Prompts ids={['q-from', 'from-impl', 'into-free', 'e0277']} />
+
+## The conversions already around you
+
+<Figure takeaway="Every conversion ? makes is an impl From somewhere: yours, the standard library's, or a crate's." caption="Four conversions ? can make. The first two are this chapter's impls; &str to String is the standard library's; String to CliError::Other is engine/rust's command line.">
+  <ConversionMap />
+</Figure>
+
+The standard library has many `From` impls of its own, and `?` uses
+them the same way. engine/rust's `read_profile` returns
+`Result<_, String>` and ends a line with `.ok_or("the profile must be
+a JSON object: …")?`: `ok_or` makes an `Err(&str)`, and `?` turns the
+`&str` into a `String` through the standard library's
+`impl From<&str> for String`. engine/rust's command line then has
+`impl From<String> for CliError`, wrapping any such message as
+`CliError::Other`, so its helpers' `String` errors rise into the CLI's
+enum with a bare `?`. Where no `From` fits, it converts by hand, once,
+with a closure it reuses: `let io = |e: std::io::Error|
+CliError::Other(e.to_string());` and then `fs::write(&a.out,
+text).map_err(io)?`.
+
+drip-rs uses the other half of the trait. Its VM reports a runtime
+error with `fn runtime_error(&mut self, message: impl Into<String>)`,
+so a caller may pass a `&str` literal or a `String` built with
+`format!`, and `message.into()` makes a `String` either way, thanks to
+those same standard impls.
+
+<OtherLanguages title="Wrap a lower-level error">
+
+```rust
+impl From<io::Error> for CliError {
+    fn from(e: io::Error) -> Self {
+        CliError::Io(e)
+    }
+}
+let s = fs::read_to_string(p)?;
+```
+
+```ts
+let s: string;
+try {
+  s = readFileSync(p, 'utf8');
+} catch (e) {
+  throw new CliError('io', { cause: e });
+}
+```
+
+```python
+try:
+    s = open(p).read()
+except OSError as e:
+    raise CliError("io") from e
+```
+
+</OtherLanguages>
+
+All three wrap a low-level error in the program's own kind and keep
+the original inside it. TypeScript and Python do it at each `catch`,
+by hand; Rust writes the rule once, as a trait impl, and the type
+checker applies it at every `?` and refuses to compile where no rule
+exists.
+
+<Prompts ids={['str-string', 'impl-into', 'cli-from-string', 'map-err-once']} />
+
+## Your turn
+
+<Exercise id="dripError" />
+
+## What you learned
+
+- **`From<T>`** converts a `T` into `Self` with one function,
+  `from`; implementing it gives you `Into` for free.
+- **`?`** passes every early-returned error through `From::from`, so
+  one impl per source error is all the plumbing an error enum needs.
+- A missing impl is error E0277, which names it; `map_err` converts
+  by hand where no `From` fits.
+- The standard library's own impls (`&str` into `String`) are at work
+  in engine/rust's `ok_or(...)?` and drip-rs's `impl Into<String>`.
+
+<Quiz />

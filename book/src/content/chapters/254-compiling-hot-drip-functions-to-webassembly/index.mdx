@@ -1,0 +1,224 @@
+---
+n: 254
+day: 64
+part: VII
+title: 'Compiling hot Drip functions to WebAssembly'
+tagline: 'A JIT in about a hundred lines of JavaScript: count the calls, compile the hot function to WebAssembly, guard every call, and fall back to the interpreter whenever the compiled code might not mean what Drip means.'
+objectives:
+  - Describe the three parts of a JIT, the counter, the compiler and the guard, and say what each one is for.
+  - Compile a Drip expression tree to WebAssembly stack code, and a while loop to block, loop and br_if.
+  - List the Drip features this JIT refuses to compile, and say why each would change the program's meaning.
+  - Compare the JIT with the tiers of a real engine, such as V8's Liftoff and TurboFan.
+introduces: [jit-from-scratch]
+uses: [runtime-code-generation, jit-compiler, tiering, interpreter, tree-walking-interpreter, ast, ast-node, stack-machine, bytecode, type-feedback, speculation, deoptimization, truthiness, runtime-error, float64, ieee754, function, parameter, return, while-loop, recursion, closure, try-catch, array, map, test]
+sources: [wasm-spec-core, wasm-spec-jsapi, v8-liftoff, v8-wasm-dynamic-tiering, v8-sparkplug, v8-jitless]
+---
+import StackSteps from '../../../components/diagrams/ch254/StackSteps';
+import TierFigure from '../../../components/diagrams/ch254/TierFigure';
+
+## Is it worth compiling?
+
+The last chapter ended with a way to make code at run time: build a
+WebAssembly module and let the engine compile it. Compiling is not
+free, though; it takes time, and a function called once has nothing
+to gain. Drip's `sumsq` called a thousand times is a different story.
+So a JIT needs three parts: something that **counts** how often each
+function runs, a **compiler** for the ones that get hot, and a
+**guard** in front of the compiled code that checks, on every call,
+that the compiled code means the same as the interpreter would.
+
+<Analogy title="a commuter's shortcut">
+On your first few trips to a new job you follow the map, turn by
+turn. After a week you know a faster way and drive it without
+thinking; but on a morning when the road is closed you go back to the
+map.
+<span slot="breaks">A commuter can notice the closed road halfway
+along; our guard can only look at the arguments before the trip
+starts, which is why it has to be strict.</span>
+</Analogy>
+
+<Analogy title="a waiter's shorthand">
+A new waiter writes every order out in full. Once a table orders "the
+usual" for the third night, the waiter writes one word, and the kitchen
+knows what it means; but if someone at that table asks for no onions,
+the waiter writes the order out in full again.
+<span slot="breaks">The kitchen remembers what "the usual" was; our
+JIT compiles the function itself, not one particular answer, so the
+compiled code still computes a fresh result for every argument.</span>
+</Analogy>
+
+<Figure takeaway="Every call goes through the guard; only plain numbers reach the compiled code." caption="What the JIT does on each call. The third call with good arguments triggers the compile; a function the compiler refuses stays interpreted for good.">
+  <TierFigure />
+</Figure>
+
+<Callout kind="definition">
+A **JIT from scratch**, in this book, is a wrapper around a Drip
+function with three parts: a counter that compiles the function to
+WebAssembly once it has run a set number of times; a compiler that
+turns the function's tree into a module, or refuses; and a guard that
+sends a call to the compiled code only when its arguments are ones the
+compiled code handles exactly as the interpreter would, and to the
+interpreter otherwise.
+</Callout>
+
+<Prompts ids={['jit-three-parts', 'why-count']} />
+
+## Compiling the tree
+
+The interpreter already holds each function as a tree (chapter 81's
+AST, here written compactly as arrays, so `i * i` is
+`['*', ['var', 'i'], ['var', 'i']]`). WebAssembly runs on an operand
+stack, so an expression compiles **children first**: code for the left
+operand, code for the right, then the operator, which pops both and
+pushes the answer. Variables become **locals**, numbered from 0, with
+the parameters first; `local.get` (`20`) pushes one and `local.set`
+(`21`) pops into one. Step through the ten bytes for `s += i * i`:
+
+<StackSteps client:visible />
+
+Statements need WebAssembly's structured control flow, because it has
+no plain jump to a label. A `while` becomes a `block` with a `loop`
+inside it: the code tests the condition, `i32.eqz` turns "true" into
+0 and "false" into 1, and `br_if 1` leaves the block when the test
+failed; after the body, `br 0` goes back to the top of the loop. `if`
+has its own `if`, `else` and `end`, and `return` is `0f`.
+
+<Formal title="The translation, written as rules">
+
+```text
+[[num k]]      = f64.const k
+[[var x]]      = local.get slot(x)
+[[a op b]]     = [[a]] [[b]] f64.op
+[[x = e]]      = [[e]] local.set slot(x)
+[[while c B]]  = block loop
+                   [[c]] i32.eqz br_if 1
+                   [[B]] br 0
+                 end end
+[[return e]]   = [[e]] return
+```
+
+<span slot="read">The double brackets mean "the code for". The code for
+a number is a constant; for a variable, a get of its slot; for a op b,
+the code for a, then the code for b, then the operator. An assignment
+is the code for the value and then a set. A while loop is a block
+holding a loop: test, flip the answer, leave the block if it was false,
+run the body, and go back to the loop's start. A return is the value
+and then return.</span>
+</Formal>
+
+<Examples of="jit-from-scratch">
+
+```text
+x * x        ->  20 00 20 00 a2
+```
+
+```text
+while i < n { ... }
+  -> 02 40 03 40          block loop
+     20 02 20 00 63       i < n
+     45 0d 01             leave if false
+     ...                  the body
+     0c 00 0b 0b          br 0, end end
+```
+
+<Run id="jit" />
+
+</Examples>
+
+The first is the smallest: two gets of local 0 and `f64.mul`, the body
+of `sq` from the last chapter. The second is the loop of `sumsq`,
+where `n` is local 0 and `i` is local 2; `63` is `f64.lt`, and `40`
+after `block` and `loop` says they leave nothing on the stack. The
+third is the whole JIT, about two hundred short lines: the encoder from the last
+chapter, `compile`, a small tree-walking interpreter, and `jit`, the
+wrapper with the counter and the guard. It prints `14` three times as
+`interpreted` and then `compiled` from the third call on (the call
+that reaches the limit is the first to use the new code), then
+`332833500` and `5` from the compiled code, and finally the
+interpreter's error for `f('4')`.
+
+<Prompts ids={['children-first', 'while-shape', 'locals-order']} />
+
+## Keeping Drip's meaning
+
+A JIT may only make the program faster, never different, and most of
+the work in this one is saying no. Drip's numbers are 64-bit floats,
+and WebAssembly's `f64` is the same kind of number with the same
+arithmetic<Cite id="wasm-spec-core" />, so `sumsq(2.5)` is `5` on both
+paths (0, 1 and 4 are added before `i` reaches 3). Everything else is
+checked:
+
+- **`%` is refused.** WebAssembly has remainder instructions for
+  integers only; `f64` has add, subtract, multiply, divide, min, max
+  and a few more, but no remainder<Cite id="wasm-spec-core" />.
+- **Conditions must be comparisons.** In Drip, `while n { ... }` loops
+  for ever, because every number is truthy, even 0; a compiler that
+  tested `n` against zero, as C does, would change the meaning.
+- **Every path must `return`.** A Drip function that runs off the end
+  returns `none`, which an `f64` cannot hold.
+- **Calls, strings, lists and classes are refused**, so most real
+  functions stay interpreted; that is fine, because the interpreter is
+  always correct.
+- **The guard checks the arguments.** The JavaScript API converts an
+  `f64` argument with `ToNumber`<Cite id="wasm-spec-jsapi" />, so the
+  compiled code would quietly treat `"4"` as 4, where Drip stops with
+  a runtime error. The guard sends anything that is not a number, and
+  any call with the wrong number of arguments, to the interpreter,
+  which reports the error properly.
+
+<Prompts ids={['why-no-rem', 'truthy-zero', 'guard-why']} />
+
+## How the real ones do it
+
+Our JIT stands on the engine's shoulders: the WebAssembly we hand
+over is compiled by the engine. In the design V8's team described
+(V8 runs in Chrome and Node), that is first **Liftoff**, a baseline
+compiler that makes machine code in a single pass over the
+function's bytes, keeping a "virtual stack" of where each operand
+lives, in a register or in the stack frame, instead of pushing values
+at run time; hot code is then compiled again by **TurboFan**, the
+optimizing compiler<Cite id="v8-liftoff" />. V8 itself first sent
+every function to TurboFan straight after Liftoff, and later tried
+**dynamic tiering**, which compiles with TurboFan "only those functions
+... that actually get executed multiple times", our counter in a
+different place<Cite id="v8-wasm-dynamic-tiering" />. For JavaScript,
+V8's Sparkplug turns bytecode into machine code in one pass, with no
+IR<Cite id="v8-sparkplug" />, which is the same shape as our
+`compile`.
+
+Two differences are worth keeping in mind. Our guard runs before the
+call; a speculating JIT (chapter 174) compiles for the types it has
+seen and checks inside the compiled code, deoptimizing halfway through
+if a guess fails, which lets it compile far more of the language. And
+our JIT only switches between calls: a single call that loops for a
+long time stays in the interpreter until it returns (in 2021, V8 did
+not switch WebAssembly code mid-loop either<Cite id="v8-wasm-dynamic-tiering" />).
+Finally, a real engine can do without a JIT entirely: V8's
+`--jitless` mode interprets everything, which is slower but needs no
+executable memory at all<Cite id="v8-jitless" />.
+
+<Prompts ids={['liftoff-what', 'guard-vs-deopt']} />
+
+## Your turn
+
+<Exercise id="emit-expr" />
+
+<Exercise id="tier-up" />
+
+## What you learned
+
+- A **JIT** needs a counter, a compiler and a guard: compile only what
+  is hot, and run the compiled code only when it means exactly what
+  the interpreter would.
+- Expressions compile to stack code **children first**; `while` becomes
+  `block`, `loop`, `br_if` and `br`, because WebAssembly's control flow
+  is structured.
+- Most of a safe JIT is refusing: `%`, truthiness, missing returns and
+  non-number arguments all go back to the interpreter.
+- Real engines add tiers (Liftoff, TurboFan) and speculation with
+  deoptimization, but the shape is the same.
+
+Next: one complete compiler from Drip to RISC-V, putting every stage
+of this part together.
+
+<Quiz />

@@ -1,0 +1,306 @@
+---
+n: 368
+day: 92
+part: XI
+title: 'Unsafe Rust'
+tagline: 'drip-rs checks every byte it reads, and forbids itself the one keyword that would let it stop. This chapter is about that keyword: what it unlocks, what it leaves switched on, what breaking its promise does, and what giving it up cost.'
+objectives:
+  - Call an unsafe function inside an unsafe block, and write the SAFETY comment that goes with it.
+  - Say what unsafe allows, and which checks it leaves on.
+  - Explain undefined behaviour, and use Miri and debug builds to catch it.
+  - Wrap an unchecked operation in a safe function, and explain what forbid(unsafe_code) cost drip-rs.
+introduces: [unsafe]
+uses: [rust, crate, scalar-types, rust-functions, ownership, borrow, shared-vs-mutable, borrow-checker, slice, option, vec, arena, typed-index, size-of, pointer, address, memory, garbage-collection, roots, mark-sweep, virtual-machine, instruction-pointer, dispatch-loop, branch-prediction, benchmark-isolation, median-p95]
+sources: [klabnik2026, rustref-unsafety, rustref-ub, rust-std-slice-get-unchecked, nomicon-working-with-unsafe, miri-readme]
+---
+import UncheckedSteps from '../../../components/diagrams/ch368/UncheckedSteps';
+import SafeShell from '../../../components/diagrams/ch368/SafeShell';
+
+## One byte, two ways
+
+Every instruction the Drip VM runs starts by reading a byte, and
+drip-rs does it like this (from `vm.rs`):
+
+```rust
+fn read_byte(&mut self) -> u8 {
+    let byte = self.chunk.code[self.ip];
+    self.ip += 1;
+    byte
+}
+```
+
+`code[self.ip]` compares `ip` with the length of `code` first, every
+time, and panics if it is past the end. A VM written in C reads the
+same byte through a pointer and checks nothing, trusting the compiler
+that wrote the bytecode. Could Rust read the C way? Yes: slices have a
+method, `get_unchecked`, that skips the check; however, drip-rs chose
+not to use it, and one line at the top of its `lib.rs` makes that
+permanent: `#![forbid(unsafe_code)]`.
+
+<Analogy title="a staff-only door">
+Safe Rust is a building where every door checks your badge. `unsafe`
+is a staff-only door: behind it a few extra rooms open, and in those
+rooms nobody checks badges for you. You sign the logbook on the way in
+(a `SAFETY` comment), and whatever happens in there is on you.
+<span slot="breaks">Behind a real staff door the ordinary rules may be
+relaxed too; behind `unsafe`, every other check (types, borrows) still
+runs exactly as before. Only the few extra rooms are new.</span>
+</Analogy>
+
+<Analogy title="the waiver at a climbing wall">
+At a climbing wall, staff check every harness. Sign the experienced
+climbers' waiver and they stop checking yours: you promise you know
+how, and if you are wrong, nobody's alarm goes off before the fall.
+<span slot="breaks">A fall hurts only the climber; broken promises in
+unsafe code can corrupt memory that the rest of the program, written
+in perfectly safe code, then reads.</span>
+</Analogy>
+
+## Calling an unsafe function
+
+`get_unchecked` is an **`unsafe fn`**: a function whose callers must
+keep a promise the compiler cannot check, here that the index is less
+than the length<Cite id="rust-std-slice-get-unchecked" />. Calling one
+outside an `unsafe` block is an error:
+
+```rust
+let v = xs.get_unchecked(1);
+// error[E0133]: call to unsafe function
+//   `get_unchecked` is unsafe and
+//   requires unsafe function or block
+let v = unsafe { *xs.get_unchecked(1) };
+```
+
+That is rustc 1.97's message, trimmed. Wrapped in `unsafe { ... }`,
+the call compiles; the `*` copies the value out of the reference
+`get_unchecked` returns. Step through four
+ways to read one element, and what each costs:
+
+<UncheckedSteps client:visible />
+
+<Examples of="unsafe">
+
+```rust
+let xs = [10, 20, 30];
+// SAFETY: 1 < xs.len() == 3.
+let v = unsafe { *xs.get_unchecked(1) };
+// v == 20
+```
+
+```rust
+/// # Safety
+/// The caller must make sure that
+/// `i < xs.len()`.
+unsafe fn at_unchecked(
+    xs: &[f64],
+    i: usize,
+) -> f64 {
+    // SAFETY: the caller promised it.
+    unsafe { *xs.get_unchecked(i) }
+}
+```
+
+<Run id="safe-get" />
+
+</Examples>
+
+The first is the smallest use: one unsafe call, with a `SAFETY`
+comment saying why the promise holds (1 is less than 3). The second is
+an `unsafe fn` of your own: a `# Safety` doc section says what callers
+must promise, and the body's own `unsafe` block has its own `SAFETY`
+comment, the habit the Rust book recommends<Cite id="klabnik2026" />.
+The runnable one calls it from a safe `at`, which checks the index
+first, and prints `Some(4.0)`, `None` and `None`.
+
+<Callout kind="definition">
+An **`unsafe` block** marks code in which you may use a few extra
+operations whose rules the compiler cannot check; everything else in it
+is checked as usual. An **`unsafe fn`** is one whose callers must keep
+a promise, so calling it needs `unsafe` too. A **`// SAFETY:`**
+comment says what the promise is and why it holds<Cite id="klabnik2026" />.
+</Callout>
+
+<Formal title="A safety contract">
+
+```text
+{ i < len(xs) } get_unchecked(xs, i)
+                { r = xs[i] }
+{ true }        get(xs, i)
+                { r = Some(xs[i]) or None }
+```
+
+<span slot="read">Read each line as: if the condition in the first
+braces is true before the call, the one in the last braces is true
+after it. get_unchecked only promises the right element when i is less
+than the length; get promises a sensible answer for any i at all. The
+first condition is the caller's job, and nothing checks it.</span>
+</Formal>
+
+<Prompts ids={['safety-comment']} />
+
+## What unsafe unlocks, and what it does not
+
+The Rust book lists five things you may do only inside `unsafe`:
+dereference a raw pointer (the next chapter), call an `unsafe`
+function or method, read or write a mutable `static` variable,
+implement an `unsafe` trait, and read the fields of a
+`union`<Cite id="klabnik2026" />. The Reference's list adds a few rarer
+ones, such as unsafe attributes and (since the 2024 edition) blocks
+that declare C functions<Cite id="rustref-unsafety" />.
+
+What `unsafe` does **not** do is switch anything off. Types are still
+checked, and so are borrows:
+
+```rust
+unsafe {
+    let first = &v[0];
+    v.push(4);
+    println!("{first}");
+}
+// warning: unnecessary `unsafe` block
+// error[E0502]: cannot borrow `v` as
+//   mutable because it is also
+//   borrowed as immutable
+```
+
+Nothing there needed `unsafe`, so rustc 1.97 warns about the block,
+then rejects the program with the ordinary borrow error.
+
+The promise is narrow, but real: break it, and the result is
+**undefined behaviour**. That is not a panic; the compiler optimizes
+on the assumption that it never happens, so anything at all may follow,
+including nothing visible<Cite id="rustref-ub" />. On this book's
+machine, reading past the end of a three-element array with
+`get_unchecked` did three different things. A debug build stopped with
+`unsafe precondition(s) violated`, adding that "this Undefined
+Behavior check is optional, and cannot be relied on for safety". A
+release build with the index hidden behind `black_box` printed
+`-186027976`, then `817451064`: whatever lay past the array. And a
+release build with a constant index died with `Illegal instruction`,
+because the optimizer, seeing a certain broken promise, replaced the
+read with a trap.
+
+The tool for finding these is **Miri**, an interpreter for Rust that
+runs your program (or its tests) slowly and checks every memory access,
+reporting undefined behaviour where it happens<Cite id="miri-readme" />.
+It needs the nightly toolchain (`cargo +nightly miri run`), and it only
+checks the runs you give it: if Miri finds a bug, you have one, but a
+clean run proves nothing<Cite id="klabnik2026" />.
+
+<Prompts ids={['unsafe-five', 'unsafe-not', 'ub-what', 'miri-what']} />
+
+## Safe on the outside
+
+<Figure takeaway="Callers see only a safe function; its own check makes the unsafe line's promise true." caption="The usual shape of unsafe code: a safe function whose check proves the SAFETY comment, around an unsafe block of one line.">
+  <SafeShell />
+</Figure>
+
+You rarely want `unsafe` spread through a program. The usual shape is
+the one in the figure: a small, safe function whose own check makes the
+promise true, around one unchecked step, so no caller can make it
+misbehave whatever they pass. Such a function is called **sound**.
+The catch, which the Rustonomicon points out with exactly this kind of
+function, is that soundness depends on *safe* code too: change the
+check from `i >= xs.len()` to `i > xs.len()`, a change in no `unsafe`
+block at all, and `at(&xs, 3)` reads past the end<Cite id="nomicon-working-with-unsafe" />.
+That is how `Vec`, slices and `String` are built: safe methods over a
+little audited `unsafe` code inside the standard library<Cite id="klabnik2026" />.
+
+<OtherLanguages title="Read one past the end">
+
+```rust
+let xs = [1.5, 2.5, 4.0];
+xs[3];                 // panics
+xs.get(3);             // None
+unsafe { *xs.get_unchecked(3) } // UB
+```
+
+```ts
+const xs = new Float64Array([1.5, 2.5, 4]);
+xs[3]; // undefined: checked, never UB
+```
+
+```c
+double xs[] = {1.5, 2.5, 4.0};
+xs[3]; /* compiles; undefined behaviour */
+```
+
+```python
+xs = [1.5, 2.5, 4.0]
+xs[3]  # IndexError: list index out of range
+```
+
+</OtherLanguages>
+
+TypeScript and Python always check, and differ only in what you get
+back. C never checks, and reading past the end is undefined behaviour
+there, the very thing Rust confines to `unsafe` blocks. Rust offers a
+panic, an `Option`, or, when you ask in writing, no check at all.
+
+<Prompts ids={['safe-wrapper', 'sound-nonlocal']} />
+
+## Forbidding it: drip-rs
+
+`#![forbid(unsafe_code)]` turns the `unsafe_code` lint up to its
+strictest level for the whole crate. Any `unsafe` block is then an
+error (`error: usage of an unsafe block`), and unlike `deny`, a
+`#[allow(unsafe_code)]` further down cannot undo it: rustc 1.97 answers
+`error[E0453]: allow(unsafe_code) incompatible with previous forbid`.
+
+What did that cost? Not pointers between heap objects, since the
+arenas and `Gc<T>` handles of *Arenas and typed indices* replaced
+them. The cost is the checks: `read_byte` checks `ip`, and every
+`heap[handle]` checks the index *and* that the slot is still `Some`,
+because freed slots become `None`. To put a number on it, for this
+chapter I copied drip-rs, removed the `forbid`, and replaced five
+checked reads with `get_unchecked` (in `read_byte`, `read_constant`,
+`peek`, and the arena's two index methods), checked that both builds
+printed the same output, and timed them alternately, seven runs each,
+twice, on the book's shared cloud VM (release builds, rustc 1.97).
+Fastest times, checked / unchecked, in milliseconds:
+
+```text
+program        round 1     round 2
+fib            414 / 400   407 / 393
+method_calls   169 / 157   178 / 161
+fields         187 / 163   190 / 165
+instantiation  142 / 137   145 / 136
+trees          161 / 143   149 / 145
+```
+
+The unchecked build was 3 to 13 percent faster on these minimums, and
+the medians mostly agreed (one, `fib` in round 2, went the other way).
+Checks that never fail are cheap, because the CPU's branch predictor
+learns that the index is always in bounds, as *Pipelines and branch
+prediction* explained.
+
+<Prompts ids={['forbid']} />
+
+<Callout kind="engine" label="Under the hood">
+What the checks saved is easy to point at. The collector of *Reclaiming memory: mark and sweep* frees objects, so a
+missed root leaves a handle to a freed slot. In C that is a
+use-after-free that reads whatever moved in. drip-rs has a
+`debug_gc` option ("never reuse freed heap slots, so a missed root
+panics on use"), which its corpus tests turn on, and a `stress_gc`
+option that collects before every allocation; together they turn a
+missed root into a panic with a message rather than a quiet misread. The `forbid` covers only drip-rs's own source: `Vec` and `HashMap` use
+`unsafe` inside the standard library.
+</Callout>
+
+## Your turn
+
+<Exercise id="at" />
+
+## What you learned
+
+- An **`unsafe` block** unlocks five extra operations, such as calling
+  an **`unsafe fn`** like `get_unchecked`; it switches no checks off.
+- Breaking an unsafe promise is **undefined behaviour**: not a panic,
+  but anything at all. Debug builds and **Miri** catch some of it.
+- Keep `unsafe` small, inside a safe function whose own check makes
+  the promise true, with a `// SAFETY:` comment; soundness can still
+  depend on the safe code around it.
+- drip-rs's **`#![forbid(unsafe_code)]`** cost it 3 to 13 percent here,
+  and turned collector bugs into panics instead of corrupted memory.
+
+<Quiz />

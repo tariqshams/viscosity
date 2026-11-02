@@ -1,0 +1,253 @@
+---
+n: 261
+day: 66
+part: VIII
+title: 'VIR: Viscosity’s IR'
+tagline: 'Every analysis in Viscosity reads one data structure. It is small enough to print on a phone, it is a control-flow graph in SSA form, and it decides, variable by variable, what may be a value and what must stay a name.'
+objectives:
+  - Describe the parts of a VIR module (functions, blocks, instructions, terminators, bindings) and read a real listing.
+  - Explain what a phi in VIR means, and predict where the builder puts one.
+  - Say which variables become SSA values and which become bindings, and why.
+  - Write a printer for a small VIR function.
+introduces: [vir]
+uses: [viscosity-pipeline, language-plugin, ir, lowering, three-address-code, temporary, basic-block, cfg, ssa, phi-node, ssa-construction, closure, captured-environment, global-variable, dataflow, static-analysis, discriminated-union, interface, array-of-objects, property]
+sources: [braun2013, coopertorczon2022]
+---
+import VirSteps from '../../../components/diagrams/ch261/VirSteps';
+import CfgShape from '../../../components/diagrams/ch261/CfgShape';
+
+## One data structure
+
+Every analysis from here to the end of Part VIII asks questions about
+how a program *runs*: which value flows into which instruction, which
+loop reads which field, what could reach a call. A syntax tree is a poor
+place to ask them, because it is shaped like the text, so `t = t + v`
+inside a loop is one node that stands for a different value on every
+pass. Viscosity asks them of **VIR**, its intermediate representation,
+and all of it lives in one file, `packages/core/src/vir.ts`, 176 lines
+long.
+
+<Analogy title="a metro map">
+A metro map drops the streets, the parks and the shape of the river, and
+keeps what a traveller needs: the stations, and which line leads from
+each one to the next. VIR is a metro map of your program: each station
+is a run of steps with no choices in it, and the lines between them are
+the only ways control can go.
+<span slot="breaks">You can ride a metro line in either direction; a VIR
+edge goes one way only, and at a fork the program does not choose, a
+value does.</span>
+</Analogy>
+
+## Modules, functions, blocks
+
+A `Module` holds a list of `Func`s (one per function, plus `<module>` for
+the top-level code), a list of `Binding`s, and every instruction by its
+id. A `Func` is a control-flow graph, exactly as in the chapter *Basic
+blocks and control-flow graphs*: a list of `Block`s and an entry block.
+Each block holds instructions, a list of the blocks that can jump to it
+(its *predecessors*), and exactly one **terminator** that says where
+control goes next:
+
+```ts
+type Terminator =
+  | { kind: 'br'; target: BlockId }
+  | { kind: 'condbr'; cond: ValueId;
+      then: BlockId; else: BlockId }
+  | { kind: 'return';
+      value: ValueId | null }
+  | { kind: 'throw'; value: ValueId }
+  | { kind: 'unreachable' };
+```
+
+`br` always jumps to one block; `condbr` jumps to `then` or `else`
+depending on a value; `return` and `throw` leave the function; and
+`unreachable` marks a block nothing can reach. An instruction is one
+record type for every operation (a tagged union in spirit, as in the
+chapter *Tagged unions: the shape of every syntax tree*), with optional
+fields that only some operations use:
+
+```ts
+interface Inst {
+  id: ValueId;      // %7
+  op: Op;           // 'binop'
+  args: ValueId[];  // operands
+  block: BlockId;
+  operator?: string; // '+', for binop
+  binding?: BindingId;
+  src?: SourceRef;  // where it came from
+  // … value, field, fields, note, …
+}
+```
+
+Each instruction is three-address code, as in the chapter
+*Three-address code*: one operation, a few operands named by id, one
+result, which is the instruction's own id. `src` is the link back to your
+text (the plugin's syntax node, its start and end offsets, and its
+line); emit uses it to know what to replace, and explain uses it to say
+"line 4".
+
+<Prompts ids={['vir-func', 'vir-term', 'vir-src']} />
+
+Here is the graph for a small loop that sums `x * vx` over a list, drawn
+from the real listing; read it top to bottom, following the arrows:
+
+<Figure caption="A for loop in VIR: five blocks, a loop header with two phis, and one back edge." takeaway="Control is explicit: every block ends in exactly one terminator.">
+  <CfgShape />
+</Figure>
+
+## SSA, and what a phi means
+
+VIR is in SSA form, as in the chapter *SSA form*: every value is defined
+exactly once. `let t = 0` and `t = t + …` do not overwrite a box called
+`t`; they make two different values, and where two paths meet (the loop
+header, which you reach from the entry the first time and from the loop
+body after that), a `phi` picks the one that matches the path you came
+in by.
+
+<Analogy title="signed delivery notes">
+Each delivery to a building comes with its own signed note, and a note is
+never edited afterwards; a new delivery means a new note. At the front
+desk, the clerk who wants "the latest parcel for flat 3" looks at which
+door the courier came in through, and takes the note from that route.
+Each note is an SSA value; the clerk's rule is a phi.
+<span slot="breaks">A clerk really looks and chooses; a phi is not run
+like other instructions, it is a statement of which value holds on each
+incoming edge, and the back end turns it into plain copies (as in the
+chapter *Leaving SSA*).</span>
+</Analogy>
+
+Now step through the real listing, one source line at a time:
+
+<VirSteps client:visible />
+
+<Callout kind="definition">
+**VIR** is Viscosity's intermediate representation. It is
+language-neutral: every plugin lowers to it, and every analysis reads
+only it. Each function is a **CFG** of basic blocks in **SSA form**:
+local variables that no closure captures become values defined once and
+joined by `phi`s. Other variables become **bindings**, read and written
+with explicit `load` and `store` instructions.
+</Callout>
+
+<Formal title="Single assignment, and the phi rule">
+
+```text
+∀ v. v has exactly one definition
+B has preds p₁ … pₙ, and in B:
+  %v = phi %a₁, …, %aₙ
+entering B from pₖ  ⟹  %v = %aₖ
+```
+
+<span slot="read">For every value v, there is exactly one instruction
+that defines it. If block B has n predecessors, listed p1 to pn, and
+starts with a phi whose arguments are a1 to an in the same order, then
+whenever control enters B from the k-th predecessor, the phi's value is
+the k-th argument.</span>
+</Formal>
+
+Try the rule by hand: the runnable version below plays out the VIR of a
+two-way `if`, keeping track of which block it came from, so that the phi
+can pick its argument.
+
+<Run id="phi-by-hand" />
+
+<Prompts ids={['vir-what', 'phi-pick', 'ssa-cheap']} />
+
+## SSA values and bindings
+
+Look again at the listing: `t` and `i` never appear by name, because they
+are SSA values joined by phis, while `ps` and `console` appear as
+`store ps` and `load console`, because they are **bindings**. Here is why
+some variables cannot be SSA. This function has two counters:
+
+```js
+function count(xs) {
+  let n = 0;
+  let k = 0;
+  const bump = () => { n = n + 1; };
+  for (const x of xs) {
+    bump(); k = k + 1;
+  }
+  return n + k;
+}
+```
+
+`k` becomes phis, as always (`%16 = phi %3, %18` in the real listing).
+However, `n` is changed inside `bump`, and a call to `bump` could happen
+anywhere; a phi cannot describe "whatever the closure did", so `n` stays a
+binding, and the arrow's body really is `load n`, `binop +`, `store n`.
+The JavaScript plugin also makes a binding of any variable that holds an
+array, so the analyses see every read of a candidate collection as a
+`load` they can follow (the chapter *Lowering JavaScript to VIR* gives
+the full rule).
+
+<Examples of="vir">
+
+```
+const a = 1 + 2;
+  %0 = const 1
+  %1 = const 2
+  %2 = binop + %0, %1
+```
+
+```
+function pick(c) {   b0: condbr %0, b1, b2
+  let s = 0;         b1: %2 = const 1
+  if (c) s = 1;      b2: %3 = const 2
+  else s = 2;        b3: %4 = phi %2, %3
+  return s; }            return %4
+```
+
+```
+let n = 0;            %0 = const 0
+const get = () => n;  store n, %0
+n = 5;                %4 = const 5
+                      store n, %4
+  in get:  %2 = load n
+```
+
+</Examples>
+
+The first is the smallest listing there is: two constants and one
+`binop`, with no variable named anywhere (`a` is a plain local, so it is
+just the value `%2`). In the second (each branch's `br b3` is left out to fit), `s` gets
+three values, and `b3`,
+where the two branches meet, has a phi that picks `%2` when it is
+entered from `b1` and `%3` from `b2` (the first `s = 0`, `%1`, is never
+read). In the third, `get` reads `n` long after the module's code has
+moved on, so `n` must be a binding with real stores, and the closure's
+own body loads it.
+
+<Prompts ids={['ssa-vs-binding', 'binding-arrays']} />
+
+<Callout kind="engine" label="Under the hood">
+Plugins do not build SSA by hand. `packages/core/src/builder.ts` gives
+them `readVariable` and `writeVariable`, and builds SSA on the fly with
+the algorithm of Braun and colleagues from the chapter *SSA on the
+fly*<Cite id="braun2013" />: a read in a block with several predecessors
+creates a phi, loop headers get incomplete phis until they are sealed,
+and trivial phis are removed. That is why phi ids look out of order (in
+the listing, `t`'s phi is `%11`, created only when the loop body first
+read `t`). One shared IR for many analyses is the standard middle-end
+design<Cite id="coopertorczon2022" />; VIR's twist, the next chapter's
+subject, is that its instructions are chosen for data layout.
+</Callout>
+
+## Your turn
+
+<Exercise id="printFunc" />
+
+## What you learned
+
+- A VIR **module** has functions (each a CFG of blocks), bindings, and
+  every instruction by id; each block ends in one **terminator**.
+- **VIR** is language-neutral SSA: each value is defined once, and a
+  **phi** at a join takes the value from the edge control came in by.
+- Uncaptured locals are SSA values; captured, module-level and
+  array-holding variables are **bindings** with `load` and `store`.
+- Every instruction keeps a **source reference**, for emit and explain.
+
+Next: VIR's own instructions for records and collections, and its honest
+word for everything else.
+
+<Quiz />

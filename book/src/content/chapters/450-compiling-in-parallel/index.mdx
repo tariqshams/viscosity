@@ -1,0 +1,251 @@
+---
+n: 450
+day: 113
+part: XIII
+title: 'Compiling in parallel'
+tagline: 'Files are independent, so the Rust CLI compiles them on every core at once: scoped threads, one atomic counter that hands out the work, and a numbered slot per file, so the output comes back in the order you gave whatever order the threads finish in.'
+objectives:
+  - Explain why compiling separate files is data-parallel, and what a thread is.
+  - Read for_each_parallel, and say what the scope, the atomic counter and the mutex each guarantee.
+  - Say why a shared counter beats fixed shares when files take different times.
+  - Implement a parallel map whose results come back in index order.
+introduces: [data-parallelism]
+uses: [viscosity-rs, compile-time-performance, cpu, borrow, shared-vs-mutable, ownership, lifetime, rust-closure, rust-generics, trait-bound, option, result, vec, rust-iterator, rust-thread, send-sync, arc-mutex, atomics, work-stealing, cargo-test]
+sources: [rust-std-thread-scope, rust-std-atomic-fetch-add, rust-std-mutex]
+---
+import WorkSteps from '../../../components/diagrams/ch450/WorkSteps';
+import SharesFigure from '../../../components/diagrams/ch450/SharesFigure';
+
+## Four cores, one file at a time
+
+The committed measurements in
+`engine/rust/results/parallel-build-2026-10-31.md` put the Rust
+engine's cost at about a tenth of a millisecond per test program
+(*How fast is the compiler?* timed it in other ways). That sounds like
+the end of the speed story, until someone hands it a whole project:
+
+```
+$ viscosity build src/*.js -o out/
+```
+
+That is one command and hundreds of files, and they do not depend on
+each other: Viscosity's analyses never look from one file into another,
+so compiling `b.js` needs nothing from `a.js`. A machine with four
+cores (four processors on one chip, each able to run code on its own)
+could compile four files at the same moment, yet a plain loop over the
+files uses one core and leaves three idle. So the Rust CLI compiles
+them in parallel, with one thread per core by default, or `--jobs N`.
+
+<Analogy title="markers and a pile of exam papers">
+A stack of 400 exam papers is to be marked. One teacher marks them one
+after another; four teachers sitting round a table, each taking the
+next paper from the pile, finish in about a quarter of the time,
+because marking one paper never needs another paper.
+<span slot="breaks">Teachers who finish all at once still need someone
+to put the marks into the register in order, one at a time, and that
+part does not get faster with more teachers; the next chapter measures
+exactly that serial part.</span>
+</Analogy>
+
+<Analogy title="a post office with a ticket machine">
+A post office has four counters and one ticket machine. Nobody is
+given a counter in advance: whoever is free calls the next number, so
+one slow customer holds up only their own counter. Every letter goes
+into a tray with the customer's ticket number on it, so the post leaves
+in ticket order, however the counters happened to finish.
+<span slot="breaks">A ticket machine is a physical thing two people
+cannot press at the same instant; in a computer two threads really can
+ask at the same instant, which is why the counter has to be a special,
+**atomic** kind of number.</span>
+</Analogy>
+
+The markers are the idea, **data parallelism**: the same work on many
+independent pieces at once. The post office is how the CLI organizes
+it. Step through three threads compiling six files:
+
+<WorkSteps client:visible />
+
+<Prompts ids={['dp-independent', 'dp-what-thread']} />
+
+## Threads that may borrow
+
+A **thread** is a separate line of execution inside one program: it has
+its own place in the code and its own stack (the memory for its local
+variables), but it shares the program's other memory with every other
+thread, and the operating system runs threads on different cores at
+the same time (*Threads, Send and Sync*). Sharing memory is what makes
+threads useful and dangerous: two threads changing the same value at
+once is a data race, and Rust refuses to compile one.
+
+`std::thread::scope` creates threads that may borrow the caller's local
+variables, because the scope joins (waits for) every thread it started
+before it returns, so no thread can outlive what it borrowed
+<Cite id="rust-std-thread-scope" />. The borrowing rules still hold
+across threads: many threads may share `&x`, but nothing can be changed
+through a shared reference unless its type is built for it.
+
+<Examples of="data-parallelism">
+
+```rust
+let xs = [1, 2, 3, 4, 5, 6];
+let (l, r) = xs.split_at(3);
+let sum = |h: &[i32]| h.iter().sum::<i32>();
+let (a, b) = std::thread::scope(|s| {
+    let ha = s.spawn(|| sum(l));
+    let hb = s.spawn(|| sum(r));
+    (ha.join().unwrap(), hb.join().unwrap())
+});
+// a == 6, b == 15
+```
+
+<Run id="shares-vs-counter" />
+
+```
+$ viscosity explain --jobs 4 a.js b.js c.js
+```
+
+</Examples>
+
+The first is the smallest case: `split_at(3)` splits the six numbers
+into two halves, `sum` is a closure that adds up a slice, `spawn` starts
+a thread for each half (each closure borrows its half, which the scope
+allows), and `join` waits for a thread and hands back its answer, 6 and
+15. The second runs:
+six made-up "files", two slow (40 ms) and four fast (10 ms), compiled on
+three threads twice. With fixed shares (thread `t` takes files `2t` and
+`2t + 1`), thread 1 gets both slow files and the run takes about 80 ms;
+with one shared counter, each thread takes the next file when it is
+free, and it takes about 40 ms (I ran it here: 81 and 40). The third is
+the real thing: four threads, and the explanations printed in the order
+`a.js`, `b.js`, `c.js` whichever finishes first.
+
+<Figure caption="The same six files (times 4, 4, 1, 1, 1, 1) on three threads. Fixed shares leave two threads idle while one does both slow files; a shared counter keeps them busy." takeaway="Handing out work one piece at a time copes with pieces of different sizes.">
+  <SharesFigure />
+</Figure>
+
+<Prompts ids={['dp-scope', 'dp-shares']} />
+
+## One counter, numbered slots
+
+Here is the CLI's helper, `for_each_parallel` in
+`crates/cli/src/main.rs` (rewrapped; the long strings are split with
+`\` continuations, which leave them unchanged):
+
+```rust
+fn for_each_parallel<T: Send>(
+    n: usize,
+    jobs: usize,
+    f: impl Fn(usize) -> T + Sync,
+) -> Vec<T> {
+    let jobs = jobs.clamp(1, n.max(1));
+    if jobs == 1 {
+        return (0..n).map(f).collect();
+    }
+    let next = AtomicUsize::new(0);
+    let slots: Mutex<Vec<Option<T>>> =
+        Mutex::new(
+            (0..n).map(|_| None).collect(),
+        );
+    std::thread::scope(|s| {
+        for _ in 0..jobs {
+            s.spawn(|| loop {
+                let k = next.fetch_add(
+                    1,
+                    Ordering::Relaxed,
+                );
+                if k >= n {
+                    break;
+                }
+                let r = f(k);
+                slots.lock().expect(
+                    "no thread panicked \
+                     holding the lock",
+                )[k] = Some(r);
+            });
+        }
+    });
+    slots
+        .into_inner()
+        .expect("not poisoned")
+        .into_iter()
+        .map(|r| {
+            r.expect("every index was run")
+        })
+        .collect()
+}
+```
+
+The signature promises three things. `n` is the number of files and
+`f(k)` compiles file `k`; `T: Send` says a result may be moved from the
+thread that made it to the main thread, and `f: Sync` says `f` may be
+called from several threads at once (both from *Threads, Send and
+Sync*). `clamp` keeps the thread count between 1 and `n`, and one thread
+skips the machinery altogether.
+
+Then come the two shared things. `next` is an `AtomicUsize`, and
+`fetch_add(1, ...)` adds one to it and returns the value it had before,
+as one indivisible step<Cite id="rust-std-atomic-fetch-add" />, so two
+threads can never draw the same number. `Ordering::Relaxed`, the
+weakest ordering, is enough, because the counter only hands out numbers;
+nothing else is passed through it. The results travel through `slots`,
+a vector with one `Option` per file, starting as `None`, behind a
+`Mutex`, which lets one thread at a time reach the vector
+<Cite id="rust-std-mutex" />. Each thread loops: draw a number, stop if
+it is past the end, compile that file, lock, store the result in slot
+`k`. When the scope returns, every thread has finished, so
+`into_inner` takes the vector out of the mutex, and each `Some(r)` is
+unwrapped in order.
+
+<Callout kind="definition">
+**Data parallelism** splits work into independent pieces (here, one
+file each) and runs the same operation on many pieces at once, on
+different cores. The pieces share no state; only the hand-out (an
+**atomic counter**) and the collection of results (one **slot** per
+piece) are shared, which makes the output the same for any number of
+threads, a property called **determinism**.
+</Callout>
+
+<Formal title="Same answer, any schedule">
+
+```text
+for every schedule σ of the threads:
+  out_σ = [ f(0), f(1), …, f(n − 1) ]
+```
+
+<span slot="read">Whatever order the threads happen to run in (σ, the
+Greek letter sigma, stands for one such order), the output is the list
+of f of 0, f of 1, up to f of n minus 1, in that order. It holds because
+f(k) depends only on k, and its result always lands in slot k.</span>
+</Formal>
+
+That is checked, not hoped for: `tests/multi_file.rs` runs `explain`
+over several files with `--jobs` 1, 3 and 16 and requires the same
+bytes each time, and runs `build` with `--jobs` 1 and 4 and requires
+the same output files.
+
+<Prompts ids={['dp-fetch-add', 'dp-relaxed', 'dp-order', 'dp-send-sync']} />
+
+<Callout kind="engine" label="Under the hood">
+*Data parallelism with rayon* would write this as one line,
+`(0..n).into_par_iter().map(f).collect()`, with rayon's work-stealing
+pool doing the hand-out. The CLI uses only the standard library (its
+`Cargo.toml` has no rayon), and for its job, a few hundred pieces of
+similar size and no nesting, one counter does what work-stealing would.
+</Callout>
+
+## Your turn
+
+<Exercise id="parMap" />
+
+## What you learned
+
+- Separate files are **data-parallel**: the same work, no shared state,
+  one **thread** per core.
+- `thread::scope` lets threads **borrow**, because it joins them all
+  before it returns.
+- `fetch_add` hands out each index **once**; a shared counter copes
+  with files of different sizes, where fixed shares do not.
+- A `Mutex`-guarded **slot** per file makes the output **deterministic**
+  for any `--jobs`.
+
+<Quiz />

@@ -1,4 +1,4 @@
-// The tree-walking interpreter (book chapters 35–44): evaluate each node of
+// The tree-walking interpreter (the book's chapters “Running expressions: a tree that computes” to “Inheritance, and measuring the tree-walker”): evaluate each node of
 // the syntax tree directly.
 import type { Expr, FunctionDecl, Stmt } from './ast.ts';
 import type { Token } from './token.ts';

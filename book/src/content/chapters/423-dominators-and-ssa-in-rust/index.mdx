@@ -1,0 +1,280 @@
+---
+n: 423
+day: 106
+part: XIII
+title: 'Dominators and SSA in Rust'
+tagline: 'Cooper, Harvey and Kennedy’s dominators, natural loops and Braun et al.’s SSA construction, ported line for line. The algorithms do not change; the containers do, the borrow checker has opinions, and one missing case in phi removal turned out to be a soundness bug in the TypeScript engine.'
+objectives:
+  - Map cfg.ts and builder.ts onto cfg.rs and builder.rs, and explain each change of representation.
+  - Say why intersect takes idom as a parameter, and read the E0502 you get otherwise.
+  - Trace how a variable read inside a loop gets a phi, and how a trivial phi is removed.
+  - Explain the throw-operand bug the port found, and implement the dominator pass.
+introduces: [rust-ssa]
+uses: [viscosity-rs, ir-arena, plugin-trait, visitor-pattern, cross-implementation-tests, cfg, basic-block, dominator, dominator-tree, ssa, phi-node, ssa-construction, natural-loop, fixpoint, escape-analysis, vir, arena, typed-index, vec, hashmap, option, match, pattern, exhaustiveness, enum, struct, impl, rust-generics, trait-bound, rust-closure, borrow, shared-vs-mutable, borrow-checker, recursion, call-stack, throw, typescript]
+sources: [braun2013]
+---
+import DomSteps from '../../../components/diagrams/ch423/DomSteps';
+import PhiSteps from '../../../components/diagrams/ch423/PhiSteps';
+
+## Same algorithms, new containers
+
+The chapters "Dominators", "Loops" and "SSA on the fly" taught these
+ideas, and the TypeScript engine has them in `cfg.ts` and `builder.ts`.
+`engine/rust/crates/core/src/cfg.rs` and `builder.rs` port them almost
+line for line: Cooper, Harvey and Kennedy's dominance algorithm, and Braun
+et al.'s SSA construction during lowering<Cite id="braun2013" />. What
+changes is *where things live*. The
+TypeScript keeps `Map`s keyed by block numbers; in Rust, blocks and values
+sit in the module's arenas (see "VIR in Rust"), so a map from blocks
+becomes a `Vec` indexed by `BlockId`, and "no entry" becomes `None`.
+
+<Analogy title="house numbers on a street">
+On a street where every house has a number, a list of "who lives at
+number 7" is just a row of slots, one per house, and an empty lot is a
+slot marked "nobody". You never need to know where a house *is*, only its
+number. Blocks and values are houses; ids are numbers.
+<span slot="breaks">Houses are never renumbered, and here they never are
+either; however, a street can lose a house and its number still means
+something to anyone who wrote it down. In the arena a removed value keeps
+its slot, so an old id still "works", and still points at the wrong
+thing.</span>
+</Analogy>
+
+## Reverse postorder and dominators
+
+A block **dominates** another if every path from the entry to the second
+passes through the first, and its **immediate dominator** (idom) is the
+closest such block. `cfg.rs` first lists the blocks in **reverse
+postorder** (a depth-first walk, reversed, so a block comes before the
+blocks it leads to, apart from back edges); where the TypeScript recurses,
+the port keeps an explicit stack, which visits successors in the same
+order and cannot overflow on a long chain of blocks. Then the dominator
+loop, adapted:
+
+```rust
+let intersect =
+    |idom: &[Option<BlockId>], a, b| {
+        // climb a and b by rpo index
+    };
+// ...then, for each block b in rpo:
+let mut d = first;
+for &p in rest {
+    d = intersect(&idom, p, d);
+}
+if idom[b.index()] != Some(d) {
+    idom[b.index()] = Some(d);
+    changed = true;
+}
+```
+
+`idom` is a `Vec<Option<BlockId>>`, with only the entry filled in at
+first. For each block, `first` and `rest` are its predecessors that
+already have an idom (the others are skipped this pass), and `intersect`
+climbs from two blocks towards the entry until they meet; the meeting
+point is a common dominator. If the answer changed, `changed` asks for
+another pass, and the loop stops when a pass changes nothing.
+
+Why does the closure take `idom` as a parameter rather than using the
+variable directly? A closure that *captures* a variable borrows it for as
+long as the closure is in use, and the loop assigns to `idom` between
+calls. rustc 1.97 on a small copy of the loop (rewrapped):
+
+```
+error[E0502]: cannot borrow `idom` as
+  mutable because it is also borrowed
+  as immutable
+```
+
+It underlines the closure as the "immutable borrow" and `idom[b] =
+Some(d)` as the "mutable borrow".
+
+Passing `&idom` at each call makes each borrow last one call.
+
+<DomSteps client:visible />
+
+<Prompts ids={['idom-vec', 'intersect-param', 'chk-skip']} />
+
+## Natural loops
+
+`natural_loops` finds each **back edge** `t → h` (an edge to a block `h`
+that dominates `t`) and walks predecessors from `t` until it reaches `h`;
+everything it meets is the loop body. Loops are kept in an
+`IndexMap<BlockId, BTreeSet<BlockId>>`: the `IndexMap` lists headers in
+the order they were first found, as the TypeScript `Map` does (that order
+reaches `explain`), and the `BTreeSet` keeps each body sorted. Run the same
+two steps on the six blocks of the diagram above:
+
+<Run id="loops-play" />
+
+It prints the one back edge, `5 -> 1`, with the body `{1, 2, 5}`, and
+that block 2 dominates block 3: the throw block is reached only through
+the body, yet is not in the loop, since nothing leads back from it.
+
+<Prompts ids={['loop-order']} />
+
+## The SSA builder
+
+`FunctionBuilder<K>` is generic over `K`, the front-end's name for a
+variable (the JavaScript plugin uses a resolved binding, or the hidden
+index of a `for...of`). It does not own the `Module`: every method takes
+`&mut Module`, because lowering a nested function keeps two builders
+alive (outer and inner) writing into one module, and two builders each
+holding a `&mut Module` would be rejected by the borrow checker. Reading a variable that the current block does not
+define, trimmed from `read_variable_recursive`:
+
+```rust
+let val = if !self.sealed.contains(&block) {
+    let phi = self.new_phi(m, block);
+    self.incomplete.entry(block)
+        .or_default()
+        .insert(v.clone(), phi);
+    phi
+} else if preds.len() == 1 {
+    self.read_variable(m, v, preds[0])
+} else {
+    let phi = self.new_phi(m, block);
+    self.write_variable(
+        v.clone(), block, phi);
+    self.add_phi_operands(m, v, phi)
+};
+```
+
+A block is **sealed** once all its predecessors are known (a loop header
+is not, until its back edge exists). So the first branch makes an
+*incomplete* phi, filled in at sealing time, in the order of the
+`IndexMap` called `incomplete`, which decides the value numbers. The
+second asks the one predecessor. The third records a new phi as the
+variable's value *first* (so a loop leading back here finds it rather than
+asking forever), then reads each predecessor. (A fourth case, with no
+predecessors, makes an `undefined` constant.)
+
+<Examples of="rust-ssa">
+
+```
+b2:  ; preds b0 b1
+  %3 = phi %0, %2
+```
+
+```
+b1:  ; preds b0 b3
+  %5 = phi %0, %6
+  %2 = phi %1, %9
+```
+
+```
+b9:  ; preds b6
+  throw %14
+```
+
+</Examples>
+
+The first is printed from the builder's own unit test for an `if`/`else`
+join, `x = 1; if (c) x = 2; return x;`: the join block `b2` merges `%0`
+(the 1) and `%2` (the 2), with operands in predecessor order (the entry's
+edge was added first). The second is
+from `let s = 0; for (let i = 0; i < 4; i++) s = s + i;`: the header's
+phi for `i` (`%2`) was made when the header was lowered, the one for `s`
+(`%5`) later, from the body, and `new_phi` inserts at the *front*, so the
+newer sits above. The third, from the corpus program `throw_from_loop.js`,
+is the next section's subject.
+
+<Callout kind="definition">
+**SSA construction over arena IR** builds SSA by editing the module's
+arenas through typed ids: values are `ValueId`s into `module.values`,
+blocks list their instructions as `Vec<ValueId>`, and replacing a value
+means rewriting every place that holds its id (instruction operands,
+terminators, and the builder's own tables). Nothing points at anything,
+so nothing can dangle; but an id that is missed still names the old value.
+</Callout>
+
+<Prompts ids={['builder-no-module', 'phi-front']} />
+
+## Trivial phis and the throw bug
+
+<Analogy title="moving house">
+When you move, every friend, bank and shop that has your old address must
+be told the new one; miss the dentist and their letters go to a house
+where you no longer live, and nobody tells you.
+<span slot="breaks">The post office forwards mail for a while; the arena
+forwards nothing. A removed phi becomes an empty opaque value, and any
+operand still naming it quietly reads nothing useful.</span>
+</Analogy>
+
+A phi is **trivial** if, ignoring itself, it merges only one value; then
+`try_remove_trivial_phi` replaces it with that value. For instructions
+that is a loop over operands. Terminators (the last thing in a block, such
+as a branch or a `return`) need their own `match` (`T` is `Terminator`):
+
+```rust
+match &mut blocks[bi].term {
+    T::CondBr { cond, .. }
+        if *cond == phi => *cond = same,
+    T::Return { value: Some(v), .. }
+        if *v == phi => *v = same,
+    T::Throw { value, .. }
+        if *value == phi => *value = same,
+    _ => {}
+}
+```
+
+The TypeScript version had only the first two; the third went into
+`builder.ts` in commit 16c7767. In `throw_from_loop.js`, `const e = ps[0]` is thrown from
+inside a loop, so reading `e` in the unsealed loop header made the phi
+`%31`; at sealing, it merged `%14` (the element) with itself, so it was
+trivial. Here is the spot the difference, from a copy of the repo with the
+`Throw` line deleted, on the left, and as committed, on the right:
+
+```
+b9:  ; preds b6       b9:  ; preds b6
+  throw %31             throw %14
+ps (line 3) {x}       ps (line 3) {x}
+→ struct of arrays    → kept as array
+                        of objects
+```
+
+On the left the throw names the removed phi, so the escape analysis never
+sees the element leave and the compiled program throws a number; on the
+right, `explain` says "line 5: an element is returned or branched on in
+`<module>()`".
+
+<PhiSteps client:visible />
+
+Could Rust's **exhaustive** `match` have caught it? Not as written,
+since `_ => {}` covers whatever is not listed; a match naming every
+terminator kind would have forced a decision about `Throw`.
+
+<Formal title="Trivial phi removal">
+
+```text
+v = φ(x₁, …, xₙ)
+S = {x₁, …, xₙ} ∖ {v}
+|S| = 1, S = {w}  ⟹  replace v by w
+|S| = 0           ⟹  v := undefined
+```
+
+<span slot="read">A phi v merges the values x one to x n. Take the set of
+those values with v itself removed. If exactly one value w is left, every
+use of v becomes w; if none is left, v becomes undefined; if two or more
+are left, the phi stays.</span>
+</Formal>
+
+<Prompts ids={['trivial-phi', 'throw-bug']} />
+
+## Your turn
+
+<Exercise id="chk" />
+
+## What you learned
+
+- `cfg.rs` and `builder.rs` are the TypeScript algorithms with Rust
+  containers: `Vec<Option<BlockId>>` for idoms, an explicit stack for
+  the depth-first walk, `IndexMap` wherever order is visible.
+- A closure that **captures** a variable borrows it; `intersect` takes
+  `&idom` per call so that the loop can update `idom` (E0502 otherwise).
+- `FunctionBuilder<K>` takes `&mut Module` in every method, so nested
+  functions' builders share one module. **SSA over arena IR** means
+  rewriting ids in place.
+- A **trivial phi** is replaced everywhere, terminators included; missing
+  `throw` there was a soundness bug in the reference, found by the port.
+
+<Quiz />

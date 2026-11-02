@@ -1,0 +1,181 @@
+---
+n: 313
+day: 79
+part: X
+title: 'Reference counting'
+tagline: 'Instead of searching for garbage now and then, give every object a counter of the references that point at it, and free it the moment the counter reaches zero; simple, prompt and predictable, and paid for on every copy of a pointer.'
+objectives:
+  - Explain reference counting, and say exactly when a count goes up and when it goes down.
+  - Follow a cascade of frees when the last reference to a structure disappears.
+  - Read reference counts in CPython and Rust, and the atomic instructions C++ uses for them.
+  - Implement increment and decrement with recursive freeing.
+introduces: [reference-counting]
+uses: [garbage-collection, roots, mark-sweep, tricolor, heap-object, object-header, reference, aliasing, pointer, stack-and-heap, object, property, field, call, parameter, return, scope, local-variable, recursion, map, set, throw]
+sources: [collins1960, cpython-object-h, python-sys-getrefcount, rust-std-rc, swift-arc]
+---
+import CountSteps from '../../../components/diagrams/ch313/CountSteps';
+import HeaderFigure from '../../../components/diagrams/ch313/HeaderFigure';
+
+## Knowing the moment an object dies
+
+Your Drip VM's collector (chapters 158 and 159) finds garbage by
+searching: now and then it stops the program, marks everything it can
+reach from the roots, and sweeps away the rest. Between collections,
+dead objects sit in memory, and nobody knows exactly when they will go.
+There is another way, nearly as old (George Collins described it for
+Lisp lists in 1960<Cite id="collins1960" />): have each object keep a
+count of the references that point at it, update the count whenever a
+reference is made or lost, and free the object the instant its count
+reaches zero. CPython, Swift, Objective-C, Rust's `Rc` and `Arc`, and
+C++'s `shared_ptr` all work this way.
+
+<CountSteps client:visible />
+
+<Analogy title="last one out turns off the lights">
+An office has a rule: whoever leaves last switches off the lights. Each
+person arriving adds one to the people inside, each person leaving
+takes one away, and the person who brings it to zero does the job, at
+once, without anyone touring the building at night to check.
+<span slot="breaks">People know when they arrive and leave; in a
+program every copy of a reference, every overwrite and every variable
+going out of scope must be counted, and it is the compiler that inserts
+those updates for you.</span>
+</Analogy>
+
+<Analogy title="a balloon held by strings">
+Each reference is a string tied to a balloon; while anyone holds a
+string, the balloon stays. Let go of the last string and it floats
+away, and anything tied only to it floats away with it.
+<span slot="breaks">Two balloons tied only to each other, with nobody
+holding either, still float away in real life; under reference
+counting each still has one string attached, so neither is ever
+freed. That is the cycle problem, and the next chapter's
+subject.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Reference counting** stores in every heap object a count of the
+references to it. Making a new reference (storing a pointer into a
+variable, a field or an argument) **increments** the count; losing one
+(overwriting it, or the variable going out of scope) **decrements**
+it. When a count reaches zero the object is freed immediately, and
+every reference it held is decremented in turn, which may free more
+objects.
+</Callout>
+
+<Formal title="The invariant and the rule">
+
+```text
+rc(o) = |{ r : r is a reference to o }|
+
+dec(o): rc(o) := rc(o) − 1
+        if rc(o) = 0:
+          for each reference c in o: dec(c)
+          free(o)
+```
+
+<span slot="read">The count of an object o is the number of references
+that point at o, from variables or from other objects. Decrementing o
+lowers that number by one; if it reaches zero, o is unreachable, so
+each object o points at is decremented in turn (a recursive step that
+can free a whole structure), and then o's memory is freed.</span>
+</Formal>
+
+The count has to live somewhere, and every implementation puts it next
+to the data:
+
+<Figure takeaway="The count sits in the object's header." caption="CPython 3.13's object header (Include/object.h, default build) and the allocation a Rust Rc points at (library/alloc/src/rc.rs). An empty Python object() is 16 bytes on a 64-bit machine: exactly these two fields.">
+  <HeaderFigure />
+</Figure>
+
+<Examples of="reference-counting">
+
+```text
+# Python 3.13
+x = object()
+sys.getrefcount(x)   # 2
+y = x
+sys.getrefcount(x)   # 3
+del y
+sys.getrefcount(x)   # 2
+a = N(); a = None    # prints "freed a"
+```
+
+```rust
+let a = Rc::new(5);
+println!("{}", Rc::strong_count(&a)); // 1
+let b = Rc::clone(&a);
+println!("{}", Rc::strong_count(&a)); // 2
+drop(b);
+println!("{}", Rc::strong_count(&a)); // 1
+```
+
+```text
+// C++: int call(const shared_ptr<int>& p)
+//        { return peek(p); }  // copies p
+// clang++ 18 -O2, trimmed:
+lock incl  8(%rbx)    // count += 1
+call ...
+lock xaddl %ecx, 8(%rbx)  // count -= 1
+```
+
+</Examples>
+
+The first is real Python 3.13 output. `sys.getrefcount` reports one
+more than you might expect, because passing `x` to it makes a
+temporary reference<Cite id="python-sys-getrefcount" />; `y = x` adds
+one and `del y` takes it away. On the last line `N` is a class whose
+`__del__` method prints a message when an object is freed: setting `a`
+to `None` drops the only reference and the message appears at once,
+before the next line runs, where a tracing collector would print it
+whenever it next happened to run. The second is Rust, where
+`Rc::clone` increments the count rather than copying the value, and
+dropping a clone decrements it<Cite id="rust-std-rc" />. The third is
+the price: passing a C++ `shared_ptr` by value copies it, and clang's
+code for the copy is a `lock`-prefixed increment, and for the
+destruction a `lock`-prefixed exchange-and-add, because the count may
+be shared between threads. Locked instructions make every core agree on
+the value, and they cost more than ordinary ones; Rust offers
+`Rc`, whose counts are plain, non-atomic, and `Arc` for sharing across
+threads, and makes the compiler refuse to send an `Rc` to another
+thread<Cite id="rust-std-rc" />.
+
+Here is the order of the two updates, in a few lines you can change:
+
+<Run id="assign" />
+
+`set` stores an object in a variable as a compiler's inserted code
+would: it increments the new value's count *first*, then decrements the
+old one. Run it: `b = A`, then `a = null`, leave A alive with count 1,
+and `b = null` frees it. The last two lines assign a variable to
+itself, `c = c`; with the order reversed, the decrement would reach
+zero and free C before the increment could save it, so try swapping
+the two halves of `set` and watch C die.
+
+Swift calls the whole scheme Automatic Reference Counting (ARC): the
+compiler, not the programmer, inserts the increments and decrements
+(Swift's `retain` and `release`) for every class instance, and
+"automatically frees up the memory used by class instances when those
+instances are no longer needed"<Cite id="swift-arc" />.
+
+<Prompts ids={['rc-what', 'rc-up', 'rc-down', 'rc-zero', 'rc-cascade', 'rc-getrefcount', 'rc-atomic', 'rc-order', 'rc-vs-trace']} />
+
+## Your turn
+
+<Exercise id="rc-dec" />
+
+## What you learned
+
+- **Reference counting** keeps a count of references in each object's
+  header; new references increment it, lost ones decrement it, and an
+  object is freed the moment its count reaches zero.
+- Freeing an object decrements everything it points to, so one
+  assignment can free a whole structure.
+- The costs: a memory write on every copy of a pointer, atomic
+  instructions when threads share counts (`shared_ptr`, `Arc`), and
+  cycles that never reach zero.
+
+Next: finding the cycles that counting misses, and removing the count
+updates a compiler can prove it does not need.
+
+<Quiz />

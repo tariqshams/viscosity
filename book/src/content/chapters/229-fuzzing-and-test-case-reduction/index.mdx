@@ -1,0 +1,222 @@
+---
+n: 229
+day: 58
+part: VI
+title: 'Fuzzing and test-case reduction'
+tagline: 'A corpus only holds the programs somebody thought of; a fuzzer writes thousands more, runs each through two implementations that must agree, and when one finally disagrees, shrinks it until only the bug is left.'
+objectives:
+  - Explain what fuzzing adds to a hand-written corpus, and why a compiler fuzzer must be seeded and must generate valid programs.
+  - Describe Csmith and YARPGen, and the repository's own fuzzers for Viscosity and for Drip.
+  - Reduce a failing input by removing chunks while the failure stays, and say what 1-minimal means.
+  - Say what translation validation checks, and how it differs from testing.
+introduces: [fuzzing]
+uses: [differential-testing, round-trip-testing, test, assertion, edge-case, parser, tree-walking-interpreter, virtual-machine, compiler-pipeline, compiler-pass, try-catch, error-object, throw, recursion, array, function, callback]
+sources: [csmith, yang2011, livinskii2020, regehr2012, necula2000, chen2020survey]
+---
+import FuzzLoop from '../../../components/diagrams/ch229/FuzzLoop';
+import ReduceSteps from '../../../components/diagrams/ch229/ReduceSteps';
+
+## The programs nobody thought of
+
+The last chapter's corpus is a folder of programs that somebody
+imagined: an escape here, an out-of-bounds read there. The bugs that
+hurt are the ones nobody imagined. When the repository's fuzzer for
+Viscosity was first run, about 8,000 random programs turned up five
+such bugs, all in both engines; one of them, a field write
+`ps[i].x = rhs`, checked the index *before* evaluating `rhs`, while the
+original program evaluates `rhs` first, so out of bounds the two threw
+different errors. Each now has a corpus program of its own (the Rust
+port's README lists them).
+
+<Analogy title="a food inspector ordering at random">
+A careful inspector does not only taste the dishes the chef suggests;
+they order odd combinations off the menu, at random, because that is
+where the kitchen has never practised.
+<span slot="breaks">Every combination off a menu is at least a dish; a
+random string of characters is usually not a program at all, so a
+fuzzer has to build its orders carefully, or the kitchen rejects
+them.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Fuzzing** generates large numbers of random inputs (for a compiler,
+random programs) to find bugs that no hand-written test covers. Paired
+with differential testing as the oracle, it needs no expected outputs at
+all.
+</Callout>
+
+<Prompts ids={['fuzz-what']} />
+
+## Programs worth running
+
+Two things make a compiler fuzzer useful. The first is a **seed**: the
+random choices come from a generator started at a known number, so the
+same seed always gives the same program, and a failure found at 3 a.m.
+can be made again at 9. The second is harder: the programs must be
+**valid**, with exactly one right behaviour. A program that reads
+uninitialized memory in C may legitimately do different things under two
+correct compilers, so a disagreement on it proves nothing. Csmith, the
+best-known C program generator, finds compiler bugs with differential
+testing as its oracle, and its authors note that generating programs
+free of undefined behaviour is "not trivial"<Cite id="csmith" /><Cite id="yang2011" />.
+YARPGen, a later generator, avoids undefined behaviour without dynamic
+checks and uses **generation policies** to steer its programs towards
+the optimizations it wants to stress; its authors found more than 220
+bugs in GCC, LLVM and the Intel C++ compiler<Cite id="livinskii2020" />.
+
+<FuzzLoop client:visible />
+
+JavaScript has no undefined behaviour, but it has its own traps:
+programs that never stop, or that read the clock. The repository's
+fuzzer, `engine/rust/scripts/fuzz.mjs`, runs every program with a
+timeout, builds only programs in the subset Viscosity cares about, and
+runs a program that may index out of bounds only in the mode that checks
+bounds. Its random numbers come from a tiny seeded generator:
+
+```js
+function rng(seed) {
+  let a = seed >>> 0;
+  const next = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    // ... a few shifts and multiplies
+  };
+  ...
+}
+```
+
+`>>> 0` keeps `a` a whole number from 0 to 2³² − 1, and each call to
+`next` moves it on by a fixed odd step and scrambles the bits, so the
+sequence looks random but depends only on the seed.
+
+<Examples of="fuzzing">
+
+```js
+// random expressions: a number, 'x',
+// or [op, left, right]
+['+', ['*', 'x', 3], 0]
+```
+
+```text
+drop, replace or insert one token in a
+Drip corpus program; tree-walker and VM
+must report the same compile errors
+```
+
+```text
+fuzz: seed 1, 300 programs (134
+transformed, 174 may go out of bounds,
+20 with an early error), 0 failing
+```
+
+</Examples>
+
+The first is the toy fuzzer below: random expression trees, an
+"optimizer" with algebraic rules, and the slow evaluator as the oracle.
+The second is the Drip companion's fuzzer, `test/fuzz.mjs`, which
+mangles corpus programs and checks that the two front ends reject them
+in exactly the same words; 2,000 mangled programs gave 0 disagreements
+when run for this chapter. The third is the summary line of Viscosity's
+fuzzer on its default campaign, also run for this chapter; the Rust test
+suite runs a fixed-seed campaign of 200 programs on every build
+(`crates/cli/tests/fuzz.rs`).
+
+Here is a toy fuzzer. One of its rules is wrong; run it, then find and
+fix the rule:
+
+<Run id="fuzz" />
+
+<Prompts ids={['fuzz-seed', 'fuzz-valid', 'fuzz-two-oracles']} />
+
+## Shrinking what fails
+
+A fuzzer's failures are big and noisy: a dozen lines, of which the bug
+needs two. **Test-case reduction** finds the small version
+automatically: try removing part of the input, and keep the removal if
+the failure is still there. C-Reduce, from the Csmith group, does this
+for C programs, driven by an **interestingness test**, a script that
+says whether a candidate still shows the bug<Cite id="regehr2012" />;
+the YARPGen authors use it on their failures, and warn that its
+syntactic cuts can introduce undefined behaviour along the way, which
+has to be checked for<Cite id="livinskii2020" />.
+
+<Analogy title="finding the ingredient you react to">
+If a meal of twelve ingredients makes you ill, you cook it again with
+half of them left out; if you are still ill, that half was innocent, and
+you keep halving until only the culprit (or the two that only harm you
+together) is left.
+<span slot="breaks">Leaving out an ingredient never stops the rest
+being food; leaving out a line of a program can stop the rest parsing,
+so a reducer must check that every candidate is still a valid
+program.</span>
+</Analogy>
+
+The repository's reducer (`--reduce`) is line-based delta debugging:
+
+```js
+for (let chunk = len >> 1; chunk >= 1; ...)
+  // try removing each chunk of lines;
+  // keep the removal if it parses and
+  // the same kind of failure remains
+```
+
+<ReduceSteps client:visible />
+
+<Formal title="1-minimal">
+
+```text
+fails(R)  ∧  ∀ r ∈ R. ¬fails(R − {r})
+```
+
+<span slot="read">A reduced input R is 1-minimal if it still fails, and
+for every single piece r in it (∀ reads "for every"), removing r makes
+it stop failing (¬ reads "not"). It need not be the smallest failing
+input there is, only one where no single piece can go.</span>
+</Formal>
+
+<Prompts ids={['reduce-what', 'reduce-valid', 'one-minimal']} />
+
+## Checking each compilation instead
+
+Testing samples programs; it can never cover them all. **Translation
+validation** turns the question round: instead of proving the compiler
+correct for every program, check, each time it runs, that the program it
+produced is equivalent to the one it was given. Necula built such a
+checker for the GNU C compiler, comparing the program before and after
+the optimizer, and reported that it took about the effort of writing one
+compiler pass, with the compiler supplying hints that make the check
+possible<Cite id="necula2000" />. Viscosity has none; its differential
+tests are the sampled version of the same question.
+
+<Prompts ids={['tv-what']} />
+
+<Callout kind="engine" label="Under the hood">
+The research on compiler testing sorts its methods by how they make test
+programs, which oracle they use and how they run tests
+efficiently<Cite id="chen2020survey" />; in those terms this repository
+has hand-written corpora, a generating fuzzer and a mutating fuzzer, all
+with differential oracles. What it does not have yet is coverage
+guidance, keeping the random inputs that reach new code, which Part XIII
+adds for the Rust engine.
+</Callout>
+
+## Your turn
+
+<Exercise id="reduce" />
+
+## What you learned
+
+- **Fuzzing** generates random programs to find bugs no one wrote a test
+  for; with a differential oracle it needs no expected outputs.
+- Seed the generator so failures can be made again, and generate only
+  **valid** programs, with one right behaviour (Csmith and YARPGen avoid
+  undefined behaviour by construction).
+- The repository fuzzes Viscosity (behaviour and TS/Rust parity, early
+  errors included) and Drip's front ends (mangled programs).
+- **Test-case reduction** removes chunks while the failure stays,
+  ending with a **1-minimal** input.
+- **Translation validation** checks each compilation, rather than
+  testing the compiler on samples.
+
+Next: Part VII, the back end, starting with machine code and assembly.
+
+<Quiz />

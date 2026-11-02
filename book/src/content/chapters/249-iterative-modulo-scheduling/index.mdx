@@ -1,0 +1,193 @@
+---
+n: 249
+day: 63
+part: VII
+title: 'Iterative modulo scheduling'
+tagline: 'Give every trip of a loop the same schedule, start a new trip every II cycles, and the whole problem fits in a table with II rows; Rau showed how to fill that table for real machines.'
+objectives:
+  - Explain why, in a modulo schedule, an instruction at time t uses row t mod II of the reservation table.
+  - Work out the minimum initiation interval from resources (ResMII) and from recurrences (RecMII).
+  - Run a modulo scheduler by hand, and say what iterative modulo scheduling adds when an instruction does not fit.
+introduces: [modulo-scheduling]
+uses: [software-pipelining, instruction-scheduling, dependence-dag, list-scheduling, dependence-analysis, latency, register, risc-v, assembly-language, function, array, object, for-of, map]
+sources: [rau1994, llvm-machinepipeliner, llvm-sifive7-sched, coopertorczon2022]
+---
+import MrtSteps from '../../../components/diagrams/ch249/MrtSteps';
+import RecFigure from '../../../components/diagrams/ch249/RecFigure';
+
+## From a trick to a method
+
+The last chapter found a kernel for our loop by hand, by staring at the
+chain of loads, multiplies and adds until a pattern appeared. A compiler
+cannot stare; it needs a method that works for any loop and any machine,
+including machines that can start several instructions per cycle, each
+on its own kind of unit.
+
+The method is to give **every trip the same schedule**. We choose a time
+t(x) for each instruction x, measured from the start of its own trip, and
+start a new trip every II cycles (II is the initiation interval from the
+last chapter). Trip i then runs instruction x at cycle i × II + t(x).
+That one decision turns a problem about endless overlapping trips into a
+problem about a small table, as we are about to see.
+
+<Analogy title="a bus timetable">
+A bus leaves the depot every ten minutes, and every bus follows the same
+timetable: the high street 4 minutes after leaving, the station 13
+minutes after. Two buses are at the station at the same moment only if
+their timetables put them there at times that differ by a multiple of
+ten; so to keep the stops from crowding, the planner only needs to check
+the timetable "minutes past each ten".
+<span slot="breaks">Buses can be late and bunch up. A modulo schedule is
+exact: every trip keeps to its times, cycle for cycle, which is why
+checking one table of II rows is enough.</span>
+</Analogy>
+
+<Analogy title="a rota that repeats every week">
+A café plans one week of shifts and repeats it all year. If the
+espresso machine can only be cleaned by one person at a time, the rota
+must not put two cleanings on the same weekday, even if they belong to
+"different weeks" of some long project.
+<span slot="breaks">A rota is for people, who can swap shifts. The
+reservation table is for hardware units, which have no slack at all: a
+second load in the same row of a one-load machine is simply
+impossible.</span>
+</Analogy>
+
+## The modulo reservation table
+
+Two instructions of different trips run in the same cycle exactly when
+their times are equal modulo II (they leave the same remainder when
+divided by II). So the whole loop's use of the machine is described by a
+**modulo reservation table**: II rows, one column per kind of unit, and an
+instruction at time t occupies row t mod II of its unit's column. If no
+two instructions share a cell, no cycle of the running loop ever asks a
+unit to do two things at once.
+
+From that table we can read off a lower bound before we schedule anything.
+If a unit is used u times per trip and there are c of them, it has c × II
+cells, so II must be at least u ÷ c, rounded up: the **resource bound**,
+ResMII. On our one-instruction-per-cycle toy machine, five instructions
+need five cycles: ResMII = 5, the kernel of the last chapter.
+
+The other bound comes from **recurrences**: values that one trip passes
+to the next, like the running sum. A loop-carried edge (chapter 216 called
+them carried dependences) has a delay d and a **distance** δ, the number
+of trips it reaches across. If a chain of such edges comes back to where
+it started, the value goes round it once every δ trips and needs d cycles
+to do so, so II must be at least d ÷ δ, rounded up: the **recurrence
+bound**, RecMII.
+
+<Figure takeaway="A recurrence sets a floor on II that no amount of hardware can lower." caption="Left: in the sum of squares, the only recurrence is the add feeding itself (delay 1, distance 1), so RecMII = 1. Right: a loop that computes x = x * c over and over has a multiply feeding itself (delay 3, distance 1), so each trip must wait for the last one's product: RecMII = 3, however many multipliers there are.">
+  <RecFigure />
+</Figure>
+
+<Formal title="Modulo scheduling">
+
+```text
+trip i runs x at cycle i × II + t(x)
+x uses row t(x) mod II of its unit
+edge a → b, delay d, distance δ:
+    t(b) ≥ t(a) + d − δ × II
+ResMII = max over units ⌈uses ÷ count⌉
+RecMII = max over cycles ⌈Σ d ÷ Σ δ⌉
+MII = max(ResMII, RecMII)
+```
+
+<span slot="read">Trip i runs instruction x at i times II plus x's time.
+x takes row t of x mod II in its unit's column. For an edge from a to b
+with delay d that reaches δ trips ahead, b's time must be at least a's
+time plus d, minus δ times II (because b's trip starts δ × II cycles
+later). The resource bound is the largest, over units, of uses divided by
+how many there are, rounded up; the recurrence bound is the largest, over
+cycles of edges, of total delay divided by total distance, rounded up; and
+the minimum initiation interval is the larger of the two.</span>
+</Formal>
+
+## Filling the table
+
+Now a slightly wider toy machine, closer to a real core (LLVM's model of
+SiFive's 7-series cores gives memory instructions and multiplies separate
+pipes<Cite id="llvm-sifive7-sched" />):
+in each cycle it can start one load, one multiply
+and one ALU instruction, and branches use the ALU. Our loop has three ALU
+instructions, so ResMII = 3; its recurrences need only 1; MII = 3. We
+start at II = 3 and place the instructions in order of height, each at
+the earliest time its scheduled predecessors allow, sliding later one
+cycle at a time (at most II − 1 times) until its cell is free:
+
+<MrtSteps client:visible />
+
+<Callout kind="definition">
+**Modulo scheduling** finds a software-pipelined loop by giving every
+trip the same schedule t, starting one trip every II cycles. It computes
+the minimum initiation interval MII = max(ResMII, RecMII), then tries to
+place every instruction in a **modulo reservation table** of II rows
+while meeting every dependence, raising II by one whenever it fails. The
+stage of an instruction is t ÷ II rounded down, and the kernel, prologue
+and epilogue are built from those stages.
+</Callout>
+
+What if an instruction's whole window, all II rows, is full, or the only
+free rows break a dependence with something already placed? A plain
+greedy scheduler gives up and tries II + 1. Rau's **iterative** modulo
+scheduling does better: it places the instruction anyway and **evicts**
+whatever it collides with, which goes back on the list to be placed again;
+a budget limits how much evicting it may do at one II before it gives up
+and moves to II + 1<Cite id="rau1994" />. That small amount of
+backtracking is what lets it reach MII on real loops for machines with
+many kinds of units. Production compilers follow the same outline: LLVM's
+pipeliner, for example, starts from the computed MII and, if the
+instructions cannot be scheduled within it, increases it by one and tries
+again<Cite id="llvm-machinepipeliner" />.
+
+<Examples of="modulo-scheduling">
+
+```text
+1 unit, 5 instructions per trip:
+  ResMII = ⌈5 ÷ 1⌉ = 5
+loop  x = x * c  (mul delay 3):
+  RecMII = ⌈3 ÷ 1⌉ = 3
+```
+
+```text
+II = 3, times: ld 0, addi 1, bne 2,
+               mul 3, add 6
+rows: 0 → ld, mul, add
+      1 → addi   2 → bne
+stages: 0, 0, 0, 1, 2
+```
+
+<Run id="mii" />
+
+</Examples>
+
+The first shows each bound on its own: one unit shared by five
+instructions forces II up to 5, and a multiply that feeds itself forces
+it up to 3 because the next trip cannot multiply until this one's
+product exists. The second is the result of the steps above, written as
+a table: each row of the kernel holds instructions of different trips,
+and the stage numbers say which trip (stage 2 is the oldest). The
+runnable one computes MII from a count of uses and a list of
+recurrences; give the machine a second ALU and watch ResMII drop to 2.
+
+<Prompts ids={['mod-row', 'resmii', 'recmii', 'mii-max', 'distance', 'evict', 'stage-calc', 'raise-ii']} />
+
+## Your turn
+
+<Exercise id="modsched" />
+
+## What you learned
+
+- **Modulo scheduling** gives every trip the same schedule and starts one
+  every II cycles, so resource clashes reduce to a **modulo reservation
+  table** with II rows.
+- **ResMII** comes from how often each unit is used; **RecMII** from
+  values carried round loops; **MII** is the larger.
+- Instructions are placed by height at their earliest legal time; if
+  that fails, II goes up by one. Rau's **iterative** version evicts and
+  retries within a budget first.
+
+Next: once instructions are scheduled, little patterns of waste are often
+left behind; a small window sliding over the code can clean them up.
+
+<Quiz />

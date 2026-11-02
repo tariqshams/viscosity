@@ -1,0 +1,291 @@
+---
+n: 409
+day: 103
+part: XII
+title: 'extends and super in Rust'
+tagline: 'The TypeScript VM inherits in one line: copy the superclass’s method table into the subclass’s. In drip-rs both tables sit in the same arena, and reading one while writing the other is exactly what the borrow checker forbids; the fix is one clone, once per class.'
+objectives:
+  - Follow class B extends A through drip-rs’s inherit and method instructions, in its real listing.
+  - Explain why drip-rs clones the superclass’s table before copying it, and why that clone cannot start a collection.
+  - Map the compiler’s Vec of ClassState, its hidden super local and its compile errors onto the TypeScript compiler.
+  - Write inherit for a small VM, with tests.
+introduces: [method-copy-down]
+uses: [drip-rs, rust-bound-method, rust-instances, object-handle, value-enum, match-dispatch, upvalue-handle, arena-gc, rust-locals, compiler-state, inheritance, super, method-invocation, drip-class, upvalue, closed-upvalue, hash-table, garbage-collection, roots, struct, enum, match, pattern, option, result, borrow, shared-vs-mutable, borrow-checker, lifetime, vec, hashmap, arena, typed-index, runtime-error, drip, class, method, this]
+sources: [rust-std-ops-index]
+---
+import InheritSteps from '../../../components/diagrams/ch409/InheritSteps';
+import BorrowSplit from '../../../components/diagrams/ch409/BorrowSplit';
+
+## Two classes, one copy
+
+Here is the smallest program that needs inheritance, with an override
+and a call through `super`:
+
+```drip
+class A {
+  hi() { print "A.hi"; }
+  me() { print "A.me"; }
+}
+class B extends A {
+  hi() { print "B.hi"; super.hi(); }
+}
+new B().hi();
+new B().me();
+```
+
+drip-rs prints `B.hi`, `A.hi` and `A.me`: B's own `hi` runs and calls
+A's through `super`, and `me`, which B never wrote, is found anyway.
+How was settled in *Invoking methods, and inheritance in the VM*: when
+B is declared, every method of A is **copied down** into B's own table,
+so a lookup on B never looks anywhere else. This is the part of
+`drip-rs --disassemble` that declares B:
+
+```text
+0022    5 class               7 'B'
+0025    | define.global       8 'B'
+0028    | load.global         9 'A'
+0031    | load.global        10 'B'
+0034    | inherit
+0035    | load.global        11 'B'
+0038    6 closure            13 fn hi
+0041    |   local 1
+0043    | method             12 'hi'
+0046    7 pop
+0047    | close.upvalue
+```
+
+`class` makes an empty B and `define.global` names it; A is loaded (it
+stays in that slot as a hidden local called `super`), B goes on top,
+and `inherit` copies A's methods into B. Then the body runs as usual:
+`closure` makes B's `hi`, capturing local 1 (the `super` slot), and
+`method` puts it in B's table; at the end `close.upvalue` saves `super`
+for the methods that captured it. The TypeScript VM's disassembler
+prints the same listing, byte for byte; the Rust differs in one line of
+the VM and in how the compiler tracks the class it is in.
+
+<Analogy title="photocopying a recipe binder">
+When you move out, you photocopy your parent's recipe binder and write
+your own versions over a few pages. From then on you open only your
+binder; you never phone home to ask.
+<span slot="breaks">If your parent later adds a recipe, your copy does
+not have it. That would be a bug for a language where classes can grow;
+it is safe in Drip only because a class can never gain a method after
+its declaration.</span>
+</Analogy>
+
+<Analogy title="setting up a new phone">
+A new phone copies the contacts from the old one on the first day, and
+then you edit a few. Looking someone up is instant, because the list is
+right there on the new phone.
+<span slot="breaks">Contacts keep changing on both phones; Drip's
+methods never change after the copy, so the copy is never out of
+date.</span>
+</Analogy>
+
+<Prompts ids={['cd-what', 'cd-order']} />
+
+## The line that will not compile
+
+In the TypeScript VM, `inherit` is one statement:
+
+```ts
+(this.peek(0) as ObjClass).methods
+  .addAll((superclass as ObjClass).methods);
+```
+
+It reads A's table and writes B's at once. Write that in Rust, against a toy heap that implements `Index` and
+`IndexMut` (the traits behind `heap[handle]`, from *Heap objects in an
+arena*), and rustc 1.97 refuses it (trimmed and
+rewrapped):
+
+```rust
+let from = &h[sup].methods;
+h[sub].methods.extend(from);
+```
+
+```text
+error[E0502]: cannot borrow `*h` as
+  mutable because it is also borrowed
+  as immutable
+12 | let from = &h[sup].methods;
+   |             - immutable borrow
+13 | h[sub].methods.extend(from);
+   | ^ mutable borrow occurs here
+```
+
+`h[sub]` on the left of a write is `*h.index_mut(sub)`, and `index_mut`
+takes `&mut self`, the **whole** heap, not one slot<Cite id="rust-std-ops-index" />. The borrow checker
+(from *Borrowing*) only sees "a shared borrow of `h` is alive, and now
+someone wants a mutable one"; it has no idea that `sub` and `sup` are
+different numbers, so it must assume they could be the same slot.
+
+<BorrowSplit />
+
+drip-rs's arm, from `vm.rs` (the error message trimmed, and rewrapped):
+
+```rust
+OpCode::Inherit => {
+    let Value::Class(superclass) =
+        self.peek(1)
+        else {
+        // "a class can only extend a
+        // class, not ..."
+        return Err(/* ... */);
+    };
+    let subclass = as_class(self.peek(0));
+    // Copy-down inheritance: methods are
+    // copied once, now.
+    let methods = self.heap[superclass]
+        .methods.clone();
+    self.heap[subclass].methods
+        .add_all(&methods);
+    self.pop();
+}
+```
+
+The `let ... else` (from *Patterns in depth*) opens the superclass,
+and anything else is the program's mistake, reported as a runtime
+error. The subclass goes through `as_class`, which is `unreachable!`
+for a non-class, because the compiler put B there itself. Then
+`clone()` copies A's `Table` (it derives `Clone`) into the local
+`methods`, and the shared borrow ends at that semicolon; only then
+does `add_all` borrow the heap mutably to write into B, and `pop`
+removes B, leaving `super`.
+
+<Prompts ids={['cd-e0502', 'cd-clone', 'cd-check']} />
+
+The copy is Rust memory, not a Drip object: it never goes through
+`Heap::alloc`, so it cannot start a collection. It is dropped at the
+end of the arm, and it happens once per class, never once per call.
+
+<InheritSteps client:visible />
+
+<Callout kind="definition">
+**Copy-down inheritance** copies every entry of the superclass's
+methods table into the subclass's table once, when the class is
+declared and before the subclass's own methods are added, so overrides
+win; a lookup is then one probe in the subclass's own table. In drip-rs
+`inherit` clones the superclass's `Table` first, then adds it to the
+subclass. It is correct because a Drip class cannot gain methods later.
+</Callout>
+
+<Formal title="Copy-down as a table union">
+
+```text
+methods(B) = methods(A) ◁ own(B)
+lookup(B, m) = methods(B)[m]
+```
+
+<span slot="read">B's table is A's table with B's own methods laid over
+it: where both have a name, B's entry wins (the triangle points at the
+side that loses). Looking m up on B is one lookup in B's table.</span>
+</Formal>
+
+<Examples of="method-copy-down">
+
+```drip
+class A { me() { print "A.me"; } }
+class B extends A {}
+new B().me(); # A.me
+```
+
+```drip
+class A { f() { return "A"; } }
+class B extends A {}
+class C extends B {
+  f() { return "C+" + super.f(); }
+}
+print new C().f(); # C+A
+```
+
+<Run id="shapes" />
+
+</Examples>
+
+In the first, B's table after `inherit` holds A's `me` and nothing
+else, so `new B().me()` finds it in one probe. In the second, B gets
+A's `f` when it is declared, and C later gets B's whole table, which
+already holds A's `f`; the copy is transitive with no extra code, and
+C's own `f` then overwrites it. Inside C's `f`, `super` is B, and `super.f()` finds A's
+`f` in B's table and prints `C+A`. The third, which you can run, is the
+realistic shape: `Rect`'s `init` calls `super.init("rect")`, and
+`describe`, which only `Shape` wrote, calls `self.area()`, which only
+`Rect` wrote; it prints `rect 12`.
+
+<Prompts ids={['cd-no-gc']} />
+
+## super in the compiler
+
+The TypeScript compiler keeps nested classes in a linked list of
+`{ enclosing, hasSuperclass }` records and holds the current one in a
+variable, `cc`, so that it can set `cc.hasSuperclass = true` later.
+drip-rs keeps a stack, `classes: Vec<ClassState>`, beside its stack of
+`FunctionState`s (from *A Pratt compiler in Rust, part 2*). Holding a
+`&mut ClassState` across the calls in between would lock up `self`, the
+E0499 of *Globals by name and locals by slot, in Rust*, so the compiler
+reaches back in when it needs to; from `class_declaration` (rewrapped):
+
+```rust
+self.begin_scope();
+self.add_local("super", superclass);
+self.mark_initialized();
+self.named_variable(class_name, false);
+self.emit_op_at(superclass.line,
+    OpCode::Inherit);
+self.classes.last_mut()
+    .expect("a class")
+    .has_superclass = true;
+```
+
+`add_local` wants a `&'src str`, a name borrowed from the source, and
+is handed `"super"`, a `&'static str`; that is allowed, because
+`'static` lives at least as long as `'src` (the chapter *Lifetimes*).
+`super_expression` uses the same trick, `Token::synthetic("super",
+line)`, to load the hidden local, as TypeScript's `synthetic('super')`
+does. Its checks give the same compile errors as the TypeScript
+compiler; for `class A2 extends A2 {}` on line 2, `super.m()` in a
+class with no `extends` on line 4 and `print super.x;` on line 6
+(wrapped):
+
+```text
+line 2: a class cannot extend itself
+line 4: cannot use 'super' in a class
+  that does not extend another
+line 6: cannot use 'super' outside a
+  method
+```
+
+At run time, `get.super` pops the superclass and makes a bound method
+(from *Method calls and init in Rust*), and `invoke.super` calls the
+method at once; a missing one is `A has no method 'nope'`, the same
+runtime error in both VMs.
+
+<Prompts ids={['sup-classes', 'sup-static']} />
+
+<Callout kind="engine" label="Under the hood">
+Copy-down trades memory for speed: every subclass carries a copy of
+everything it inherits, and no lookup walks a chain. It depends on
+classes being closed once declared; a language that lets you add
+methods to a class later (JavaScript, Python) must look along the chain
+at call time, or cache the answer and drop the cache when a class
+changes. The corpus's `inheritance/` folder holds 19 programs, and
+drip-rs passes all of them, under the stress collector too.
+</Callout>
+
+## Your turn
+
+<Exercise id="inherit" />
+
+## What you learned
+
+- `inherit` **copies the superclass's methods down** into the
+  subclass, once, before the subclass's own `method` instructions run,
+  so overrides win.
+- Reading `heap[sup]` while writing `heap[sub]` is **E0502**: indexing
+  borrows the whole heap. drip-rs **clones the table first**, and the
+  clone is Rust memory, so it **cannot start a collection**.
+- The compiler keeps a **`Vec<ClassState>`** and reaches back in with
+  `last_mut()`, rather than holding a reference.
+
+
+<Quiz />

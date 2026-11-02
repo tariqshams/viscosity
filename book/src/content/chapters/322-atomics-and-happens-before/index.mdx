@@ -1,0 +1,240 @@
+---
+n: 322
+day: 81
+part: X
+title: 'Atomics and happens-before'
+tagline: 'A data-race-free program behaves as if its threads took turns; atomics are how you make a program data-race-free without a lock around every line. This chapter shows the orderings atomics come in, what they compile to on x86 and Arm, and the happens-before relation that ties them together.'
+objectives:
+  - Say what an atomic operation guarantees, and use JavaScript's Atomics with SharedArrayBuffer.
+  - Tell relaxed, release/acquire and sequentially consistent atomics apart, and read what they compile to on x86-64 and AArch64.
+  - Build happens-before from program order and synchronizes-with edges, and decide whether two accesses race.
+  - Implement a vector-clock race detector.
+introduces: [atomics, happens-before]
+uses: [data-race, memory-model, cpu, register, pipeline, instruction-scheduling, arraybuffer, typed-array, event-loop, map-filter-reduce, set, object, array, function, test]
+sources: [cxx-draft-races, go-memory-model, ecma262-memory-model, mdn-atomics, node-worker-threads, rust-std-atomic, openjdk-varhandle, manson2005jmm, boehm2008cxxmm]
+---
+import OrderingLadder from '../../../components/diagrams/ch322/OrderingLadder';
+import HbSteps from '../../../components/diagrams/ch322/HbSteps';
+
+## Making the flag work
+
+Last chapter's message-passing test is the shape of almost all thread
+communication: one thread prepares some data and raises a flag; another
+waits for the flag and reads the data. With plain variables it is a
+data race, so the compiler may hoist the flag read out of the loop and
+weak hardware may show the flag before the data. The fix is to make the
+flag **atomic**. Here it is in Node 22, run here, with a worker as the
+writer (re-wrapped to fit):
+
+```js
+const m = new Int32Array(
+  new SharedArrayBuffer(8));
+// m[0] = data, m[1] = flag
+new Worker(`
+  m[0] = 42;              // plain write
+  Atomics.store(m, 1, 1); // publish
+  Atomics.notify(m, 1);   // wake reader
+`, ...);
+Atomics.wait(m, 1, 0);    // sleep while 0
+console.log(Atomics.load(m, 1), m[0]);
+// 1 42
+```
+
+The worker writes the data with an ordinary store, then publishes the
+flag with `Atomics.store` and wakes any thread sleeping on it;
+`Atomics.wait` puts the main thread to sleep while the flag is still 0
+(Node allows this on its main thread; a browser does
+not<Cite id="mdn-atomics" />). Because `Atomics.store` and
+`Atomics.load` are sequentially consistent, seeing the flag guarantees
+seeing the 42<Cite id="ecma262-memory-model" />.
+
+<Analogy title="a relay baton">
+In a relay race the next runner may not start until the baton is in
+their hand, and the baton carries with it everything the team has done
+so far: the distance already covered.
+<span slot="breaks">A baton passes from one runner to exactly one
+other; one release can be acquired by many threads, and each of them
+then sees everything written before the release.</span>
+</Analogy>
+
+<Analogy title="a sealed parcel">
+A warehouse packs a parcel, then puts a "complete" sticker on it. Anyone
+who sees the sticker can trust that everything was packed before it
+went on.
+<span slot="breaks">Nobody can peek inside a sealed parcel, but a
+thread can still read the data without checking the flag; it is only
+guaranteed to see the finished data if it acquired the flag first.</span>
+</Analogy>
+
+<Callout kind="definition">
+An **atomic** operation on a memory location is indivisible (no thread
+sees it half done, so concurrent atomic updates are never lost) and
+comes with an ordering promise. Atomics never race with each other, and
+used as flags they order the plain accesses around them. Read-modify-write
+atomics, such as `Atomics.add` or a compare-and-swap, read and write in
+one step.
+</Callout>
+
+## Three strengths of ordering
+
+C++ (and C, and Rust, which follows C++20<Cite id="rust-std-atomic" />)
+lets each atomic choose how much ordering it costs. A **relaxed** atomic
+is indivisible but orders nothing else. A **release** store keeps every
+earlier access of its thread before it, an **acquire** load keeps every
+later access after it, and when an acquire reads the value a release
+wrote, everything before the release is visible after the acquire. A
+**sequentially consistent** (`seq_cst`) atomic adds one global order of
+all such operations, which is what forbids store buffering. Java's
+VarHandle has the same ladder (Plain, Opaque, Acquire/Release,
+Volatile)<Cite id="openjdk-varhandle" />, and the Java memory model
+gives racy programs a limited meaning rather than none<Cite id="manson2005jmm" />;
+JavaScript keeps only the top rung: its atomics are all sequentially
+consistent, and "no orderings weaker than sequentially consistent
+and stronger than unordered, such as release-acquire, are
+supported"<Cite id="ecma262-memory-model" />.
+
+<Figure takeaway="On x86 only the seq_cst store costs an extra instruction; on Arm, release and acquire have instructions of their own." caption="What clang 18 -O2 emits for an atomic store and load of each ordering (C11 atomics, run here).">
+  <OrderingLadder />
+</Figure>
+
+<Examples of="atomics">
+
+```text
+x86-64 (clang 18 -O2):
+st_release:  movl %edi, a(%rip)
+st_seqcst:   xchgl %edi, a(%rip)
+fetch_add:   lock xaddl %eax, a(%rip)
+```
+
+```text
+AArch64 (clang 18 -O2):
+st_relaxed:  str  w0, [x8, :lo12:a]
+st_release:  stlr w0, [x8]
+ld_acquire:  ldar w0, [x8]
+```
+
+```go
+var plain int32
+var flag atomic.Int32
+plain = 1    // MOVL $1, a.plain(SB)
+flag.Store(1) // XCHGL AX, (CX)
+```
+
+</Examples>
+
+On x86, a release store is a plain `mov`, because x86 never lets a
+store pass an earlier access; a `seq_cst` store becomes `xchg`, which
+waits for the store buffer, killing last chapter's store-buffering
+surprise; and an atomic add is `lock xadd`. On AArch64 even release and
+acquire need their own instructions, `stlr` (store-release) and `ldar`
+(load-acquire), while relaxed accesses stay plain `str` and `ldr`. Go
+1.24 offers only sequentially consistent atomics, and its store
+compiles to `XCHGL` while the plain store next to it is a
+`MOVL`<Cite id="go-memory-model" />.
+
+Here is message passing on a machine weaker than x86, where buffered
+stores may reach memory in any order; `rel` is a release store, which
+waits until its thread's earlier stores are out:
+
+<Run id="weak" />
+
+Each thread's buffer is a list, and step (a) may flush *any* entry, not
+only the oldest, so `flag` can overtake `data`: the plain writer shows
+`r1=1 r2=0`. A `rel` store may only enter the buffer once the thread's
+earlier stores have reached memory, so when the reader sees the flag,
+the data is there. (This toy never reorders loads, so it has no use for
+acquire; real Arm does, which is why the reader needs `ldar`.)
+
+<Prompts ids={['at-what', 'at-rmw', 'at-relaxed', 'at-relacq', 'at-seqcst', 'at-x86', 'at-js']} />
+
+## Happens-before
+
+Every memory model in this part speaks the same language. Within a
+thread, each step is ordered before the next (**program order**, or
+"sequenced before"). Across threads, a release store **synchronizes
+with** an acquire load that reads its value<Cite id="cxx-draft-races" />.
+**Happens-before** is "the transitive closure of the union" of those
+two<Cite id="go-memory-model" />: a happens before b if a path of such
+edges leads from a to b. Then a data race is two conflicting accesses
+that happens-before does not order, and the bargain from last chapter
+reads: no races, so the program behaves sequentially
+consistently<Cite id="boehm2008cxxmm" />.
+
+<HbSteps client:visible />
+
+<Callout kind="definition">
+**Happens-before** is the partial order on a run's memory events made
+of program order within each thread and synchronizes-with edges between
+threads (release to the acquire that reads it, unlock to the next lock),
+closed under transitivity. A read may see a write only if the write is
+not ordered after it; two conflicting accesses that it leaves
+unordered are a data race.
+</Callout>
+
+<Formal title="Happens-before">
+
+```text
+a →po b   (same thread, a first)
+a →sw b   (release a read by acquire b)
+hb = (→po ∪ →sw)⁺
+race(a, b) ⇔ conflict(a, b)
+          ∧ ¬(a hb b) ∧ ¬(b hb a)
+```
+
+<span slot="read">a is before b in program order if both are in the same
+thread and a comes first. a synchronizes with b if a is a release that
+b, an acquire, reads from. Happens-before is every chain of one or more
+of these edges (the plus sign). Two accesses race when they conflict
+(same location, different threads, at least one a write) and neither
+happens before the other.</span>
+</Formal>
+
+<Examples of="happens-before">
+
+```text
+A: data = 42; flag.store(1, rel)
+B: flag.load(acq) == 1; read data
+   write hb read: no race
+```
+
+```text
+A: flag.store(1, rel); data = 42
+B: flag.load(acq) == 1; read data
+   write after release: race
+```
+
+```text
+A: d = 1; unlock(m)
+B: lock(m); unlock(m)
+C: lock(m); read d    hb by chain
+```
+
+</Examples>
+
+The first is the step-through: write, release, acquire, read form a
+chain. In the second the write comes *after* the release, so nothing
+orders it before B's read: a race, even though B saw the flag. The
+third shows transitivity through a lock passed from A to B to C. A
+**vector clock** turns "is there a chain?" into one comparison: each
+event carries one counter per thread, saying how many of that thread's
+steps are known to precede it, and an acquire takes the maximum of its
+own clock and the releaser's; a happens before b exactly when b's entry
+for a's thread is at least a's own. That is what you will build.
+
+<Prompts ids={['hb-what', 'hb-race', 'hb-vc']} />
+
+## Your turn
+
+<Exercise id="races" />
+
+## What you learned
+
+- **Atomics** are indivisible and come with an ordering: relaxed,
+  release/acquire or sequentially consistent (JavaScript has only the
+  last); on x86 only seq_cst stores cost extra, on Arm release and
+  acquire have their own instructions.
+- **Happens-before** is program order plus synchronizes-with, closed
+  transitively; a race is a conflicting pair it leaves unordered.
+- **Vector clocks** check happens-before with one comparison per pair.
+
+<Quiz />

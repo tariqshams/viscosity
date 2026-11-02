@@ -1,10 +1,10 @@
-// A hash table with open addressing and linear probing (book chapter 51).
+// A hash table with open addressing and linear probing (the book's chapter “Finding things fast: hash tables”).
 // Keys are interned strings, so keys compare by identity.
 //
 // Storage is a struct of arrays: one array of keys and one of values,
 // rather than an array of {key, value} entry objects. In a VM written in
 // JavaScript that saves an allocation per slot, which made object-heavy
-// programs measurably faster (book chapter 60).
+// programs measurably faster (the book's chapter “Measuring and speeding up the VM”).
 import type { ObjString, Value } from './object.ts';
 
 const MAX_LOAD = 0.75;

@@ -1,0 +1,215 @@
+---
+n: 238
+day: 60
+part: VII
+title: 'Optimal tiling by dynamic programming'
+tagline: 'Taking the biggest tile every time is quick and usually good, but not always cheapest. Working out the best cover of every subtree once, from the leaves up, finds the cheapest tiling for certain, and it is how code-generator generators have worked since the 1980s.'
+objectives:
+  - Give a tree and a cost table where maximal munch does not find the cheapest tiling.
+  - Explain dynamic programming as solving each smaller problem once and reusing the answer.
+  - Label a tree bottom-up with the cost of its cheapest cover, then read the instructions off top-down.
+  - Write the labelling pass in JavaScript, given a list of tiles with costs.
+introduces: [optimal-tiling]
+uses: [instruction-selection, tree-tiling, machine-code, assembly-language, risc-v, code-shape, ir, lowering, tree, recursion, map, function, array, object, for-of, if, test]
+sources: [aho1989, fraser1992, riscv-isa-zba, llvm-codegen, cranelift-isle]
+---
+import DPSteps from '../../../components/diagrams/ch238/DPSteps';
+import MunchVsBest from '../../../components/diagrams/ch238/MunchVsBest';
+
+## When the biggest tile is not the cheapest
+
+Maximal munch takes the biggest tile at the root and never looks
+back. On RISC-V, where almost every instruction costs about the same,
+that greed rarely hurts; however, a tile's size and its cost are
+different things, and as soon as they disagree, munch can be fooled.
+Here is a tree for `i × 8 + 8` (with the multiply already turned into
+a shift), and a cost table for an imaginary small core whose `sh3add`
+is slow:
+
+```text
+ADD(SHL(i, CONST 3), CONST 8)
+
+li, add, addi, slli    1 cycle each
+sh3add                 3 cycles
+```
+
+(The 3 is invented for this example; on real RISC-V cores `sh3add`
+is a quick instruction, and then the two covers below tie.) At the
+root, `sh3add` matches and covers three nodes, the ADD, the SHL and
+the 3, so munch takes it; but `sh3add` needs both its operands in
+registers, so the 8 costs an `li`, and the total is 3 + 1 = 4. The
+humbler cover, `slli` for the shift and `addi` for the add, costs 2.
+
+<Figure takeaway="The biggest tile can lead to the dearer cover." caption="Left: maximal munch takes sh3add at the root and then needs li for the 8, 4 cycles in all under the made-up costs. Right: slli and addi cover the same tree for 2.">
+  <MunchVsBest />
+</Figure>
+
+We want the **cheapest** cover, for certain. Trying every possible
+tiling would find it, but the number of tilings grows very fast with
+the size of the tree, since each node's choice multiplies with every
+other's. The way out is an old and powerful idea.
+
+<Prompts ids={['munch-fooled', 'size-vs-cost']} />
+
+## Remember, don't repeat
+
+The idea is called **dynamic programming**: when a big problem is
+built out of smaller problems of the same kind, solve each smaller
+one *once*, write the answer down, and build the bigger answers out of
+the written-down ones instead of solving anything twice. (The name is
+historical and a little misleading; it has nothing to do with
+programs being dynamic.)
+
+<Analogy title="pricing a cake from its parts">
+A cake is a sponge and a topping, and each of those you can buy or
+make, at different prices; the icing in turn is sugar and butter.
+Work out the cheapest way to get the icing first and write the price
+in the margin. Then, when you compare "buy the topping" with "make the
+topping", you look the icing price up instead of working it out
+again, and you do the same one level up for the cake.
+<span slot="breaks">A recipe book reuses its sub-recipes across many
+cakes; in a tree every subtree has exactly one parent, so what the
+written-down price saves is the work of the *alternatives* at the same
+parent, which all ask about the same subtrees.</span>
+</Analogy>
+
+<Analogy title="the cheapest fare home from each station">
+Planning a long train journey home, you could price every possible
+route in full. Instead, note for each station the cheapest fare from
+there to home; then the best fare from any station is "the cheapest
+next hop, plus the number noted at the station it reaches".
+<span slot="breaks">A rail network has loops, and a station can be
+reached many ways; an expression tree has none, so we can work from
+the leaves up in one sweep, and every number we need is already
+written down when we need it.</span>
+</Analogy>
+
+What makes this work for tiling is one fact: the cheapest way to
+compute a subtree into a register does not depend on what is above
+it. Whatever tile the parent picks, if one of its leaves is this
+subtree, the subtree's best cost is the same number, so it can be
+worked out once.
+
+<Formal title="The best cover of a node">
+
+```text
+best(n) = 0        if n is already in a
+                   register
+best(n) = min over tiles t matching at n of
+          cost(t) + Σ best(m)
+                    m ∈ leaves(t, n)
+```
+
+<span slot="read">The best cost of a node that is already in a
+register is zero. Otherwise, look at every tile t that matches with
+its root at n; each one costs its own instruction, cost(t), plus the
+best costs of the subtrees m left hanging at its leaves (Σ means add
+them all up). The best cost of n is the smallest of those totals, and
+the tile that gives it is the one to remember.</span>
+</Formal>
+
+Because each `best(m)` is for a smaller subtree, we can compute them
+all from the leaves up, so each is ready before anyone asks for it.
+Step through it on our tree:
+
+<DPSteps client:visible />
+
+<Callout kind="definition">
+An **optimal tiling** is a tiling of an expression tree whose total
+cost (the sum of its tiles' costs) is as small as any tiling can be.
+It is found by dynamic programming in two passes: a bottom-up pass
+labels every node with `best(n)` and the tile that achieves it, and a
+top-down pass starts at the root, follows the remembered tiles to the
+subtrees at their leaves, and writes each tile's instruction after
+its children's.
+</Callout>
+
+<Prompts ids={['dp-what', 'dp-why-once', 'two-passes', 'best-leaf']} />
+
+<Examples of="optimal-tiling">
+
+```text
+ADD(a0, CONST 5)
+  add:  1 + 0 + best(5) = 2
+  addi: 1 + 0           = 1   ← best
+```
+
+```text
+ADD(SHL(i, CONST 3), CONST 8)
+  add:    1 + 1 + 1 = 3
+  addi:   1 + 1     = 2       ← best
+  sh3add: 3 + 0 + 1 = 4
+```
+
+```text
+LOAD(ADD(ADD(a0, SHL(a1, CONST 3)),
+         CONST 8)), Zba, all costs 1
+  inner ADD: sh3add 1 < add 2
+  root: ld c(x) 1 + 1 = 2
+  sh3add a0, a1, a0
+  ld     a0, 8(a0)
+```
+
+</Examples>
+
+The first is the smallest case: at the ADD, the `add` tile needs the
+5 in a register (an `li`, cost 1) as well as its own instruction,
+while `addi` carries the 5 inside, so the label is 1 and the choice is
+`addi`. The second is the tree of this chapter with the made-up costs;
+every option looks up the same stored label of the SHL, 1, and `addi`
+wins. The third is realistic: with Zba and every instruction costing 1
+(roughly true on real cores), the inner ADD is cheapest as `sh3add`
+(cost 1, against 2 for `slli` then `add`), the root as `ld c(x)` on
+top of it, total 2, and the instructions read off top-down are exactly
+what clang writes for `a[i + 1]` with Zba<Cite id="riscv-isa-zba" />.
+Here maximal munch would have found the same answer; dynamic
+programming is the one that can *prove* it is the cheapest.
+
+Run the two side by side on the tree from the start of the chapter;
+then change the `sh3add` cost to 1, and see both answers become 2:
+
+<Run id="munch-vs-best" />
+
+<Prompts ids={['dp-cost', 'dp-tree-only']} />
+
+<Callout kind="engine" label="Under the hood">
+This is the method of Aho, Ganapathi and Tjiang's Twig, which turns a
+grammar-like list of tree patterns with costs into a code generator
+that "combines a fast top-down tree-pattern matching algorithm with
+dynamic programming"<Cite id="aho1989" />. Fraser, Hanson and
+Proebsting's iburg does the same job in about 950 lines of C; it reads
+the tiles and costs and writes a matcher that does the dynamic
+programming while it compiles, and a variant of it generates the code
+generators of lcc, a retargetable C compiler; its cousin burg goes
+further and works the choices out in advance, which makes its
+matchers faster still<Cite id="fraser1992" />. The guarantee holds for
+trees. LLVM selects instructions over a directed acyclic graph, where
+one node can feed two parents<Cite id="llvm-codegen" />, and then the
+argument above breaks, because the two parents' tiles must agree about
+the shared node. Production selectors such as Cranelift's therefore
+choose among patterns by priority, the way maximal munch does
+<Cite id="cranelift-isle" />, and settle for a very good cover rather
+than a provably cheapest one.
+</Callout>
+
+## Your turn
+
+<Exercise id="best" />
+
+## What you learned
+
+- Maximal munch picks the *biggest* tile, which is not always the
+  *cheapest*: with a slow `sh3add`, munch pays 4 where 2 would do.
+- **Dynamic programming** solves each smaller problem once, writes
+  the answer down and builds bigger answers from it.
+- An **optimal tiling** is found in two passes: label every node
+  bottom-up with `best(n)` (the cheapest tile there plus the stored
+  labels of its leaves), then follow the choices top-down and write
+  the instructions children first.
+- The guarantee needs a tree; on graphs where values are shared,
+  real selectors fall back on priorities.
+
+Next: the IR we are selecting from is still in SSA form, and machines
+have no phi instruction; it is time to leave SSA.
+
+<Quiz />

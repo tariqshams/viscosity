@@ -1,4 +1,4 @@
-// Tokenizing Python (book chapter 114). Python's blocks are made of
+// Tokenizing Python (the book's chapter “A small Python front-end”). Python's blocks are made of
 // indentation, so the tokenizer turns changes in indentation into INDENT and
 // DEDENT tokens, and line ends into NEWLINE tokens, except inside brackets,
 // where lines join implicitly.

@@ -1,4 +1,4 @@
-// The book's hand-written JavaScript parser (book chapter 92).
+// The book's hand-written JavaScript parser (the book's chapter “Parsing real JavaScript”).
 //
 // It parses the subset of JavaScript that numeric, data-heavy code uses —
 // declarations, functions and arrows, loops (including for-of), objects,

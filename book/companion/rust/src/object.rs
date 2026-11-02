@@ -1,5 +1,5 @@
 //! Heap objects, the arenas that hold them, and the typed handles that
-//! point into the arenas (book chapters 49, 50 and 56 to 59).
+//! point into the arenas (the book's chapters “Tagging values at run time”, “Objects that live on the heap” and “Frames: calling and returning in the VM” to 59).
 //!
 //! The TypeScript VM's objects point at each other with plain references.
 //! Safe Rust can't share objects like that without reference counting,
@@ -183,7 +183,7 @@ pub struct ObjNative {
     pub arity: usize,
 }
 
-/// A variable captured by a closure (chapter 56).
+/// A variable captured by a closure (chapter “Frames: calling and returning in the VM”).
 pub enum ObjUpvalue {
     /// The variable is still on the stack, in this slot.
     Open(usize),
@@ -214,7 +214,7 @@ pub struct ObjBoundMethod {
     pub method: Gc<ObjClosure>,
 }
 
-/// FNV-1a: a simple, decent hash for strings (chapter 51). The TypeScript
+/// FNV-1a: a simple, decent hash for strings (chapter “Finding things fast: hash tables”). The TypeScript
 /// VM hashes UTF-16 code units and we hash UTF-8 bytes, so the two agree
 /// on ASCII strings; nothing a program can observe depends on the hash.
 pub fn hash_string(s: &str) -> u32 {

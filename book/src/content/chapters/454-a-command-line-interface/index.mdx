@@ -1,0 +1,255 @@
+---
+n: 454
+day: 114
+part: XIV
+title: 'A command-line interface'
+tagline: 'The engine is a library, but people reach it through a terminal: a list of words goes in, and two streams of text and one small number come out. Here is how the Rust CLI turns those into a compile, and why it treats a mistyped flag and a missing file so differently.'
+objectives:
+  - Say what a CLI receives from the shell and the three things it gives back, including the exit status.
+  - Predict where each line of the Viscosity CLI's output goes, stdout or stderr, and which status it ends with.
+  - Tell a usage error from any other error, and say why only one of them prints the help.
+  - Explain where --version gets its number, and what happens when several files are given and one fails.
+introduces: [cli]
+uses: [rust, cargo, crate, struct, enum, match, pattern, option, result, question-mark, string-vs-str, slice, vec, error-enum, from-trait, cargo-test, workspace, viscosity-rs, engine-parity, rust-explain, rust-pgo, data-parallelism, diagnostic, npm-package, compile-time-performance]
+sources: [rust-book-ch12-cli, rust-std-env-args, rust-std-exitcode]
+---
+import Streams from '../../../components/diagrams/ch454/Streams';
+import ExitSteps from '../../../components/diagrams/ch454/ExitSteps';
+
+## A library needs a front door
+
+Part XIII built a library: one Rust function, `compile(source, &JsPlugin,
+opts)`, which takes a program as a string and hands back the compiled code
+and the explanation. Nobody types that, however; what people type, in a
+terminal, is this:
+
+```
+$ viscosity explain particles.js
+```
+
+The program that answers is the crate `engine/rust/crates/cli`, which
+cargo builds into a binary called `viscosity`. Most of its `main.rs` is
+plumbing between the shell (the program that reads what you type in a
+terminal and starts other programs) and the compiler, and that plumbing
+follows conventions much older than Rust; on top of them, Viscosity adds a
+rule of its own, which is that the Rust CLI must behave exactly like the
+TypeScript one from *Shipping Viscosity*.
+
+<Analogy title="a post office counter">
+You slide a form under the glass (the words you typed). The clerk hands
+the receipt back through one slot and any complaint through another, so
+you can file the receipts in a drawer and still read the complaints; and
+as you leave, a light over the door turns green or red, so the next
+person in the queue knows how it went without reading anything.
+<span slot="breaks">A clerk can ask you a question halfway through; a CLI
+like this one never does. Everything it needs is in the words you typed,
+and everything it says goes out through the two slots and the light.</span>
+</Analogy>
+
+<Analogy title="dropping a coat at the dry cleaner">
+You hand over the coat with a ticket of instructions ("press, no
+starch"). You get back the coat, perhaps a note about a stain they could
+not remove, and the ticket stamped "done" or "problem".
+<span slot="breaks">The cleaner can phone you a day later. A CLI has
+nothing after it exits: whatever it did not print, or say in its exit
+status, is lost.</span>
+</Analogy>
+
+<Figure caption="A CLI receives a list of strings and gives back three things. Redirecting stdout with > out.txt sends the results to a file while the messages stay on screen." takeaway="Words in; results, messages and one number out.">
+  <Streams />
+</Figure>
+
+<Callout kind="definition">
+A **command-line interface** (**CLI**) is a program driven from a
+terminal. It receives a list of strings, its **arguments**, from the
+shell. It writes its results to **standard output** (**stdout**) and its
+messages to **standard error** (**stderr**), so that a user can send the
+results to a file and still see the errors<Cite id="rust-book-ch12-cli" />.
+When it ends it hands an **exit status**, a small number, back to
+whoever started it: 0 for success and, by convention, anything else for
+failure<Cite id="rust-book-ch12-cli" />.
+</Callout>
+
+In Rust the arguments come from `std::env::args()`, with the program's
+own path first<Cite id="rust-std-env-args" />, and `main` may return an
+`ExitCode`, which has `SUCCESS` and `FAILURE` built in<Cite id="rust-std-exitcode" />.
+
+<Formal title="A CLI as a function">
+
+```text
+cli : [String] → (stdout, stderr, status)
+status ∈ {0, 1, ..., 255}
+success  ⟺  status = 0
+```
+
+<span slot="read">A CLI takes a list of strings and gives back three
+things: the text on stdout, the text on stderr, and a status, which is a
+whole number from 0 to 255. The run counts as a success exactly when the
+status is 0 (the double arrow reads "if and only if").</span>
+</Formal>
+
+<Examples of="cli">
+
+```
+$ viscosity --version; echo "exit $?"
+viscosity 0.0.1
+exit 0
+```
+
+```
+$ viscosity explain p.js > out.txt
+$ echo $?; wc -c out.txt
+0
+225 out.txt
+```
+
+```
+$ viscosity explain gone.js; echo $?
+viscosity: cannot read gone.js: No such
+  file or directory (os error 2)
+1
+```
+
+</Examples>
+
+I ran all three with the release build here (the long line is wrapped).
+In the first, `--version` prints one line on stdout, and `$?`, which is
+the shell's name for the last exit status, is `0`. In the second, `>`
+sends stdout into `out.txt`, so nothing reaches the screen; the file holds
+the 225 bytes of the report, and the status is `0`. In the third the file
+does not exist, so stdout stays empty, the message goes to stderr (which
+`>` would not have caught) and the status is `1`.
+
+<Prompts ids={['cli-three-outputs', 'stderr-why', 'dollar-q']} />
+
+## Two kinds of error
+
+How the words are read is the next chapter's subject; this one follows
+what happens after. Some failures are about the command line itself (an
+unknown flag, a missing value, no files at all), and then the help text
+is useful. A missing file or a syntax error is different: the command was
+fine, and 27 lines of help would bury the one line that matters. So the
+CLI's error type keeps the two apart:
+
+```rust
+/// A failure. As in the TS CLI, only a
+/// usage error (the command line itself
+/// was wrong) is followed by the help
+/// text.
+#[derive(Debug)]
+enum CliError {
+    Usage(String),
+    Other(String),
+}
+```
+
+(Quoted from `main.rs`, with the comment rewrapped to fit.) It is an enum with two variants, each holding a message. Beside it sits
+`impl From<String> for CliError`, which turns any plain `String` error
+into `Other`, so that `?` can pass errors from reading and compiling
+straight up (*Error handling at scale*). Everything ends in one `match`
+in `main` (again rewrapped):
+
+```rust
+match run(&argv, &mut stdout, &mut stderr) {
+    Ok(true) => ExitCode::SUCCESS,
+    Ok(false) => ExitCode::FAILURE,
+    Err(CliError::Usage(e)) => {
+        let _ = write!(stderr,
+            "viscosity: {e}\n\n{HELP}");
+        ExitCode::FAILURE
+    }
+    Err(CliError::Other(e)) => {
+        let _ = writeln!(stderr,
+            "viscosity: {e}");
+        ExitCode::FAILURE
+    }
+}
+```
+
+`run` does the real work and returns a `Result<bool, CliError>`: `Ok(true)`
+when everything compiled, `Ok(false)` when the run went fine but a file
+failed, and an `Err` otherwise. Each arm of the `match` picks the exit
+status. The two `Err` arms differ only in what they write: `write!` sends
+"viscosity: ", the message, two newlines (`\n\n`, which leave one blank
+line) and `HELP`, while `writeln!` sends the message and one newline. (`let _
+=` throws away the result of writing: if stderr itself is broken, there is
+nobody left to tell.) Step through six real command lines:
+
+<ExitSteps client:visible />
+
+Notice that every failure exits with `1`, whatever its kind; the
+difference is only in what is printed. This program plays the same game
+with five command lines, so you can change them and watch:
+
+<Run id="dispatch" />
+
+For each command line it prints the line, then what `main` would write,
+marked `out|` for stdout and `err|` for stderr, then the exit status. Only
+the misspelt command, the unknown option and the missing file list are
+usage errors, so only they are followed by the (shortened) help; the
+missing file gets one line.
+
+<Prompts ids={['usage-vs-other', 'exit-one', 'okfalse']} />
+
+## The help, the version, and many files
+
+`--help`, `-h` and an empty command line print `HELP`, a 27-line string
+constant, and exit `0`. The TypeScript CLI has the same constant (the
+website's CLI reference is generated from it), and the Rust copy differs
+only where the port does: two languages rather than three, since
+TypeScript input is refused; `profile` "needs node" (*PGO in Rust*);
+`--jobs` really runs in parallel; and there is no `--parser`.
+
+`--version` prints `viscosity 0.0.1` from both, but they find the number
+differently. Rust bakes it in while compiling: `env!("CARGO_PKG_VERSION")`
+is filled in by cargo from the workspace version in `Cargo.toml`, so the
+number is part of the binary. The TypeScript CLI reads `package.json`
+each time it runs. Both look only at the first word, which is why
+`viscosity explain a.js --help` is reported as "unknown option --help"
+(and then shows the help anyway, since that is a usage error).
+
+Given several files, `explain` prints each report under a `== a.js ==`
+header, in the order you gave, however many threads compiled them
+(*Compiling in parallel*). `build` with several files needs `-o <dir>` and
+writes each one there under its own name. A file that fails is reported
+as `viscosity: bad.js: Unexpected token (1:8)` while the others still
+compile, which is the `Ok(false)` case; with a single file, its error
+ends the run.
+
+<Prompts ids={['version-source', 'multi-fail']} />
+
+<Callout kind="engine" label="Under the hood">
+A CLI's messages and exit statuses are part of its public face, because
+scripts depend on them (*Release engineering* comes back to this). One
+rough edge was found while writing this chapter: `main` used to collect
+`std::env::args()`, which panics on an argument that is not valid
+UTF-8<Cite id="rust-std-env-args" /> (Linux allows any bytes in a file
+name), and the process died with status 101 before parsing began. It now
+collects `args_os()`, keeps file names as `OsString`s, and such a file
+compiles; `tests/os_args.rs` checks it. The TypeScript CLI turns the bad
+byte into U+FFFD and then cannot open the file.
+</Callout>
+
+## Your turn
+
+Write the end of `main`: given what `run` returned, produce the text for
+stderr and the exit status.
+
+<Exercise id="finish" />
+
+## What you learned
+
+- A **CLI** receives its **arguments** as strings and gives back three
+  things: results on **stdout**, messages on **stderr**, and an **exit
+  status**, 0 for success and 1 for every failure in Viscosity.
+- `CliError` separates **usage errors**, which print the help, from
+  everything else, which prints one line; `Ok(false)` means "the run
+  worked, a file did not".
+- The **help** is one constant in each CLI; the Rust **version** is
+  baked in at compile time from `Cargo.toml`.
+- With several files, each failure costs only that file, and the status
+  is still 1.
+
+Next: how the words become options, one at a time.
+
+<Quiz />

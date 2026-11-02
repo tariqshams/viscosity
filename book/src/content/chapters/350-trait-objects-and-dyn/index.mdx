@@ -1,0 +1,217 @@
+---
+n: 350
+day: 88
+part: XI
+title: 'Trait objects and dyn'
+tagline: 'One list that holds a Js plugin and a Py plugin at once. The price is a second pointer per reference, to a table of functions, which is how drip-rs’s collector finds its roots without knowing their types.'
+objectives:
+  - Use &dyn Trait and Box<dyn Trait> to hold values of different types that share a trait.
+  - Draw the data pointer and vtable pointer behind a trait object, and say why it is 16 bytes here.
+  - Compare a dyn call with a JavaScript property lookup and an inline cache.
+  - Read the &[&dyn Trace] roots of drip-rs's garbage collector.
+introduces: [trait-object]
+uses: [trait, rust, rust-functions, let-mut, borrow, slice, string-vs-str, struct, impl, self-receiver, vec, option, result, method, garbage-collection, roots, mark-sweep, language-plugin, inline-cache, vtable, dynamic-dispatch, fat-pointer, typescript, aos-vs-soa]
+sources: [klabnik2026, rust-reference-trait-object, rust-book-trait-objects]
+---
+import VtableSteps from '../../../components/diagrams/ch350/VtableSteps';
+import FatPointer from '../../../components/diagrams/ch350/FatPointer';
+
+## One list, many types
+
+Viscosity's command-line tool wants a list of plugins and the question
+"which of you handles `b.py`?". In TypeScript that is an array of
+`LanguagePlugin`s and a loop. In Rust a `Js` and a `Py` are different
+types, of possibly different sizes, and a `Vec` holds one element type,
+so the obvious line is refused:
+
+```rust
+let ps = vec![&Js, &Py];  // ✗
+```
+
+```text
+error[E0308]: mismatched types
+13 |     let ps = vec![&Js, &Py];
+   |                        ^^^ expected
+   |                 `&Js`, found `&Py`
+```
+
+What we want to say is "a reference to *some* type that implements
+`Plugin`; I won't say which". That type exists, and it is written
+`&dyn Plugin`.
+
+<Analogy title="a universal remote">
+A universal remote has one set of buttons, "power" and "volume up",
+and works with a television, an amplifier or a projector. Behind the
+buttons it keeps, for the device it is paired with, a table saying
+which signal each button sends.
+<span slot="breaks">A remote is paired once and stays that way; each
+trait object carries its own table pointer, so the same `Vec` can hold
+a value paired with the `Js` table next to one paired with the `Py`
+table.</span>
+</Analogy>
+
+<Analogy title="a parcel with a care label">
+A courier depot handles parcels of every shape. It does not need to
+know what is inside; each parcel carries a label saying how to handle
+it ("fragile: this way up"), and the staff follow the label.
+<span slot="breaks">A label is read by a person who may ignore it;
+a vtable is followed exactly, and it can only list the methods of the
+one trait the object was made for.</span>
+</Analogy>
+
+## dyn Trait
+
+```rust
+let ps: Vec<&dyn Plugin> =
+    vec![&Js, &Py];
+for p in &ps {
+    if p.handles("b.py") {
+        println!("{}", p.id()); // python
+    }
+}
+```
+
+Each element is a `&dyn Plugin`, so one `Vec` can hold both. Leave out
+the `dyn` and rustc tells you that a trait is not a type on its own:
+
+```text
+error[E0782]: expected a type, found a trait
+13 |     let ps: Vec<&Plugin> =
+   |                  ^^^^^^
+help: you can add the `dyn` keyword if
+  you want a trait object
+```
+
+How does `p.id()` know which `id` to run, when `p` could be either? The
+reference carries a second pointer. Step through it:
+
+<VtableSteps client:visible />
+
+<Callout kind="definition">
+A **trait object** is a value of type `dyn Trait`, always used behind a
+pointer such as `&dyn Trait` or `Box<dyn Trait>`. The pointer is
+**fat**: one pointer to the value, and one to a **vtable**, a table
+holding, for each method of the trait, a pointer to that type's
+implementation<Cite id="rust-reference-trait-object" />. Calling a
+method loads the function pointer from the vtable and calls it, which is
+**dynamic dispatch**.
+</Callout>
+
+<Figure takeaway="A trait-object reference is two pointers: the value and its type's vtable." caption="On this machine &Js is 8 bytes, and &dyn Plugin and Box<dyn Plugin> are 16. The vtable is built once per type by the compiler; rustc also keeps the value's size, alignment and drop function there.">
+  <FatPointer />
+</Figure>
+
+<Examples of="trait-object">
+
+```rust
+fn show(p: &dyn Plugin) {
+    println!("{}", p.id());
+}
+show(&Js);
+show(&Py);
+```
+
+```rust
+let ps: Vec<Box<dyn Plugin>> =
+    vec![Box::new(Js), Box::new(Py)];
+```
+
+```rust
+// from companion/rust/src/gc.rs
+pub fn collect(&mut self,
+    roots: &[&dyn Trace]) { /* ... */ }
+```
+
+</Examples>
+
+The first is the smallest use: one function, compiled once, that takes
+any plugin. The second owns its plugins instead of borrowing them:
+`Box::new(Js)` moves the value onto the heap and `Box<dyn Plugin>` owns
+it, so the `Vec` can outlive the variables it was built from (the
+chapter *Box, Rc and RefCell* is about `Box`). The third is drip-rs's
+garbage collector: `collect` takes its roots as a slice of trait
+objects, so the VM can pass its stack, frames and globals (as one
+`VmRoots` struct) and the compiler can pass its half-built functions,
+and the collector marks them all without knowing either type.
+
+<Prompts ids={['dyn-what', 'dyn-needed', 'dyn-e0782', 'fat', 'dyn-box']} />
+
+## What a dyn call costs
+
+You have seen this table before, from the compiler's side: it is the
+vtable of *Objects, vtables and dynamic dispatch*, travelling beside the
+pointer as in *Interfaces and traits: dictionary passing*. Compare it
+with JavaScript. `plugin.lower(src)` in the TypeScript engine is a
+property lookup by name, which V8 speeds up with an inline cache that
+remembers the shapes it has seen (*Inline caches*). A `dyn` call never
+looks anything up by name: the compiler knew every method of the
+trait, numbered them and built each vtable ahead of time, so at run time
+the call reads a fixed slot. What it cannot know is *which* vtable it
+will get, so the call is indirect, and the Rust book notes that this
+keeps the compiler from inlining the method<Cite id="rust-book-trait-objects" />.
+
+<Formal title="Calling through a trait object">
+
+```text
+p : &dyn Tr  =  (data, vt)
+p.m(a)  ⟶  (vt.m)(data, a)
+```
+
+<span slot="read">A reference p to a trait object of trait Tr is a pair:
+the address of the value, data, and the address of its vtable, vt.
+Calling method m on p means reading m's entry from vt and calling that
+function with data as self and the other arguments after it.</span>
+</Formal>
+
+<OtherLanguages title="A list of plugins">
+
+```rust
+let ps: Vec<Box<dyn Plugin>> =
+    vec![Box::new(Js), Box::new(Py)];
+for p in &ps {
+    println!("{}", p.id());
+}
+```
+
+```ts
+const ps: LanguagePlugin[] =
+  [jsPlugin, pyPlugin];
+for (const p of ps) {
+  console.log(p.id);
+}
+```
+
+</OtherLanguages>
+
+In TypeScript every object reference can already point at anything, so
+an array of plugins needs no special type; each `p.id` is found at run
+time by the engine. In Rust a value's type is normally known exactly, so
+"some plugin, I won't say which" has to be asked for with `dyn`, and
+then the price, one extra pointer per reference and one indirect call
+per method, is paid only where you asked for it. The next chapter shows
+the other way to call a trait method, with no table at all.
+
+<Run id="dyn-play" />
+
+<Prompts ids={['dyn-cost', 'vtable-vs-ic', 'trace']} />
+
+## Your turn
+
+<Exercise id="readDyn" />
+
+<Exercise id="aosoaLayout" />
+
+## What you learned
+
+- A **trait object**, `&dyn Trait` or `Box<dyn Trait>`, lets one
+  variable or one `Vec` hold values of different types that share a
+  trait.
+- Its pointer is fat: data plus a **vtable** of function pointers, 16
+  bytes here. Calls through it are dynamic dispatch: a fixed slot, an
+  indirect call, no lookup by name, and no inlining.
+- drip-rs collects roots of many types through `&[&dyn Trace]`.
+
+Next: generics, where Rust makes a separate copy of a function for each
+type instead of passing a table.
+
+<Quiz />

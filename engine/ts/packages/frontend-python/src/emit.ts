@@ -1,4 +1,4 @@
-// Emitting Python with column storage (book chapter 116). Like the JS
+// Emitting Python with column storage (the book's chapter “Emitting Python with column storage”). Like the JS
 // emitter, it only replaces the source ranges it must.
 //
 //   ps = []                         ->  ps = _Vsc_ps()

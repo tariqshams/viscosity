@@ -1,0 +1,67 @@
+// New references for chapter 237 (Instruction selection by tree tiling)
+// and its staged second half (230-b, optimal tiling by dynamic
+// programming). Network note: in this session dl.acm.org, doi.org and the
+// authors' pages could not be reached; GitHub could. Each checkedAgainst
+// says exactly what was read.
+export default [
+  {
+    id: 'aho1989',
+    authors: ['Alfred V. Aho', 'Mahadevan Ganapathi', 'Steven W. K. Tjiang'],
+    title: 'Code Generation Using Tree Matching and Dynamic Programming',
+    venue: 'ACM Transactions on Programming Languages and Systems 11(4), pp. 491–516',
+    year: 1989,
+    doi: '10.1145/69558.75700',
+    url: 'https://doi.org/10.1145/69558.75700',
+    accessed: '2026-11-02',
+    checkedAgainst: 'Search records only (dl.acm.org and doi.org unreachable from this session): the ACM Digital Library entry at doi 10.1145/69558.75700 as indexed by web search, giving TOPLAS 11(4), October 1989, pp. 491–516; its abstract: Twig “transforms a tree-translation scheme into a code generator that combines a fast top-down tree-pattern matching algorithm with dynamic programming”; Appel’s later paper (cs.princeton.edu/~appel/papers) describing Twig as producing “dynamic-programming code-generators from grammar-like specifications”; the Plan 9 twig(1) manual page (typewritten.org), which says the generated program finds a minimum-cost covering of the input tree and then runs the actions of the patterns in that covering.',
+    shaped: 'Chapters 237 and 237-b: tree patterns with costs, and the dynamic-programming search for the cheapest cover (Twig).',
+  },
+  {
+    id: 'fraser1992',
+    authors: ['Christopher W. Fraser', 'David R. Hanson', 'Todd A. Proebsting'],
+    title: 'Engineering a Simple, Efficient Code-Generator Generator',
+    venue: 'ACM Letters on Programming Languages and Systems 1(3), pp. 213–226',
+    year: 1992,
+    doi: null,
+    url: 'https://experts.arizona.edu/en/publications/engineering-a-simple-efficient-code-generator-generator/',
+    accessed: '2026-11-02',
+    checkedAgainst: 'Search records only (the ACM pages were unreachable, and the DOI could not be confirmed, so none is given): the University of Arizona research portal (LOPLAS volume 1, issue 3, pages 213–226, 1992); the Microsoft Research publication page; the Princeton technical report CS-TR-386-92, “Engineering Efficient Code Generators Using Tree Matching and Dynamic Programming” (August 1992). Content from the abstract as indexed: iburg reads a burg specification and writes a matcher that does dynamic programming at compile time; it is simpler than the alternatives (about 950 lines of C, against about 3,000 for Twig and 5,000 for burg); its matchers are up to 25 times faster than Twig’s but slower than burg’s BURS matchers; a variant is used in the code generators of lcc, the retargetable ANSI C compiler.',
+    shaped: 'Chapter 237-b: iburg, a small code-generator generator built on the same dynamic programming, and lcc as a compiler that uses one.',
+  },
+  {
+    id: 'llvm-riscv-td',
+    authors: ['The LLVM Project'],
+    title: 'RISCVInstrInfo.td: the RISC-V instruction definitions and selection patterns',
+    venue: 'llvm-project repository, llvm/lib/Target/RISCV/RISCVInstrInfo.td (main)',
+    year: 2026,
+    doi: null,
+    url: 'https://github.com/llvm/llvm-project/blob/main/llvm/lib/Target/RISCV/RISCVInstrInfo.td',
+    accessed: '2026-11-02',
+    checkedAgainst: 'A sparse git checkout of github.com/llvm/llvm-project at commit b322d9c0dd016086eead06ede5411d06161f89ce (2 November 2026), reading llvm/lib/Target/RISCV/RISCVInstrInfo.td: the two patterns for an integer add, “def : PatGprGpr<add, ADD>;” and “def : PatGprSimm12<add, ADDI>;” (PatGprSimm12 being PatGprImm with the simm12_lo operand), and the load pattern class LdPat, a Pat of (LoadOp (AddrRegImm BasePtr:$rs1, simm12_lo:$imm12)) to (Inst BasePtr:$rs1, simm12_lo:$imm12), so a register-plus-12-bit-offset address is folded into the load. The output of clang 18.1.3 quoted in the chapter (-O2 --target=riscv64 -march=rv64im and rv64im_zba) was produced in the writing session.',
+    shaped: 'Chapter 237: real tiles, two LLVM patterns for one add, and the load pattern that swallows an offset.',
+  },
+  {
+    id: 'riscv-isa-zba',
+    authors: ['RISC-V International'],
+    title: 'The RISC-V Instruction Set Manual, Volume I: Unprivileged Architecture: “B” extensions for bit manipulation (Zba)',
+    venue: 'RISC-V International, github.com/riscv/riscv-isa-manual, src/unpriv/zb.adoc',
+    year: 2026,
+    doi: null,
+    url: 'https://github.com/riscv/riscv-isa-manual',
+    accessed: '2026-11-02',
+    checkedAgainst: 'A sparse git checkout of github.com/riscv/riscv-isa-manual at commit 8fb3965fe4b501a6bfa00c34affffcdbdb2c552c (29 October 2026), src/unpriv/zb.adoc, section insns-sh3add: “Shift left by 3 and add”, mnemonic sh3add rd, rs1, rs2, operation X(rd) = X(rs2) + (X(rs1) << 3), included in Zba (ratified). Also src/unpriv/rv32.adoc: addi “adds the sign-extended 12-bit immediate to register rs1”, and a load’s effective address is rs1 plus the sign-extended 12-bit offset. llvm-mc 18.1.3 accepted sh3add with -mattr=+zba.',
+    shaped: 'Chapters 237 and 237-b: sh3add as a three-node tile, and the 12-bit limits that decide whether addi and a load offset match.',
+  },
+  {
+    id: 'cranelift-isle',
+    authors: ['The Bytecode Alliance'],
+    title: 'ISLE: Instruction Selection/Lowering Expressions DSL, and the riscv64 lowering rules',
+    venue: 'wasmtime repository, cranelift/isle/README.md and cranelift/codegen/src/isa/riscv64/lower.isle',
+    year: 2026,
+    doi: null,
+    url: 'https://github.com/bytecodealliance/wasmtime/tree/main/cranelift/isle',
+    accessed: '2026-11-02',
+    checkedAgainst: 'A sparse git checkout of github.com/bytecodealliance/wasmtime at commit b1f81d2ad4fc64fbe0e70a7cc5fccac1a7864c49 (31 October 2026). cranelift/isle/README.md: ISLE is “based on a ‘term-rewriting’ paradigm in which the input ... is, conceptually, a tree of terms”, and the generated code “merges all rules into a decision tree ... while respecting user-configurable priorities on each rule”. cranelift/codegen/src/isa/riscv64/lower.isle, “Rules for iadd”: rule 0 lowers (iadd $I64 x y) to rv_add; rules 1 and 2 match an operand that fits in 12 bits (imm12_from_value) and use addi; rules 3 and 4, with Zba, match (iadd x (ishl y (iconst n))) and choose sh1add, sh2add or sh3add for n = 1, 2, 3. cranelift/codegen/Cargo.toml lists regalloc2 as a dependency.',
+    shaped: 'Chapter 237: a production selector written as prioritised tree patterns, the bigger pattern winning; chapter 244-b: Cranelift uses regalloc2.',
+  },
+];

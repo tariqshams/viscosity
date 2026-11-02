@@ -1,0 +1,235 @@
+---
+n: 231
+day: 58
+part: VII
+title: 'Instruction sets and RISC-V'
+tagline: 'The same 36 bytes of sumsq run on a chip in a sensor and on a server processor from a different maker. What makes that possible is a written contract, the instruction set; this chapter reads the contract this book targets, RISC-V, from its 32 registers to the trick it uses for constants too big for one instruction.'
+objectives:
+  - Explain what an instruction set architecture promises and what it leaves to each chip.
+  - Read a RISC-V name such as RV64IM, and say what the base set and the M extension contain.
+  - Use x0, the always-zero register, and list the groups of instructions in the base set.
+  - Build a 32-bit constant from lui and addi, including the round-up when the low part is negative.
+introduces: [isa, risc-v]
+uses: [machine-code, assembly-language, cpu, register, memory, address, byte, bit, binary, bit-ops, compiler, induction-variable, function, test]
+sources: [riscv-isa-unpriv, riscv-asm-manual]
+---
+import IsaLayers from '../../../components/diagrams/ch231/IsaLayers';
+import LiSteps from '../../../components/diagrams/ch231/LiSteps';
+
+## One program, many chips
+
+The last chapter turned `sumsq` into 36 bytes. Those bytes run
+unchanged on a small chip in a sensor or on a big server processor,
+from different makers, built in completely different ways, as long as
+each chip implements the same instructions. Nobody tested the bytes on
+every chip; they work because every chip and every compiler follow one
+written agreement about what each instruction means.
+
+<Analogy title="the shape of a wall socket">
+Any kettle with the right plug works in any socket in the country,
+whoever made the kettle and whichever power station feeds the wire;
+the plug's shape and the voltage are the agreement, and both sides can
+change freely behind it.
+<span slot="breaks">A socket promises only power, while an instruction
+set pins down hundreds of exact behaviours; and two chips that keep
+the same contract can still differ a great deal in speed, which the
+contract says nothing about.</span>
+</Analogy>
+
+<Analogy title="a restaurant chain's menu">
+Every branch of a chain serves the dishes on the same menu, and you
+can order "number 12" anywhere; one kitchen has six cooks and a huge
+oven, another has two cooks and a small one, but number 12 is number
+12.
+<span slot="breaks">A menu describes a dish loosely and kitchens vary
+it a little; an instruction set states each result to the last bit,
+and a chip that differs by one bit is simply wrong.</span>
+</Analogy>
+
+<Figure takeaway="Software is written against the ISA; any chip that keeps the ISA can run it." caption="The ISA sits between software and hardware: compilers and operating systems rely on it from above, and chips of every size implement it from below.">
+  <IsaLayers />
+</Figure>
+
+<Callout kind="definition">
+An **instruction set architecture** (**ISA**) is the contract between
+hardware and software: the registers a program can see, the
+instructions, their encodings, and exactly what each does to registers
+and memory. It deliberately leaves out how a chip achieves that (how
+many instructions it overlaps, how big its caches are); the RISC-V
+manual calls itself "the software-visible interface to a wide variety
+of implementations"<Cite id="riscv-isa-unpriv" />.
+</Callout>
+
+For a compiler writer the ISA is the target's whole vocabulary: every
+pattern in the next chapters (choosing instructions, assigning
+registers, ordering them) is a way of saying the program in exactly
+these words, and nothing outside them exists.
+
+<Prompts ids={['isa-what', 'isa-not-speed']} />
+
+## RISC-V: a small base and extensions
+
+This book targets **RISC-V** (said "risk five") because it is open
+(anyone may build it or write about it without a licence), small and
+regular, and designed for real hardware rather than only for teaching.
+It is a family. Every member has a **base** integer set: RV32I, whose
+registers are 32 bits wide, or RV64I, whose registers are 64 bits wide
+(the manual calls that width XLEN). On top of the base come optional
+**extensions**, named by letters: M adds multiply and divide, A adds
+atomic memory operations, F and D add single- and double-precision
+floating point, and C adds 16-bit short forms of common instructions
+to make code smaller; G is shorthand for the general-purpose bundle
+IMAFD plus two small extensions, Zicsr and
+Zifencei<Cite id="riscv-isa-unpriv" />. Our target is RV64IM.
+
+The base is deliberately tiny: the manual counts 40 unique
+instructions in RV32I<Cite id="riscv-isa-unpriv" />, few enough to
+list on one screen:
+
+```text
+arithmetic  add sub addi
+logic       and or xor andi ori xori
+shifts      sll srl sra slli srli srai
+compare     slt sltu slti sltiu
+constants   lui auipc
+branches    beq bne blt bge bltu bgeu
+jumps       jal jalr
+memory      lb lh lw lbu lhu sb sh sw
+system      fence ecall ebreak
+```
+
+A name ending in `i` takes an immediate in place of a second register;
+a `u` means the values are compared or loaded as unsigned; `slt` is
+"set if less than", which writes 1 or 0. RV64I adds 64-bit loads and
+stores (`ld`, `sd`, `lwu`) and a few "word" instructions such as
+`addiw` that work on the low 32 bits. Notice what is missing: no
+multiply (that is M), no instruction that adds a memory value to a
+register (the next chapter explains why), and no "move" or "load
+constant" (those are pseudoinstructions).
+
+A program sees 32 integer registers, `x0` to `x31`, plus the program
+counter `pc`. `x0` is special: it always reads as 0, and anything
+written to it is thrown away<Cite id="riscv-isa-unpriv" />. That one
+rule removes a whole list of instructions: a copy is `addi rd, rs, 0`,
+a small constant is `addi rd, x0, 5`, and a jump that does not need to
+remember where it came from is `jal x0, label`.
+
+<Examples of="isa risc-v">
+
+```text
+add  a0, a1, x0   # a0 = a1 + 0: a copy
+```
+
+```text
+mul t2, t1, t1        # assembled for RV64I
+error: instruction requires the
+following: 'M' (Integer Multiplication
+and Division) or 'Zmmul' (Integer
+Multiplication)
+
+mul t2, t1, t1        # for RV64IM: fine
+```
+
+```text
+sumsq:
+    blez  a0, .LBB0_4
+    li    a2, 0
+    li    a1, 0
+.LBB0_2:
+    mul   a3, a2, a2
+    addi  a2, a2, 1
+    add   a1, a3, a1
+    bne   a0, a2, .LBB0_2
+    mv    a0, a1
+    ret
+.LBB0_4:
+    li    a1, 0
+    mv    a0, a1
+    ret
+```
+
+</Examples>
+
+The first uses `x0` as a free zero, copying `a1` into `a0` with an
+ordinary add. The second is a spot the difference: the base set has no
+multiply, so LLVM's assembler, `llvm-mc`, rejects `mul` with that exact
+error until we say the M extension is present (`-mattr=+m`), which is
+why the target is RV64IM and not plain RV64I. The third is real
+compiler output, from `clang -O2 --target=riscv64 -march=rv64im` for
+the C version of `sumsq` (directives and comments removed). It is our
+loop with the test moved: `blez` ("branch if less than or equal to
+zero") skips everything when `n ≤ 0`, the body runs, and `bne` at the
+bottom jumps back while `i ≠ n`, one branch per trip instead of our
+two (the Code shape chapter is about exactly this choice). One honest
+detail: left alone, clang went further and replaced the loop with a
+formula for the final sum (an induction-variable rewrite, as in
+chapter 212); this listing was made with that rewrite switched off
+(`-mllvm -replexitval=never`) so that the loop stays visible.
+
+<Prompts ids={['rv64im', 'base-small', 'x0-what', 'm-separate']} />
+
+## Constants too big for one instruction
+
+`addi` carries a 12-bit immediate, so it can add anything from -2048
+to 2047; `llvm-mc` rejects `addi a0, a0, 3000` with "an integer in the
+range [-2048, 2047]". A program full of addresses and large numbers
+needs more, and RISC-V's answer is **lui**, "load upper immediate",
+which puts a 20-bit constant into bits 31 to 12 of a register and
+zeros below. A big constant is then two instructions: `lui` for the
+top 20 bits and `addi` for the bottom 12, and the pseudoinstruction
+`li` writes the pair for you<Cite id="riscv-asm-manual" />. There is
+one catch, which the steps below show.
+
+<LiSteps client:visible />
+
+<Formal title="Splitting a 32-bit constant">
+
+```text
+lo = sext(v[11:0])        -2048 ≤ lo ≤ 2047
+hi = (v - lo) >> 12       20 bits
+v  = hi × 4096 + lo
+```
+
+<span slot="read">The low part lo is the bottom 12 bits of v, read as
+a signed number (sext means sign-extend: a 1 in the top bit makes it
+negative), because that is how addi will read them. The high part hi
+is whatever is left once lo is taken away, shifted down by 12 bits.
+Then lui puts hi back up (times 4096, which is 2 to the 12th) and addi
+adds lo, giving v exactly.</span>
+</Formal>
+
+Those are the instructions `llvm-mc -triple=riscv32` produces: for
+`li a0, 0x12345678` it writes `lui a0, 0x12345` and
+`addi a0, a0, 1656` (0x678 is 1656, a positive low part, so no round
+up), and for `li a0, 0x12345fff` it writes `lui a0, 0x12346` and
+`addi a0, a0, -1`. On RV64 the second instruction is `addiw`, the
+32-bit-word version of `addi`, but the split is the same. Try other
+constants:
+
+<Run id="split" />
+
+<Prompts ids={['lui-what', 'round-up']} />
+
+## Your turn
+
+<Exercise id="li-parts" />
+
+<Exercise id="x0-sim" />
+
+## What you learned
+
+- An **ISA** is the contract between software and hardware: the
+  visible registers, the instructions, their encodings and their exact
+  effects, and nothing about speed or how a chip is built.
+- **RISC-V** is an open ISA: a small base (RV32I or RV64I, with XLEN
+  32 or 64) plus lettered extensions such as M; our target is RV64IM.
+- It has 32 integer registers, and `x0` always reads 0, which makes
+  copies, small constants and plain jumps special cases of other
+  instructions.
+- Constants beyond 12 bits are built with **lui** and **addi**, with
+  the upper part rounded up when the low part is negative.
+
+Next: how those registers are used, how memory is reached, and the
+stack.
+
+<Quiz />

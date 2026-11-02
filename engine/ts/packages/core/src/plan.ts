@@ -1,4 +1,4 @@
-// The planner and cost model (book chapters 100–101): decide, for every
+// The planner and cost model (the book's chapters “What Viscosity refuses to touch” to “The cost model”): decide, for every
 // collection, which layout to use and record WHY, so `viscosity explain`
 // can tell the programmer.
 import type { Analysis, Collection } from './analysis.ts';
@@ -129,7 +129,7 @@ export interface ExplainOptions {
   frames?: string;
 }
 
-/** The text of `viscosity explain` (book chapter 110). */
+/** The text of `viscosity explain` (the book's chapter “viscosity explain”). */
 export function explain(p: Plan, opts: ExplainOptions = {}): string {
   const lines: string[] = [];
   for (const cp of p.collections) {
