@@ -31,7 +31,7 @@ export const prompts = {
     a: 'On a call (save the caller’s `ip`, load the callee’s state) and on a return (load the caller’s state back).',
   },
   'md-measure': {
-    q: 'Why does the cost of reaching the next byte matter so much in a bytecode VM (the README credits the registers with about 1.4× on `fib`)?',
+    q: 'Why does the cost of reaching the next byte matter so much in a bytecode VM?',
     a: 'Every instruction starts by reading a byte, so that cost is paid on every turn of the loop.',
   },
 };

@@ -245,10 +245,10 @@ several owners need it at once, and cloning an `Rc` only bumps a count;
 the compiler freezes each chunk when its function is done, so it never
 changes and needs no `RefCell`. `call` saves the caller's `ip` into its
 frame and loads the callee's `ip`, chunk and slots into the registers;
-`pop_frame` loads the caller's back. The README reports that this made
-`fib` about 1.4 times faster than walking from the frame through the heap
-for every byte, which makes sense: every instruction reads at least one
-byte, so the cost of reaching it is paid on every turn of the loop.
+`pop_frame` loads the caller's back. This matters more than it looks,
+because every instruction reads at least one byte, so the cost of reaching
+that byte (one field read here, rather than a walk from the frame through
+the heap) is paid on every turn of the loop.
 
 <Prompts ids={['md-borrow', 'md-rc', 'md-sync', 'md-measure']} />
 

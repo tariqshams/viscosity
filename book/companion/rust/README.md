@@ -1,6 +1,6 @@
 # drip-rs
 
-Drip's bytecode virtual machine in Rust: the port that Part X of
+Drip's bytecode virtual machine in Rust: the port that Part XII of
 *Viscosity* builds chapter by chapter. It behaves exactly like the
 TypeScript VM in `../ts/src/vm/` (Part IV): the same compiler, the same
 error messages, the same output to the byte, and the same exit codes. It
@@ -50,7 +50,7 @@ print one line per program.
 
 ## Module map
 
-The chapters of Part X follow the pipeline, source to output:
+The chapters of Part XII follow the pipeline, source to output:
 
 | module | what it is | TypeScript twin |
 |---|---|---|
@@ -85,7 +85,7 @@ Some design choices the chapters explain:
 - **Registers.** The running frame's `ip`, chunk and stack base are fields
   of the `Vm`, and each compiled chunk is frozen in an `Rc<Chunk>`. Reading
   a byte is then `self.chunk.code[self.ip]` rather than a walk through the
-  frame list and the heap. On `fib` this made the VM about 1.4× faster.
+  frame list and the heap, on every instruction.
 
 ## Behaviour notes
 
