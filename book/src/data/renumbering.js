@@ -140,5 +140,33 @@ export const RENUMBERINGS = [
   {
     "after": 5,
     "by": 1
+  },
+  {
+    "after": 53,
+    "by": 1
+  },
+  {
+    "after": 52,
+    "by": 1
+  },
+  {
+    "after": 51,
+    "by": 1
+  },
+  {
+    "after": 49,
+    "by": 1
+  },
+  {
+    "after": 48,
+    "by": 1
+  },
+  {
+    "after": 47,
+    "by": 1
+  },
+  {
+    "after": 46,
+    "by": 1
   }
 ];

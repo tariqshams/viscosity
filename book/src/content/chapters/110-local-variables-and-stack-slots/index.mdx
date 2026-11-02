@@ -1,0 +1,249 @@
+---
+n: 110
+day: 28
+part: IV
+title: 'Local variables and stack slots'
+tagline: 'Locals are born and die in strict last-in, first-out order: the same order as a stack. So the VM keeps them on the stack it already has, and the compiler turns every name into a plain number.'
+objectives:
+  - Explain why local variables can live in slots of the VM’s value stack.
+  - Trace the compiler’s locals array and scope depth through nested blocks.
+  - Implement resolveLocal, including shadowing and the own-initializer check.
+  - Read GET_LOCAL and SET_LOCAL in a disassembly and say which slot each touches.
+introduces: [stack-slot, compile-time-scope]
+uses: [local-variable, block-scope, scope, shadowing, scope-depth, resolver, static-analysis, environment, scope-chain, global-table, global-variable, hash-table, interning, stack-machine, virtual-machine, bytecode, opcode, chunk, disassembler, single-pass-compiler, emit, dispatch-loop, call-stack, register, syntax-error, compiler, interpreter, drip, array, index, variables, strings, numbers]
+sources: [nystrom2021, cpython-dis, v8-ignition]
+---
+import SlotSteps from '../../../components/diagrams/ch110/SlotSteps';
+
+## Too much looking up
+
+Every global access in the last chapter was a hash-table look-up. That
+is fine for a handful of top-level names. But most of the variables a
+program touches are locals: loop counters, parameters, temporaries.
+Paying for a look-up on every one of them would be a waste, because
+the compiler can already see exactly which declaration each name means.
+
+The tree-walker had the same problem, and chapter 87's resolver
+softened it: it turned each local into a *distance*, so the interpreter
+could hop straight to the right `Environment`. But there was still an
+`Environment` per block, with a `Map` inside. The VM can do much
+better.
+
+## Locals behave like a stack
+
+Watch the order in which locals come and go:
+
+```js
+{
+  let a = 1;     // a is born
+  {
+    let b = 2;   // b is born
+  }              // b dies
+  let c = 3;     // c is born
+}                // c dies, then a
+```
+
+A local is created when its `let` runs, and destroyed when its block
+ends. Blocks nest, so the *last* local created is always the *first*
+to go. That is exactly a stack. And the VM already has one.
+
+<Callout kind="intuition">
+A stack of trays in a canteen. You can only add to the top and take
+from the top. Number the positions from the floor: 0, 1, 2. If you
+always know how many trays were already there when yours went on, you
+can find yours by its number, without reading any labels.
+</Callout>
+
+There is a second piece of luck. When the VM runs `let a = 1;`, the
+initializer's code leaves `1` on top of the stack. If `a` lives *in
+that slot*, defining it needs no instruction at all. The value is
+already where the variable lives.
+
+<Callout kind="definition">
+A **stack slot** is a fixed position in the VM's value stack, counted
+from the start of the current function's part of the stack. Each local
+variable lives in one slot from its `let` to the end of its block. The
+compiler decides the slot number, and instructions refer to the local
+by that number only: `GET_LOCAL 2` means "push a copy of slot 2". No
+name survives into the running program.
+</Callout>
+
+<Prompts ids={['why-stack', 'no-define', 'slot-what']} />
+
+## The compiler keeps a list
+
+To hand out slot numbers, the compiler simulates the stack while it
+compiles. It keeps an array of the locals that are in scope, in
+declaration order, and a counter for how many blocks deep it is. From
+`compiler.ts`:
+
+```ts
+interface Local {
+  name: VmToken;
+  depth: number;
+  isCaptured: boolean; // ch. 57
+}
+// in each function's compiler:
+//   locals: Local[]
+//   scopeDepth: number
+```
+
+A local's index in `locals` *is* its slot. Entering a block only
+bumps a counter. Leaving one pops every local that was declared inside
+it, both from the array and, at run time, from the stack:
+
+```ts
+function beginScope() {
+  fc().scopeDepth++;
+}
+function endScope() {
+  const c = fc();
+  c.scopeDepth--;
+  while (c.locals.length > 0 &&
+      c.locals.at(-1).depth >
+        c.scopeDepth) {
+    emit(OP.POP);
+    c.locals.pop();
+  }
+}
+```
+
+(The real loop emits `CLOSE_UPVALUE` instead of `POP` for a captured
+local. That's chapter 113.) At depth 0 nothing is a local: `let` there
+still makes a global, through the previous chapter's
+`DEFINE_GLOBAL`.
+
+<Callout kind="definition">
+**Compile-time scope** is the compiler's own record of which locals
+exist at each point in the code: the `locals` array, each entry with
+the block depth it was declared at, plus the current `scopeDepth`. It
+mirrors, instruction by instruction, what the VM's stack will hold at
+run time, which is how a name becomes a slot number. Slot 0 is
+reserved for the function being run.
+</Callout>
+
+Step through a program with two nested blocks. The compiler's array is
+on the left, the VM's stack on the right, and row *k* is slot *k*:
+
+<SlotSteps client:visible />
+
+<Prompts ids={['begin-scope-cost', 'end-scope-pops', 'slot-zero', 'depth-zero']} />
+
+## Finding a name
+
+When the compiler meets a name, it searches the array from the end:
+
+```ts
+function resolveLocal(c, name) {
+  for (let i = c.locals.length - 1;
+       i >= 0; i--) {
+    const l = c.locals[i];
+    if (l.name.lexeme === name.lexeme) {
+      if (l.depth === -1)
+        error("Can't read local " +
+          'variable in its own ' +
+          'initializer.');
+      return i;
+    }
+  }
+  return -1; // not a local
+}
+```
+
+Searching backwards gives shadowing for free: the innermost `a` was
+declared last, so it is found first. If nothing matches, the name is
+treated as a global.
+
+The `depth === -1` check is chapter 87's "not ready" flag in a new
+form. `addLocal` appends a new local with depth `-1`, and only after
+its initializer is compiled does `markInitialized` set the real
+depth. So in `let a = a;` the inner `a` finds the half-made local and
+reports an error, instead of quietly reading a slot that holds
+nothing yet. A similar backwards scan in `declareVariable` rejects two
+`let`s of one name in the same block.
+
+<Run id="own-init" />
+
+<Prompts ids={['search-backwards', 'depth-minus-one']} />
+
+## Two instructions, one addition
+
+Here is the real disassembly of the program from the step-through:
+
+```text
+== script ==
+0000    2 OP_CONSTANT         0 '1'
+0002    4 OP_GET_LOCAL        1
+0004    | OP_CONSTANT         1 '2'
+0006    | OP_ADD
+0007    5 OP_GET_LOCAL        2
+0009    | OP_PRINT
+0010    6 OP_POP
+0011    7 OP_CONSTANT         2 '5'
+0013    | OP_SET_LOCAL        1
+0015    | OP_POP
+0016    8 OP_GET_LOCAL        1
+0018    | OP_PRINT
+0019    9 OP_POP
+0020   10 OP_NIL
+0021    | OP_RETURN
+```
+
+No names anywhere, and no constants spent on them. The VM's side is
+two lines of `vm.ts`:
+
+```ts
+case OP.GET_LOCAL:
+  this.push(this.stack[
+    frame.slots + readByte()]);
+  break;
+case OP.SET_LOCAL:
+  this.stack[frame.slots +
+    readByte()] = this.peek(0);
+  break;
+```
+
+`frame.slots` is where the current function's slots begin; for the
+top-level script it is 0, and chapter 112 explains the rest. Like
+`SET_GLOBAL`, `SET_LOCAL` leaves the value on the stack. Because the
+operand is one byte, a function can have at most 256 locals in scope
+at once, and the compiler reports `Too many local variables in
+function.` past that.
+
+<Prompts ids={['get-local-cost']} />
+
+<Callout kind="engine" label="Under the hood">
+Real VMs make the same split between names and numbers. CPython's
+`LOAD_GLOBAL` names a global through a table of names, while
+`LOAD_FAST` pushes a local chosen by a plain index<Cite id="cpython-dis" />.
+V8's Ignition interpreter goes further: it is a register machine, and
+its instructions name their inputs and outputs as explicit
+registers<Cite id="v8-ignition" />, which play much the role that
+Drip's slots do. Drip's locals array, the depth `-1` trick and the
+one-byte slot operands follow clox from *Crafting
+Interpreters*<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="resolve" />
+
+<Exercise id="end-scope" />
+
+## What you learned
+
+- Locals are created and destroyed in last-in, first-out order, so
+  each one can live in a **stack slot**, and `let` needs no
+  instruction: the initializer's value is already in place.
+- The compiler's **compile-time scope** (a `locals` array plus
+  `scopeDepth`) mirrors the run-time stack. A local's index is its slot.
+- `beginScope` costs nothing at run time; `endScope` emits one `POP`
+  per local leaving scope.
+- `resolveLocal` searches from the end, which gives shadowing; depth
+  `-1` catches a local read in its own initializer.
+- `GET_LOCAL n` and `SET_LOCAL n` are an index into the stack: no names,
+  no hashing.
+
+Next: jumps, so the VM can make decisions and loop.
+
+<Quiz />

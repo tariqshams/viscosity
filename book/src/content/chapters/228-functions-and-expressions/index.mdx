@@ -1,0 +1,218 @@
+---
+n: 228
+day: 57
+part: XI
+title: 'Functions and expressions'
+tagline: 'In TypeScript, if is a statement, so you reach for the ternary. In Rust, if, blocks and whole function bodies produce values, and one semicolon decides whether they do.'
+objectives:
+  - Write Rust functions with typed parameters and a return type.
+  - Use if and blocks as expressions that produce values.
+  - Explain how a missing or extra semicolon changes what a block returns.
+  - Read the compiler errors for mismatched branch types and stray semicolons.
+introduces: [expression-oriented, rust-functions]
+uses: [rust, cargo, let-mut, scalar-types, function, parameter, argument, return, call, if, while-loop, expression-vs-statement, ast, block-scope, type-annotation, typescript, jump, backpatching, short-circuit, stack-machine, single-pass-compiler]
+sources: [klabnik2026]
+---
+import ExprSteps from '../../../components/diagrams/ch228/ExprSteps';
+
+## The ternary you never liked
+
+You want a label that depends on a number. In TypeScript:
+
+```ts
+let label: string;
+if (n < 0) {
+  label = 'negative';
+} else {
+  label = 'not negative';
+}
+```
+
+Four lines, a variable that has to be `let`, and a moment where it holds
+nothing. So you write a ternary instead: `const label = n < 0 ?
+'negative' : 'not negative';`. The ternary exists because `if` is a
+statement. It *does* something but has no value.
+
+Chapter 71 drew that line through Drip's own grammar: expressions
+produce values, statements don't. Rust moves most things to the
+expression side:
+
+```rust
+let label = if n < 0 {
+    "negative"
+} else {
+    "not negative"
+};
+```
+
+No ternary, no `mut`, and `label` is never empty.
+
+<Callout kind="intuition">
+In TypeScript, a block of code is a room you walk through. In Rust, most
+blocks are vending machines: you walk through, and something drops out
+the bottom, namely whatever the last line was. Put a semicolon on that
+last line and the machine drops nothing.
+</Callout>
+
+## Blocks have values
+
+Any `{ ... }` block is an expression. Its value is its last expression,
+written **without** a semicolon:
+
+```rust
+let y = {
+    let a = 3;
+    a + 1
+};
+// y is 4
+```
+
+`let a = 3;` is a statement, and it ends with a semicolon. `a + 1` has
+none, so it is the block's value. Put a semicolon after it and it
+becomes a statement too. The block then has the value `()`, the
+**unit** value, Rust's "nothing" (much like `void`).
+
+`let` itself is a statement, so `let x = let y = 6;` is an error. In
+JavaScript, `x = y = 6` works, because assignment is an expression.
+
+<Callout kind="definition">
+Rust is **expression-oriented**. A block `{ ... }` evaluates to its
+final expression, or to `()` if it ends in a statement. `if` is an
+expression: every branch must produce the same type, and an `if`
+without `else` produces `()`. Adding `;` after an expression turns it
+into a statement and throws its value away.
+</Callout>
+
+Both branches of an `if` must agree:
+
+```
+error[E0308]: `if` and `else` have
+  incompatible types
+ --> f2.rs:3:31
+  |
+3 |     let s = if b { 1 } else { "no" };
+  |                    -          ^^^^
+  |                    |  expected integer,
+  |                    |  found `&str`
+  |                    expected because
+  |                    of this
+```
+
+(rustc 1.97, wrapped to fit. `b` is a `bool`.) TypeScript would happily give `s` the
+type `number | string`. Rust wants one type.
+
+<Prompts ids={['ex-block-value', 'ex-semicolon', 'ex-unit', 'ex-if-types', 'ex-let-stmt']} />
+
+## Functions
+
+You've seen one already. Here is the full shape:
+
+```rust
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+```
+
+- `fn`, a snake_case name, and parameters, each with its type. A
+  function's parameter types are never inferred.
+- `-> i32` is the return type. Leave it out and the function returns
+  `()`.
+- The body is a block, so its final expression is the return value.
+  `a + b` with no semicolon *is* the `return`.
+
+`return` still exists, for leaving early:
+
+```rust
+fn safe_div(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        return 0;
+    }
+    a / b
+}
+```
+
+Idiomatic Rust uses `return` only for early exits, and lets the last
+expression do the rest<Cite id="klabnik2026" />. Two more differences
+from TypeScript: a function can be called from code above its
+definition, and there are no default or optional parameters.
+
+<Callout kind="definition">
+A Rust function is declared with `fn name(param: Type, ...) -> Ret`.
+Every parameter needs a type. The body's final expression is returned;
+`return expr;` returns early. A function with no `->` returns `()`.
+</Callout>
+
+<Prompts ids={['fn-param-types', 'fn-tail', 'fn-no-arrow']} />
+
+## Watching a value flow out
+
+Here is chapter 1's `clamp`, the Rust way. It has no `return` and no
+variables, just one `if` expression whose value becomes the function's:
+
+<ExprSteps client:visible />
+
+The last step is the famous mistake. Here it is for real, in a smaller
+function:
+
+```rust
+fn inc(x: i32) -> i32 {
+    x + 1;
+}
+```
+
+```
+error[E0308]: mismatched types
+ --> f1.rs:1:19
+  |
+1 | fn inc(x: i32) -> i32 {
+  |    ---            ^^^ expected `i32`,
+  |    |                  found `()`
+  |    |
+  |    implicitly returns `()` as its body
+  |    has no tail or `return` expression
+2 |     x + 1;
+  |          - help: remove this semicolon
+  |            to return this value
+```
+
+The compiler even points at the semicolon. When you see "expected `i32`,
+found `()`", look for a semicolon at the end of a block.
+
+<Run id="exprs" />
+
+<Prompts ids={['ex-found-unit']} />
+
+Loops look as you'd expect, minus the parentheses: `while n > 0 { ... }`. Rust has no C-style `for (let i = 0; ...)` loop. Chapter 239
+covers its `for`.
+
+<Callout kind="engine" label="Under the hood">
+Your Drip VM already compiles an expression with branches. Look at
+`or_` in the TypeScript VM's compiler (chapter 111): a `JUMP_IF_FALSE`, a
+`JUMP`, and two paths that each leave exactly one value on the stack.
+An `if` expression would compile the same way as Drip's `if` statement,
+with one change: each branch compiles an expression, not a statement,
+so the value it leaves stays on the stack instead of being popped.
+Expression-oriented code costs nothing extra to run.
+</Callout>
+
+## Your turn
+
+<Exercise id="grade" />
+
+<Exercise id="collatz" />
+
+## What you learned
+
+- Rust is **expression-oriented**: blocks and `if` produce values. A
+  block's value is its final expression, without a semicolon.
+- A trailing `;` turns an expression into a statement, giving `()`.
+  "expected `i32`, found `()`" usually means a stray semicolon.
+- Both branches of an `if` must have the same type, and an `if` used as
+  a value needs an `else`.
+- Functions: `fn name(p: T) -> R { ... }`. Parameter types are required.
+  The final expression is the return value; `return` is for early exits.
+
+Next comes the idea that makes Rust Rust: who owns a value, and when it
+goes away.
+
+<Quiz />

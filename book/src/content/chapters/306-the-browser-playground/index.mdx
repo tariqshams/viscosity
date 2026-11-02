@@ -1,0 +1,203 @@
+---
+n: 306
+day: 77
+part: XIII
+title: 'The browser playground'
+tagline: 'The box below runs the Rust engine, compiled to WebAssembly, inside this page. Getting it there took a lazy download, a worker, tickets for every keystroke, and a plan for the day Rust panics in your browser.'
+objectives:
+  - Explain how the playground loads the Rust engine only when a reader asks for it.
+  - Use tickets to drop compile results that arrive after a newer edit.
+  - Say what a Rust panic does to a WebAssembly instance, and why the playground replaces its worker.
+  - List what the browser smoke test checks about the two engines.
+introduces: [playground]
+uses: [native-vs-wasm, wasm-pack, wasm-bindgen, webassembly, linear-memory, viscosity-rs, engine-parity, oxc, optimization-report, module, import-export, try-catch, error-object, refcell, drop, borrow, enum, match, pattern, struct, impl, self-receiver]
+sources: [mdn-web-workers, mdn-wasm-runtimeerror, wasm-pack-book, klabnik2026, rust-std-catch-unwind, rust-std-cell]
+---
+import TicketSteps from '../../../components/diagrams/ch306/TicketSteps';
+import Playground from '../../../components/playground/Playground';
+
+## The engine in the page
+
+This one starts on the Rust engine. Edit the program and watch the
+status line under the output:
+
+<Playground client:visible engine="rust" title="Rust, as WebAssembly, in your browser" initial={`const ps = [];
+for (let i = 0; i < 1000; i++) {
+  ps.push({ x: i, vx: 1 });
+}
+for (let t = 0; t < 10; t++) {
+  for (const p of ps) p.x += p.vx;
+}
+console.log(ps[999].x);`} />
+
+The decisions should read `ps (line 1) {x, vx} → struct of arrays`,
+followed by the loop, the typed columns and the bounds proof. Press
+**TS** and they don't change, byte for byte: that is chapter 303's
+parity, now in front of you. One thing does differ. Type `let = ;` on
+each engine and compare: syntax errors come from two parsers, oxc and
+acorn, worded their own way.
+
+<Callout kind="intuition">
+A shop keeps a heavy machine in the back room and only switches it on
+when a customer asks. Orders go through a hatch, each with a numbered
+slip. If the machine jams, nobody tries to fix it mid-shift: it is
+wheeled out and a new one wheeled in.
+</Callout>
+
+<Callout kind="definition">
+A **playground** is the compiler running in a web page: the reader edits
+a program and sees the compiler's output, here the decisions, the
+compiled code and a check that both versions print the same thing. The
+book's `Playground` component has two engines, the TypeScript bundle
+and the Rust engine as WebAssembly, switched with the **TS / Rust**
+toggle or the `engine` prop.
+</Callout>
+
+<Prompts ids={['playground-what']} />
+
+## Only when asked
+
+The `.wasm` is 1.4 MB, so pages that never use it mustn't pay for it.
+Chapter 304's `build.mjs --book` copies the web glue into
+`book/src/vendor` and the module into `book/public/wasm`. Files in
+`public/` are served as they are, never bundled. That's why the script
+also rewrites one line of the glue: the default
+`new URL('viscosity_wasm_bg.wasm', import.meta.url)` would point the
+bundler at a file next to the glue, and it becomes
+`'/wasm/viscosity_wasm_bg.wasm'`.
+
+The loading happens in a **worker**. A worker runs a script on a
+background thread, without touching the page, and the two talk only by
+messages: `postMessage` on one side, `onmessage` on the
+other<Cite id="mdn-web-workers" />. `play.worker.ts` loads the engine
+like this, trimmed:
+
+```ts
+let rust: Promise<Wasm> | null = null;
+const loadRust = () => (rust ??=
+  import('../../vendor/viscosity_wasm.js')
+    .then(async (m) => {
+      await m.default({ module_or_path:
+        BASE + 'wasm/' + WASM });
+      return m;
+    })
+    .catch((err) => {
+      rust = null; throw err;
+    }));
+```
+
+(`WASM` is `viscosity_wasm_bg.wasm`.) `??=` stores the promise the
+first time, so every later request awaits
+the same one. A failed download sets it back to `null`, so the next
+request can try again instead of reusing a rejection forever. The
+TypeScript engine, by contrast, is imported straight into the page and
+called synchronously.
+
+<Prompts ids={['lazy-wasm', 'public-not-bundled', 'memo-promise', 'why-worker']} />
+
+## One ticket per keystroke
+
+Every edit compiles, and a Rust compile is a round trip to the worker.
+Replies can arrive after a newer edit, or after the reader has switched
+to the TypeScript engine. So each compile takes a ticket:
+
+```ts
+const ticket = ++latest.current;
+const show = (r, error, note) => {
+  if (ticket !== latest.current)
+    return; // a newer edit won
+  setRes(r); setErr(error);
+  setStatus(note);
+};
+```
+
+Both engines share the counter. Step through one reader's session:
+
+<TicketSteps client:visible />
+
+<Prompts ids={['ticket', 'stale-switch']} />
+
+## When Rust panics
+
+The Rust engine shouldn't panic: the fuzzer of chapter 308 hunts for
+inputs that do, and its finds are fixed. But the playground must
+survive one anyway. In native Rust a panic *unwinds*: Rust walks back
+up the stack and cleans up each function's data on the
+way<Cite id="klabnik2026" />. `catch_unwind` can stop an unwinding
+panic and hand you an `Err`<Cite id="rust-std-catch-unwind" />. Watch
+the cleanup release a `RefCell`'s borrow:
+
+<Run id="unwind" />
+
+WebAssembly built by cargo doesn't unwind. By default Rust panics there
+compile with `panic=abort`, "which aborts the WebAssembly instance on
+panic"<Cite id="wasm-pack-book" />. From JavaScript, the abort is a
+**trap**, thrown as a `WebAssembly.RuntimeError`<Cite id="mdn-wasm-runtimeerror" />.
+And the instance is still there afterwards, in whatever state the
+panic left it. I tried it with a small crate, built like the engine (rustc 1.97,
+wasm-bindgen 0.2.106, Node v22). `remember(s)` borrows a thread-local
+`RefCell<Vec<String>>`, pushes `s`, and panics on `"boom"`; `busy()`
+asks whether the `RefCell` is still borrowed; `shout` uppercases a
+string and touches nothing else:
+
+```
+a -> 1
+boom -> RuntimeError: unreachable
+busy -> true
+shout -> STILL HERE
+c -> RuntimeError: unreachable
+```
+
+No destructor ran, so the borrow guard was never dropped. The `RefCell`
+stays mutably borrowed forever, and every later call that touches it
+panics on borrowing<Cite id="rust-std-cell" />, which traps again. An
+unrelated function still works, which is worse: the instance looks
+alive. So the worker reports a trap as fatal:
+
+```ts
+post({ id, error: err.message,
+  fatal: err instanceof
+    WebAssembly.RuntimeError });
+```
+
+On a fatal reply the page calls `terminate()` on the
+worker<Cite id="mdn-web-workers" /> and forgets it. Requests still
+queued on it get an error at once, so none waits forever. The next
+compile starts a new worker with a new instance, and new memory.
+
+<Prompts ids={['panic-trap', 'refcell-stuck', 'fatal-new-worker']} />
+
+<Callout kind="engine" label="Under the hood">
+`scripts/smoke.mjs` checks all this in a real browser (Playwright), on
+chapter 175's Playground. On the TS engine, no `.wasm` may be requested.
+After pressing **Rust**, exactly one request, for
+`/wasm/viscosity_wasm_bg.wasm`. The compiled code and the decisions
+text must be identical on both engines. **Run both** on the Rust
+engine's output must print the same as the original, switching back
+to TS must work, and there must be no console errors. It also measures
+the toggle buttons: tap targets at least 44 pixels high and wide, and
+the whole Playground fitting a 440-pixel-wide screen. Each Run both
+gets a fresh worker of its own, stopped after 10 seconds, so a program
+that loops forever can't hang the page.
+</Callout>
+
+<Prompts ids={['smoke-playground']} />
+
+## Your turn
+
+<Exercise id="tickets" />
+
+## What you learned
+
+- A **playground** runs the real compiler in the page. The Rust engine
+  is fetched only when a reader picks it, from `public/wasm`.
+- It runs in a **worker**: messages in, messages out, one memoized
+  loading promise that resets on failure.
+- Each compile takes a **ticket**. A reply is shown only if its ticket
+  is still the latest, whichever engine it came from.
+- A Rust panic in WebAssembly is a **trap** (`RuntimeError`). Nothing
+  unwinds, so state can stay broken. The worker is replaced.
+- The browser smoke test checks lazy loading, parity, Run both and the
+  toggle's size.
+
+<Quiz />

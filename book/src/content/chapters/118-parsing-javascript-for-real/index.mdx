@@ -1,0 +1,234 @@
+---
+n: 118
+day: 30
+part: V
+title: 'Parsing JavaScript for real'
+tagline: 'A page can ship a megabyte of JavaScript and call a fraction of it. So V8 reads most functions without really parsing them, and on the next visit tries not to compile them at all.'
+objectives:
+  - Explain lazy parsing, and what a preparser must still do with a body it skips.
+  - Watch V8 preparse, parse and compile real functions with --log-function-events.
+  - Explain why a lazily parsed function that does get called is parsed twice, and how V8 guesses which functions to parse eagerly.
+  - Describe a bytecode cache, and use one in Node with vm.Script.
+introduces: [lazy-parsing, bytecode-cache]
+uses: [parser, recursive-descent, ast, bytecode, single-pass-compiler, syntax-error, scanner, token, closure, captured-environment, upvalue, ignition, tiering, jit-compiler, stack-and-heap, memory, function, call, string-index, try-catch, module, byte]
+sources: [v8-preparser, v8-explicit-compile-hints, v8-code-caching, v8-improved-code-caching, v8-code-caching-devs, node-vm-cached-data, node-compile-cache, v8-sparkplug]
+---
+import LazySteps from '../../../components/diagrams/ch118/LazySteps';
+import CacheRuns from '../../../components/diagrams/ch118/CacheRuns';
+
+## Most of the code is never called
+
+Drip’s compiler from chapter 104 works on a whole program in one go: every
+function is parsed and turned into bytecode before anything runs. For a
+test script that’s fine.
+
+A web page is different. It might ship a framework, a date library and
+the code for a settings dialog nobody opens today, and it has to start
+fast. In 2019 the V8 team listed the costs of compiling such code
+eagerly: CPU time that delays the code that *is* needed, memory for the
+bytecode, and disk space in the cache. Parsing and compiling sit on the
+critical path of page startup<Cite id="v8-preparser" />. So the cheapest
+parse is the one you never do.
+
+## Lazy parsing
+
+<Callout kind="intuition">
+When you’re handed a thick report, you don’t read every appendix. You
+check they’re there and roughly what they’re about, then read one
+properly only if someone asks about it. Skimming isn’t free, though: you
+still have to turn every page to find where each appendix ends.
+</Callout>
+
+All major browsers parse JavaScript lazily<Cite id="v8-preparser" />. When
+V8’s parser reaches a function body, it can hand it to the **preparser**,
+a stripped-down copy of the parser that skims the body without building a
+syntax tree. When the function is called for the first time, V8 parses it
+properly and compiles it then. Step through a small file:
+
+<LazySteps client:visible />
+
+This is no simulation. V8 can log these events. Here is the same file:
+
+```js
+// lazy.js
+function used() { return 1; }
+function unused() { return 2; }
+const eager = (function () {
+  return 3;
+});
+used();
+```
+
+```
+// node --log-function-events
+//   --logfile=fe.log lazy.js
+// Node v22.23.4, V8 12.4.254.21
+// event, start, end, name (lines for
+// the whole file left out)
+preparse-resolution  13  29 used
+preparse-resolution  45  61 unused
+full-parse           86 104
+interpreter          86 104 eager
+full-parse           13  29 used
+parse-function       13  29 used
+interpreter          13  29 used
+first-execution      13  29 used
+```
+
+The numbers are character positions in the file. `used` and `unused` were
+preparsed. The parenthesized function was fully parsed and compiled
+straight away. When `used()` ran, it got its full parse and its bytecode
+(the `interpreter` event). `unused` never got past the preparser.
+
+<Callout kind="definition">
+**Lazy parsing** means skimming a function body with a **preparser**
+instead of parsing it fully, and doing the full parse and compile only when
+the function is first called. The preparser still checks the body’s syntax
+and records what the enclosing code needs to know about it<Cite id="v8-preparser" />.
+</Callout>
+
+<Prompts ids={['lazy-what', 'lazy-why', 'first-call']} />
+
+## Skimming is harder than it looks
+
+Why not just jump to the matching `}`? Because finding it means
+understanding the syntax. A brace can sit inside a string, a comment, a
+regular expression or a template literal. In 2025 the V8 team put it
+bluntly: there is no shortcut of counting curly braces; the grammar is too
+complex<Cite id="v8-explicit-compile-hints" />.
+
+<Run id="brace-trap" />
+
+The preparser also has to keep *some* information. Remember closures from
+chapter 113: a variable that an inner function captures must outlive its
+function call, so V8 stores it in a heap-allocated **context** instead of
+on the stack. Whether a variable needs that depends on the functions
+nested inside, so the preparser tracks the variables each skipped body
+declares and refers to<Cite id="v8-preparser" />.
+
+And because the language demands it, a syntax error inside a function
+nobody calls still stops the whole script:
+
+<Run id="early-error" />
+
+<Prompts ids={['no-brace-count', 'track-vars', 'early-error']} />
+
+## Guessing what will be called
+
+Lazy parsing has a cost when it guesses wrong. A function that is
+preparsed and then called gets parsed twice: once to skim, once for real.
+Since V8 6.3 (Chrome 63, 2017) it’s at most twice, however deeply the
+function is nested<Cite id="v8-preparser" />.
+
+So V8 guesses. A function written in parentheses, `(function () {…})`,
+is usually an immediately-invoked function, so V8 parses and compiles it
+eagerly as soon as it sees `(function`. The team calls these PIFEs,
+*possibly*-invoked function expressions<Cite id="v8-preparser" />. That’s
+why `eager` was compiled before anything ran.
+
+Developers can give hints too. In 2025 the team wrote that Chrome 136
+compiles every function in a file eagerly if the file starts with the
+magic comment `//# allFunctionsCalledOnLoad`, and warned to use it
+sparingly, because compiling too much costs time and
+memory<Cite id="v8-explicit-compile-hints" />.
+
+<Prompts ids={['double-parse', 'pife']} />
+
+## Don’t compile it again: bytecode caches
+
+<Callout kind="intuition">
+A café regular orders the same thing every morning. The barista could
+start from the menu each time, or just keep the order written down. As
+long as the regular doesn’t change their mind, the note saves the work.
+</Callout>
+
+Lazy parsing saves work on the first visit. A **bytecode cache** saves it
+on the next one. V8 can serialize compiled code into bytes, and a later
+compile of the same script can rebuild it from those bytes instead of
+parsing and compiling<Cite id="v8-code-caching" />. Chrome uses this in
+three steps<Cite id="v8-code-caching-devs" />:
+
+<Figure caption="Chrome’s code cache, as the V8 team described it in 2019 (updated 2020). The first visit stores the file, the second also stores its compiled code, and from the third the compile step is skipped." takeaway="A cached script skips parsing and compiling.">
+  <CacheRuns />
+</Figure>
+
+Since Chrome 66 (2018) the cache is made *after* the script’s top level
+has run, so it also holds lazy functions that ran during
+startup<Cite id="v8-improved-code-caching" />. Node exposes the same
+machinery through `vm.Script`<Cite id="node-vm-cached-data" />:
+
+```js
+const vm = require('node:vm');
+const src = `
+function add(a, b) { return a + b; }
+function sub(a, b) { return a - b; }
+add(1, 2);`;
+const s = new vm.Script(src);
+const before = s.createCachedData();
+s.runInThisContext();
+const after = s.createCachedData();
+console.log(before.length, after.length);
+
+const s2 = new vm.Script(src,
+  { cachedData: after });
+console.log(s2.cachedDataRejected);
+const s3 = new vm.Script(src + ' ',
+  { cachedData: after });
+console.log(s3.cachedDataRejected);
+```
+
+```
+Node v22.23.4, V8 12.4.254.21
+528 672
+false
+true
+```
+
+After running, the cache grew: `add` had been compiled by then, so its
+bytecode came along, while `sub` stayed lazy. The cache was accepted for
+the identical source, and rejected when one space was added. A cache is
+only good for exactly the code it came from.
+
+<Callout kind="definition">
+A **bytecode cache** (or **code cache**) stores a script’s compiled
+bytecode so a later load of the *same* script can skip parsing and
+compiling. It is invalidated by any change to the source, and by a
+different engine version<Cite id="v8-improved-code-caching" />.
+</Callout>
+
+<Prompts ids={['cache-what', 'cache-grew']} />
+
+<Callout kind="engine" label="Under the hood">
+Node 22 can do this for your modules automatically: `module.enableCompileCache()`
+or the `NODE_COMPILE_CACHE` environment variable keeps V8 code caches on
+disk, and a cache from one Node version isn’t reused by
+another<Cite id="node-compile-cache" />. All of this lives *below*
+Sparkplug, Maglev and TurboFan. Sparkplug compiles from bytecode, and
+relies on the bytecode compiler having already done the hard work, such as
+resolving variables<Cite id="v8-sparkplug" />. The V8 team’s own advice on
+caching starts with “do nothing”: the heuristics change between
+releases<Cite id="v8-code-caching-devs" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="findBodyEnd" />
+
+<Exercise id="looksInvoked" />
+
+## What you learned
+
+- **Lazy parsing** skims function bodies with a **preparser** and parses
+  and compiles them fully only when they are first called.
+- The preparser can’t just count braces, and must still check syntax and
+  track the variables that closures capture.
+- A called lazy function is parsed twice, so V8 parses likely-called
+  functions (like `(function`) eagerly.
+- A **bytecode cache** stores compiled code so the same script can skip
+  compiling next time; any change to the source invalidates it.
+- In Node, `vm.Script` and the module compile cache expose the same
+  machinery.
+
+Next: what V8 does with an object once it exists. Shapes.
+
+<Quiz />

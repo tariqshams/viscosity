@@ -1,0 +1,232 @@
+---
+n: 153
+day: 39
+part: VI
+title: 'Testing compilers'
+tagline: 'A compiler bug is the worst kind: your program is right, and what runs is wrong. Viscosity is tested the way chapter 30 promised, by running two programs that must agree, and this chapter shows every kind of check in the repository and the one it doesn’t have yet.'
+objectives:
+  - Explain how Viscosity's differential test uses the original program as its own oracle, comparing output and errors.
+  - Say why a compiler's tests must also check what it decided, not only that behaviour is unchanged.
+  - Describe round-trip testing, and the identity and parser-equivalence tests in the repository.
+  - Write a small random-program differential tester, and explain what fuzzing adds.
+introduces: [differential-testing, fuzzing, round-trip-testing]
+uses: [test, assertion, edge-case, differential-testing-intro, parser, ast, tree-walking-interpreter, virtual-machine, garbage-collection, roots, compiler-pipeline, constant-folding, escape-analysis, pass-manager, compiler-pass, typed-array, aos-vs-soa, recursion, try-catch, error-object, throw, module, function, callback]
+sources: [csmith, test262]
+---
+import DiffSteps from '../../../components/diagrams/ch153/DiffSteps';
+
+## The worst kind of bug
+
+When your code has a bug, you read your code. When the compiler has a
+bug, your code is fine and the program still does the wrong thing.
+Viscosity rewrites your arrays into columns. If the rewritten program
+ever prints something different, or fails differently, Viscosity is
+broken, however fast it is.
+
+Writing expected outputs by hand for every test program would be slow
+and error-prone. Chapter 30 showed the way out: you don't need the
+right answer if you have two programs that must agree.
+
+<Callout kind="intuition">
+A translator's work can be checked without speaking the language: hand
+the original and the translation to two people, ask both to follow the
+instructions, and see whether they end up in the same place.
+</Callout>
+
+<Callout kind="definition">
+**Differential testing** runs two implementations of the same thing on
+many inputs and compares the results. For a compiler, the two are
+usually the program before and after compiling, or two compilers. Every
+difference is a bug in one of them, and no expected outputs are needed.
+</Callout>
+
+<Prompts ids={['dt-oracle']} />
+
+## Original against compiled
+
+The repository's test corpus is a folder of small JavaScript programs,
+each built to probe one case: an escape, a shape mismatch, an
+out-of-bounds read. The first line says what Viscosity should decide:
+
+```js
+// viscosity: ps=aos
+const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i, y: i });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += 1;
+console.log(ps[3]);
+```
+
+The test, from `test/differential.test.ts`, simplified:
+
+```ts
+for (const f of corpusFiles) {
+  it(f, () => {
+    const src = read(f);
+    const r = compile(src, jsPlugin());
+    expect(layouts(r.plan))
+      .toEqual(header(src));
+    const before = runIsolated(src);
+    const after = runIsolated(r.code);
+    expect(after).toEqual(before);
+  });
+}
+```
+
+`runIsolated`, in `test/run.ts`, runs code in a brand-new Node VM context,
+with its own globals, and records what happened:
+
+```ts
+const out = [];
+const context = vm.createContext({
+  console: { log: (...a) =>
+    out.push(fmt(a)) } });
+try {
+  new vm.Script(code)
+    .runInContext(context);
+  return { out, error: null };
+} catch (e) {
+  const name = e.constructor.name;
+  return { out,
+    error: name + ': ' + e.message };
+}
+```
+
+Step through one corpus program, and then the bug this catches:
+
+<DiffSteps client:visible />
+
+The last step is a real experiment, not a test in the repository:
+compiling that file with `--bounds assume` produces code that prints
+`0` where the original threw a `TypeError`. Comparing errors as well as
+output is what catches it. And the header check catches the opposite
+failure. A compiler that never transforms anything passes every
+behaviour test, so the corpus also pins down what Viscosity should
+decide.
+
+<Prompts ids={['dt-errors', 'dt-fresh', 'dt-header']} />
+
+## Two parsers, one answer
+
+Viscosity has two JavaScript parsers: acorn, a popular library, and a
+small hand-written one. `mini-parser.test.ts` is differential too. For
+every corpus program and every end-to-end benchmark program, both must
+give byte-identical compiled code and explanations:
+
+```ts
+const a = compile(src,
+  jsPlugin({ parser: 'acorn' }));
+const m = compile(src,
+  jsPlugin({ parser: 'mini' }));
+expect(m.code).toBe(a.code);
+expect(m.explain).toBe(a.explain);
+```
+
+<Prompts ids={['dt-parsers']} />
+
+## Round trips
+
+There is a third trick for front-ends. Parse a program, print the tree
+back to source, and parse that: you must get the same tree. Any
+difference means the parser or the printer lost something.
+
+<Callout kind="definition">
+**Round-trip testing** checks that a pair of opposite operations undo
+each other: parse → print → parse gives the same tree, or encode →
+decode gives the same value. Like differential testing, it needs no
+expected outputs, only the input.
+</Callout>
+
+Viscosity doesn't print from a tree; it edits only the parts of the
+source it changes. So its round trip is the identity: a program with
+nothing to transform must come back byte for byte, comment included:
+
+```ts
+const src = 'const a = [1, 2, 3];\n' +
+  '// a comment\n' +
+  'console.log(a.length);\n';
+expect(compile(src, jsPlugin()).code)
+  .toBe(src);
+```
+
+Part VIII returns to round-trip testing the front-end in detail.
+
+<Prompts ids={['rt-what', 'rt-identity']} />
+
+## The Drip corpus
+
+Your own interpreters are tested the same way. The companion's corpus
+has 265 Drip programs with their expected output written beside the
+code, as `// expect:` comments. The tree-walker and the VM run the same
+files (each skips a handful, such as the benchmarks), and a sample also runs under **stress GC**, which collects on
+every allocation, so a missing root shows up at once. Both suites, run
+for this chapter:
+
+```
+$ npx vitest run packages/frontend-js
+      Tests  64 passed (64)
+
+$ npx vitest run   # book/companion/ts
+      Tests  583 passed (583)
+```
+
+<Prompts ids={['drip-gc']} />
+
+## Fuzzing
+
+The corpus only contains programs someone thought of. **Fuzzing** lets
+the computer think of them: generate random programs, run each through
+both implementations, and keep any that disagree. Viscosity doesn't
+fuzz yet; this is the next step. Here is the idea at toy size: random
+expressions, and an "optimizer" with algebraic rules, one of them wrong:
+
+<Run id="fuzz" />
+
+<Callout kind="definition">
+**Fuzzing** generates large numbers of random inputs, for a compiler
+random programs, to find bugs that no hand-written test covers. Paired
+with differential testing, it needs no expected outputs at all. Use a
+**seed**, so any failure can be generated again, and **reduce** each
+failing program to the smallest one that still fails.
+</Callout>
+
+The hard part is generating programs worth running. A random string of
+characters doesn't parse, and a random program that parses may read
+uninitialized memory or loop forever. Then a disagreement means nothing.
+
+<Prompts ids={['fuzz-what', 'fuzz-seed', 'fuzz-valid']} />
+
+<Callout kind="engine" label="Under the hood">
+Csmith is the classic program fuzzer: a random generator of C programs
+whose main purpose is finding compiler bugs, using differential testing
+as the oracle. Its generated programs are free of undefined behaviour,
+which its authors note is far from trivial<Cite id="csmith" />. The other
+approach is a huge suite of known answers: Test262 is JavaScript's
+conformance suite, with tens of thousands of test files covering the
+language specification<Cite id="test262" />. Viscosity has neither yet.
+It has a hand-built differential corpus, a parser-equivalence test, an
+identity round trip, and, for Drip, an expectation corpus run on two
+implementations.
+</Callout>
+
+## Your turn
+
+<Exercise id="diffTest" />
+
+<Exercise id="shrink" />
+
+## What you learned
+
+- **Differential testing** compares two implementations on the same
+  inputs. Viscosity compares each program before and after compiling,
+  output *and* errors, in fresh VM contexts.
+- Behaviour checks alone pass a compiler that does nothing, so the corpus
+  headers also check each layout decision.
+- Two parsers that must agree, byte for byte, is differential testing too.
+- **Round-trip testing** checks that opposite operations undo each other.
+  Viscosity's version: nothing to transform means identical output.
+- **Fuzzing** generates random programs. Seed it, keep the programs
+  valid, and reduce what fails. The repository doesn't fuzz yet.
+
+<Quiz />

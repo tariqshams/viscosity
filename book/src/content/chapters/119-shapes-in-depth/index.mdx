@@ -1,0 +1,255 @@
+---
+n: 119
+day: 30
+part: V
+title: 'Shapes in depth'
+tagline: 'Two objects with the same properties can look completely different to V8. It depends on the order you added them, how you made the object, and whether you ever used delete.'
+objectives:
+  - Explain what a shape (V8 calls it a map) stores, and what an object stores itself.
+  - Trace how a transition tree grows as properties are added, and why a different order gives a different shape.
+  - Read real %DebugPrint output for an object and its map.
+  - Explain dictionary mode, what triggers it, and why it is slower to read.
+introduces: [shape, transition-tree, dictionary-mode]
+uses: [object, property, dot-access, bracket-access, object-header, field-representation, hash-table, constructor, new, instance, class, drip-class, field, memory, pointer, tree, undefined, ignition, optimizing-tiers, for-loop, string-building]
+sources: [v8-fast-properties, v8-slack-tracking, v8-src-map-12-4, v8-react-cliff, v8-maglev]
+---
+import TransitionSteps from '../../../components/diagrams/ch119/TransitionSteps';
+
+## Same keys, different objects
+
+Here are four objects with the same two properties, and a V8 internal,
+`%HaveSameMap`, that asks whether two objects have the same shape:
+
+```js
+// node --allow-natives-syntax shapes.js
+const a = { x: 1, y: 2 };
+const b = { x: 5, y: 6 };
+const c = { y: 2, x: 1 };
+const d = {}; d.x = 1; d.y = 2;
+const e = {}; e.x = 7; e.y = 8;
+console.log(%HaveSameMap(a, b));
+console.log(%HaveSameMap(a, c));
+console.log(%HaveSameMap(d, e));
+console.log(%HaveSameMap(a, d));
+```
+
+```
+Node v22.23.4, V8 12.4.254.21
+true
+false
+true
+false
+```
+
+`a` and `b` match. `a` and `c` don’t, though they differ only in order.
+And `a` and `d` don’t either, though they have the same keys in the same
+order. By the end of this chapter all four answers will be obvious.
+
+## A shape is a shared description
+
+<Callout kind="intuition">
+A school prints one form for every pupil: name in box 1, class in box 2.
+Each pupil’s sheet holds only their answers. To find someone’s class you
+don’t read the whole sheet, you look at box 2, because the form says so.
+Thousands of sheets share one description of the layout.
+</Callout>
+
+Chapter 55 showed that every V8 object starts with a pointer to its
+**hidden class**. Engine writers also say **shape**, and V8’s own name is
+**map**<Cite id="v8-slack-tracking" />. The map holds the layout: which
+named properties exist, in what order, and where each value is stored.
+The names themselves live in the map’s **descriptor array**, not in the
+object<Cite id="v8-fast-properties" />. The object holds only the values.
+
+Compare Drip. In chapter 115 every Drip instance kept its own hash table of
+fields, names and all. Ten thousand Drip particles meant ten thousand
+tables, each storing `"x"` and `"y"` again. V8 stores the names once, in a
+map, and shares it.
+
+<Callout kind="definition">
+A **shape** (in V8, a **map**; also a **hidden class**) describes an
+object’s layout: its named properties, their order, and where each value
+lives. Objects with the same properties added in the same order share one
+shape<Cite id="v8-fast-properties" />. The shape also records each field’s
+representation (chapter 55)<Cite id="v8-react-cliff" />.
+</Callout>
+
+<Prompts ids={['shape-what', 'shape-names', 'drip-vs-v8']} />
+
+## Shapes form a tree
+
+JavaScript has no fixed classes: any object can gain a property at any
+time. So V8 can’t know a shape in advance. Instead, each time an object
+gets a new property, it moves to a new shape, and V8 links the shapes
+together<Cite id="v8-fast-properties" />. Step through it:
+
+<TransitionSteps client:visible />
+
+The tree is what makes sharing work. A second object built the same way
+follows the same transitions and ends at the same shape. An object built
+in a different order walks down a different branch. In V8’s source each
+map keeps a **back pointer** to the map it came from<Cite id="v8-src-map-12-4" />,
+and you can see it in V8’s debug output:
+
+```
+// %DebugPrint(d), trimmed to fit
+DebugPrint: 0x37f774024609: [JS_OBJECT_TYPE]
+ - map: 0x36122091bff1 <Map[56]...>
+     [FastProperties]
+ - All own properties ...: {
+    #x: 1 (const data field 0) ...
+    #y: 2 (const data field 1) ...
+ }
+0x36122091bff1: [Map] in OldSpace
+ - instance size: 56
+ - inobject properties: 4
+ - unused property fields: 2
+ - back pointer: 0x36122091bfa9 <Map[56]...>
+```
+
+<Callout kind="definition">
+A **transition tree** links shapes: the root is the empty shape, and each
+edge says “add this property”. Adding a property follows an existing
+edge if there is one and creates a new shape if not. Same properties in the
+same order lead to the same shape; a different order leads to a different
+branch<Cite id="v8-fast-properties" />.
+</Callout>
+
+That explains `a` against `c`. And `a` against `d`? Look at `d`’s map
+above: four **in-object** slots, two of them unused. `d` started as `{}`,
+and in this run V8 gave the empty object room for four properties. The
+literal `{ x: 1, y: 2 }` got exactly two slots: `%DebugPrint(a)` in the
+same session showed `inobject properties: 2`. Different layouts, so
+different maps.
+
+<Prompts ids={['tree-what', 'order-matters', 'literal-vs-built']} />
+
+<Run id="order-visible" />
+
+## Room to grow: slack tracking
+
+Objects made by a constructor get the same trick, more generously. In 2020
+the V8 team described **slack tracking**: a new object gets extra
+in-object space, and after seven constructions V8 shrinks the shape to
+what was actually used. The starting estimate is the properties the
+compiler expects, plus eight<Cite id="v8-slack-tracking" />. You can watch
+it:
+
+```js
+function P(x, y) { this.x = x; this.y = y; }
+%DebugPrint(new P(1, 2));
+for (let i = 0; i < 10; i++) new P(i, i);
+%DebugPrint(new P(3, 4));
+```
+
+```
+Node v22.23.4, V8 12.4.254.21
+// first object
+ - instance size: 104
+ - inobject properties: 10
+ - unused property fields: 8
+ - construction counter: 6
+// after eleven more
+ - instance size: 40
+ - inobject properties: 2
+ - unused property fields: 0
+ - construction counter: 0
+```
+
+Ten slots (two expected, plus eight), then two: 104 bytes per object
+became 40.
+
+<Prompts ids={['slack']} />
+
+## When V8 gives up: dictionary mode
+
+Shapes pay off when many objects share a few layouts. If a program keeps
+adding and deleting properties, maintaining all those shapes costs more
+than it saves. So V8 can switch an object to **slow properties**: a
+self-contained hash table that holds names and values together, like a
+Drip instance<Cite id="v8-fast-properties" />.
+
+```js
+const p = { x: 1, y: 2, z: 3 };
+p.z = undefined;
+console.log(%HasFastProperties(p));
+delete p.z;
+console.log(%HasFastProperties(p));
+
+let last = true;
+for (let n = 1; n <= 40; n++) {
+  const o = {};
+  for (let i = 0; i < n; i++) {
+    o['k' + i] = i;
+  }
+  const f = %HasFastProperties(o);
+  if (f !== last) console.log(n, f);
+  last = f;
+}
+```
+
+```
+Node v22.23.4, V8 12.4.254.21
+true
+false
+20 false
+```
+
+Setting `p.z` to `undefined` kept the shape. `delete` turned `p` into a
+dictionary, and its map now says `dictionary_map`. Adding properties
+under computed names turned an object into a dictionary at 20 properties
+in this version. Don’t memorize that number: it is an engine detail.
+
+<Callout kind="definition">
+An object in **dictionary mode** stores its named properties in its own
+hash table instead of using a shared shape. Adding and removing properties
+is cheap, but reads are slower, and the inline caches of the next chapter
+don’t work on it<Cite id="v8-fast-properties" />. V8’s source says a map
+is used either for dictionary-mode objects or for fast ones, never
+both<Cite id="v8-src-map-12-4" />.
+</Callout>
+
+<Callout kind="pitfall">
+`delete obj.prop` is fine for a lookup table you add and remove keys from.
+For an object with a fixed set of fields, such as a particle, set the field
+to `undefined` (or keep a flag) instead. Better still, use a `Map` for data
+whose keys change.
+</Callout>
+
+<Prompts ids={['dict-what', 'delete-cost', 'undefined-not-delete']} />
+
+<Callout kind="engine" label="Under the hood">
+Shapes are why the optimizing tiers can be fast. In 2023 the V8 team
+described Maglev reading `o.x`: if feedback says `o` always had one shape,
+it emits a check of the shape and then a plain load at a fixed
+offset<Cite id="v8-maglev" />. A shape change can also widen a field’s
+representation, as you saw with the TypeScript class in chapter
+55<Cite id="v8-react-cliff" />. For Viscosity, the lesson is the one the
+benchmarks taught: build every element of a collection the same way, in the
+same order, and V8 sees one shape. A struct-of-arrays layout goes further:
+a `Float64Array` column has no shapes at all.
+</Callout>
+
+## Your turn
+
+<Exercise id="shapeTree" />
+
+<Exercise id="orderMismatches" />
+
+## What you learned
+
+- A **shape** (V8’s **map**) describes an object’s layout once; objects
+  that share it store only their values.
+- Shapes form a **transition tree**: adding a property follows or creates
+  an edge, so the *order* of additions decides the shape.
+- How an object is made matters too: literals, `{}` plus additions and
+  constructors get different in-object space, and constructors shrink
+  theirs after a few objects (slack tracking).
+- **Dictionary mode** replaces the shared shape with a per-object hash
+  table. `delete` triggers it here; reads get slower.
+- Build objects of one kind the same way, in the same order, and don’t
+  `delete` their fields.
+
+Next: how V8 uses shapes to make `o.x` fast at one particular line of code.
+
+<Quiz />

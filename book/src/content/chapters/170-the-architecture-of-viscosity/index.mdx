@@ -1,0 +1,195 @@
+---
+n: 170
+day: 43
+part: VIII
+title: 'The architecture of Viscosity'
+tagline: 'Part VIII builds the real thing. Before any single piece, here is the whole machine: what goes in, what comes out, which parts know about JavaScript, and why the output is just another JavaScript file.'
+objectives:
+  - Name the four steps of Viscosity’s compile function and say what each one consumes and produces.
+  - Say which steps belong to a language plugin and which belong to the core, and why.
+  - Explain what a source-to-source compiler is, and contrast it with changing layouts inside a running engine.
+  - Run the real compiler on a small particle program and read its decisions.
+introduces: [viscosity-pipeline, source-to-source]
+uses: [compiler-pipeline, front-end-back-end, compiler, parser, ast, ir, lowering, ssa, cfg, dataflow, escape-analysis, alias-analysis, compiler-pass, run-time-transformation, columnar-storage, aos-vs-soa, array-of-objects, typed-array, jit-compiler, speculation, deoptimization, differential-testing, round-trip-testing, emit, module, function, interface]
+sources: [makor2022, kloibhofer2023, wurthinger2013]
+---
+import PipelineSteps from '../../../components/diagrams/ch170/PipelineSteps';
+import WhenItHappens from '../../../components/diagrams/ch170/WhenItHappens';
+import Playground from '../../../components/playground/Playground';
+
+## Twenty-five lines
+
+You have spent six parts collecting pieces: arrays of objects and why
+they are slow to scan, parsers, IRs, SSA, dominators, escape analysis,
+differential tests. Part VIII puts them together into Viscosity, the
+compiler in this repository's `engine/ts` folder.
+
+The surprise is how small the top of it is. The file
+`packages/core/src/index.ts` is 25 lines long, and this is the part that
+matters:
+
+```ts
+function compile(source, plugin, opts) {
+  const lowered = plugin.lower(source);
+  const analysis =
+    analyze(lowered.module);
+  const p = plan(analysis, opts);
+  const code =
+    plugin.emit(source, lowered, p);
+  return { code, plan: p, analysis,
+    explain: explain(p) };
+}
+```
+
+(Trimmed: the real one merges `opts` with defaults and passes along the
+`@viscosity` annotations the plugin found.) Every chapter from here to
+112 lives inside one of those four calls.
+
+<Callout kind="intuition">
+Think of a removal company re-packing a kitchen. A local crew reads the
+labels on your boxes, in whatever language you wrote them. Head office
+never opens a box: it only gets a list ("12 plates, 40 forks, all the
+same size") and decides how to pack them. Then the local crew re-packs
+your kitchen to that plan, leaving everything it wasn’t told about
+exactly where it was.
+</Callout>
+
+## Four steps, two owners
+
+Step through one program. Watch the label above each stage: some steps
+belong to the language **plugin**, the rest to the **core**.
+
+<PipelineSteps client:visible />
+
+The steps, with what each consumes and produces:
+
+- **lower** (plugin): source text → a VIR module. For JavaScript that
+  means parsing with acorn into an ESTree tree, resolving scopes, then
+  lowering the tree to VIR.
+- **analyze** (core): VIR → facts. Which bindings are collections, which
+  fields are numbers, which loops touch which fields, and the reasons it
+  isn't safe, if any.
+- **plan** (core): facts → a layout per collection, with reasons.
+- **emit** (plugin): the original source, plus the plan → new source.
+
+<Callout kind="definition">
+The **Viscosity pipeline** is `lower → analyze → plan → emit`. A
+language front-end lowers source code to **VIR**, Viscosity's IR. The
+analyses and the **layout planner** work on VIR only, and choose a
+layout for each collection (`aos`, `soa` or `aosoa`). The same front-end
+then **emits** new source code by applying the plan. Only lowering and
+emitting know the language.
+</Callout>
+
+<Prompts ids={['arch-four', 'arch-owners', 'arch-why-split']} />
+
+Notice what emit does *not* do. It doesn't print the program from VIR.
+It takes your original text and replaces only the ranges the plan
+requires, such as `ps[i].x` becoming `ps.x[i]`. VIR instructions keep a
+pointer back to the source range they came from, which is what makes
+that possible. Your comments, formatting and every unrelated line come
+through exactly as you wrote them.
+
+<Prompts ids={['arch-emit-text', 'arch-srcref']} />
+
+## Output that is source code
+
+Here are the last lines that `viscosity build` really wrote for the
+program in the diagram. A class `__Vsc_ps` with one `Float64Array` per
+field is generated above them (chapter 184 builds it), along with a
+bounds-check helper:
+
+```js
+const ps = new __Vsc_ps();
+for (let i = 0; i < 1000; i++)
+  ps.push(i, 1);
+for (let i = 0; i < ps.length; i++)
+  ps.x[i] += ps.vx[i];
+console.log(ps.x[__vsc_bc(ps, 3, 'x',
+  false)]);
+```
+
+The input was JavaScript, and so is the output. You can read it, diff
+it, ship it, and run it on any engine.
+
+<Callout kind="definition">
+A **source-to-source compiler** (sometimes called a *transpiler*) is a
+compiler whose output is source code in a high-level language, often the
+same language it reads. The output is then compiled or run by an ordinary
+tool. Viscosity reads JavaScript (or Python) and writes JavaScript (or
+Python).
+</Callout>
+
+<Run id="before-after" />
+
+<Prompts ids={['s2s-what', 's2s-check']} />
+
+## Ahead of time, or inside the engine
+
+Viscosity is not the first system to turn arrays of JavaScript objects
+into columns. Makor and colleagues did it *at run time*, inside a
+JavaScript engine built on Truffle and Graal<Cite id="makor2022" /><Cite id="wurthinger2013" />,
+and a follow-up generated specialized loop code for the converted
+arrays<Cite id="kloibhofer2023" />.
+
+<Figure caption="The same idea in two places. Viscosity changes the program before it runs; the run-time approach changes the engine." takeaway="Ahead of time works with any engine but must prove safety from the code alone.">
+  <WhenItHappens />
+</Figure>
+
+The trade is real in both directions. A run-time transformation sees
+the actual values and can speculate, then back out with deoptimization
+if a guess fails. But it only helps programs run on that engine.
+Viscosity's output runs anywhere, adds no compile work at start-up, and can be
+read by a person. In exchange it gets one look at the code, with no
+values and no way to back out. Every decision must be proved from the
+text alone, and when the proof fails the collection stays as it was.
+
+<Prompts ids={['aot-vs-rt', 'aot-cost', 'arch-conservative']} />
+
+## Try it
+
+This is the real compiler, running in your browser. Change the program
+and press the buttons: see the decision, the compiled code, and "Run
+both", which checks the two versions print the same thing. Then try
+`console.log(ps[3])` on the last line, and see what changes.
+
+<Playground client:visible title="Particles" initial={`const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 1 });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += ps[i].vx;
+console.log(ps[3].x);`} />
+
+<Callout kind="engine" label="Under the hood">
+The repository's packages follow the pipeline. `packages/core` holds
+VIR, its builder (SSA construction from chapter 134), the CFG utilities,
+the analyses and the planner. `packages/frontend-js` and
+`packages/frontend-python` are the two plugins. `packages/cli` wraps
+`compile` as `viscosity build` and `viscosity explain`, and
+`packages/playground` bundles core plus the JavaScript plugin for this
+page. Because every step is a plain function of its input, each can be
+tested alone, and the whole can be tested differentially, as chapter 153
+showed.
+</Callout>
+
+## Your turn
+
+<Exercise id="rewriteAccess" />
+
+<Exercise id="miniCompile" />
+
+## What you learned
+
+- The **Viscosity pipeline** is `lower → analyze → plan → emit`, in a
+  25-line `compile` function.
+- **Lower** and **emit** belong to a language plugin; **analyze** and
+  **plan** belong to the core and only see VIR.
+- Emit rewrites the *original text* range by range, so untouched code
+  survives exactly.
+- Viscosity is a **source-to-source compiler**: JavaScript in,
+  JavaScript out, runnable on any engine.
+- Doing the change ahead of time trades run-time knowledge and
+  deoptimization for portability and readable output, so every decision
+  must be proved from the code.
+
+<Quiz />

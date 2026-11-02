@@ -1,0 +1,202 @@
+---
+n: 124
+day: 31
+part: V
+title: 'V8’s garbage collector'
+tagline: 'Your Drip VM stops the world and marks everything. V8 splits its heap by age, empties the young part by copying out the few survivors, and marks the old part while your program keeps running. The price is a check on every pointer store.'
+objectives:
+  - Describe V8’s young and old generations and why they are collected differently.
+  - Trace a scavenge, with forwarding addresses and promotion.
+  - Explain Mark-Compact’s mark, sweep and compact steps, and read them in `--trace-gc` output.
+  - Explain both jobs of V8’s write barrier.
+introduces: [scavenger, mark-compact, write-barrier]
+uses: [garbage-collection, roots, mark-sweep, tricolor, generational-gc, heap-object, object-list, stack-and-heap, memory, pointer, address, contiguous, reference, object, property, call-stack, scalar-replacement, allocation-sinking]
+sources: [v8-trash-talk, v8-orinoco-scavenger, v8-concurrent-marking, v8-maglev]
+---
+import ScavengeSteps from '../../../components/diagrams/ch124/ScavengeSteps';
+
+## Watching it work
+
+Here is a loop that makes three million small objects and keeps one in
+ten:
+
+```js
+const keep = [];
+for (let i = 0; i < 3e6; i++) {
+  const p = { x: i, y: i };
+  if (i % 10 === 0) keep.push(p);
+}
+console.log(keep.length);
+```
+
+`--trace-gc` prints a line for every collection. Real output, Node
+v22.23.4 (V8 12.4), with the process prefix removed and the lines cut
+short:
+
+```
+$ node --trace-gc gc.js
+22 ms: Scavenge 4.4 (5.1) -> 3.5 (6.1) MB,…
+24 ms: Scavenge 4.4 (6.1) -> 3.6 (6.4) MB,…
+…
+58 ms: Scavenge 19.1 (28.0) -> 12.6 (28.7)…
+67 ms: Mark-Compact 13.4 (28.7) -> 10.2 …
+  … finalize incremental marking via
+  stack guard; GC in old space requested
+70 ms: Scavenge 18.0 (27.2) -> 10.9 (27.2)…
+…
+300000
+```
+
+The numbers either side of `->` are heap sizes in MB before and after.
+There were 25 scavenges and one Mark-Compact. Two collectors, then:
+chapter 116 sketched why. Here is how V8 does it.
+
+## Two generations
+
+V8's heap has a young generation, split into a nursery and an
+intermediate part, and an old generation. Objects start in the nursery.
+One that survives a collection becomes intermediate, and one that
+survives another moves to the old generation<Cite id="v8-trash-talk" />.
+Most objects never get that far: the generational hypothesis says most
+objects die young<Cite id="v8-trash-talk" />. In the loop above, nine in
+ten `p`s are garbage by the next iteration.
+
+<Prompts ids={['gc68-gens']} />
+
+## The Scavenger
+
+<Callout kind="intuition">
+Moving house with a full attic, you could sort through every box and
+throw out the junk. Or you could carry out only the few things you want,
+and leave the house, junk and all, for the next tenant. If you keep very
+little, carrying it out is much quicker than sorting.
+</Callout>
+
+The young generation is collected by the Scavenger, which collects
+nothing else. It uses two halves, called semispaces: objects are
+allocated in one, *from-space*, while the other, *to-space*, stays
+empty. A scavenge copies every live object from one to the other, then
+the two swap roles<Cite id="v8-trash-talk" />. Step through it:
+
+<ScavengeSteps client:visible />
+
+Copying finds, moves and fixes pointers in one go. Each moved object
+leaves a forwarding address behind, so other pointers to it can be
+updated<Cite id="v8-trash-talk" />. V8 used exactly this algorithm,
+Cheney's, until version 6.2. A post from late 2017 describes its
+replacement: a parallel Scavenger, with several threads copying at once
+and stealing work from each other<Cite id="v8-orinoco-scavenger" />. Node 22 still has it on:
+`node --v8-options` lists `--parallel-scavenge` as the default and
+describes the new space as "two semi-spaces".
+
+<Callout kind="definition">
+The **Scavenger** is V8's young-generation collector. It copies objects
+reachable from its roots (the stack, globals, and recorded old-to-new
+references) out of **from-space** into **to-space**, leaving a
+**forwarding address** in each old copy, then swaps the two spaces.
+Objects surviving a second scavenge are **promoted** to the old
+generation. Its cost depends on the survivors, not on how much was
+allocated<Cite id="v8-trash-talk" />.
+</Callout>
+
+<Prompts ids={['scav-what', 'scav-half', 'scav-cost', 'scav-roots', 'scav-forward', 'scav-promote']} />
+
+## Mark-Compact
+
+The old generation is big and its objects tend to live, so copying all
+of it would be wasteful. Instead, the major collector, Mark-Compact,
+collects the whole heap in three steps. It marks everything reachable
+from the roots, as your Drip collector does. It sweeps: the gaps left by
+dead objects go onto free-lists, sorted by size, for future
+allocations. And it compacts only some pages, chosen by a fragmentation
+heuristic, copying their survivors elsewhere. The rest are only swept,
+because copying lots of long-lived objects is expensive<Cite id="v8-trash-talk" />.
+
+Marking a big heap all at once could stop the program for a long
+time. So V8 marks in the background: concurrent marking starts as the
+heap approaches a limit, helper threads mark while JavaScript runs, and
+the main thread pauses only for a short finishing step, then compacts
+in parallel<Cite id="v8-trash-talk" />. The trace above shows that
+finishing step: "finalize incremental marking".
+
+<Callout kind="definition">
+**Mark-Compact** is V8's old-generation (whole-heap) collector. It
+**marks** live objects from the roots with tri-colour marking, **sweeps**
+the gaps left by dead objects into free-lists, and **compacts** a few
+fragmented pages by moving their survivors<Cite id="v8-trash-talk" />.
+Most of its marking runs concurrently with JavaScript.
+</Callout>
+
+<Prompts ids={['mc-what', 'mc-some']} />
+
+## The write barrier, twice over
+
+Both collectors depend on the same small piece of code, run on every
+pointer store into an object.
+
+First, the scavenge. It skips the old generation, so it would miss a
+young object held only by an old one. The write barrier records each
+old-to-new pointer, and those records become roots<Cite id="v8-trash-talk" />.
+In the parallel Scavenger, these remembered sets are kept per page, and
+they are usually most of the roots<Cite id="v8-orinoco-scavenger" />.
+
+Second, marking. If JavaScript runs while the marker works, it could
+store a pointer to an unmarked object into one the marker has finished
+with, hiding a live object. V8's barrier for concurrent marking
+does this after each `object.field = value`<Cite id="v8-concurrent-marking" />:
+
+```cpp
+if (color(value) == white &&
+    atomic_color_transition(
+        value, white, grey)) {
+  marking_worklist.push(value);
+}
+```
+
+Barriers cost time on every store, so compilers avoid them when they
+can. Maglev skips the barrier entirely when storing into an object it
+has just allocated, as long as no other allocation happened in
+between<Cite id="v8-maglev" />.
+
+<Callout kind="definition">
+A **write barrier** is code that runs when a pointer is stored into an
+object. V8's has two jobs: record **old-to-new** pointers, which become
+extra roots for the Scavenger, and, during concurrent marking, turn a
+newly referenced white object grey so that no live object stays
+unmarked<Cite id="v8-trash-talk" /><Cite id="v8-concurrent-marking" />.
+</Callout>
+
+<Prompts ids={['wb-what', 'wb-marking', 'wb-skip']} />
+
+<Callout kind="engine" label="Under the hood">
+Chapter 123's numbers make more sense now. With escape analysis, the
+`len2` loop needed a handful of scavenges. Without it, about 1700, and
+each one stopped the program, however briefly. A scavenge is cheap
+because short-lived objects are cheap to the collector<Cite id="v8-trash-talk" />,
+but an object that is never allocated is cheaper still. Viscosity's
+struct-of-arrays columns help in the same way: a `Float64Array` keeps a
+million numbers in one buffer, not in a million objects for the
+Scavenger to copy and promote.
+</Callout>
+
+## Your turn
+
+<Exercise id="cheney" />
+
+<Exercise id="barrier" />
+
+## What you learned
+
+- V8's heap has a **young generation** (nursery and intermediate) and an
+  **old generation**. Most objects die young.
+- The **Scavenger** copies survivors between two **semispaces**, leaving
+  **forwarding addresses**, and **promotes** objects that survive twice.
+  Its cost depends on what survives.
+- **Mark-Compact** marks the whole heap (mostly concurrently), sweeps
+  into free-lists, and compacts only fragmented pages.
+- The **write barrier** records old-to-new pointers for the Scavenger
+  and keeps concurrent marking correct.
+- `--trace-gc` shows both collectors: many Scavenges, the occasional
+  Mark-Compact.
+
+<Quiz />

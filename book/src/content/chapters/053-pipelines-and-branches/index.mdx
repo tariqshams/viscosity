@@ -1,0 +1,241 @@
+---
+n: 53
+day: 14
+part: II
+title: 'Pipelines and branch prediction'
+tagline: 'A CPU works on many instructions at once, like an assembly line, and to keep the line moving it has to guess which way each if will go before it knows. When your data makes the guesses easy, the line never stops; when it doesn’t, work is thrown away.'
+objectives:
+  - Describe a pipeline, and work out how many ticks a run of instructions takes with and without one.
+  - Explain why one instruction waiting for another holds the pipeline back.
+  - Explain why a pipelined CPU must guess the outcome of an if, and what a wrong guess costs.
+  - Predict which data makes branch prediction easy, and count a simple predictor’s mistakes.
+introduces: [pipeline, branch-prediction]
+uses: [prefetcher, pointer-chasing, cpu, register, cpu-cache, cache-miss, latency, memory, typed-array, if, booleans, comparison, for-of, function, parameter, return, array, index, array-loop, numbers, for-loop, console-log]
+sources: [slotin-amh-pipelining, slotin-amh-branching, apple-wwdc25-cpu]
+---
+import PipelineSteps from '../../../components/diagrams/ch053/PipelineSteps';
+import BranchSteps from '../../../components/diagrams/ch053/BranchSteps';
+
+## Sorting makes it faster?
+
+Here is a loop that adds up the elements of an array that are below 50:
+
+```js
+let s = 0;
+for (const v of xs) {
+  if (v < 50) s += v;
+}
+```
+
+Fill `xs` with random numbers from 0 to 99, and time it. Then sort `xs`
+first and time it again. The loop does exactly the same work either
+way, the same comparisons and the same additions, since sorting does not
+change which values are below 50. Yet in a well-known experiment, in
+compiled C++ on a modern CPU, the sorted version ran several times
+faster<Cite id="slotin-amh-branching" />. Nothing about memory explains
+that, because both versions read the array in order. The explanation
+is in how the CPU runs instructions, and it begins with a factory.
+
+## The pipeline
+
+<Analogy title="a car factory">
+A car factory does not build one car from start to finish before
+starting the next. The line keeps every station busy: while one car
+gets its wheels, the next gets its doors, and the one behind it its
+frame, so a finished car rolls off the end far more often than it takes
+to build one.
+<span slot="breaks">Cars on a line never depend on each other;
+instructions often do, and an instruction that needs the answer of the
+one just ahead of it has to wait for it, leaving a gap in the line.</span>
+</Analogy>
+
+<Analogy title="doing the laundry">
+With one washer and one dryer, you start the second load washing as
+soon as the first goes into the dryer, rather than waiting for the
+first to be dry and folded.
+<span slot="breaks">Laundry has three or four stages; a real CPU
+pipeline has many more, and it also runs several instructions side by
+side in each stage, which a single washer cannot.</span>
+</Analogy>
+
+A CPU does the same with instructions. Step through it:
+
+<PipelineSteps client:visible />
+
+<Callout kind="definition">
+A **pipeline** splits running an instruction into stages (fetch,
+decode, execute, write back, and on real chips many more) and works on
+several instructions at once, each at a different
+stage<Cite id="slotin-amh-pipelining" />. Each instruction still takes
+every stage; however, once the pipeline is full, one instruction can
+finish on nearly every tick of the clock.
+</Callout>
+
+<Formal title="Ticks for n instructions through S stages">
+
+```text
+no pipeline:  n × S
+pipeline:     S + (n − 1)
+```
+
+<span slot="read">Without a pipeline, each of the n instructions takes
+all S ticks before the next starts. With one, the first instruction
+takes S ticks to come out of the end, and after that one more finishes
+every tick, n − 1 more ticks in all.</span>
+</Formal>
+
+<Examples of="pipeline">
+
+```text
+a = b + c
+d = e + f    ; independent: both can
+             ; be in the line at once
+```
+
+```text
+a = b + c
+d = a + 1    ; needs a: waits until
+             ; a = b + c is done
+```
+
+```js
+for (const v of xs) {
+  s += v; // each add needs the last s
+}
+```
+
+</Examples>
+
+The first two are the same pair of additions with one change. In the
+first, `d = e + f` does not use `a`, so it can follow `a = b + c` into
+the pipeline on the very next tick. In the second, `d = a + 1` needs the
+value of `a`, so it cannot execute until the instruction before it has
+finished, and the pipeline has a gap. The third is the realistic case:
+in a sum, every `s += v` needs the `s` from the turn before, a chain of
+waits through the whole loop, while the parts that do not depend on
+each other (reading the next `v`, moving the loop on) can still flow
+past it. With four stages, the formula says 100 instructions need 400
+ticks without a pipeline and 103 with one, when nothing waits.
+
+<Prompts ids={['pipeline-what', 'stage-ticks', 'dependent-wait']} />
+
+## Guessing the way of an if
+
+Now put an `if` in the line. Whether the next instruction comes from
+the "then" side or the other side depends on the comparison, and the
+comparison is only worked out at the execute stage, several stages in.
+By then the pipeline would like to have fetched several more
+instructions; it cannot know which ones, so it guesses.
+
+<Analogy title="a driver at a familiar fork">
+A driver who takes the left fork every morning starts turning left
+before reading the sign. Nearly every day that is right and saves a
+moment; on the day the road is closed, they have to stop, reverse and
+take the other road.
+<span slot="breaks">A driver can see the closed road coming; the CPU
+only finds out it guessed wrong when the comparison finishes, by which
+time it has done several instructions' worth of work on the wrong
+road.</span>
+</Analogy>
+
+<Analogy title="a barista and your usual order">
+A barista who sees a regular come in starts making their usual before
+they reach the counter. If the regular orders something else, that cup
+is poured away and a new one started.
+<span slot="breaks">A barista can ask; the CPU cannot, and it guesses at
+every branch, billions of times a second, from nothing but how that
+branch went before.</span>
+</Analogy>
+
+<BranchSteps client:visible />
+
+<Callout kind="definition">
+To keep the pipeline full at an `if`, the CPU predicts which way the
+branch will go and carries on along that path before it knows. This is
+**branch prediction**. If the guess was wrong, the work done on the
+wrong path is thrown away and the pipeline refills from the right
+one<Cite id="apple-wwdc25-cpu" />. Predictors learn from how each branch
+went before: branches that almost always go one way are guessed right
+nearly every time, and branches with no consistent pattern are where
+they go wrong<Cite id="apple-wwdc25-cpu" />.
+</Callout>
+
+<Formal title="The cost of guessing">
+
+```text
+time ≈ n × (t + m × p)
+```
+
+<span slot="read">A loop of n turns takes about n times the time of one
+turn, t, plus the misprediction rate m (the share of turns where the
+guess was wrong) times the penalty p, the work thrown away each time.
+Sorting the data in the example above cuts m from about one half to
+almost nothing.</span>
+</Formal>
+
+<Examples of="branch-prediction">
+
+```js
+// i < n: true n times, false once
+for (let i = 0; i < n; i++) {
+  s += xs[i];
+}
+```
+
+```js
+// almost never true: nearly free
+if (v === undefined) {
+  throw new Error('missing value');
+}
+```
+
+<Run id="sorted-branch" />
+
+</Examples>
+
+The first is the branch in every loop: the test `i < n` comes out true
+on every turn but the last, so the predictor guesses "true" and is wrong
+once, at the very end. The second is a check that guards against bad
+data; because it almost never fires, it is predicted right nearly every
+time and costs almost nothing<Cite id="slotin-amh-branching" />, which
+is why it is fine to write such checks in hot code. The runnable one is
+the experiment from the start of the chapter, in JavaScript. How much of
+the effect shows up depends on the machine code the engine generates (an
+engine may turn a simple `if` into instructions that do not branch at
+all, and then the order no longer matters), so run it, and measure
+before you rely on it.
+
+<Prompts ids={['why-guess', 'mispredict-cost', 'sorted-why', 'rare-branch', 'loop-branch']} />
+
+<Callout kind="engine" label="Under the hood">
+This is the last piece of the hardware picture, and it fits the others.
+A struct-of-arrays loop gives the CPU addresses it can predict (for the
+prefetcher), no pointers to chase, and a loop branch that is taken every
+time but the last (for the branch predictor). Your program also runs
+branches you never wrote: `xs[i]` must give `undefined` when `i` is past
+the end, so `i` is compared with the length on every read (unless the
+engine can prove it is always inside);
+because such checks almost never fail, the predictor makes them nearly
+free. The branches that
+cost time are the ones that depend on your data, and the next chapter
+shows a way to avoid some of them altogether: doing the same work on
+several numbers at once.
+</Callout>
+
+## Your turn
+
+<Exercise id="mispredicts" />
+
+<Exercise id="twoBit" />
+
+## What you learned
+
+- A **pipeline** works on many instructions at once, each at a
+  different stage, like an assembly line; an instruction that needs the
+  result of the one before it has to wait.
+- To keep it full, the CPU uses **branch prediction**: it guesses which
+  way each `if` goes and carries on. Wrong guesses throw work away.
+- Predictable branches (a loop's own test, checks that rarely fail,
+  sorted data) keep guesses right; random data does not.
+
+<Quiz />

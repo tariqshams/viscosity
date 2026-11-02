@@ -1,0 +1,287 @@
+---
+n: 54
+day: 14
+part: II
+title: 'SIMD: one instruction, many numbers'
+tagline: 'A CPU can add four numbers in the time it takes to add one, but only if the four numbers are sitting side by side in memory; that one condition is a large part of why the struct-of-arrays layout exists.'
+objectives:
+  - Explain what SIMD is and what a lane is, and work out how many lanes a register has.
+  - Describe what a compiler does when it vectorizes a loop, and name two things that stop it.
+  - Explain why SIMD wants a struct-of-arrays layout rather than an array of structs.
+  - Say accurately where SIMD is available to JavaScript today, and where it is not.
+introduces: [simd, vectorization, lane]
+uses: [cpu, register, memory, contiguous, cache-line, stride, typed-array, float64, array, index, length, array-loop, function, parameter, return, for-loop, numbers]
+sources: [llvm-vectorizers, ispc-perfguide, ispcdocs, wasm-simd, wasm-finished-proposals, tc39-simdjs, mdn-typed-arrays]
+---
+import LaneSteps from '../../../components/diagrams/ch054/LaneSteps';
+import LaneSumSteps from '../../../components/diagrams/ch054/LaneSumSteps';
+import GatherPicture from '../../../components/diagrams/ch054/GatherPicture';
+
+## The same sum, a million times
+
+Here is the loop at the heart of every particle game, written with one
+typed array per field, the way you met it in the chapter on floats and
+typed arrays:
+
+```js
+for (let i = 0; i < n; i++) {
+  x[i] = x[i] + vx[i];
+}
+```
+
+Every turn of the loop does the same three things (load two numbers,
+add them, store one), and only the index changes; for a million
+particles that is a million tiny additions that do not depend on each
+other at all. Most CPUs can do several of them with a single
+instruction, as long as the numbers are lined up the right way, and this
+chapter is about that ability and the one condition it puts on your
+data.
+
+## One instruction, four answers
+
+<Analogy title="a stamp with four heads">
+Stamping a hundred envelopes one at a time takes a hundred presses. Glue
+four stamps side by side onto one handle, line up four envelopes under
+it, and one press marks all four; a hundred envelopes now take
+twenty-five presses. The trick only works if the envelopes are **lined
+up** under the heads: scattered over the desk, you are back to one press
+each.
+<span slot="breaks">A stamp prints the same picture on every envelope,
+whereas one SIMD add gives each of its four slots a different answer,
+worked out from that slot's own two numbers.</span>
+</Analogy>
+
+<Analogy title="a muffin tray">
+A tray of four muffin cups goes into the oven once and four muffins come
+out, in the time one would take; the batter in cup 2 never runs into
+cup 3, so each muffin is its own.
+<span slot="breaks">You can bake a tray with one cup empty and nobody
+minds; a CPU's register has a fixed number of slots set by the hardware,
+and leftover numbers that do not fill a whole register (the "tail") are
+usually handled by a separate, ordinary loop.</span>
+</Analogy>
+
+That four-headed stamp exists in real CPUs. Besides the ordinary
+**registers** (the CPU's few tiny storage slots, from the chapter on the
+CPU and its caches), many CPUs have **wide registers** that hold several
+numbers at once, and instructions that work on all of them together.
+Step through an addition done both ways:
+
+<LaneSteps client:visible />
+
+<Callout kind="definition">
+**SIMD** stands for *single instruction, multiple data*: one instruction
+applies the same operation to several values at once. The values sit in
+a wide **vector register**, and each slot of that register is a
+**lane**. A SIMD add adds lane 0 to lane 0, lane 1 to lane 1, and so on;
+lanes never mix.
+</Callout>
+
+How many lanes you get depends on the width of the register and the size
+of each number. A 128-bit register has room for four 32-bit floats, or
+two 64-bit doubles; JavaScript numbers are 64-bit doubles, so at that
+width they get **two** lanes. WebAssembly's SIMD instructions spell the
+shape out in their names (`f64x2` means "two lanes of 64-bit
+floats")<Cite id="wasm-simd" />.
+Some CPUs have wider registers still; the guide to the ISPC compiler
+describes 256-bit and 512-bit registers on x86 CPUs with
+AVX-512<Cite id="ispcdocs" />.
+
+<Formal title="A lane-wise add">
+
+```text
+W = register bits ÷ element bits
+c[l] = a[l] + b[l]   for every l < W
+128 ÷ 64 = 2   128 ÷ 32 = 4   512 ÷ 64 = 8
+```
+
+<span slot="read">W, the number of lanes, is the width of the register
+divided by the size of one element. A vector add makes lane l of the
+result from lane l of each input, for every lane number l from 0 up to
+W minus 1, all at once. The last line works out W for three common
+cases: two lanes of doubles in 128 bits, four lanes of 32-bit floats,
+and eight lanes of doubles in a 512-bit register.</span>
+</Formal>
+
+<Examples of="simd lane">
+
+```js
+// lanes = register bits / element bits
+128 / 64; // 2 lanes of float64
+128 / 32; // 4 lanes of float32
+```
+
+```text
+f64x2.add   two adds, lane by lane
+f32x4.mul   four multiplies at once
+i32x4.add   four 32-bit integer adds
+```
+
+<Run id="by-four" />
+
+</Examples>
+
+The first is the lane arithmetic: a 128-bit register holds two
+`float64`s (the size of every JavaScript number) or four 32-bit
+floats. The second is three
+real WebAssembly instruction names; the part before the `x` is the lane
+type (`f64` is a 64-bit float, `i32` a 32-bit integer), the number after
+it is the lane count, and the word after the dot is the operation done
+in every lane. The third you can run: our loop rewritten by hand into
+the *shape* SIMD hardware sees, with `W = 4` lanes per step. The first
+`for` jumps `i` forward four at a time while a whole chunk still fits
+(`i + W <= a.length`), and the inner loop does the four lanes; the
+second `for` picks up the **tail**, the elements left over (here, 4 and
+5). It prints `[11, 22, 33, 44, 55, 66]`; it is no faster (underneath
+it is still one addition at a time), but it shows the chunks a
+vectorized loop works in. Try `W = 3`.
+
+<Prompts ids={['simd-what', 'lane-what', 'lanes-128']} />
+
+## Vectorization: letting the compiler do it
+
+You rarely write SIMD instructions by hand. Instead, an optimizing
+compiler looks at an ordinary loop and rewrites it to handle several
+turns of the loop per step; LLVM, the compiler toolkit behind the clang
+C compiler, has a loop vectorizer that does this, and it is on by
+default<Cite id="llvm-vectorizers" />.
+
+<Analogy title="a manager batching the work">
+A manager watches a clerk stamp envelopes one by one and hands them the
+four-headed stamp, but only after checking that batching cannot change
+the result: if each envelope's number had to be copied from the one
+before it, stamping four at once would get it wrong.
+<span slot="breaks">A manager can look at the actual envelopes; a
+compiler sees only the code, so when it cannot prove batching is safe it
+either adds a quick check that runs while the program runs, or leaves
+the loop alone.</span>
+</Analogy>
+
+The compiler may only make the rewrite when it cannot change the answer,
+and two things commonly get in the way<Cite id="llvm-vectorizers" />.
+The first is **overlap**: if `x` and `vx` might be the same memory,
+writing four `x` values before reading the next four `vx` values could
+change what is read, so LLVM checks for overlap while the program runs
+and falls back to the plain loop when there is any. The second is
+**order**: adding floating-point numbers in a different grouping can
+round differently, and a sum split across lanes adds them in a different
+grouping, so for floats LLVM only does it when you explicitly allow
+reordering. Step through a four-lane sum to see the grouping change:
+
+<LaneSumSteps client:visible />
+
+<Callout kind="definition">
+**Vectorization** is rewriting a loop so that each step processes
+several elements with SIMD instructions, one element per lane, plus a
+tail for any leftovers. A compiler may only do it when it can show the
+result is unchanged, or when you have allowed it to change (as with a
+reordered floating-point sum).
+</Callout>
+
+<Examples of="vectorization">
+
+```js
+// safe: every i is independent
+for (let i = 0; i < n; i++) {
+  c[i] = a[i] + b[i];
+}
+```
+
+```js
+// not safe: each step needs the last
+for (let i = 1; i < n; i++) {
+  x[i] = x[i - 1] + 1;
+}
+```
+
+```js
+(0.1 + 0.2) + 0.3; // 0.6000000000000001
+0.1 + (0.2 + 0.3); // 0.6
+```
+
+</Examples>
+
+The first loop is the easy case: element `i` of `c` depends only on
+element `i` of `a` and `b`, so elements 0 to 3 can be done together, then
+4 to 7, and the answer is the same in any order. The second cannot be
+batched as written: `x[1]` needs the new `x[0]`, `x[2]` needs the new
+`x[1]`, and so on, so lanes 1 to 3 would read values that lane 0 has not
+written yet. The third shows why order matters even for a plain sum: the
+same three numbers, grouped two ways, give two answers, because each
+addition rounds to the nearest float64, so a compiler that quietly
+regrouped them would change what your program prints.
+
+<Prompts ids={['vectorize-what', 'float-order', 'overlap']} />
+
+## Why SIMD wants columns
+
+A vector load is fast because it copies one **contiguous** run of memory
+straight into a register: four neighbours in, four lanes full. So ask:
+in our particle data, are four `x` values neighbours?
+
+<Figure takeaway="SIMD needs the values for its lanes side by side." caption="In an array of structs (top), each x is 6 slots away from the next: the stride is 6, so filling four lanes takes a gather, four separate reads. In a struct of arrays (bottom), the x column is contiguous, and one vector load fills the register.">
+  <GatherPicture />
+</Figure>
+
+In an array of structs the `x` values are spread out, with `y`, `vx`,
+`vy`, `mass` and `health` in between (a **stride** of six slots, in the
+words of the chapter on cache lines), so the hardware has to **gather**
+them one at a time. The ISPC performance guide says exactly this:
+contiguous accesses can use efficient vector loads and stores, while an
+array-of-structs layout needs gathers and runs slower<Cite id="ispc-perfguide" />;
+and LLVM's own documentation notes that its cost model often judges
+strided gathers not worth vectorizing at all<Cite id="llvm-vectorizers" />.
+In a struct of arrays every column is already lined up under the
+stamp: it is the layout both cache lines and SIMD lanes want.
+
+<Prompts ids={['gather']} />
+
+<Callout kind="engine" label="Under the hood">
+What about JavaScript itself? There was a proposal, **SIMD.js**, to add
+vector types to the language; it was removed from Stage 3 at TC39 and
+browsers are not implementing it, and SIMD on the web moved to
+WebAssembly instead<Cite id="tc39-simdjs" />. WebAssembly has a
+fixed-width 128-bit SIMD type, `v128`, with instructions such as
+`f64x2.add`<Cite id="wasm-simd" />, and it is part of WebAssembly
+2.0<Cite id="wasm-finished-proposals" />. So JavaScript has no SIMD API
+of its own. Does V8 vectorize ordinary JavaScript loops behind your
+back? None of the sources this book checked says so, so we will not
+assume it. For Viscosity, SIMD is a future payoff;
+its struct-of-arrays columns are `Float64Array`s<Cite id="mdn-typed-arrays" />,
+contiguous runs of doubles, which is exactly the input a WebAssembly or
+native back end would need to use lanes.
+</Callout>
+
+<Prompts ids={['js-simd']} />
+
+## Your turn
+
+The core exercise is the skeleton of every vectorized sum, the one you
+stepped through above: one running total per lane, then a final step that
+adds the lanes together. The second is extra practice: the gather that an
+array of structs forces on SIMD code.
+
+<Exercise id="sumLanes" />
+
+<Exercise id="column" />
+
+## What you learned
+
+- **SIMD** means one instruction does the same operation on several
+  values at once, held in a wide vector register.
+- Each slot of that register is a **lane**; lanes never mix, and the lane
+  count is the register's width divided by the element size (two doubles
+  in 128 bits).
+- **Vectorization** is a compiler rewriting a loop into SIMD steps plus a
+  tail. It must not change the answer, so possible overlap and
+  floating-point reordering can stop it.
+- SIMD loads want **contiguous** values: an array of structs needs a
+  gather, while a struct-of-arrays column loads straight into lanes.
+- JavaScript has no SIMD API (SIMD.js was withdrawn); WebAssembly has
+  fixed-width 128-bit SIMD.
+
+Next: what JavaScript numbers and objects actually look like in memory,
+which explains why an innocent-looking TypeScript line can make a loop
+several times slower.
+
+<Quiz />

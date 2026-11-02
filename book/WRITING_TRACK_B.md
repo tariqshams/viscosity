@@ -1,6 +1,6 @@
 # Brief for Track B chapter writers (*Viscosity*, by Tariq Shams)
 
-Monorepo: /home/user/viscosity. Book: book/. Track A (chapters 1–194) took a
+Monorepo: /home/user/viscosity. Book: book/. Track A (chapters 1–201) took a
 reader who knew only `if`/`for` in JavaScript to building, in TypeScript, a
 Drip tree-walking interpreter and bytecode VM (book/companion/ts) and the
 Viscosity AoS→SoA layout optimizer (engine/ts). Track B (121–200) teaches

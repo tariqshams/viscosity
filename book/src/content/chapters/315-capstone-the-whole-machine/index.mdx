@@ -1,0 +1,236 @@
+---
+n: 315
+day: 79
+part: XIV
+title: 'Capstone: the whole machine'
+tagline: 'Eighty chapters ago you printed “Hello, Drip!” from Rust. Since then you have rebuilt a virtual machine and an optimizing compiler in it, checked byte for byte against the TypeScript versions, and shipped the compiler to the browser. Here is the whole machine, one program through every stage, the list of what is still open, and where you could take it next.'
+objectives:
+  - Trace one program through the Rust engine, naming the stage and the chapter behind each step of its output.
+  - Say what each of the book’s implementations is, and how each one is checked against another.
+  - List what is unfinished or open, and tell a chore from a research question.
+  - Rebuild a piece of the machine, the planner’s decision, from memory.
+introduces: [mastery]
+uses: [capstone, rust, cargo, crate, workspace, ownership, borrow-checker, enum, match, trait, arena, typed-index, rust-soa, drip-rs, arena-gc, shared-corpus, implementation-comparison, rust-tradeoffs, tree-walking-interpreter, virtual-machine, bytecode, viscosity-pipeline, vir, ssa, language-plugin, aos-vs-soa, cost-model, open-problems, differential-testing, webassembly, viscosity-rs, ir-arena, plugin-trait, oxc, rust-ssa, generic-dataflow, rust-collections-pass, rust-shape-pass, rust-escape-pass, rust-access-pass, rust-cost-model, rust-soa-codegen, rust-aosoa, rust-explain, rust-pgo, rust-python-plugin, engine-parity, wasm-pack, native-vs-wasm, playground, compile-time-performance, coverage-guided-fuzzing, diagnostic, data-parallelism, continuous-integration, cli, argument-parsing, release-process, benchmark-matrix, struct, vec, string-vs-str]
+sources: [nystrom2021]
+---
+import WholeMachineSteps from '../../../components/diagrams/ch315/WholeMachineSteps';
+import Num from '../../../components/diagrams/ch314/Num';
+import Playground from '../../../components/playground/Playground';
+
+## Where Track B started
+
+Chapter 226's first program was three lines:
+
+```rust
+fn main() {
+    println!("Hello, Drip!");
+}
+```
+
+That chapter's argument was about memory. Viscosity exists because
+JavaScript gives you no say over layout, so it has to trick the engine
+into a struct of arrays; Rust lets you decide, with a strict inspector
+checking the plans. Eighty chapters later, both of the book's large
+programs exist in both languages.
+
+<Callout kind="intuition">
+A carpenter's apprentice builds a chair with the master watching, then
+builds the same chair again alone, in a harder wood. The second chair
+isn't more useful than the first. It's the proof that the apprentice
+knows why every joint is where it is.
+</Callout>
+
+## What you built
+
+**Drip, three times.** A tree-walking interpreter in TypeScript (Part
+III), a bytecode VM in TypeScript (Part IV), and `drip-rs`, the same VM
+design in Rust (Part XII): typed arena handles instead of pointers, a
+mark-sweep collector with explicit roots, `#![forbid(unsafe_code)]`,
+and the shared corpus as its judge.
+
+**Viscosity, twice.** The TypeScript reference (Parts VIII and IX),
+and its Rust port (Part XIII): VIR in arenas, the plugin trait, oxc for
+parsing, the SSA builder and dataflow framework, the analyses, the
+cost model, the code generators for SoA and AoSoA, `explain` with code
+frames, and PGO.
+
+**Two languages.** The JavaScript plugin and the Python plugin both
+lower to the same VIR, so the analyses and the planner never see
+syntax. Both exist in both engines.
+
+**Three ways to run it.** A native CLI (chapter 312), the same engine
+as WebAssembly in an npm package (189, 190), and that WebAssembly
+inside this book's Playground (191).
+
+Every one of these is checked against another. drip-rs runs the corpus
+the TypeScript VM runs. The Rust engine reproduces every stored output
+of the TypeScript engine byte for byte, and the fuzzer keeps generating
+programs to compare them on. The compiled programs are run against
+their originals. That chain of checks is what makes "the same machine,
+in Rust" a claim you can test rather than a hope.
+
+<Prompts ids={['m-three-drips', 'm-checks']} />
+
+## One program, all the way through
+
+Here is a small program with two collections, one worth transforming
+and one that can't be. The step-through follows it through the Rust
+engine. The VIR, analysis and plan listings come from a small program
+of mine (not in the repository) that calls the crates directly; the
+code and the report come from the `viscosity` CLI. All of it is real
+output, trimmed to fit:
+
+<WholeMachineSteps client:visible />
+
+Read the stages against the book. oxc parsed it (chapter 287) and the
+plugin lowered it to VIR in SSA form, where line 6's `for…of` became a
+phi, a length check, an `index.get`, two `field.get`s and a
+`field.set` (173, 176). The analyses saw only VIR: they found two
+collections (178), three numeric fields each (179), and an escape for
+`qs` when `qs[0]` was passed to `console.log` (180). They found the
+two loops over `ps` and their fields (181), and proved both of its
+indexes in bounds. The cost model wrote its reasons as it decided (182),
+the emitter turned `ps` into three `Float64Array` columns (183), and
+`explain --frames` put carets under `qs[0]` (185). Both programs print
+`509500 { x: 0, vx: 1, hp: 3 }`. The TypeScript CLI prints the same
+report, byte for byte.
+
+Run it yourself, on the Rust engine compiled to WebAssembly (the toggle
+switches to TypeScript, and the decisions don't change):
+
+<Playground client:visible engine="rust" title="The whole machine, in Rust" initial={`const ps = [];
+for (let i = 0; i < 1000; i++) {
+  ps.push({ x: i, vx: 1, hp: 3 });
+}
+for (let t = 0; t < 10; t++) {
+  for (const p of ps) p.x += p.vx;
+}
+const qs = [];
+for (let i = 0; i < 100; i++) {
+  qs.push({ x: i, vx: 1, hp: 3 });
+}
+let s = 0;
+for (const p of ps) s += p.x;
+console.log(s, qs[0]);`} />
+
+Try breaking it: change line 14 to print `qs[0].hp` instead, and `qs`
+is refused for a different reason, because now no loop touches its
+fields. Make the first loop run to 10, and `ps` falls under the
+64-element threshold.
+
+<Prompts ids={['m-stages', 'm-qs', 'm-try']} />
+
+## What it measured
+
+Chapter 314's matrix holds the summary. On Node, Viscosity sped up all
+five end-to-end programs, with a geometric mean of <Num k="nodeGeo" />;
+on Bun, <Num k="bunGeo" />, with heat gaining nothing. The Rust
+compiler is up to <Num k="inproc" /> faster than the TypeScript one
+inside a warm Node process (an upper bound, chapter 314 explains why),
+and <Num k="cli" /> faster as a command-line tool, mostly because it
+doesn't start Node. drip-rs is <Num k="rustVsVm" />
+faster than the TypeScript VM. Every figure is from one shared cloud
+machine, and the files record the noise beside them.
+
+<Prompts ids={['m-engine']} />
+
+## What is still open
+
+An honest capstone lists what isn't done. Some items are chores; some
+are research.
+
+- **The release is 0.0.1, with no changelog** (chapter 313). When
+  this chapter was written nothing was published. On 2026-11-02 the
+  npm packages went out, then the six crates, so
+  `cargo install viscosity-cli` works now. The commit history is still
+  the only record of what changed.
+- **The Rust port has gaps.** It rejects TypeScript input (the reference
+  strips types with sucrase, and copying sucrase's exact output is out
+  of scope), and its syntax errors are worded by oxc, not acorn. Neither
+  engine profiles Python programs.
+- **The cost model can't see the engine.** It decides from size and
+  access patterns, with a 64-element threshold, and the matrix showed
+  the same output gaining a lot on V8 and nothing on JSC for heat. Why
+  is still a hypothesis without an engine trace (chapter 314).
+- **Many ordinary programs are refused**, as chapter 199 listed: sorting,
+  classes as records, varying shapes, exported arrays. Hot/cold
+  splitting is by type only.
+- **Every version emits source code.** There is no WebAssembly back end
+  for the compiled programs (chapter 198); WebAssembly runs the
+  compiler, not its output.
+- **Drip's VMs share a limit**: 256 constants per chunk, which is why
+  `string_equality` runs only on the tree-walker.
+
+<Prompts ids={['m-open', 'm-chore']} />
+
+## Going further
+
+If you want to keep going, each of these starts from code you have read:
+
+- **Confirm or refute the heat hypothesis.** Take an engine trace of
+  heat's objects on V8 (chapter 128 shows how to watch the engine work),
+  and see whether its fields really are boxed doubles.
+- **Teach the cost model about engines.** Run the matrix on more
+  machines and engines, and see whether a per-engine threshold would
+  have predicted Bun's results.
+- **Add a third language.** The plugin trait (chapter 286) is the whole
+  contract. The Python plugin shows what the minimum looks like.
+- **Grow the subset.** Pick one refusal from chapter 199, make the
+  analysis prove it safe, and let the fuzzer tell you whether you were
+  right (`node scripts/fuzz.mjs --count 20000`).
+- **Fix the small things**: the wasm smoke test in CI, a changelog, a
+  Python fuzzer (chapter 303).
+
+<Callout kind="definition">
+**Mastery**, as this book means it, is being able to build the thing
+again yourself: to start from an empty folder and get back to a working
+version, knowing why each piece is there and how you would check it.
+It isn't remembering every line. It's knowing which questions to ask,
+and which test would answer each one.
+</Callout>
+
+<Prompts ids={['m-mastery', 'm-parity-why']} />
+
+<Callout kind="engine" label="Under the hood">
+Building a language twice, simply and then fast, and the second time in a
+lower-level language, is the shape this book borrowed from *Crafting
+Interpreters*<Cite id="nystrom2021" />. Track B took it one step
+further, to an optimizing compiler, and added a rule that book didn't
+need: the second implementation must agree with the first on every
+output, not just every result. Holding to it, porting and then
+fuzzing turned up fifteen bugs, listed in `engine/rust/README.md` and
+fixed in both engines. Five were soundness bugs, where the compiled
+program would have behaved differently from the original.
+</Callout>
+
+## Your turn
+
+The core exercise rebuilds the heart of the planner from memory: the
+order of its questions and the exact words of its answers.
+
+<Exercise id="plan" />
+
+## What you learned
+
+- The book built **Drip three times** and **Viscosity twice**, for two
+  languages, and runs the Rust engine natively, in Node and in the
+  browser.
+- Every implementation is **checked against another**: the shared
+  corpus, byte-identical fixtures, the fuzzer, and original-versus-compiled
+  runs.
+- One program passes through **parse, lower, analyze, plan, emit and
+  explain**, and each line of its output can be traced to a chapter.
+- What is **open** is known and written down: no changelog, the
+  port's gaps, an engine-blind cost model, refused programs, no
+  WebAssembly output.
+- **Mastery** is being able to build it again, and to say how you would
+  know it works.
+
+That is the end of the book. It started from a question about where an
+array of objects sits in memory, and every chapter since has been one
+step towards being able to answer it with a tool you understand all the
+way down. The code is in the repository, the numbers are in its result
+files, and the rough edges are listed above. Fifteen minutes at a time,
+you built the whole machine.
+
+<Quiz />

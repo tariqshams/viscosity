@@ -1,0 +1,244 @@
+---
+n: 106
+day: 27
+part: IV
+title: 'Strings and heap objects'
+tagline: 'A number fits in a stack slot. A string can be any length at all, so it moves out to the heap, and the VM starts keeping a list of everything it has ever made.'
+objectives:
+  - Explain why strings live on the heap while numbers live in the slot.
+  - Read the companion VM’s object types and their shared header.
+  - Trace how a string literal and a concatenation each become a heap object.
+  - Build an object list that links every allocation, newest first.
+introduces: [heap-object, object-list]
+uses: [tagged-value, value-representation, stack-machine, dispatch-loop, opcode, constant-pool, chunk, emit, single-pass-compiler, virtual-machine, literal, lexeme, runtime-error, interface, union-type, discriminated-union, narrowing, generic, typeof, typescript, stack-and-heap, memory, pointer, reference, identity, object-header, string-building, aliasing, object, property, class, method, this, new, function, return, if, while-loop, drip, numbers, strings, booleans, console-log]
+sources: [nystrom2021, v8-fast-properties]
+---
+import ObjLayout from '../../../components/diagrams/ch106/ObjLayout';
+import HeapListSteps from '../../../components/diagrams/ch106/HeapListSteps';
+
+## A value that won’t fit
+
+Every slot on the VM’s stack has to be the same size, so the VM can find
+slot 7 without measuring slots 0 to 6. A number fits: 64 bits, always.
+Now try these:
+
+```
+let a = "";
+let b = "the quick brown fox";
+let c = b + b + b + b;
+```
+
+`a` is zero characters, `c` is 76, and a loop could build one of a
+million. There is no slot size that fits them all. So strings can’t live
+*in* the slot. They live somewhere else, and the slot holds the way to
+find them.
+
+## Heap objects
+
+<Callout kind="intuition">
+A cloakroom ticket. The hook can only take something small, so a big
+suitcase goes to the back room, and the hook gets a numbered ticket
+instead. The ticket is always the same size, whatever it points to.
+</Callout>
+
+<Figure takeaway="The slot holds a reference; the object lives on the heap." caption="A string value is the obj tag plus an address. The object itself starts with a header that every object shares, then its type and its own fields.">
+  <ObjLayout />
+</Figure>
+
+The fourth tag from chapter 105, `obj`, is that ticket. Its payload is a
+reference to an **object** that the VM allocates on the heap. Here is
+the string object in the companion VM’s `vm/object.ts`, slightly
+trimmed:
+
+```ts
+interface ObjHeader {
+  isMarked: boolean;
+  next: Obj | null;
+}
+
+interface ObjString extends ObjHeader {
+  type: 'string';
+  chars: string;
+  hash: number;
+}
+```
+
+Strings aren’t alone. Functions, closures, classes and instances will
+all be heap objects, and they all extend the same header:
+
+```ts
+type Obj =
+  | ObjString | ObjFunction | ObjNative
+  | ObjUpvalue | ObjClosure | ObjClass
+  | ObjInstance | ObjBoundMethod;
+```
+
+That is a discriminated union on `type` (chapter 27). Telling an object
+from the other values, and a string from the other objects, takes two
+small checks:
+
+```ts
+const isObj = (v: Value): v is Obj =>
+  typeof v === 'object' && v !== null;
+const isString = (v: Value) =>
+  isObj(v) && v.type === 'string';
+```
+
+`v !== null` matters because `typeof null` is `'object'` in
+JavaScript, and `null` is how this VM spells `nil`.
+
+<Callout kind="definition">
+A **heap object** is a value too big or too variable to sit in a stack
+slot, so it lives on the heap and values refer to it by **reference**.
+Every heap object starts with the same **header**: in the companion VM,
+`isMarked` (for the garbage collector) and `next` (for the object list).
+After the header comes a `type` tag naming the kind of object, then its
+own fields.
+</Callout>
+
+Two values can share one object: `let t = s;` copies the reference, not
+the characters. That’s aliasing again (chapter 7), and it is safe for
+strings because nothing in Drip can change a string’s characters.
+
+<Prompts ids={['why-heap', 'obj-header', 'type-field', 'isobj']} />
+
+## Where strings come from
+
+The strings a Drip program works with come from two places. (The
+compiler also makes string objects for names, such as a global’s name,
+which chapter 109 puts to use.)
+
+**Literals, at compile time.** When the single-pass compiler meets a
+string token, it cuts the quotes off the lexeme, makes the object, and
+puts it in the constant pool:
+
+```ts
+const string = () => emitConstant(
+  heap.copyString(
+    previous.lexeme.slice(1, -1)));
+```
+
+By the time the program runs, `"tea"` is already an object, waiting in
+the chunk.
+
+**Concatenation, at runtime.** `OP_ADD` now does two jobs. Two numbers
+are added. Two strings are joined into a new object:
+
+```ts
+case OP.ADD: {
+  const b = peek(0);
+  const a = peek(1);
+  if (isString(a) && isString(b)) {
+    const s = heap.copyString(
+      a.chars + b.chars);
+    pop(); pop(); push(s);
+  } else if (typeof a === 'number'
+      && typeof b === 'number') {
+    sp -= 2; push(a + b);
+  } else {
+    runtimeError('Operands must be ' +
+      'two numbers or two strings.');
+  }
+  break;
+}
+```
+
+Look at the order: the operands are only *peeked* at while the new
+string is made, and popped afterwards. Allocating may start the garbage
+collector (chapter 114), and the collector treats whatever is on the
+stack as in use. Popping first could leave `a` and `b` reachable from
+nowhere, at the exact moment the collector looks.
+
+The name `copyString` comes from C, where building a string object
+means copying its characters into fresh memory, as clox
+does<Cite id="nystrom2021" />. Here `chars` is a JavaScript string,
+which is immutable, so nothing is copied: the object simply holds it.
+
+<Run id="concat" />
+
+<Prompts ids={['literal-when', 'concat-new', 'peek-not-pop']} />
+
+## The object list
+
+Every object is created by one method, `allocate`, in `vm/heap.ts`.
+Here it is, with the collector’s part left for chapter 114:
+
+```ts
+private allocate<T extends Obj>(o: T) {
+  this.bytesAllocated += SIZE[o.type];
+  // (chapter 114: maybe collect here)
+  o.next = this.objects;
+  this.objects = o;
+  return o;
+}
+```
+
+`SIZE` is a rough byte count per kind of object, so the VM can tell
+when it has allocated enough to be worth a collection. The last three
+lines are the interesting part. `heap.objects` points at the newest
+object, its `next` points at the one before, and so on back to the very
+first. Adding to the front of a linked list costs the same however long
+the list is: no walking.
+
+<Callout kind="intuition">
+A cloakroom that staples every new ticket stub to the top of one long
+chain. Even when a guest loses their ticket, the stub is still in the
+chain, so at closing time the staff can walk it and find every coat
+nobody came back for.
+</Callout>
+
+<HeapListSteps client:visible />
+
+That last step is the point. `"xa"` and `"xaa"` are garbage: no
+variable, no stack slot and no constant can reach them. In C, memory
+nobody can reach is memory nobody can free, a leak. The list is the
+VM’s guarantee that it can always find every object it ever made.
+
+<Callout kind="definition">
+The **object list** is a linked list through the `next` field of every
+heap object, starting at `heap.objects`. `allocate` adds each new object
+at the head, in constant time. Walking it visits every live allocation,
+reachable or not, which is what a garbage collector needs to find the
+unreachable ones.
+</Callout>
+
+<Prompts ids={['object-list-why', 'head-insert']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript already has a garbage collector, so the companion VM can’t
+really free anything. Its sweep (chapter 114) unlinks a dead object from
+the list, and in debug mode it also **poisons** it: deletes every
+property and installs a getter that throws, so a use-after-free bug
+fails loudly instead of quietly. Profiling found that safety net cost
+more than half the VM’s time on allocation-heavy programs. V8 normally keeps an
+object’s layout in a shared hidden class, but when properties are
+added and deleted it can switch the object to a dictionary of slow
+properties, which are slower to access<Cite id="v8-fast-properties" />,
+and that is where the poisoned objects ended up. The commit that made
+poisoning debug-only records the `instantiation` benchmark dropping
+from 19.4 s to 3.6 s. A debugging aid is still code that runs.
+</Callout>
+
+<Prompts ids={['poison-cost']} />
+
+## Your turn
+
+<Exercise id="miniHeap" />
+
+<Exercise id="unlinkObj" />
+
+## What you learned
+
+- A string can be any length, so it is a **heap object**: the stack
+  slot holds a reference, and the object lives on the heap.
+- Every object shares a **header** (`isMarked`, `next`), then a `type`
+  tag, then its own fields. `Obj` is a discriminated union on `type`.
+- String objects come from **literals** (made by the compiler, stored in
+  the constant pool) and from **concatenation** (`OP_ADD`, at runtime).
+- The **object list** links every allocation through `next`, newest
+  first, so the VM can always find every object, garbage included.
+
+Next: the `hash` field. Before the VM can look up a variable by name, it
+needs a fast way to find a string in a table.
+
+<Quiz />

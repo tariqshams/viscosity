@@ -1,0 +1,187 @@
+---
+n: 120
+day: 30
+part: V
+title: 'Inline caches'
+tagline: 'Any object can reach any line of code, yet `o.x` is usually just one check and one load. The trick is a tiny memory at each property access, and you can watch it fill up and give up.'
+objectives:
+  - Explain what an inline cache remembers at a property access, and why that makes the access fast.
+  - Trace an inline cache from uninitialized to monomorphic, polymorphic and megamorphic.
+  - Read V8’s real --log-ic output for a function that sees five shapes.
+  - Write code that keeps hot property accesses monomorphic, and build a tiny inline cache yourself.
+introduces: [inline-cache, monomorphic, polymorphic, megamorphic]
+uses: [shape, transition-tree, dictionary-mode, ignition, optimizing-tiers, tiering, bytecode, opcode, constant-pool, hash-table, property, dot-access, object, function, closure, array-of-objects, for-of, class, inheritance, super, aos-vs-soa, typed-array]
+sources: [v8-src-interpreter-12-4, v8-src-ic-12-4, v8-src-tiering-12-4, v8-improved-code-caching, v8-maglev, v8-sparkplug, v8-fast-properties, v8-fast-super, holzle1991]
+---
+import ICSteps from '../../../components/diagrams/ch120/ICSteps';
+
+## One line, any object
+
+Here is about the smallest function that reads a property, and the
+bytecode Ignition makes for it:
+
+```
+// function getX(o) { return o.x; }
+// node --print-bytecode
+//   --print-bytecode-filter=getX
+// (addresses and raw bytes removed)
+@ 0 : GetNamedProperty a0, [0], [0]
+@ 4 : Return
+```
+
+`a0` is `o`. The first `[0]` is entry 0 of the constant pool, the name
+`"x"`. The second `[0]` is a feedback slot. V8’s source describes this
+bytecode in one line: it “calls the LoadIC at FeedBackVector slot
+`<slot>`”<Cite id="v8-src-interpreter-12-4" />. IC stands for **inline
+cache**.
+
+The problem it solves: `getX` might receive any object at all. Last
+chapter you saw that where `x` lives depends on the object’s shape. Doing
+the full search through the shape’s descriptors on every call would be
+slow. So each access remembers what it found last time.
+
+## Remember what you saw
+
+<Callout kind="intuition">
+A postman on a new round looks up every house in the street index. After a
+week he knows that number 12 is the blue door on the left, and just goes
+there. He still glances at the number on the door, in case the street has
+changed. One glance instead of a search.
+</Callout>
+
+An inline cache keeps, for one access in the code, pairs of *shape* and
+*how to get the property for that shape*: say, “shape A: load slot 0”.
+When an object arrives, it checks the object’s shape against what it
+remembers. If it matches, it does the remembered load. If not, it does the
+slow lookup and remembers the new answer<Cite id="v8-src-ic-12-4" />.
+Step through one access as five different shapes arrive:
+
+<ICSteps client:visible />
+
+<Callout kind="definition">
+An **inline cache** (IC) is a small per-access-site memory of the shapes
+seen there, each with a **handler** saying how to perform the access for
+that shape. A hit costs a shape check and the remembered action; a miss
+falls back to the full lookup and updates the cache. In V8, each IC lives
+in a feedback slot of the function’s feedback
+vector<Cite id="v8-src-interpreter-12-4" />.
+</Callout>
+
+<Prompts ids={['ic-what', 'ic-hit', 'ic-miss', 'ic-per-site']} />
+
+## Watching a real cache
+
+Here is the program from the diagram. Five shapes, each with `x` first,
+and ten calls each:
+
+```js
+function getX(o) { return o.x; }
+const os = [
+  { x: 1 }, { x: 1, a: 0 }, { x: 1, b: 0 },
+  { x: 1, c: 0 }, { x: 1, d: 0 },
+];
+for (const o of os) {
+  for (let i = 0; i < 10; i++) getX(o);
+}
+```
+
+V8 has a flag, `--log-ic`, that logs IC state transitions to a file. (You
+may see `--trace-ic` mentioned online; this Node build refuses it, with
+`node: bad option: --trace-ic`.)
+
+```
+// node --log-ic --logfile=ic.log ic.js
+// Node v22.23.4, V8 12.4.254.21
+// kind, line:column, old, new, name
+LoadIC 1:29 0 1 x
+LoadIC 1:29 1 P x
+LoadIC 1:29 P P x
+LoadIC 1:29 P P x
+LoadIC 1:29 P N x
+```
+
+Line 1, column 29 is the `x` in `o.x`. Its state went `0 → 1` on the first
+shape, `1 → P` on the second, stayed `P` for the third and fourth, and went
+`P → N` on the fifth. The letters come straight from V8’s
+source<Cite id="v8-src-ic-12-4" />.
+
+<Callout kind="definition">
+An IC is **monomorphic** when only one shape has been seen, **polymorphic**
+when several have, and **megamorphic** when there have been too many. In
+the V8 inside Node 22, “too many” means more than four: the flag
+`max_valid_polymorphic_map_count` defaults to
+4<Cite id="v8-src-tiering-12-4" />. A megamorphic access stops keeping its
+own entries and uses the **stub cache**, a table shared by all megamorphic
+loads that maps a shape and a name to a handler<Cite id="v8-src-ic-12-4" />.
+</Callout>
+
+<Prompts ids={['mono-what', 'poly-what', 'mega-what', 'log-letters']} />
+
+## Why the optimizing tiers care
+
+The feedback isn’t only for Ignition. Sparkplug keeps the feedback vector
+in its stack frame, because most operations need it<Cite id="v8-sparkplug" />.
+And in 2023 the V8 team described what Maglev does with a monomorphic
+`o.x`: it emits a check that `o` still has that shape, then a plain load
+at a fixed offset. After that it knows the shape, and doesn’t check it
+again<Cite id="v8-maglev" />. A megamorphic site gives it nothing to
+specialize on. The idea is old: Hölzle, Chambers and Ungar introduced
+polymorphic inline caches for Self in 1991, and noted that the receiver
+types a cache records are information an optimizing compiler can
+use<Cite id="holzle1991" />.
+
+The word *inline* is historical. V8’s old baseline compiler patched the
+fast path into its machine code. Since Ignition (Chrome 59), the ICs are
+*data-driven*: the remembered shapes live in feedback vectors, separate
+from the bytecode. That separation is also what let V8 cache bytecode
+after a script has run, as in chapter 118<Cite id="v8-improved-code-caching" />.
+
+<Prompts ids={['maglev-mono', 'data-driven']} />
+
+## Keeping sites monomorphic
+
+Megamorphic sites appear in ordinary code. A helper called with many kinds
+of objects is one. The V8 team’s 2021 post on `super` shows another: a
+`super.m()` call inside a mixin, where each use of the mixin creates a new
+class, makes that one access site megamorphic<Cite id="v8-fast-super" />.
+Try it on your device:
+
+<Run id="mono-vs-mega" />
+
+<Callout kind="pitfall">
+Don’t reshape your whole program around this. A site that sees two or
+three shapes is polymorphic, not megamorphic. What matters is the *hot* code: the inner loop that
+reads `p.x` for every particle. Make every particle with the same
+function, in the same order, and that loop sees one shape.
+</Callout>
+
+<Callout kind="engine" label="Under the hood">
+Inline caches and shapes only work together: V8 says ICs don’t work on
+dictionary-mode objects at all<Cite id="v8-fast-properties" />. This is one
+more reason Viscosity’s struct-of-arrays layout helps. In
+`for (...) xs[i] += vxs[i]` there are no named properties left to look up:
+each column is a typed array, read by index. The next chapter shows how V8
+tracks *those* accesses, with elements kinds.
+</Callout>
+
+## Your turn
+
+<Exercise id="monoIC" />
+
+<Exercise id="icStates" />
+
+## What you learned
+
+- An **inline cache** remembers, at one property access, the shapes it
+  has seen and how to read the property for each.
+- A hit is a shape check plus a load; a miss does the full lookup and
+  updates the cache.
+- **Monomorphic** means one shape, **polymorphic** a few (up to four in the
+  V8 inside Node 22), **megamorphic** too many, using a shared stub cache.
+- V8’s ICs live in feedback vectors, and Maglev and TurboFan turn
+  monomorphic feedback into a check plus a direct load.
+- Keep hot access sites monomorphic by making their objects the same way.
+
+Next: arrays get their own version of shapes, elements kinds.
+
+<Quiz />
