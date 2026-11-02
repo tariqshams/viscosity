@@ -151,7 +151,7 @@ Both make `Unexpected '#' at 3`; in the template literal the text is
 written as it will appear, and each `${...}` is replaced by the value
 inside it.
 
-<Analogy title="a form letter">
+<Analogy extra title="a form letter">
 A form letter says "Dear ____, your order of ____ has shipped", and the
 office fills in each blank before posting it. A template literal is the
 letter, and each `${...}` is a blank.
@@ -226,7 +226,7 @@ three passes it is `'###'`, and the template literal wraps it in square
 brackets. Because strings are immutable, each `+=` makes a new, longer
 string and points `out` at it; the old one is simply dropped.
 
-<Analogy title="threading beads">
+<Analogy extra title="threading beads">
 You make a necklace by threading one bead after another onto a string,
 and when you stop, you tie it off. Building a string is the same: one
 piece at a time, in order, then `return` it.

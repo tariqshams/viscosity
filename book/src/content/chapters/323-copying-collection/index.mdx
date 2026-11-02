@@ -44,7 +44,7 @@ at each other, so every pointer to a moved object must be rewritten to
 its new address, which is most of the subtlety here.</span>
 </Analogy>
 
-<Analogy title="copying out a messy notebook">
+<Analogy extra title="copying out a messy notebook">
 A notebook full of crossed-out pages is easier to copy out fresh than
 to tidy: you write the pages that still matter into a new notebook, one
 after another, and bin the old one. The new notebook has no gaps.
@@ -159,7 +159,7 @@ whatever its fields point at (each copy goes at `free`, pushing `free`
 along), rewrites the fields to the new addresses, and moves `scan` past
 it. When `scan` catches up with `free`, there is nothing left to do.
 
-<Analogy title="a queue at a ticket office">
+<Analogy extra title="a queue at a ticket office">
 The people between the front of the queue and its end are waiting to
 be served; each person served may phone friends, who join at the back.
 The queue is empty when the person being served is the last one there.
@@ -197,7 +197,7 @@ with a note: "moved; the copy is at address n". That note is a
 note instead of an object, and returns the new address without copying
 again.
 
-<Analogy title="a forwarding address at the post office">
+<Analogy extra title="a forwarding address at the post office">
 When you move house you leave your new address with the post office;
 letters sent to the old house are sent on, and nobody needs to know
 you moved until they write.

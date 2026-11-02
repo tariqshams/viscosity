@@ -49,7 +49,7 @@ halfway; in a parser a tie always goes to the operator on the left, by
 a rule we will see shortly.</span>
 </Analogy>
 
-<Analogy title="an auction with two bidders">
+<Analogy extra title="an auction with two bidders">
 An item goes to whoever bids more, and each operator bids for the
 operand beside it with a number printed on a card: `*` always bids 6
 and `+` always bids 5, so `*` wins every contest between them.
@@ -161,7 +161,7 @@ the loop goes round to see whether a weaker operator wants the lot.
 operator this strong, so I only take stronger ones." The first call,
 `pratt(0)`, has no operator waiting, so it takes everything.
 
-<Analogy title="a fairground ride with a height sign">
+<Analogy extra title="a fairground ride with a height sign">
 Each call is a ride with a "you must be this tall" sign set to `minBp`.
 A taller operator gets on; a shorter one walks back out to the ride
 before, whose sign is lower. The first ride, `pratt(0)`, has its sign
@@ -171,7 +171,7 @@ operator turned away by an inner call loses nothing, because the outer
 call that takes it gets everything already built to its left.</span>
 </Analogy>
 
-<Analogy title="a snowball rolling downhill">
+<Analogy extra title="a snowball rolling downhill">
 A snowball picks up a layer on every turn, and each layer wraps the
 whole ball so far. `left` grows the same way, and it stops rolling
 where the slope flattens: at the first operator too weak for this call.

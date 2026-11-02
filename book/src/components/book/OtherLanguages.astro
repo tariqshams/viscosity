@@ -5,11 +5,13 @@
 // after its language; without JavaScript the blocks are simply stacked.
 const { title } = Astro.props as { title?: string };
 ---
-<section class="otherlangs" data-otherlangs>
-  <div class="otherlangs-label">{title ?? 'The same idea in other languages'}</div>
-  <div class="otherlangs-tabs" role="tablist" hidden></div>
-  <div class="otherlangs-body"><slot /></div>
-</section>
+<details class="more more-otherlangs">
+  <summary class="more-summary">{title ?? 'The same idea in other languages'}</summary>
+  <section class="otherlangs" data-otherlangs>
+    <div class="otherlangs-tabs" role="tablist" hidden></div>
+    <div class="otherlangs-body"><slot /></div>
+  </section>
+</details>
 <script>
   const NAMES: Record<string, string> = { js: 'JavaScript', javascript: 'JavaScript', ts: 'TypeScript', typescript: 'TypeScript', py: 'Python', python: 'Python', java: 'Java', c: 'C', cpp: 'C++', rust: 'Rust', rs: 'Rust', go: 'Go', cs: 'C#', csharp: 'C#' };
   for (const box of document.querySelectorAll<HTMLElement>('[data-otherlangs]')) {

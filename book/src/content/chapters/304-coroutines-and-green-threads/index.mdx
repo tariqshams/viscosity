@@ -50,7 +50,7 @@ two coroutines never run at the same moment, since only the one holding
 the turn runs at all.</span>
 </Analogy>
 
-<Analogy title="a paused film">
+<Analogy extra title="a paused film">
 Pause a film to answer the door and it waits, frame and all, until you
 press play; you do not watch it from the start.
 <span slot="breaks">A film is paused from outside, by you; a coroutine
@@ -148,7 +148,7 @@ two coroutines taking turns:
 
 <SwitchSteps client:visible />
 
-<Analogy title="a bookmark or a whole desk">
+<Analogy extra title="a bookmark or a whole desk">
 A stackless coroutine is a bookmark: it remembers one place in one
 book. A stackful one is a desk you leave with every book still open
 where you left it; you go to another desk and come back to find them all
@@ -211,7 +211,7 @@ rather than the operating system. Go's `go f()` starts one, a
 **goroutine**, which the specification calls "an independent concurrent
 thread of control"<Cite id="go-spec-go-stmt" />.
 
-<Analogy title="a waiter and many tables">
+<Analogy extra title="a waiter and many tables">
 One waiter serves twenty tables: while one table reads the menu, the
 waiter takes another's order; no table needs a waiter of its own.
 <span slot="breaks">Tables wait politely for the waiter; in our simple

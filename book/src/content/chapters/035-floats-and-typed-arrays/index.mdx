@@ -43,7 +43,7 @@ display exactly; a float64 works in twos, where 0.1 goes on forever
 slightly off.</span>
 </Analogy>
 
-<Analogy title="a ruler with marks">
+<Analogy extra title="a ruler with marks">
 A ruler can only show the lengths at its marks, so you write down the
 nearest mark. Each float64 is one mark, and every result of a
 calculation is moved to the nearest one.
@@ -151,7 +151,7 @@ Now that a number is 8 bytes, we can ask for bytes directly. An
 or write it, you lay a **view** over it that says how to group the bytes
 and what kind of number each group is.
 
-<Analogy title="a strip of tiles and a stencil">
+<Analogy extra title="a strip of tiles and a stencil">
 An `ArrayBuffer` is a strip of blank tiles. A typed array is a stencil
 you lay over the strip: one stencil reads the tiles 8 at a time as
 decimals, another 4 at a time as whole numbers. Two stencils over the
@@ -161,7 +161,7 @@ do not. The same 8 bytes read as a float64 and as two 32-bit integers
 give numbers that look nothing alike, as the diagram below shows.</span>
 </Analogy>
 
-<Analogy title="seats sold in blocks">
+<Analogy extra title="seats sold in blocks">
 A theatre sells one row of sixteen seats either as eight pairs or as
 four blocks of four. The seats are the same; only the grouping changes,
 and a change to seat 6 affects whichever block it belongs to.

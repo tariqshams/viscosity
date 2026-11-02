@@ -51,7 +51,7 @@ object is moved because it *survived*: its age counts collections
 lived through, not time.</span>
 </Analogy>
 
-<Analogy title="a probation period at work">
+<Analogy extra title="a probation period at work">
 A new hire is reviewed every few weeks; after enough good reviews they
 are made permanent, and reviewed once a year.
 <span slot="breaks">Being made permanent cannot be undone in the
@@ -124,7 +124,7 @@ generation for those, so the program must record them as it makes
 them, and the write barrier is where that happens. The record is the
 **remembered set**.
 
-<Analogy title="a guest list at the door">
+<Analogy extra title="a guest list at the door">
 A party in a small back room only lets in people on the list; the
 list was written as invitations went out, so nobody has to search the
 whole building on the night.
@@ -214,7 +214,7 @@ CardValue* byte = _card_table
 objects on dirty cards only, treats their young pointers as roots, and
 cleans the cards it has dealt with.
 
-<Analogy title="sticky notes on a filing cabinet">
+<Analogy extra title="sticky notes on a filing cabinet">
 Instead of a list of every changed letter, you stick a note on the
 drawer whenever you touch anything inside it. Later you check only the
 drawers with notes, and look through each of them.

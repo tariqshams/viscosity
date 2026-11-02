@@ -84,7 +84,7 @@ scope<Cite id="rust-std-thread-scope" />. Step through it:
 
 <ScopeSteps client:visible />
 
-<Analogy title="a cooking class">
+<Analogy extra title="a cooking class">
 Students use the school's knives and bowls, and the class does not end
 until every student has finished and put them back. Nobody needs their
 own knives, because nobody can still be cooking after the school locks
@@ -176,7 +176,7 @@ Both are right. An `Rc`'s count is changed with ordinary, non-atomic
 additions, so two threads cloning it at once could lose an update; a
 `RefCell`'s borrow flag has the same problem<Cite id="rust-std-send-sync" />.
 
-<Analogy title="posting a letter, pinning a notice">
+<Analogy extra title="posting a letter, pinning a notice">
 A letter can be posted to someone else: it changes hands, and the sender
 no longer has it (Send). A notice can be pinned on a board where many
 people read it at the same time (Sync). Some things can be posted but

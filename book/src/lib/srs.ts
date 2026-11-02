@@ -19,7 +19,7 @@ import {
   type Grade,
 } from 'ts-fsrs';
 
-import { RENUMBER_COUNT, currentNumber } from './renumber';
+import { RENUMBER_COUNT, currentCardId } from './renumber';
 
 export const STORAGE_KEY = 'viscosity:srs:v1';
 
@@ -53,9 +53,8 @@ export function migrateDeck(d: Deck): Deck {
   if (from >= RENUMBER_COUNT) return d;
   const cards: Record<string, StoredCard> = {};
   for (const [id, c] of Object.entries(d.cards)) {
-    const ch = currentNumber(c.ch, from);
-    const key = id.slice(id.indexOf('.') + 1);
-    cards[`${ch}.${key}`] = { ...c, ch };
+    const next = currentCardId(`${c.ch}.${id.slice(id.indexOf('.') + 1)}`, from);
+    cards[next] = { ...c, ch: Number(next.slice(0, next.indexOf('.'))) };
   }
   return { ...d, cards, renumbered: RENUMBER_COUNT };
 }

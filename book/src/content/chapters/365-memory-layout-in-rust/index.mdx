@@ -64,7 +64,7 @@ the same size, which the compiler knows before the program ever
 runs.</span>
 </Analogy>
 
-<Analogy title="a sheet of stamps">
+<Analogy extra title="a sheet of stamps">
 To know how many stamps fit on a sheet, you measure from one
 perforated edge to the next, white border and all, not only the
 picture. A type's size counts its "border" too: unused bytes inside
@@ -196,7 +196,7 @@ a type pointer in front of its 8 bytes.
 `size_of::<(u8, u32)>()` is 8, not 5. To see why, you need the second
 fact the table printed: **alignment**.
 
-<Analogy title="booking a sports hall">
+<Analogy extra title="booking a sports hall">
 A sports hall takes half-hour bookings at any half hour, but the big
 two-hour sessions may only start on the even hours (2, 4, 6), so the
 courts can be set up the same way each time. A value is the same: a
@@ -208,7 +208,7 @@ and in Rust it is not a preference at all: a value at a wrong address
 is a broken promise, as *Unsafe Rust* explains.</span>
 </Analogy>
 
-<Analogy title="lorry bays in a car park">
+<Analogy extra title="lorry bays in a car park">
 In a car park painted with a lorry bay every eight metres, a motorbike
 can park anywhere, but a lorry only fits where a bay begins. Park a
 motorbike at the start, and the lorry behind it cannot squeeze in right

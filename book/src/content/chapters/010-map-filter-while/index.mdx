@@ -72,7 +72,7 @@ each item it sets that value to `f(value, item)`, and at the end it
 returns it<Cite id="mdn-array-reduce" />. None of them changes `arr`.
 </Callout>
 
-<Analogy title="keeping score in a card game">
+<Analogy extra title="keeping score in a card game">
 Reduce is the score sheet: it starts at 0 (the starting value), and
 after every round (every item) you write down the old score plus that
 round's points, so the last number on the sheet is the answer.
@@ -224,7 +224,7 @@ Lines 1 and 2 set up the state; line 3 checks the condition before every
 pass; lines 4 and 5 double `n` and count the pass. After ten passes `n`
 is 1024, the check `1024 < 1000` is false, and the loop ends.
 
-<Analogy title="stirring until it boils">
+<Analogy extra title="stirring until it boils">
 A recipe says "stir until it boils", not "stir forty times": you check
 the pot, stir if it is not boiling, and check again; how many stirs
 that takes is not known in advance.

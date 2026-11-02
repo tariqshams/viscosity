@@ -44,7 +44,7 @@ async function only resumes once the code running at that moment has
 finished; it waits its turn in a queue, like everything else.</span>
 </Analogy>
 
-<Analogy title="putting a phone call on hold">
+<Analogy extra title="putting a phone call on hold">
 You ring the bank, and they put you on hold; rather than sit frozen,
 you put the phone on speaker and do the washing up. When someone picks
 up, you take the phone and carry on the same conversation, with
@@ -218,7 +218,7 @@ console.log('sync');
 Both are queued while `sync` runs, the timer first; yet the output is
 `sync`, `promise`, `timer`. That is because there are two queues.
 
-<Analogy title="a teacher and follow-up questions">
+<Analogy extra title="a teacher and follow-up questions">
 A teacher sees students one at a time, from a queue at the door. After
 each student, before calling the next, the teacher answers every
 follow-up question on the board, including ones written up while

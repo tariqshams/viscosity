@@ -8,9 +8,20 @@
 // MDX wraps the span in a paragraph, so it is not a real Astro slot: CSS
 // (.analogy [slot='breaks']) gives it its label, and check_chapters.mjs
 // makes sure every analogy has one.
-const { title } = Astro.props as { title: string };
+// A chapter keeps one analogy open; any further one is marked `extra` and
+// shown in a closed dropdown (check_chapters.mjs enforces exactly one open).
+const { title, extra = false } = Astro.props as { title: string; extra?: boolean };
 ---
-<aside class="analogy">
-  <div class="analogy-label">It’s like {title}</div>
-  <div class="analogy-body"><slot /><slot name="breaks" /></div>
-</aside>
+{extra ? (
+  <details class="more more-analogy">
+    <summary class="more-summary">Another way to picture it: {title}</summary>
+    <aside class="analogy">
+      <div class="analogy-body"><slot /><slot name="breaks" /></div>
+    </aside>
+  </details>
+) : (
+  <aside class="analogy">
+    <div class="analogy-label">It’s like {title}</div>
+    <div class="analogy-body"><slot /><slot name="breaks" /></div>
+  </aside>
+)}

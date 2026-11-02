@@ -124,7 +124,7 @@ box on the heap, would waste memory and time, so V8 uses a trick called
 a small integer instead, and its lowest bit says which of the two it
 is<Cite id="v8-pointer-compression" />.
 
-<Analogy title="pigeonholes and claim tickets">
+<Analogy extra title="pigeonholes and claim tickets">
 At a hotel desk, a small letter for you goes straight into your
 pigeonhole; a big parcel goes on a shelf in the back room, and your
 pigeonhole gets a claim ticket saying where to find it. A dot in the
@@ -212,7 +212,7 @@ properties it has and where each one sits), then come pointers to a
 store for extra properties and a store for indexed elements, and after
 that the **in-object properties**, the fastest kind<Cite id="v8-fast-properties" />.
 
-<Analogy title="a moving box and a packing list">
+<Analogy extra title="a moving box and a packing list">
 Every box in a house move carries a label at the top before its
 contents: "see packing list 7" (which says the plates are on the left,
 the cups on the right), plus "extra bits: bag 3" and "loose items: tray

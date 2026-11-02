@@ -105,7 +105,7 @@ An insert of a new key reuses the *first* tombstone it passed, which is
 why `find` remembers it; it cannot stop at the tombstone itself, because
 only reaching a truly empty slot proves the key is not further along.
 
-<Analogy title="a demolished house">
+<Analogy extra title="a demolished house">
 You find a friend's house by walking down the street from a number
 worked out from their name. If one house on the way is knocked down
 and the plot left bare, you might think the street ends there and turn
@@ -207,7 +207,7 @@ growing also cleans the table up.
   <LoadGrowth />
 </Figure>
 
-<Analogy title="a car park that closes at 75 per cent">
+<Analogy extra title="a car park that closes at 75 per cent">
 A car park puts up its FULL sign while a quarter of the bays are still
 free, because the last few free bays take far longer to find than all
 the others; the drivers circling for them would block everyone.

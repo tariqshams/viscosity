@@ -135,7 +135,7 @@ has no `message`, so the first prints `undefined`.
 A scanner wants to say *where* a problem is, and a `catch` wants to
 recognise the scanner's errors; both come from a class of our own.
 
-<Analogy title="a sorting office">
+<Analogy extra title="a sorting office">
 Letters marked "abroad" go to the abroad desk, and anything a desk does
 not recognise goes back on the belt for the next desk. A `catch` with
 `instanceof` is a desk that takes only its own kind of error and puts
@@ -183,7 +183,7 @@ kind on.
 When something throws, the error does not only go back to the caller:
 it goes down the call stack, frame by frame, until it finds a `try`.
 
-<Analogy title="a ball dropped through a bookcase">
+<Analogy extra title="a ball dropped through a bookcase">
 Drop a ball from the top of a bookcase whose shelves have holes in them,
 and it falls through every shelf until it lands on one with a tray.
 <span slot="breaks">A falling ball leaves each shelf as it was; a

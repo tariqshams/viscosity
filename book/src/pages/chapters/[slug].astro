@@ -3,6 +3,7 @@ import { render } from 'astro:content';
 import Book from '../../layouts/Book.astro';
 import Callout from '../../components/book/Callout.astro';
 import Analogy from '../../components/book/Analogy.astro';
+import More from '../../components/book/More.astro';
 import Examples from '../../components/book/Examples.astro';
 import OtherLanguages from '../../components/book/OtherLanguages.astro';
 import Formal from '../../components/book/Formal.astro';
@@ -31,7 +32,7 @@ const d = chapter.data;
 const part = PARTS.find((p) => p.id === d.part)!;
 const minutes = estimateMinutes(chapter.body ?? '', cardsFor(chapter.id));
 const components = {
-  Callout, Analogy, Examples, OtherLanguages, Formal, Figure, Prompts: PromptsSet, Exercise: ExerciseSet, Run: RunSet, Quiz: QuizSet,
+  Callout, Analogy, More, Examples, OtherLanguages, Formal, Figure, Prompts: PromptsSet, Exercise: ExerciseSet, Run: RunSet, Quiz: QuizSet,
   Cite: makeCite(d.sources),
 };
 ---

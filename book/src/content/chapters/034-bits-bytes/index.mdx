@@ -45,7 +45,7 @@ in binary the position *is* the value, so `1101` and `1011` are
 different numbers (13 and 11) made of the same digits.</span>
 </Analogy>
 
-<Analogy title="a mileometer with two digits">
+<Analogy extra title="a mileometer with two digits">
 Picture a car's mileometer whose wheels show only 0 and 1. Each time the
 rightmost wheel passes 1 it rolls back to 0 and nudges the next wheel
 on, so it counts 0, 1, 10, 11, 100, 101, …
@@ -174,7 +174,7 @@ lands in a place worth double: `1 << 3` moves the single 1 three places,
 to the 8s place. `>>` slides right, and the rightmost bit falls off the
 end, so `13 >> 1` is `110`, which is 6: half of 13, rounded down.
 
-<Analogy title="a stencil over a sheet">
+<Analogy extra title="a stencil over a sheet">
 Lay a card with holes cut in it over a sheet covered in dots, and only
 the dots under the holes show through. That is `&` with a **mask** (a
 number whose 1 bits are the holes): `x & 0b0100` lets through only the
@@ -185,7 +185,7 @@ or `4`, never “yes” or “no”, which is why the code below compares it
 with `0`.</span>
 </Analogy>
 
-<Analogy title="a light with two switches">
+<Analogy extra title="a light with two switches">
 A staircase light has a switch at the top and one at the bottom, and
 flipping either one changes the light. That is `^` (xor): `x ^ 1` flips
 the last bit, and doing it twice flips it back.

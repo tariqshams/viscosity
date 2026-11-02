@@ -3,6 +3,7 @@ import { getCollection, render } from 'astro:content';
 import Book from '../../layouts/Book.astro';
 import Callout from '../../components/book/Callout.astro';
 import Analogy from '../../components/book/Analogy.astro';
+import More from '../../components/book/More.astro';
 import Examples from '../../components/book/Examples.astro';
 import OtherLanguages from '../../components/book/OtherLanguages.astro';
 import Formal from '../../components/book/Formal.astro';
@@ -20,7 +21,7 @@ const { prev, next } = await neighbours(`front:${entry.id}`);
 <Book title={`${entry.data.title} · Viscosity`} current={entry.id}>
   <article class="mx-auto max-w-reading px-4 pb-16 pt-8 sm:px-6 lg:pt-12" data-pagefind-body>
     <h1 class="font-display text-[2.2rem] font-semibold leading-tight">{entry.data.title}</h1>
-    <div class="prose-body"><Content components={{ Callout, Figure, Analogy, Examples, OtherLanguages, Formal }} /></div>
+    <div class="prose-body"><Content components={{ Callout, Figure, Analogy, More, Examples, OtherLanguages, Formal }} /></div>
     <PrevNext prev={prev} next={next} />
   </article>
 </Book>

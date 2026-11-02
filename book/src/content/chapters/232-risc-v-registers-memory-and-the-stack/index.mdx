@@ -133,7 +133,7 @@ four instructions, two of which wait on memory (which is why chapter
 Every load and store above wrote its address the same way: `8(a0)`
 means "the address in `a0`, plus 8".
 
-<Analogy title="directions from a landmark">
+<Analogy extra title="directions from a landmark">
 "From the church, go 30 metres along" names a place by a starting
 point everyone can find and a short distance from it, rather than by
 map coordinates.
@@ -217,7 +217,7 @@ and the stack grows *downwards*, towards lower addresses. The hardware
 knows nothing of this; the manual says the base ISA has no dedicated
 stack pointer, and the calling convention picks `x2`<Cite id="riscv-isa-unpriv" />.
 
-<Analogy title="a notebook filled from the back">
+<Analogy extra title="a notebook filled from the back">
 Picture a shared notebook that everyone fills from the last page
 towards the front, with a bookmark at the last page in use. To get two
 pages you move the bookmark two pages forward and write on them; when

@@ -1,7 +1,8 @@
 ---
 // Precise notation (a grammar, an inference rule, a set equation, a
 // lattice) shown with a plain-words reading of it, so the symbols are
-// never left for the reader to decode alone.
+// never left for the reader to decode alone. It is deeper material, so it
+// sits in a closed dropdown.
 //   <Formal title="The typing rule for +">
 //   ```text ... ```
 //   <span slot="read">...how to say it out loud...</span>
@@ -10,7 +11,9 @@
 // check_chapters.mjs makes sure it is there.
 const { title } = Astro.props as { title?: string };
 ---
-<section class="formal">
-  <div class="formal-label">{title ?? 'Written precisely'}</div>
-  <div class="formal-body"><slot /><slot name="read" /></div>
-</section>
+<details class="more more-formal">
+  <summary class="more-summary">Written precisely{title ? `: ${title}` : ''}</summary>
+  <section class="formal">
+    <div class="formal-body"><slot /><slot name="read" /></div>
+  </section>
+</details>

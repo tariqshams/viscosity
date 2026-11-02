@@ -172,6 +172,16 @@ body {
 .callout-engine .callout-label { color: rgb(var(--safe)); }
 
 /* Analogy: an everyday picture, and where it stops being true. */
+.more { margin: 1.2rem 0; border: 1px solid rgb(var(--line)); border-radius: 0.4rem; background: rgb(var(--panel) / 0.5); }
+.more-summary { cursor: pointer; list-style: none; padding: 0.55rem 0.9rem; font-family: var(--font-sans); font-size: 0.9rem; font-weight: 600; color: rgb(var(--muted)); }
+.more-summary::-webkit-details-marker { display: none; }
+.more-summary::before { content: '▸'; display: inline-block; width: 1.1em; transition: transform 0.15s; }
+.more[open] > .more-summary::before { transform: rotate(90deg); }
+.more-summary:hover { color: rgb(var(--ink)); }
+.more-body, .more > .analogy, .more > .formal, .more > .otherlangs { margin: 0 0.9rem 0.8rem; }
+.more-body > :first-child { margin-top: 0; }
+.more-body > :last-child { margin-bottom: 0; }
+.more > .analogy { margin-top: 0; }
 .analogy { margin: 1.6rem 0; border: 1px solid rgb(var(--line)); border-left: 3px solid rgb(var(--brand)); border-radius: 0.4rem; padding: 0.7rem 1rem; background: rgb(var(--brand) / 0.04); }
 .analogy-label, .examples-label, .otherlangs-label, .formal-label { font-family: var(--font-sans); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.3rem; color: rgb(var(--muted)); }
 .analogy-label { color: rgb(var(--brand)); text-transform: none; letter-spacing: 0.02em; font-size: 0.9rem; }

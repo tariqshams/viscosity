@@ -10,7 +10,8 @@
 //  6. Every exercise's reference solution passes its own tests, and the
 //     starter code does NOT (so the exercise actually asks for something).
 //  7. Citations: every <Cite> and source is a verified bibliography entry.
-//  8. The 15-minute budget: estimated time between 12 and 18 minutes.
+//  8. The time budget: open reading time (dropdowns excluded) of 9–14
+//     minutes on the core path and 9–18 elsewhere.
 // 10. Teaching rules (src/data/pedagogy.js, PEDAGOGY.md): analogies that say
 //     where they break, at least two diagrams (one steppable), several
 //     examples of every concept introduced, other-language comparisons in
@@ -82,9 +83,9 @@ import { transform as sucrase } from 'sucrase';
 
 // TypeScript cards are stripped of types exactly as the browser runner does.
 const stripTs = (code) => sucrase(code, { transforms: ['typescript'], disableESTransforms: true }).code;
-import { estimateMinutesExact, proseWords, hardWordShare } from '../src/lib/minutes.js';
+import { estimateMinutesExact, estimateFullMinutesExact, proseWords, hardWordShare } from '../src/lib/minutes.js';
 import { COVERAGE } from '../src/data/coverage.js';
-import { NOT_IN_CHAPTERS, STRICT_PARTS, MIN_ANALOGIES, MIN_DIAGRAMS, MIN_EXAMPLES, OTHER_LANGUAGE_PARTS, BANNED } from '../src/data/pedagogy.js';
+import { NOT_IN_CHAPTERS, STRICT_PARTS, MIN_ANALOGIES, OPEN_ANALOGIES, MIN_DIAGRAMS, MIN_EXAMPLES, OTHER_LANGUAGE_PARTS, BANNED, CORE_PARTS, CORE_MINUTES, OTHER_MINUTES, CORE_MAX_EXERCISES, CONTEXT_WORDS } from '../src/data/pedagogy.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dir = join(root, 'src/content/chapters');
@@ -322,6 +323,8 @@ for (const folder of folders) {
     const honest = analogies.filter((a) => /<span slot="breaks">\s*\S[\s\S]*?<\/span>/.test(a[1]));
     if (honest.length < analogies.length) err(folder, `${analogies.length - honest.length} <Analogy> block(s) without a non-empty <span slot="breaks">`);
     if (honest.length < MIN_ANALOGIES) teach(`${honest.length} analogies (want at least ${MIN_ANALOGIES}, each saying where it breaks)`);
+    const open = analogies.filter((a) => !/\bextra\b/.test(a[0].slice(0, a[0].indexOf('>'))));
+    if (open.length !== OPEN_ANALOGIES) teach(`${open.length} open analogies (want exactly ${OPEN_ANALOGIES}; mark the others <Analogy extra>)`);
     const diagrams = [...body.matchAll(/^import\s+\w+\s+from\s+'[^']*components\/diagrams\/([^']+)'/gm)].map((m) => m[1]);
     if (diagrams.length < MIN_DIAGRAMS) teach(`${diagrams.length} diagram(s) (want at least ${MIN_DIAGRAMS})`);
     const steppable = diagrams.some((d) => {
@@ -356,11 +359,21 @@ for (const folder of folders) {
   for (const t of [...Object.values(cards.prompts).flatMap((p) => [p.q, p.a]), ...cards.quiz.flatMap((q) => [q.q, ...q.options.flatMap((o) => [o.t, o.why])])]) {
     for (const re of BANNED) if (re.test(t)) err(folder, `a card uses the banned word or phrase ${re}`);
   }
+  // Cards must stand alone: an expert who never read the book can answer them.
+  for (const [k, p] of Object.entries(cards.prompts)) for (const re of CONTEXT_WORDS) if (re.test(p.q)) err(folder, `prompt "${k}" leans on the book's context (${re}); ask it so it stands alone`);
+  cards.quiz.forEach((q, i) => { for (const re of CONTEXT_WORDS) if (re.test(q.q)) err(folder, `quiz question ${i + 1} leans on the book's context (${re}); ask it so it stands alone`); });
 
   // 8. time budget
   const minutes = estimateMinutesExact(mdx, cards);
-  if (minutes < 12 || minutes > 18) err(folder, `estimated ${minutes.toFixed(1)} minutes (want 12–18)`);
-  summary.push(`${folder.padEnd(28)} ${minutes.toFixed(1).padStart(5)} min · ${proseWords(mdx)} words · ${(hardWordShare(mdx) * 100).toFixed(1).padStart(4)}% hard words · ${promptKeys.length} prompts · ${quiz.length} quiz · ${exKeys.length} exercises`);
+  const full = estimateFullMinutesExact(mdx, cards);
+  const core = CORE_PARTS.has(fm.part);
+  const [lo, hi] = core ? CORE_MINUTES : OTHER_MINUTES;
+  if (minutes < lo || minutes > hi) err(folder, `estimated ${minutes.toFixed(1)} open minutes (want ${lo}–${hi}${core ? ', core path' : ''})`);
+  if (core) {
+    const required = Object.values(cards.exercises ?? {}).filter((e) => !e.optional).length;
+    if (required > CORE_MAX_EXERCISES) err(folder, `${required} required exercises (the core path allows ${CORE_MAX_EXERCISES}; mark the rest optional)`);
+  }
+  summary.push(`${folder.padEnd(28)} ${minutes.toFixed(1).padStart(5)} min (full ${full.toFixed(1)}) · ${proseWords(mdx)} words · ${(hardWordShare(mdx) * 100).toFixed(1).padStart(4)}% hard words · ${promptKeys.length} prompts · ${quiz.length} quiz · ${exKeys.length} exercises`);
 }
 
 // 12. Coverage: every concept the textbook map (src/data/coverage.js) names

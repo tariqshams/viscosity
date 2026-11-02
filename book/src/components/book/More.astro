@@ -1,0 +1,13 @@
+---
+// Extra material a reader can open when they want it: a second analogy,
+// more examples, deeper theory, another language's version. Closed by
+// default, so the main path of a chapter is the essential explanation, one
+// strong example and the exercise. The reading time in the chapter header
+// (src/lib/minutes.js) counts only what is open.
+//   <More title="Two more examples">...</More>
+const { title } = Astro.props as { title: string };
+---
+<details class="more">
+  <summary class="more-summary">{title}</summary>
+  <div class="more-body"><slot /></div>
+</details>

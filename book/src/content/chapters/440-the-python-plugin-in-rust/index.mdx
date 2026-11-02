@@ -109,7 +109,7 @@ source into words, **tokens**) turns indentation changes into tokens: **INDENT**
 **DEDENT** where it closes<Cite id="python-lexical" />. After that, the
 parser treats them like an opening and a closing brace.
 
-<Analogy title="the landings of a staircase">
+<Analogy extra title="the landings of a staircase">
 Going down a staircase you can step back to any landing you have
 already stood on, but you cannot stop in the air between two. The tokenizer's stack of widths is the list
 of landings: a deeper line climbs to a new one (INDENT), a shallower

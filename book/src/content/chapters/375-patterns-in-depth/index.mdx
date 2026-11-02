@@ -64,7 +64,7 @@ visitor may also change what they point at, as long as nobody else is
 looking at the same time.</span>
 </Analogy>
 
-<Analogy title="a library book">
+<Analogy extra title="a library book">
 Take a book home and it is yours; read it at the desk and it stays the
 library's. A name in a pattern either takes the part it matches (move)
 or reads it where it lies (a borrow).
@@ -176,7 +176,7 @@ error[E0004]: non-exhaustive patterns:
 
 Make the last case unguarded (`Some(_) => "not pos"`) and it compiles.
 
-<Analogy title="a ticket and an age check">
+<Analogy extra title="a ticket and an age check">
 At the cinema the usher first looks at your ticket (is it for this
 screen?), and only then, for some films, checks your age. The ticket is
 the pattern; the age check is the guard, a question about the person

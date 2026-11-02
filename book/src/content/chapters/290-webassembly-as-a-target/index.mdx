@@ -138,7 +138,7 @@ from *Memory is one long array*, made literal. The memory grows in
 byte first; and an access past the end does not corrupt anything: it
 **traps**, which JavaScript sees as a thrown `WebAssembly.RuntimeError`.
 
-<Analogy title="a street of numbered lockers">
+<Analogy extra title="a street of numbered lockers">
 A JavaScript heap is a city: objects live at addresses you never see,
 and the garbage collector moves them around. Linear memory is one very
 long street of numbered lockers, eight bytes wide each if you like. You

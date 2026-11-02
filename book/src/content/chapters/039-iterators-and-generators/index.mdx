@@ -155,7 +155,7 @@ function* countdown(n) {
 The `*` after `function` makes it a generator function, and `yield n--`
 means "hand `n` out, then wait here until someone asks for the next one".
 
-<Analogy title="a bookmark">
+<Analogy extra title="a bookmark">
 You read a chapter of a novel, put a bookmark in, and close it; tomorrow
 you open it at the bookmark and carry on, remembering the story so far.
 <span slot="breaks">A reader may skim ahead; a generator never runs
@@ -280,7 +280,7 @@ function* naturals() {
 `while (true)` looks like a bug, however the loop pauses at every
 `yield`, so each `next()` does one turn and no more.
 
-<Analogy title="a tap and a bucket">
+<Analogy extra title="a tap and a bucket">
 An array is a bucket: all the water is drawn before you use any. A lazy
 sequence is a tap: water flows only while you hold a glass under it, for
 as long as you like.
