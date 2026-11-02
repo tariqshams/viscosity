@@ -6,6 +6,11 @@
 #                                 CARGO_REGISTRY_TOKEN, and a clean git tree)
 #   scripts/release.sh --dry-run  package and verify everything, upload nothing
 #                                 (no tokens, no git check)
+#   scripts/release.sh --npm-only publish only @viscosity/cli and @viscosity/wasm
+#                                 (needs NPM_TOKEN only; crates are skipped)
+#
+# NPM_TOKEN may also be provided as an environment variable named
+# npm-publish (not a valid shell name, so it is read with printenv).
 #
 # Crates go out in dependency order. A crate whose version is already on
 # crates.io is skipped, so the script can be re-run after a failure partway.
@@ -25,10 +30,12 @@ CRATES=(viscosity-vir viscosity-core viscosity-frontend-js viscosity-frontend-py
 UA="viscosity-release (https://github.com/tariqshams/viscosity)"
 
 DRY_RUN=0
+NPM_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run|-n) DRY_RUN=1 ;;
-    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --npm-only) NPM_ONLY=1 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "release.sh: unknown argument: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -37,10 +44,14 @@ step() { printf '\n==> %s\n' "$*"; }
 die() { printf 'release.sh: %s\n' "$*" >&2; exit 1; }
 
 # --- 1. Preconditions ---------------------------------------------------------
+if [[ -z "${NPM_TOKEN:-}" ]] && printenv npm-publish >/dev/null 2>&1; then
+  NPM_TOKEN="$(printenv npm-publish)"
+  export NPM_TOKEN
+fi
 if [[ $DRY_RUN -eq 0 ]]; then
   missing=()
   [[ -n "${NPM_TOKEN:-}" ]] || missing+=(NPM_TOKEN)
-  [[ -n "${CARGO_REGISTRY_TOKEN:-}" ]] || missing+=(CARGO_REGISTRY_TOKEN)
+  [[ $NPM_ONLY -eq 1 || -n "${CARGO_REGISTRY_TOKEN:-}" ]] || missing+=(CARGO_REGISTRY_TOKEN)
   if [[ ${#missing[@]} -gt 0 ]]; then
     die "missing ${missing[*]}. Set NPM_TOKEN (an npm access token that can publish to the \"viscosity\" org) and CARGO_REGISTRY_TOKEN (a crates.io API token with publish-new and publish-update scopes), or run with --dry-run."
   fi
@@ -119,7 +130,9 @@ wait_for_index() {
   done
 }
 
-if [[ $DRY_RUN -eq 1 ]]; then
+if [[ $NPM_ONLY -eq 1 ]]; then
+  step "--npm-only: skipping crates.io"
+elif [[ $DRY_RUN -eq 1 ]]; then
   # Per-crate `cargo publish --dry-run -p` cannot verify a crate whose
   # internal dependencies are not on crates.io yet; with --workspace, cargo
   # (1.90+) packages the crates in dependency order and verifies each one

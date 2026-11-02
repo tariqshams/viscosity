@@ -280,7 +280,10 @@ organization `viscosity` and adds `NPM_TOKEN` (an npm access token with publish 
 ```sh
 scripts/release.sh --dry-run   # no tokens: tests, cargo publish --dry-run, npm publish --dry-run
 scripts/release.sh             # needs both tokens and a clean git tree
+scripts/release.sh --npm-only  # npm packages only: needs NPM_TOKEN alone
 ```
+
+`NPM_TOKEN` can also come from an environment variable named `npm-publish`.
 
 The script checks the tokens (without printing them) and the git tree, runs
 the TypeScript and Rust test suites, then runs `cargo publish -p` for
