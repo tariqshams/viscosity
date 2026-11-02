@@ -1,0 +1,277 @@
+---
+n: 326
+day: 82
+part: XI
+title: 'Data parallelism with rayon'
+tagline: 'Change iter() to par_iter() and a loop runs on every core, with the same answer and no data races. Underneath, idle threads steal half-finished work from busy ones, which is why it keeps every core busy even when the work is uneven.'
+objectives:
+  - Turn a sequential iterator chain into a parallel one with rayon, and read the errors that say why one cannot be.
+  - Use rayon::join for divide-and-conquer work.
+  - Explain work stealing, and why it balances uneven work better than equal chunks.
+  - Compare rayon with the shared counter in Viscosity's parallel build, and say when each fits.
+introduces: [rayon, work-stealing]
+uses: [rust, cargo, crate, rust-functions, slice, vec, struct, result, trait, rust-generics, trait-bound, associated-type, rust-closure, rust-iterator, rust-thread, send-sync, arc-mutex, atomics, data-race, rc, webassembly, typescript, event-loop, promise]
+sources: [rayon-readme, rayon-faq, rayon-core-source, crossbeam-deque-docs, rust-std-thread-scope, rust-std-available-parallelism]
+---
+import ChunkVsSteal from '../../../components/diagrams/ch326/ChunkVsSteal';
+import StealSteps from '../../../components/diagrams/ch326/StealSteps';
+
+## Who decides the split?
+
+Last chapter split a slice into equal parts by hand, one per thread.
+That works when every part costs the same. It goes wrong when one
+input is much bigger than the others: hand two threads four files each,
+put the one huge file in the first four, and the second thread finishes
+early and sits idle while the first plods on.
+
+<Figure takeaway="Equal shares of items are not equal shares of work." caption="Eight jobs on two threads: one job costs 8 units, the others 1. Splitting the list in half gives one thread 11 units and the other 4; taking the next job whenever a thread is free gives 8 and 7.">
+  <ChunkVsSteal />
+</Figure>
+
+Viscosity's parallel build already solves this for files. Its
+`for_each_parallel` (in `engine/rust/crates/cli/src/main.rs`) starts
+`--jobs` scoped threads, one per CPU by default
+(`available_parallelism`<Cite id="rust-std-available-parallelism" />),
+and each thread takes the next file number from a shared atomic
+counter: as its comment says, "a slow file never holds up the others".
+That is right for a few dozen files. For a million particles, one atomic
+operation per element would cost more than the work itself, and we
+would rather not write the threading at all.
+
+## rayon
+
+**rayon** is a crate (not part of `std`) that makes iterators parallel.
+Its README's own first example (with its comment shortened):
+
+```rust
+use rayon::prelude::*;
+fn sum_of_squares(input: &[i32]) -> i32 {
+    input.par_iter() // <-- change!
+         .map(|&i| i * i)
+         .sum()
+}
+```
+
+`par_iter()` replaces `iter()`, and rayon decides how to divide the
+slice into tasks while it runs<Cite id="rayon-readme" />. Everything
+else reads like the iterator chains you already know. (rayon cannot be
+compiled by this book's exercise checker, which has no access to
+crates, so the rayon code here was built and run separately, as a cargo
+project using rayon 1.12.0 with Rust 1.97; the exercise uses only
+`std`.)
+
+<Analogy title="a removal crew">
+You point at a room and say "all of this goes in the van". You do not
+assign boxes to movers; the crew sorts that out, and whoever is free
+grabs the next box. `par_iter` is pointing at the room.
+<span slot="breaks">A crew might stack the van in any order. rayon's
+`collect` and `sum` give the same answer as the sequential chain; only
+side effects, such as printing, may happen in a different
+order<Cite id="rayon-readme" />.</span>
+</Analogy>
+
+<Callout kind="definition">
+**rayon** is a data-parallelism library: its parallel iterators
+(`par_iter`, `par_iter_mut`, `into_par_iter`) offer `map`, `filter`,
+`sum`, `collect`, `for_each` and the rest, run on a pool with one worker
+thread per CPU by default<Cite id="rayon-faq" />, and `rayon::join(a, b)`
+runs two closures potentially in parallel. Its bounds are `Send` and
+`Sync`: `ParallelIterator` has an associated `type Item: Send`, and the
+closure given to `map` or `for_each` must be `Fn + Sync + Send`, which is
+how rayon can promise that code which compiles has no data
+races<Cite id="rayon-core-source" />.
+</Callout>
+
+<Examples of="rayon">
+
+```rust
+// move every particle, on every core
+ps.par_iter_mut().for_each(|p| {
+    p.x += p.vx * dt;
+});
+```
+
+```rust
+// compile files in parallel, in order
+let outs: Vec<Result<String, String>> =
+    files.par_iter()
+        .map(|f| compile_file(f))
+        .collect();
+```
+
+```rust
+fn psum(xs: &[i64]) -> i64 {
+    if xs.len() < 1000 {
+        return xs.iter().sum();
+    }
+    let (a, b) = xs.split_at(xs.len() / 2);
+    let (x, y) =
+        rayon::join(|| psum(a), || psum(b));
+    x + y
+}
+```
+
+</Examples>
+
+The first gives each worker a share of the particles through
+`par_iter_mut`; every `p` is a `&mut` to a different element, so no two
+threads touch the same particle. The second is the shape of a parallel
+build: the outputs come back in the same order as `files`, whichever
+finished first (in our run, `[Ok("built a.js"), Err("b.py: unknown"),
+Ok("built c.js")]`). The third divides and conquers by hand: below a
+thousand numbers it sums directly, otherwise it splits and lets `join`
+run both halves, potentially at once.
+
+Two errors show the rules at work. Add up into a captured variable,
+`xs.par_iter().for_each(|x| total += x)`:
+
+```text
+error[E0596]: cannot borrow `total` as
+  mutable, as it is a captured variable
+  in a `Fn` closure
+  |   expects `Fn` instead of `FnMut`
+```
+
+Many workers call the same closure at once, so it may not mutate what
+it captures (use `.sum()`, or an atomic). And a `Vec<Rc<i64>>` has no
+`par_iter` at all (E0599, "trait bounds were not satisfied"), because
+`Rc` is not `Sync`.
+
+<Prompts ids={['rayon-what', 'rayon-order', 'rayon-fn', 'rayon-crate']} />
+
+## Work stealing
+
+How does rayon keep every core busy without knowing what each task
+costs? `join(a, b)` does not start a thread. The worker that calls it
+puts `b` on its own **deque** (a double-ended queue), advertising it to
+the others, and starts `a` itself. An idle worker may take `b` from
+there: it *steals* it. When `a` is done, the first worker checks whether
+`b` was stolen and, if not, runs it itself<Cite id="rayon-faq" />.
+Step through `psum` on two workers:
+
+<StealSteps client:visible />
+
+<Analogy title="sorting the post">
+Each sorter works from the top of their own pile, putting the bundle
+they split off back on top. A sorter whose pile is empty walks over and
+takes from the *bottom* of a colleague's pile, where the big bundles
+from early on are still waiting, so one trip brings back a lot of work.
+<span slot="breaks">Real sorters would ask who is busiest; a rayon
+thief picks a victim starting from a random worker, and when no pile
+has anything left, it waits.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Work stealing** is a way to share out tasks: each worker thread keeps
+its own deque of tasks, pushes and pops new ones at one end (newest
+first), and when its deque is empty steals from the *other* end of
+another worker's deque (oldest first)<Cite id="crossbeam-deque-docs" />.
+In rayon each worker's deque is last-in, first-out by default, and a
+thief tries the other workers starting at a random one<Cite id="rayon-core-source" />.
+In divide-and-conquer work the oldest task is the biggest, so a steal
+moves a large piece of work, and busy workers are left alone. The idea
+comes from the Cilk project at MIT in the late 1990s<Cite id="rayon-faq" />.
+</Callout>
+
+<Formal title="Work, span and P workers">
+
+```text
+T₁ = total work (one worker)
+T∞ = span: the longest chain of tasks
+     that must run one after another
+T_P ≥ max(T₁ / P, T∞)
+```
+
+<span slot="read">With P workers, no schedule can beat T₁ divided by P,
+since each worker does at most one unit at a time, and none can beat
+the span, since the steps of one chain cannot overlap. Splitting n items
+in halves down to pieces of c items makes about n / c leaves and a span
+of about log₂(n / c) splits plus one leaf, so for large n the first term
+dominates, and a scheduler that keeps every worker busy gets close to
+it.</span>
+</Formal>
+
+<Examples of="work-stealing">
+
+```rust
+// uneven work: some items are slow
+let n = items.par_iter()
+    .filter(|it| expensive_check(it))
+    .count();
+```
+
+```rust
+// rayon's quick-sort example, in short:
+let mid = partition(v);
+let (lo, hi) = v.split_at_mut(mid);
+rayon::join(|| quick_sort(lo),
+            || quick_sort(hi));
+```
+
+```rust
+// Viscosity: one shared counter
+let k = next.fetch_add(1, Relaxed);
+if k >= n { break; }
+let r = f(k);
+```
+
+</Examples>
+
+The first is where stealing pays: if some items take a hundred times
+longer than others, a worker that drew cheap ones runs out and steals
+from one that drew expensive ones. The second is the example in
+rayon's own `join` documentation: the two halves after a partition are
+rarely the same size, and stealing evens that out. The third is
+Viscosity's counter again, a simpler cousin: one shared queue (the next
+index) instead of one deque per worker. Every worker touches the same
+counter, which is fine for files and too much traffic for millions of
+tiny tasks. Viscosity does not use rayon (its command line tool depends
+only on its own crates and `serde_json`), and the Rust engine also
+compiles to WebAssembly, where rayon without extra setup falls back to
+running sequentially<Cite id="rayon-readme" />.
+
+<OtherLanguages title="All the files, on every core?">
+
+```rust
+let outs: Vec<_> = files.par_iter()
+    .map(|f| compile_file(f))
+    .collect(); // every core
+```
+
+```ts
+const outs = await Promise.all(
+  files.map((f) => compileAsync(f)));
+// one thread runs all the JavaScript
+```
+
+</OtherLanguages>
+
+`Promise.all` waits for many things at once, but the JavaScript in them
+still runs on one thread, the event loop of chapter 40: it overlaps
+waiting (for disk or network), not computing. CPU work in parallel needs
+workers and messages. In Rust, `par_iter` is the whole change.
+
+<Run id="uneven" />
+
+<Prompts ids={['steal-join', 'steal-end', 'steal-why', 'steal-span']} />
+
+## Your turn
+
+The exercise builds the heart of `rayon::join` by hand, with
+`std::thread::scope`.
+
+<Exercise id="parSum" />
+
+## What you learned
+
+- **rayon** turns `iter()` into `par_iter()`; its `Send`/`Sync` bounds
+  turn would-be races into compile errors, and `collect` keeps order.
+- `rayon::join(a, b)` runs `a` and offers `b` to idle workers.
+- **Work stealing**: each worker pops its newest task and steals the
+  oldest from others, so uneven work spreads out without any planning.
+- A shared counter, as in Viscosity's build, is the simple version for
+  a few coarse jobs.
+
+Next: waiting without threads, with async Rust.
+
+<Quiz />
