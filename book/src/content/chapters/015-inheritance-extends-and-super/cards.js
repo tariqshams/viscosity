@@ -31,7 +31,7 @@ export const prompts = {
   },
   'error-super': {
     q: 'Why does `class RuntimeError extends Error` call `super(message)` in its constructor?',
-    a: 'So that Error’s own constructor runs and stores the `message`; RuntimeError then adds its extra `token`.',
+    a: 'So that Error’s own constructor runs and stores the `message`; RuntimeError then adds its extra `line`.',
   },
 };
 

@@ -171,8 +171,8 @@ p.move(); // fine
 
 `m` is the very same function, but `m()` has nothing before a dot, so
 inside it `this` is `undefined`, and `this.x` asks `undefined` for a
-property, which stops the program (that is Chrome's and Node's wording;
-other browsers phrase it differently). Class code always runs in
+property, which stops the program (Chrome's and Node's wording).
+Class code always runs in
 JavaScript's *strict mode*, which is what makes `this` `undefined` here
 rather than something stranger<Cite id="mdn-classes" />.
 
@@ -310,7 +310,7 @@ object holding its methods, and each instance keeps a link to it, so
 `p.move` is found by following that link<Cite id="mdn-using-classes" />.
 That link is also what `instanceof` follows. In chapter 112 you will build
 classes, instances, methods and `this` yourself, inside your own
-interpreter, and see that `this` is nothing more than one extra,
+interpreter, and see that `this` (Drip calls it `self`) is nothing more than one extra,
 hidden argument handed to every method call.
 </Callout>
 

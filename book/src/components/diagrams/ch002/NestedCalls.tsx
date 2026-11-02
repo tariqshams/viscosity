@@ -25,7 +25,7 @@ const STATES: S[] = [
   { line: 1, pages: [H(), { fn: 'square', vars: [['x', 4]], ret: 16 }], note: 'square returns 4 * 4 = 16.' },
   { line: 4, pages: [H(25)], note: 'Back on hypot’s page, the line is now 9 + 16, so s = 25. hypot never saw either x; it only got the two answers.' },
   { line: 5, pages: [{ ...H(25), ret: 5 }], note: 'Math.sqrt(s) is a call too (to a function built into JavaScript), and it gives 5. hypot returns 5.' },
-  { line: 7, pages: [], out: '5', note: 'hypot’s page is thrown away as well, and console.log prints 5. Three calls ran, three pages came and went, and no names clashed.' },
+  { line: 7, pages: [], out: '5', note: 'hypot’s page is thrown away as well, and console.log prints 5. Our three calls (hypot, and square twice) each had a page that came and went, and no names clashed.' },
 ];
 
 export default function NestedCalls() {

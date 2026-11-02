@@ -7,7 +7,7 @@ export const prompts = {
   },
   'key-is-string': {
     q: 'In `{ x: 3 }`, what kind of value is the key `x`, and can the value be another object?',
-    a: 'The key is always a string (`\'x\'`); the value can be anything, another object included.',
+    a: 'The key is a string (`\'x\'`); the value can be anything, another object included.',
   },
   'missing-prop': {
     q: 'What does reading a property that doesn’t exist give you?',

@@ -182,10 +182,10 @@ const xs = [1, 2, 3];
 
 ```js
 function err(line, msg) {
-  return `[line ${line}] Error: ${msg}`;
+  return `line ${line}: ${msg}`;
 }
-err(3, 'Expect ";"');
-// '[line 3] Error: Expect ";"'
+err(3, "expected ';' after the value");
+// "line 3: expected ';' after the value"
 ```
 
 </Examples>
@@ -271,7 +271,7 @@ pad('42', 5); // '   42'
 
 The first adds twice to an empty string. The second collects the pieces
 in an array and glues them once with `join`, separator included. The third is
-realistic: in chapter 138 you will print bytecode in neat columns, and
+realistic: in chapter 139 you will print bytecode in neat columns, and
 `pad` adds spaces *in front* (`' ' + out`) until the string is `n`
 characters wide, using a `while` loop from chapter 10, so `'42'` becomes
 `'   42'`.

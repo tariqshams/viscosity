@@ -303,8 +303,8 @@ unwinds by itself, and every caller checks and passes the status on by
 hand.
 
 <Callout kind="engine" label="Where this goes">
-Your Drip interpreter in Part III defines error classes like
-`ParseError`, carrying a line and column. Most engines also give Error
+Your Drip interpreter in Part III defines an error class of its own,
+`RuntimeError`, carrying the line where the problem was found. Most engines also give Error
 objects a `stack` property listing the active calls (what browser
 consoles show), but it is not part of the language standard, so its
 contents differ between engines<Cite id="mdn-error" />. In Part IV your

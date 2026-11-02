@@ -120,9 +120,11 @@ div(1, 0); // Error: div by 0
 function scanChar(c) {
   if (c === '+') return 'PLUS';
   if (c === '-') return 'MINUS';
-  throw new Error(`unexpected '${c}'`);
+  const m = `unexpected character '${c}'`;
+  throw new Error(m);
 }
-scanChar('@'); // Error: unexpected '@'
+scanChar('@');
+// Error: unexpected character '@'
 ```
 
 </Examples>

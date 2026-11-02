@@ -207,7 +207,7 @@ e instanceof Error;  // true
 class RuntimeError extends Error {
   constructor(token, message) {
     super(message);
-    this.token = token;
+    this.line = token.line;
   }
 }
 ```
@@ -217,15 +217,15 @@ class RuntimeError extends Error {
 </Examples>
 
 The first is the smallest possible subclass: `B` adds nothing, so `hi`
-comes from `A`. The second and third are real: both are error classes
-from this book's own Drip interpreter, which extend JavaScript's
-built-in `Error` class (chapter 24 is all about errors). `ParseError`,
-from `companion/ts/src/parser.ts`, has no body at all, so it gets the
-constructor that passes everything on, and Error's constructor stores `'bad digit'` as the `message`. `RuntimeError`, from
-`companion/ts/src/errors.ts` (shown without its TypeScript type labels,
-which chapter 27 introduces), lets Error store the `message` with
-`super(message)` and then adds the `token` where the problem was found,
-so the error can report its line. The runnable one builds three kinds
+comes from `A`. The second and third are real error classes, which
+extend JavaScript's built-in `Error` class (chapters 23 and 24 are all
+about errors). `ParseError` has no body at all, so it gets the
+constructor that passes everything on, and Error's constructor stores `'bad digit'` as the `message`. `RuntimeError` comes from
+this book's own Drip interpreter, `companion/ts/src/errors.ts` (shown
+simplified, without its TypeScript type labels, which chapter 27
+introduces); it lets Error store the `message` with `super(message)`
+and then adds the line of the token where the problem was found, so
+the error can report it. The runnable one builds three kinds
 of piece and asks each where it is; try removing a `super` line.
 
 <Prompts ids={['instanceof-parent', 'subclass-adds', 'why-not-copy', 'error-super']} />
