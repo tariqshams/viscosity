@@ -6,11 +6,11 @@
 //   ```text ... ```
 //   <span slot="read">...how to say it out loud...</span>
 //   </Formal>
+// As with Analogy, the span is styled by CSS (.formal [slot='read']), and
+// check_chapters.mjs makes sure it is there.
 const { title } = Astro.props as { title?: string };
-if (!Astro.slots.has('read')) throw new Error(`<Formal${title ? ` title="${title}"` : ''}> needs a <span slot="read"> that reads the notation in plain words`);
 ---
 <section class="formal">
   <div class="formal-label">{title ?? 'Written precisely'}</div>
-  <div class="formal-body"><slot /></div>
-  <div class="formal-read"><span class="formal-read-label">In plain words:</span> <slot name="read" /></div>
+  <div class="formal-body"><slot /><slot name="read" /></div>
 </section>

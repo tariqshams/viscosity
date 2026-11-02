@@ -177,9 +177,10 @@ body {
 .analogy-label { color: rgb(var(--brand)); text-transform: none; letter-spacing: 0.02em; font-size: 0.9rem; }
 .analogy-body > :first-child, .formal-body > :first-child, .examples-body > :first-child { margin-top: 0; }
 .analogy-body > :last-child, .formal-body > :last-child, .examples-body > :last-child { margin-bottom: 0; }
-.analogy-breaks { margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px dashed rgb(var(--line)); font-size: 0.95em; }
-.analogy-breaks-label, .formal-read-label { font-family: var(--font-sans); font-weight: 700; font-size: 0.85em; color: rgb(var(--danger)); }
-.formal-read-label { color: rgb(var(--accent)); }
+.analogy [slot='breaks'] { display: block; margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px dashed rgb(var(--line)); font-size: 0.95em; }
+.analogy [slot='breaks']::before { content: 'Where the picture stops working: '; font-family: var(--font-sans); font-weight: 700; font-size: 0.85em; color: rgb(var(--danger)); }
+.formal [slot='read'] { display: block; margin-top: 0.5rem; font-size: 0.97em; }
+.formal [slot='read']::before { content: 'In plain words: '; font-family: var(--font-sans); font-weight: 700; font-size: 0.85em; color: rgb(var(--accent)); }
 
 /* Examples: numbered, from the simplest case to a realistic one. */
 .examples { margin: 1.6rem 0; counter-reset: example; }
@@ -198,7 +199,6 @@ body {
 
 /* Formal notation with a plain-words reading. */
 .formal { margin: 1.6rem 0; border-left: 3px solid rgb(var(--accent)); padding: 0.1rem 0 0.1rem 1rem; }
-.formal-read { margin-top: 0.5rem; font-size: 0.97em; }
 
 /* Figures (static SVG diagrams) */
 .figure { margin: 2rem 0; font-family: var(--font-sans); }

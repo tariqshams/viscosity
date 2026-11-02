@@ -1,15 +1,16 @@
 ---
 // An everyday picture of an idea, and (required) where the picture stops
 // being true, so no analogy quietly teaches something false. In MDX:
-//   <Analogy title="A vending machine">
+//   <Analogy title="a vending machine">
 //   ...the analogy...
 //   <span slot="breaks">...where it stops working...</span>
 //   </Analogy>
+// MDX wraps the span in a paragraph, so it is not a real Astro slot: CSS
+// (.analogy [slot='breaks']) gives it its label, and check_chapters.mjs
+// makes sure every analogy has one.
 const { title } = Astro.props as { title: string };
-if (!Astro.slots.has('breaks')) throw new Error(`<Analogy title="${title}"> needs a <span slot="breaks"> saying where the analogy stops working`);
 ---
 <aside class="analogy">
   <div class="analogy-label">It’s like {title}</div>
-  <div class="analogy-body"><slot /></div>
-  <div class="analogy-breaks"><span class="analogy-breaks-label">Where the picture stops working:</span> <slot name="breaks" /></div>
+  <div class="analogy-body"><slot /><slot name="breaks" /></div>
 </aside>
