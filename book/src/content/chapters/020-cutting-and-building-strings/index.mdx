@@ -24,7 +24,7 @@ rest of the interpreter wants the piece `'42'` as a string of its own. And when 
 does not understand, it should say so in a sentence, such as
 "Unexpected '#' at index 3", which has to be built out of pieces too.
 Strings come with ready-made **methods** (functions you call with a dot,
-as in chapter 13) for exactly this.
+as in chapter 14) for exactly this.
 
 <Analogy title="cutting a ribbon at marked points">
 Lay a ribbon along a ruler and cut it at the 8 mark and the 10 mark; the
@@ -273,7 +273,7 @@ The first adds twice to an empty string. The second collects the pieces
 in an array and glues them once with `join`, separator included. The third is
 realistic: in chapter 95 you will print bytecode in neat columns, and
 `pad` adds spaces *in front* (`' ' + out`) until the string is `n`
-characters wide, using a `while` loop from chapter 9, so `'42'` becomes
+characters wide, using a `while` loop from chapter 10, so `'42'` becomes
 `'   42'`.
 
 <Prompts ids={['plus-equals', 'join-build']} />

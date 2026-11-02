@@ -1,4 +1,4 @@
-// Cards for the second half of chapter 15 (hashing).
+// Cards for the chapter 16 (hashing).
 // Keys are stable ids: never rename them.
 
 export const prompts = {

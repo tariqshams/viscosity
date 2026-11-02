@@ -1,4 +1,4 @@
-// Cards for the second half of chapter 19 (cutting and building strings).
+// Chapter 20 cards (cutting and building strings).
 // Keys are stable ids: never rename them.
 
 export const prompts = {

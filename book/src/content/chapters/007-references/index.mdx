@@ -165,7 +165,7 @@ another name, which is exactly what makes aliasing bugs hard to find.</span>
 
 <Callout kind="definition">
 A **mutation** changes an object in place: writing a property
-(`o.k = v`), writing a slot (`a[i] = v`), or calling a method that
+(`o.k = v`), writing a slot (`a[i] = v`), or calling something that
 changes it, such as `push`. Every alias sees a mutation. Assigning a new
 value to a variable (`o = ...`) is not a mutation; it re-aims only that
 one variable's arrow.

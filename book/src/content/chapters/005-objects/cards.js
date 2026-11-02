@@ -60,7 +60,7 @@ export const exercises = {
   sumFields: {
     title: 'Add up the named fields',
     prompt:
-      'Write `sumFields(p, ks)`. `p` is an object whose values are numbers, and `ks` is an array of key names (the *k*eys) (strings). Return the **total** of the properties those ks name. For example `sumFields({ a: 1, b: 2, c: 3 }, [\'a\', \'c\'])` is `4`. An empty `ks` array gives `0`.',
+      'Write `sumFields(p, ks)`. `p` is an object whose values are numbers, and `ks` is an array of key names (strings; `ks` is short for "keys"). Return the **total** of the properties those keys name. For example `sumFields({ a: 1, b: 2, c: 3 }, [\'a\', \'c\'])` is `4`. An empty `ks` array gives `0`.',
     starter: `function sumFields(p, ks) {
   // your code here
 }

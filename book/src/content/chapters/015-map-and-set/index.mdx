@@ -77,8 +77,8 @@ A **Map** holds key → value entries<Cite id="mdn-map" />. `set(k, v)` adds
 an entry, or replaces the value if `k` is already there; `get(k)` returns
 the value, or `undefined`; `has(k)` asks whether `k` is there;
 `delete(k)` removes it; `size` counts the entries. Keys can be any value,
-and are compared like `===`, so an object key matches only that same
-object. Each key appears at most once.
+and are compared like `===` (except that `NaN` matches itself), so an
+object key matches only that same object. Each key appears at most once.
 </Callout>
 
 <Formal title="A Map as a lookup">
@@ -309,6 +309,7 @@ you run it.
 - A **Set** stores unique values: `add`, `has`, `delete` and `size`.
 - **`for...of`** visits each value of an array, string, Map or Set, in
   order; over a Map, each value is a `[key, value]` pair.
+
 Next: how a Map can find a key among a million without checking them
 one by one.
 

@@ -93,11 +93,11 @@ countdown(3); // 3, 2, 1
 ```
 
 ```js
-function power(b, e) {
-  if (e === 0) return 1;
-  return b * power(b, e - 1);
+function stars(n) {
+  if (n === 0) return '';
+  return '*' + stars(n - 1);
 }
-power(2, 3); // 2 * 2 * 2 * 1 = 8
+stars(3); // '*' + '*' + '*' + '' = '***'
 ```
 
 ```js
@@ -111,9 +111,9 @@ sumFrom([4, 5, 6], 0); // 15
 </Examples>
 
 The first prints `n` and hands the rest of the countdown to another
-call, until `n` is `0` and a bare `return` stops it. The second
-multiplies: `b` to the power `e` is `b` times `b` to the power `e - 1`,
-and anything to the power 0 is `1`, which is the base case. The third
+call, until `n` is `0` and a bare `return` stops it. The second builds
+a string: `n` stars is one star followed by `n - 1` stars, and zero stars
+is the empty string `''`, which is the base case. The third
 walks an array without a loop: the sum from index `i` is the value
 there plus the sum of everything after it, and when `i` reaches the
 length there is nothing left, so the answer is `0`; your interpreter
@@ -237,7 +237,7 @@ The first has no base case at all: every call makes another. The second
 has one, but `-1` walks *away* from `0`, so it is never reached. The
 third is the surprising one: the function is correct, and would reach `0`
 in the end, but a hundred thousand frames is more than Node's stack holds
-(try it in the runnable box above). As such, recursion suits problems
+(paste `sumTo` into the runnable box above and try it). As such, recursion suits problems
 whose depth stays modest, and a loop is the safer tool for counting to a
 million. Spot the difference in the base case:
 

@@ -247,7 +247,8 @@ mul(3);
 ```
 
 ```ts
-'hi'.toUppercase();
+let s = 'hi';
+s.toUppercase();
 // error: Property 'toUppercase' does
 // not exist on type 'string'. Did you
 // mean 'toUpperCase'?
@@ -317,9 +318,8 @@ Python's labels (called *type hints*) look much the same, but Python
 itself ignores them: the call runs, and `'3' * 4` repeats the string to
 give `'3333'`; a separate tool such as mypy does the checking, much as
 `tsc` does. Java and C require a type on everything and check it as part
-of compiling, so Java refuses to compile the call, while C (with the
-GCC compiler) only warns, and the program then runs with a nonsense
-number.
+of compiling: Java refuses the call, while C (with GCC 13; newer
+versions refuse) only warns, then runs with a nonsense number.
 
 <Callout kind="engine" label="Under the hood">
 A type checker is itself a piece of a compiler: it reads the source,

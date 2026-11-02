@@ -227,7 +227,7 @@ test('private names are skipped', () => {
     .toEqual(['scan', 'VERSION']);
 });`,
     hints: [
-      'Loop over the lines and skip every line that does not start with `\'export \'` (chapter 19’s `startsWith`).',
+      'Loop over the lines and skip every line that does not start with `\'export \'` (chapter 20’s `startsWith`).',
       'Split an export line on spaces: `\'export function scan(src) {\'.split(\' \')` is `[\'export\', \'function\', \'scan(src)\', \'{\']`. Which index holds the name?',
       'Index 2 holds `\'scan(src)\'` or `\'VERSION\'`. Cutting it at `(` with `.split(\'(\')[0]` gives the bare name in both cases (a word with no `(` comes back whole).',
     ],

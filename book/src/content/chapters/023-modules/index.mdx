@@ -184,8 +184,8 @@ interpreter's `main.js`: import the error class and the parser, run the
 parser, and report a `ParseError` with its position.
 
 Two mistakes are common, and both stop the program with an exact
-message before anything else runs. Asking for a name that is not
-exported:
+message. Asking for a name that is not exported is caught before any of
+the program runs:
 
 ```js
 import { isDigit } from './scanner.js';
@@ -194,7 +194,7 @@ import { isDigit } from './scanner.js';
 // export named 'isDigit'
 ```
 
-and assigning to an imported name:
+and assigning to an imported name throws when that line is reached:
 
 ```js
 import { count } from './count.js';
@@ -239,7 +239,7 @@ shares. Read this runnable example, then run it:
 
 A function that hides its variables and returns an object of functions
 is called the **module pattern**; it needs no special syntax, only the
-closures of chapter 11, and it is how JavaScript programs were split up
+closures of chapter 12, and it is how JavaScript programs were split up
 before `import` existed.
 
 <Prompts ids={['module-pattern', 'pattern-private']} />
@@ -326,8 +326,9 @@ way tools do.
 - **`import { a } from './file.js'`** brings in exported names as
   read-only links, not copies; `as` renames, braces-free imports take
   the **default export**, and `* as ns` gathers everything.
-- Importing a name that is not exported, or assigning to an import, is
-  an error before anything runs; module code is in **strict mode**.
+- Importing a name that is not exported is an error before anything
+  runs, and assigning to an import throws; module code is in **strict
+  mode**.
 - The **module pattern** (a function returning an object of functions,
   with closures over private variables) gives the same privacy in one
   snippet.

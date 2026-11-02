@@ -96,7 +96,8 @@ The first is the plainest copy: same contents, different object, so
 `===` says `false`. The second shows that order decides who wins: with
 `x: 9` after the spread, the 9 replaces the copied 1; written before it,
 the copied `x: 1` replaces the 9 (the round brackets only stop
-JavaScript reading a line that starts with `{` as a block). The array
+JavaScript reading a line that starts with `{` as the start of a block of
+code, like the body of an `if`). The array
 version copies `xs` into a new array and adds `3` at the end, leaving
 `xs` as `[1, 2]`. The third is real: an interpreter that wants "the same
 token, one line further down" builds a new token rather than changing a

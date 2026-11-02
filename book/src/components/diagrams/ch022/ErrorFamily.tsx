@@ -34,7 +34,7 @@ export default function ErrorFamily() {
         <T x={190} y={188} size={12} mono>message: 'bad digit'</T>
         <T x={190} y={210} size={12} mono weight={700} fill={tok('brand')}>pos: 1</T>
       </Box>
-      <T x={392} y={244} size={11} anchor="end" fill={tok('muted')}>name and message come from Error; pos is extra</T>
+      <T x={392} y={244} size={11} anchor="end" fill={tok('muted')}>every Error has name and message; pos is extra</T>
     </Svg>
   );
 }

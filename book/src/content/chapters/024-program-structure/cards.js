@@ -1,4 +1,4 @@
-// Chapter 23b cards (split from chapter 23). Keys are stable ids:
+// Chapter 24 cards (split from chapter 23). Keys are stable ids:
 // never rename them.
 
 export const prompts = {

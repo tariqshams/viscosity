@@ -207,7 +207,7 @@ class Counter {
 }
 const c = new Counter();
 const f = c.inc;
-f(); // TypeError: this is undefined
+f(); // TypeError (this is undefined)
 ```
 
 ```python
@@ -249,7 +249,7 @@ object gives a function that remembers `c`, so the "lost `this`" slip
 cannot happen. Java lets you leave out `this.` altogether (`n` inside a
 method means the object's `n`), and checks before the program runs that
 the method exists. C has no methods: you write an ordinary function and
-pass the object in yourself (as a pointer, an idea Part II explains),
+pass the object in yourself (as a pointer, C's arrow from chapter 7),
 which is, underneath, exactly what JavaScript does for you with `this`.
 
 ## Which class made it? instanceof

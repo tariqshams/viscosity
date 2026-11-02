@@ -1,4 +1,4 @@
-// Cards for the third part of chapter 27 (generics). Keys are stable
+// Chapter 29 cards (generics). Keys are stable
 // ids: never rename them. The runner erases types without checking them.
 
 export const prompts = {
@@ -225,7 +225,7 @@ test('undefined never comes back', () => {
 - \`  return xs[xs.length - 1];\` reads the last slot; for \`[1, 2, 3]\` the length is 3, so it reads index 2, which is \`3\`.
 - \`}\` closes the body.
 
-Because \`xs\` and \`fallback\` share the blank \`T\`, a call such as \`lastOr([1, 2], 'none')\` fills \`T\` with \`number | string\`, and the result is labelled that way too, so the checker will not let you treat it as a plain number by accident.
+Because \`xs\` and \`fallback\` share the blank \`T\`, a call such as \`lastOr([1, 2], 'none')\` is refused: the list fills \`T\` with \`number\`, so \`tsc\` reports that a \`string\` is not assignable to a parameter of type \`number\`, and a fallback can never be a different kind of thing from the items by accident.
 
 **Common wrong attempts.**
 

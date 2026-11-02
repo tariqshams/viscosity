@@ -111,10 +111,10 @@ slots), so `v.length` is safe for every member. The third is the union
 you will meet most: `Map`'s `get` (from the Map and Set chapter) may find nothing, so its
 result is honestly labelled `number | undefined`, and the checker will
 not let you do arithmetic on `a` until you have ruled out `undefined`.
-(That check needs `strictNullChecks`, part of strict mode, which the
-toolchain chapter covers.)
-(The `<string, number>` part fills in the types of the keys and values;
-two chapters on, generics explain that notation.)
+(That check needs `strictNullChecks`, part of TypeScript's `strict`
+setting, which the toolchain chapter covers.)
+(The `<string, number>` part names the key and value types; generics,
+two chapters on, explain it.)
 
 <OtherLanguages>
 
@@ -178,7 +178,7 @@ so you keep a tag by hand (an idea the next chapter makes official).
 ## Following the if
 
 The fix is to check, at run time, which kind of value arrived. You
-already know the check, `typeof` from TypeScript I; watch what the checker
+already know the check, `typeof` from the last chapter; watch what the checker
 does with it, line by line:
 
 <NarrowSteps client:visible />
@@ -280,7 +280,8 @@ with `*`, and a string is joined to itself with `+`. The second narrows
 with `===`: after the early return for `undefined`, only a real string
 is left, so `toUpperCase` is allowed. The third is what a build tool does
 when a setting may be one file name or a list of them: the checker
-narrows on `Array.isArray(v)`, so the function always returns a list.
+narrows on `Array.isArray(v)` (which asks whether `v` is an array), so
+the function always returns a list.
 
 A common slip is checking, but not leaving, so the narrowing ends at the
 closing brace:

@@ -226,9 +226,9 @@ struct Node {
 JavaScript and Python nest objects (or dictionaries) inside each other
 freely, so a tree needs no declaration. Java wants a declared type first
 (a `record` is a short way to write a class that only holds fields), and
-its children are a typed `List`. C needs the most: a struct can only
-point at other structs (that is what the `*` marks, an idea Part II
-explains), and because C arrays do not know their own length (chapter 3),
+its children are a typed `List`. C needs the most: a struct cannot hold
+other structs of its own type directly, only point at them (that is what
+the `*` marks, an idea Part II explains), and because C arrays do not know their own length (chapter 3),
 the node must carry a separate count of its children.
 
 <Callout kind="engine" label="Where this goes">

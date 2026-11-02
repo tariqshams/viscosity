@@ -114,8 +114,8 @@ inside a bigger calculation: each call runs on its own and is replaced by
 its answer, leaving `4 + 10`. The third is real: in Part III you will
 write a *scanner* (the part of an interpreter that reads code one
 character at a time), and it keeps asking "is this a digit?"; `isDigit`
-checks that the character `c` is at least `'0'` and at most `'9'` and
-sends back `true` or `false`.
+checks that the character `c` is at least `'0'` and (`&&`) at most
+`'9'` and sends back `true` or `false`.
 
 A common slip is calling a name that was never defined, often a typo:
 
@@ -288,10 +288,13 @@ lineCost(2, 10); // 18
 </Examples>
 
 In the first, the inner call runs first: `inc(1)` returns `2`, which
-becomes the outer call's argument, so the answer is `3`. In the second,
+becomes the outer call's argument, so the answer is `3`. In the second
+(where `===` asks "is equal to?"),
 `sign(-5)` finds `x < 0` true and returns `'negative'`, and the function
 stops, so the other two lines never run. The third is the kind of
-function a shop's website has: line 2 keeps the total in `total`, line 3
+function a shop's website has: line 2 keeps the total in a variable,
+`total` (`const` makes a variable that is never given a new value; `let`
+makes one that can be), line 3
 returns early with ten per cent off (`total * 0.9`) for ten items or
 more, and line 4 returns the plain total otherwise, so `lineCost(2, 10)`
 is `20 * 0.9`, which is `18`.

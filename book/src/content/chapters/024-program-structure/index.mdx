@@ -114,7 +114,7 @@ Code that reads such a name too early fails:
 
 ```js
 // a.js
-import { y } from './b.js';
+import './b.js';
 export const x = 1;
 // b.js
 import { x } from './a.js';

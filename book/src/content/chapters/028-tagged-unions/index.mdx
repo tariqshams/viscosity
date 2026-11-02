@@ -184,7 +184,7 @@ builds tagged unions in as its `enum`.
 ## The shape of every syntax tree
 
 Here is why this matters for the rest of the book. Once a parser has
-read a program, the code becomes a **tree** (the recursion chapter's
+read a program, the code becomes a **tree** (the trees chapter's
 nodes holding child nodes), and every node is one of a fixed set of
 kinds. That is a discriminated union, one that refers to itself:
 
@@ -210,8 +210,9 @@ combines them:
 
 <EvalSteps client:visible />
 
-You will write that function in this chapter's exercise, and it is your
-first interpreter: the one in Part III is a bigger version of it.
+You will write that function again in this chapter's exercise, typed
+this time (chapter 18 wrote it untyped), and the interpreter in Part III
+is a bigger version of it.
 
 <Prompts ids={['expr-self']} />
 

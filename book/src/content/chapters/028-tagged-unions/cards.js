@@ -1,4 +1,4 @@
-// Cards for the second half of chapter 27 (tagged unions). Keys are
+// Chapter 28 cards (tagged unions). Keys are
 // stable ids: never rename them. As in chapter 25, the runner erases types
 // without checking them, so runnable code here is valid once stripped.
 
@@ -69,7 +69,7 @@ for (const s of ss) {
 export const exercises = {
   evaluate: {
     lang: 'ts',
-    title: 'Your first interpreter',
+    title: 'An interpreter, typed',
     prompt:
       'Write `evaluate(e)` that computes the value of an expression tree. An `Expr` is one of: `{ kind: \'num\', value }`, `{ kind: \'add\', left, right }`, `{ kind: \'mul\', left, right }` or `{ kind: \'neg\', arg }` (negation: minus its argument). For any other kind, throw an `Error`. (The runner erases types, so the tests check behaviour; the walkthrough shows the typed version with an exhaustiveness check.)',
     starter: `type Expr =

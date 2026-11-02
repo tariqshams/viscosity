@@ -1,4 +1,4 @@
-// Chapter 25b cards (split from chapter 25). Keys are stable ids:
+// Chapter 26 cards (split from chapter 25). Keys are stable ids:
 // never rename them.
 //
 // The in-page runner erases TypeScript types (sucrase) and never checks
