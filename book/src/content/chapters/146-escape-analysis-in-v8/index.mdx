@@ -1,0 +1,309 @@
+---
+n: 146
+day: 37
+part: V
+title: 'Escape analysis in V8'
+tagline: 'Back in AoS vs SoA, measured, building an object per element cost struct of arrays dearly in one benchmark and nothing at all in another. The difference is whether the object escapes; when it does not, V8 can make it vanish, and keep a plan for rebuilding it if it is ever needed.'
+objectives:
+  - Explain why `get-objects` did not lose and `materialize` did, in this book’s benchmark run.
+  - Say what it means for an object to escape, and predict it for small loops.
+  - Describe how TurboFan removes a non-escaping object, from inlining to scalar replacement.
+  - Explain how a removed object is rebuilt if the code deoptimizes, and why Viscosity must be stricter.
+introduces: [allocation-sinking, scalar-replacement]
+uses: [materialization, aos-vs-soa, array-of-objects, object, property, reference, identity, function, call, argument, return, register, stack-and-heap, garbage-collection, generational-gc, typed-array, jit-compiler, optimizing-tiers, speculation, deoptimization, type-feedback, dead-code-elimination, median-p95]
+sources: [v8-src-escape-analysis, v8-src-late-escape-analysis, v8-concurrent-marking, v8-trash-talk, v8-leaving-sea-of-nodes]
+---
+import ScalarSteps from '../../../components/diagrams/ch146/ScalarSteps';
+import EscapeCounts from '../../../components/diagrams/ch146/EscapeCounts';
+import BenchBars from '../../../components/bench/BenchBars';
+
+## The puzzle from AoS vs SoA, measured
+
+Two of this book's benchmark suites rebuild one object per element from
+struct-of-arrays columns. The first, `materialize`, keeps every object
+in an array:
+
+```js
+for (let i = 0; i < n; i++)
+  out[i] = { x: x[i], y: y[i] /* … */ };
+```
+
+The second, `get-objects`, hands each object to a small function and
+then forgets it:
+
+```js
+for (let i = 0; i < n; i++)
+  t += consume({ x: x[i] /* … */ });
+```
+
+Both loops build the same objects with the same fields, one per
+element; the only difference is what happens to each object afterwards.
+Here is what this book's benchmark run measured:
+
+<BenchBars suite="materialize" n={100000} title="materialize: keep one object per element" highlight={['soa']} layouts={['aos', 'soa']} caption="Every object is stored and kept, so every allocation is real." />
+
+<BenchBars suite="get-objects" n={100000} title="get-objects: pass each element to consume(p)" highlight={['soa']} layouts={['aos', 'soa']} caption="The object is only read inside consume, and SoA did not lose at all." />
+
+The repository's findings explain it in one sentence: V8 inlined the
+consumer and removed the temporary object. This chapter takes that
+sentence apart, piece by piece, and checks each piece on the Node this
+book uses (Node v22.23.4, which runs V8 12.4).
+
+## Does the object get out?
+
+The whole question is whether anyone, anywhere, could ever see the
+object itself, rather than only the numbers inside it.
+
+<Analogy title="a cardboard tray for two coffees">
+You order two coffees and the barista reaches for a cardboard tray. If
+you are carrying them across town, you need it; if you are going to
+drink both at the counter, the tray is pure waste, and you would rather
+take the two cups and skip it.
+<span slot="breaks">The barista can ask you; a compiler cannot ask the
+program what it plans to do, so it has to read every line that touches
+the object and prove the tray never leaves the counter.</span>
+</Analogy>
+
+<Analogy title="a sealed envelope in a meeting">
+In a meeting, someone passes you an envelope with two numbers inside;
+you read them, do a sum and bin the envelope. Nobody outside the room
+ever learns the envelope existed, so it might as well have been two
+sticky notes. If you posted the envelope to someone, however, it now
+exists in the world, and it must be a real envelope.
+<span slot="breaks">A real envelope is always made; the point of the
+compiler's version is that, when nothing outside sees it, the envelope
+is never made at all.</span>
+</Analogy>
+
+An object **escapes** when a reference to it reaches somewhere the
+compiler cannot follow: it is stored into another object or an array,
+returned, passed to a call that was not inlined, or used by an
+operation that needs the object to really exist. Reading or writing its
+own fields (`p.x`, `p.x = 1`) is not an escape, because that only
+touches the values inside.
+
+## Step one: see every use
+
+In the loop as written, the object is passed to a call. To an
+optimizing compiler a call is a closed door, since whatever goes through
+it might be stored anywhere; so the first move is to copy the small
+function's body into the loop, which is called **inlining** (the
+*Inlining* chapter builds it). After that, every use of the object is in
+plain view. Here is a two-field version of `get-objects`:
+
+```js
+function len2(p) {
+  return p.x * p.x + p.y * p.y;
+}
+function run() {
+  let t = 0;
+  for (let i = 0; i < n; i++)
+    t += len2({ x: xs[i], y: ys[i] });
+  return t;
+}
+```
+
+`len2` reads two fields and returns a number; `run` builds a fresh
+object on every iteration and passes it in. V8 will tell you when it
+inlines (real output, with addresses shortened):
+
+```
+$ node --trace-turbo-inlining len2.js
+Inlining 0x… {0x… <SharedFunctionInfo len2>}
+  into 0x… {0x… <SharedFunctionInfo run>}
+```
+
+The line says that TurboFan, V8's top optimizing tier, copied `len2`
+into `run`; from here on, the object's only uses are two field reads.
+
+<Prompts ids={['ea67-puzzle', 'ea67-inline-first']} />
+
+## Step two: the object that isn't
+
+Now TurboFan's escape analysis looks at each allocation, and its source
+describes how. Each allocation becomes a **virtual object** that tracks
+one variable per field; a store to a field sets that variable, a
+load is replaced by the value last stored, and anything the analysis
+does not understand counts as an escape<Cite id="v8-src-escape-analysis" />.
+If, at the end, nothing needed the object to really exist, the
+allocation is removed. Step through it, including the last step, where
+one extra line changes the verdict:
+
+<ScalarSteps client:visible />
+
+<Callout kind="definition">
+**Scalar replacement** replaces an object that does not escape with its
+fields as separate local values (a *scalar* is a single plain value,
+like one number): `p.x` becomes `p_x`. **Allocation sinking** moves an
+allocation to the only places that still need a real object; in V8,
+for a non-escaping temporary, that is the deoptimization path, so the
+fast code allocates nothing. In TurboFan's own words, an object has
+**escaped** if it "escaped to untracked memory or … is used in an
+operation that requires materialization"<Cite id="v8-src-escape-analysis" />.
+</Callout>
+
+<Formal title="When an object can be replaced">
+
+```text
+escapes(o) ⇔ ∃ u ∈ uses(o) :
+               u ∉ { o.f , o.f = v }
+¬escapes(o) ⇒ o.f  ↦  last v stored in f
+```
+
+<span slot="read">An object o escapes exactly when there is some use u
+of o that is not a field read o.f or a field write o.f = v. If o does
+not escape, every read of o.f can be replaced by the last value stored
+into f, and then nothing reads o at all.</span>
+</Formal>
+
+## The proof is in the garbage
+
+If the objects are really gone, the garbage collector should notice.
+New objects go into V8's young generation<Cite id="v8-trash-talk" />,
+and each time it fills up V8 empties it with a *scavenge* (the next
+chapter takes it apart); so counting scavenges counts allocations. Run
+the `len2` loop 50 times over a million elements, normally and then
+with each step switched off:
+
+```
+$ node --trace-gc len2.js | grep -c Scav
+3
+$ node --trace-gc --no-turbo-escape \
+    len2.js | grep -c Scav
+1747
+$ node --trace-gc --no-turbo-inlining \
+    len2.js | grep -c Scav
+2136
+```
+
+With both steps, fifty million objects cost three scavenges. Turn off
+escape analysis and every temporary is real; turn off inlining and the
+call hides the object again (and a little more is allocated, for
+reasons this chapter does not chase). The figure puts this run next to
+four other small loops, each run the same way:
+
+<Figure takeaway="Field reads only: the objects vanish. One escape, even an unlikely one: every object is real." caption="Scavenges for 50 million temporary objects, counted with --trace-gc on Node v22.23.4 (V8 12.4), one run each. The counts wobble a little between runs; the gap does not.">
+  <EscapeCounts />
+</Figure>
+
+<Examples of="scalar-replacement allocation-sinking">
+
+```js
+const p = { x: xs[i], y: ys[i] };
+t += p.x + p.y; // 3 scavenges
+```
+
+```js
+function make(i) {
+  return { x: xs[i], y: ys[i] };
+}
+const p = make(i);
+t += p.x * p.y; // 3 scavenges
+```
+
+```js
+t += len2({ x: xs[i], y: ys[i] });
+// 3; with --no-turbo-escape, 1747
+```
+
+</Examples>
+
+The first is the simplest case: the object is built and only its two
+fields are read, so TurboFan turns it into two local values and the
+loop allocates nothing. The second looks as if it must escape, because
+`make` *returns* the object; however, once `make` is inlined the return
+is no longer a door, only a hand-over inside one function, and the
+object vanishes again (with `--no-turbo-inlining` the same loop needed
+1747 scavenges). The third is the realistic one, `get-objects` in
+miniature: inlining first, then scalar replacement.
+
+Now spot the difference. Each of these loops escapes:
+
+```js
+// stored where others can see it
+sink = p;            // 1942 scavenges
+// stored only on a path never taken
+if (i === -1) sink = p; // 1748
+```
+
+The first stores `p` in a variable outside the loop, so the object must
+really exist. The second is the surprising one: `i` is never `-1`, so the store
+never happens, and yet in V8 12.4 every object was still allocated.
+The analysis judges what the code *could* do, and one possible escape,
+however unlikely, keeps the object real.
+
+<Prompts ids={['scalar-what', 'ea67-escaped']} />
+
+## When a guard fails
+
+The optimized loop still has guards, the checks on its guesses from
+*Speculation and deoptimization*. If one fails halfway through, V8
+falls back to the interpreter, whose bytecode still says `len2(p)` and
+needs a real `p`.
+
+<Analogy title="a spare key cut on demand">
+A hotel does not cut a spare key for every guest; it keeps the pattern
+on file, and on the rare night someone is locked out, it cuts one from
+the pattern there and then.
+<span slot="breaks">The new key opens the same door as the old one; the
+rebuilt object is a brand-new object with the same field values, which
+is only safe because no one ever saw the original to compare it
+with.</span>
+</Analogy>
+
+So the object is not forgotten, only postponed. When TurboFan writes the
+deoptimization information, it describes each virtual object that is
+still live by its fields, as an `ObjectState`<Cite id="v8-src-escape-analysis" />,
+and the deoptimizer can then build the object for real; V8's post on
+concurrent marking lists "materialization during deoptimization of a
+function" among the operations that create objects<Cite id="v8-concurrent-marking" />.
+That is the sunk allocation: it happens only on the path that needs it.
+
+`materialize` has no such way out. `out[i] = p` stores the object where
+code outside the loop can find it, read it later and compare it with
+`out[i + 1]`; it escapes, so every allocation stays.
+
+<Prompts ids={['sink-what', 'ea67-deopt', 'ea67-materialize']} />
+
+<Callout kind="engine" label="Under the hood">
+TurboFan's current escape analysis carries a 2017 copyright in V8's
+source<Cite id="v8-src-escape-analysis" />. Turboshaft, which has since
+replaced TurboFan's back end<Cite id="v8-leaving-sea-of-nodes" />, adds a
+late pass (2022) that removes allocations whose only uses are the
+stores that fill them in<Cite id="v8-src-late-escape-analysis" />. Maglev
+has one too, but in V8 12.4 `node --v8-options` shows
+`--maglev-escape-analysis` (and Maglev itself) defaulting to off.
+Viscosity must answer the same question without any of these tools: it
+runs before the program, with no inlining and no deoptimizer, so
+"might escape" has to mean "keep the objects". The *Escape analysis*
+chapter in Part VI builds that check, and `get-objects` is why it
+matters: an object that never escapes costs nothing, so only one that
+does is worth keeping.
+</Callout>
+
+<Prompts ids={['ea67-viscosity']} />
+
+## Your turn
+
+The first exercise is the core one; the second is extra practice.
+
+<Exercise id="scalarReplace" />
+
+<Exercise id="rematerialize" />
+
+## What you learned
+
+- An object **escapes** when a reference to it reaches somewhere the
+  compiler cannot follow; reading its own fields does not count.
+- `get-objects` did not lose for SoA because V8 **inlined** the consumer
+  and then removed the temporary object; `materialize` lost because its
+  objects escape into an array.
+- **Scalar replacement** turns a non-escaping object into one local
+  value per field.
+- **Allocation sinking** moves the allocation to the deopt path: the
+  frame state describes the object by its fields, and the deoptimizer
+  builds it only if a guard fails.
+- Viscosity has no deoptimizer, so it must prove an object does not
+  escape before it changes the layout.
+
+<Quiz />

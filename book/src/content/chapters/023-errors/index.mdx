@@ -1,0 +1,332 @@
+---
+n: 23
+day: 6
+part: I
+title: 'Errors and exceptions'
+tagline: 'A function that cannot do its job should say so loudly, rather than quietly hand back nonsense. throw is how it says so, and try and catch are how the rest of the program listens.'
+objectives:
+  - Signal a problem with throw new Error(...), and explain why that beats returning a strange value.
+  - Handle a thrown error with try and catch, and say exactly which lines run and which are skipped.
+  - Use finally for clean-up that must happen however a block ends.
+  - Compare JavaScript's exceptions with how Python, Java and C report failure.
+introduces: [throw, try-catch]
+uses: [function, parameter, return, call, undefined, array, object, property, dot-access, arrow-function, block-scope, for-of, string-index, char-code, template-literal, variables, numbers, strings, comparison, booleans, logical-operators, if, for-loop, console-log]
+sources: [mdn-control-flow, mdn-error]
+---
+import QuietVsLoud from '../../../components/diagrams/ch023/QuietVsLoud';
+import TryCatchSteps from '../../../components/diagrams/ch023/TryCatchSteps';
+
+## A quiet wrong answer
+
+In chapter 21 you turned a string of digits into a number. Here is
+that function again, given an input it was never meant for:
+
+```js
+function toNumber(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    n = n * 10 + (s.charCodeAt(i) - 48);
+  }
+  return n;
+} // toNumber('42') is 42; '4x' gives 112
+```
+
+The loop turns each character into its digit (its char code minus 48,
+the code of `'0'`) and adds it on the end of `n`, so `'42'` gives `42`.
+However, `'4x'` is not a number at all, and the function answers `112`
+anyway: `'x'` has code 120, so its "digit" is `72`, and `4 × 10 + 72` is
+`112`. Nothing complains; the nonsense flows on into the rest of the
+program, and the bug shows up far away, much later, looking like
+something else. What `toNumber` needs is a way to refuse: "I can't do
+this, and here is why."
+
+## Saying no: throw
+
+<Analogy title="a ticket barrier">
+Push a bad ticket into the barrier at a station and the gates stay
+shut while the screen says why ("ticket not valid"); nobody waves you
+through and hopes for the best. `throw` is the barrier refusing, right
+where the problem is.
+<span slot="breaks">At the barrier you take your ticket and walk away; a
+thrown error travels back out of the function, and the program stops
+unless some code is waiting to deal with it.</span>
+</Analogy>
+
+<Analogy title="pulling the fire alarm">
+When the alarm sounds, everyone stops mid-sentence and leaves (nobody
+stays to finish their email), and the people whose job is fires take
+over; if nobody has that job, the whole building shuts down.
+<span slot="breaks">A fire alarm empties every floor at once; a throw
+leaves one function at a time, from the innermost outwards, and stops at
+the first place that has said "I'll handle this" (the next chapter steps
+through that journey).</span>
+</Analogy>
+
+<Figure takeaway="A throw stops the bad value at its source." caption="Above, toNumber returns 112 for '4x', and the wrong number travels on into a total and a chart before anyone notices. Below, toNumber throws, and the program stops right where the problem is, with a message saying why.">
+  <QuietVsLoud />
+</Figure>
+
+Here is `toNumber` taught to refuse:
+
+```js
+function toNumber(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 48 || c > 57) {
+      throw new Error(`bad digit at ${i}`);
+    }
+    n = n * 10 + (c - 48);
+  }
+  return n;
+} // toNumber('4x'): Error: bad digit at 1
+```
+
+Line 5 asks whether the code `c` is outside 48 to 57, the codes of
+`'0'` to `'9'` (`||` means "or"). For `'4x'` the first pass is fine, but
+on the second `c` is 120, so line 6 runs: `new Error(...)` makes an
+**Error object** carrying the message `bad digit at 1`, and `throw`
+raises it. At that instant the function stops; the loop never finishes
+and `return n` is never reached, so the call produces nothing at all
+(not `112`, not even `undefined`). Nothing is waiting to deal with the
+error, so the program stops and prints it, pointing at the exact
+character that was wrong.
+
+<Callout kind="definition">
+**`throw value`** stops the code that is running, immediately, and
+raises an **exception**: a signal that something went wrong, carrying
+`value` with it. You may throw any value, but the convention is an
+**Error object**, made with `new Error(message)`. An exception that no
+code handles stops the program<Cite id="mdn-control-flow" />.
+</Callout>
+
+<Examples of="throw">
+
+```js
+throw new Error('not ready');
+// Error: not ready
+```
+
+```js
+function div(a, b) {
+  if (b === 0) throw new Error('div by 0');
+  return a / b;
+}
+div(6, 3); // 2
+div(1, 0); // Error: div by 0
+```
+
+```js
+function scanChar(c) {
+  if (c === '+') return 'PLUS';
+  if (c === '-') return 'MINUS';
+  throw new Error(`unexpected '${c}'`);
+}
+scanChar('@'); // Error: unexpected '@'
+```
+
+</Examples>
+
+The first is the whole idea in one line: the program stops with
+`Error: not ready`. The second is a **guard** (a check at the top of a
+function that refuses bad input before any work starts), which matters
+because plain JavaScript quietly answers `1 / 0` with `Infinity`. The
+third is the shape of a real scanner: each known character returns its
+token name, and anything else falls through to the last line and is
+refused by name, exactly as your Drip scanner will do in Part III.
+
+<Prompts ids={['throw-what', 'throw-vs-return']} />
+
+## Listening: try and catch
+
+Refusing is half the story; sometimes a problem is expected (someone
+typed a bad number into a form) and the program knows what to do, such
+as show a message and carry on.
+
+<Analogy title="a travel plan with a plan B">
+"Try to catch the 8:15 train; if it is cancelled, take the bus instead;
+whichever way you go, text home when you arrive." The first part is the
+`try`, the "if it is cancelled" part is the `catch`, and "whichever way"
+is the `finally`.
+<span slot="breaks">In life you might wait and try the train again; a
+`catch` never goes back into the `try`, so whatever came after the
+failing line is skipped.</span>
+</Analogy>
+
+<Analogy title="a safety net under a trapeze">
+Most nights the net under the acrobat does nothing; if they fall, it
+catches them and the show goes on.
+<span slot="breaks">A net only catches what falls straight into it; a
+`catch` also catches errors thrown deep inside any function called from
+the `try` block, however many calls down.</span>
+</Analogy>
+
+Step through a call that succeeds and one that throws, and watch which
+blocks run:
+
+<TryCatchSteps client:visible />
+
+<Callout kind="definition">
+A **try/catch** statement runs its `try` block. If anything in it
+throws, the rest of the block is skipped and the `catch (e)` block runs,
+with `e` holding the thrown value (an Error's `message` is
+`e.message`<Cite id="mdn-error" />); if nothing throws, the `catch`
+block is skipped. An optional **`finally`** block runs afterwards in both
+cases, even when the `try` or `catch` block ends with
+`return`<Cite id="mdn-control-flow" />.
+</Callout>
+
+<Formal title="Every block ends in one of two ways">
+
+```text
+a block ends:  normal  or  throw v
+try A catch (e) B finally F
+  A normal   →  skip B, run F
+  A throw v  →  run B with e = v, run F
+```
+
+<span slot="read">Any block of code either finishes normally or throws
+some value v. In a try statement, if A finishes normally, B is skipped;
+if A throws v, B runs with e set to v. Either way, F runs last.</span>
+</Formal>
+
+<Examples of="try-catch">
+
+```js
+try { toNumber('4x'); }
+catch (e) { console.log('not a number'); }
+```
+
+```js
+function f() {
+  try { return 'from try'; }
+  finally { console.log('finally first'); }
+}
+f(); // prints, then returns 'from try'
+```
+
+<Run id="try-it" />
+
+</Examples>
+
+In the first, the call throws, the `catch` prints a friendly line, and
+the program goes on. The second shows how stubborn `finally` is: the
+`return` decides the answer, but before the function leaves, `finally`
+runs and prints. The runnable one is a tiny **REPL** (read, evaluate,
+print loop: the prompt where you type a line and see its result) that
+runs each line inside its own `try`, so one bad line is reported and the
+next still runs; predict each line before you press run.
+
+A common slip is to use a name declared inside the `try` after it ends:
+
+```js
+try { const n = toNumber('42'); }
+catch (e) {}
+console.log(n);
+// ReferenceError: n is not defined
+```
+
+```js
+let n = 0;
+try { n = toNumber('42'); }
+catch (e) {}
+console.log(n); // 42
+```
+
+A `try` block is a block like any other, so a `const` inside it lives
+only between its braces; declare the name before the `try` instead.
+
+<Callout kind="pitfall">
+An empty `catch (e) {}` swallows *every* error, including bugs you
+never expected, and brings back the quiet wrong answer. Catch only where
+you can do something useful, and let everything else keep travelling.
+</Callout>
+
+<Prompts ids={['catch-when', 'try-skip', 'catch-e', 'finally-when', 'block-scope']} />
+
+<OtherLanguages>
+
+```js
+try {
+  toNumber('4x');
+} catch (e) {
+  console.log('oops: ' + e.message);
+} finally {
+  console.log('done');
+}
+```
+
+```python
+try:
+    int('4x')
+except ValueError as e:
+    print('oops:', e)
+finally:
+    print('done')
+```
+
+```java
+try {
+    Integer.parseInt("4x");
+} catch (NumberFormatException e) {
+    System.out.println(e.getMessage());
+} finally {
+    System.out.println("done");
+}
+```
+
+```c
+char *end;
+long n = strtol("4x", &end, 10);
+if (*end != '\0') {
+    printf("oops: bad digit\n");
+}
+printf("done\n");
+```
+
+</OtherLanguages>
+
+JavaScript, Python and Java share one shape (Python spells it `raise`
+and `except`), and Python's `int('4x')` already refuses, where
+JavaScript's built-in `Number('4x')` quietly gives `NaN`. Java's `catch`
+must name the kind of exception it handles, and for some kinds (called
+*checked* exceptions) Java will not compile a call unless you catch them
+or declare that you pass them on. C has no exceptions at all: `strtol`
+returns what it could read (`4`) and points `end` at the first character
+it could not use, so every caller must check by hand, and one who
+forgets gets the quiet wrong answer we started with.
+
+<Prompts ids={['other-langs']} />
+
+<Callout kind="engine" label="Where this goes">
+Your Drip interpreter in Part III throws errors of its own: the scanner
+refuses characters it does not recognize, the parser refuses code that
+breaks the grammar, and the evaluator refuses things like adding a
+number to a string; its REPL wraps each line in a `try`, like the
+runnable example above, so one mistake never ends the session.
+</Callout>
+
+## Your turn
+
+The core exercise teaches `toNumber` to refuse; the extra one practises
+catching.
+
+<Exercise id="parseDigits" />
+
+<Exercise id="orDefault" />
+
+## What you learned
+
+- **`throw new Error(message)`** stops the running code at once and
+  raises an exception, which is far better than returning a quiet wrong
+  answer. Unhandled, it stops the program.
+- **try/catch** handles it: if the `try` block throws, the rest of it is
+  skipped and `catch (e)` runs with the thrown value in `e`; if nothing
+  throws, `catch` is skipped.
+- **`finally`** runs either way, even after a `return`, which makes it
+  the place for clean-up.
+
+Next: what is inside an Error object, how to make your own kinds of
+error, and the path a thrown error takes back through the call stack.
+
+<Quiz />

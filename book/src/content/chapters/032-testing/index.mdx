@@ -1,0 +1,313 @@
+---
+n: 32
+day: 8
+part: I
+title: 'Testing your code'
+tagline: 'Running your code once and eyeballing the answer is not knowing that it works. A test writes that check down as code, so the computer repeats it every time you change anything, and tells you exactly what went wrong.'
+objectives:
+  - Write a test with assertions, and explain what makes it pass or fail.
+  - Build a tiny test runner from throw and try/catch, and trace what it does.
+  - Choose between toBe, toEqual, toBeCloseTo and toThrow.
+  - Run tests outside the book with Node's built-in test runner, and recognise tests in Python, Java and C.
+introduces: [test, assertion]
+uses: [function, parameter, argument, return, call, undefined, array, index, length, array-loop, object, identity, reference, callback, arrow-function, first-class-function, for-of, throw, try-catch, error-object, template-literal, import-export, module, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [node-test, node-assert, test262]
+---
+import TestRunSteps from '../../../components/diagrams/ch032/TestRunSteps';
+import SameOrEqual from '../../../components/diagrams/ch032/SameOrEqual';
+
+## “It worked when I tried it”
+
+In the chapter on walking an array you wrote `max`, and you probably
+ran it on one array, saw the right number and moved on. Now suppose
+that next month you change `max` to make it faster. Is it still right?
+To find out, you would have to remember which arrays you tried and what
+the answers should have been, and nobody remembers. So we write the
+checks down, as code, and let the computer repeat them whenever we
+like.
+
+<Analogy title="a pilot's checklist">
+Pilots read through a printed checklist before every take-off, even
+after ten thousand flights; not because they have forgotten how to fly,
+but because a written check catches the one thing memory skips on a
+busy day. A test is a checklist for your code, and the computer reads
+it out for you, every item, every time.
+<span slot="breaks">A checklist can only remind you of what someone
+thought to write on it, and so can a test: it checks the inputs you
+chose and nothing else, so a passing test means “no mistake found
+here”, not “no mistakes”.</span>
+</Analogy>
+
+## A test is code that checks code
+
+The smallest possible check is an `if`:
+
+```js
+if (max([3, 7, 2]) !== 7) {
+  console.log('FAIL: max([3, 7, 2])');
+}
+```
+
+It calls `max`, compares the answer with the one we expect, and
+complains only if they differ. Writing that out a hundred times would be
+tedious, so we give its two jobs names. An **assertion** checks one fact
+and throws an error if the fact is false (`throw`, from the chapter on
+errors); a **test** runs some assertions and reports whether anything
+threw:
+
+```js
+function expectBe(got, want) {
+  if (got !== want) {
+    throw new Error(
+      `expected ${want}, got ${got}`);
+  }
+}
+
+function test(name, fn) {
+  try {
+    fn();
+    console.log('pass: ' + name);
+  } catch (e) {
+    console.log('FAIL: ' + name);
+    console.log('  ' + e.message);
+  }
+}
+```
+
+`expectBe` compares what we got with what we want, and if they differ
+it throws an `Error` whose message says both. `test` takes a name and a
+function `fn` holding the checks (a callback): inside `try` it calls
+`fn()`, and if that finishes without throwing, it prints `pass`; if
+anything inside threw, control jumps to `catch`, which prints `FAIL`
+and the error's message. Step through two tests, one of them wrong on
+purpose:
+
+<TestRunSteps client:visible />
+
+<Analogy title="the scale at airport check-in">
+At check-in your bag goes on a scale with one rule: no more than 23 kg.
+Under the limit, nothing happens and you walk on; over it, everything
+stops and the desk tells you exactly how heavy the bag was.
+<span slot="breaks">The desk may let a bag that is 23.5 kg through; an
+assertion never bends, and a different kind of assertion
+(`toBeCloseTo`, below) is how you ask for “near enough”.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **test** is code that runs other code on chosen inputs and checks the
+results. An **assertion** is one check that must be true, such as
+`expect(max([3, 7, 2])).toBe(7)`; if it is false, it throws, and the
+test fails with a message saying what was expected and what actually
+happened. Node's built-in test runner uses the same rule: a test fails
+if it throws, and passes otherwise<Cite id="node-test" />.
+</Callout>
+
+<Formal title="When a test passes">
+
+```text
+test t = assertions a₁, a₂, …, aₙ
+pass(t)  ⟺  a₁ ∧ a₂ ∧ … ∧ aₙ
+```
+
+<span slot="read">A test is a list of assertions, a-one to a-n. The test
+passes exactly when (⟺) a-one holds and a-two holds and so on (the
+symbol ∧ reads “and”), so a single false assertion makes the whole test fail.</span>
+</Formal>
+
+The tests behind every exercise in this book work this way. They use
+`expect(x).toBe(y)`, which is `expectBe(x, y)` written so it reads like
+a sentence: `expect(x)` makes an object holding `x`, and its `toBe`
+method does the comparing and the throwing.
+
+<Examples of="test assertion">
+
+```js
+expect(double(3)).toBe(6);
+```
+
+```js
+test('isDigit', () => {
+  expect(isDigit('7')).toBe(true);
+  expect(isDigit('x')).toBe(false);
+});
+```
+
+<Run id="harness" />
+
+</Examples>
+
+The first is a single assertion: if `double(3)` returns `6` it does
+nothing at all, and otherwise it throws `expected 6, got …`. The second
+is a test holding two assertions about the `isDigit` from chapter 1
+(the kind of function a scanner leans on), one for a digit and one for
+a letter; both must hold for the test to pass. The runnable one is the
+whole harness from above; its second test is wrong on purpose, so fix
+the *test*, not the function, and run it again.
+
+That last point catches everyone at least once: a test is only as right
+as the answer written in it.
+
+```js
+test('double 0', () => {
+  expect(double(0)).toBe(1);
+});
+// FAIL: expected 1, got 0
+```
+
+`double` is correct here; the test expected the wrong value. A failing
+test says “these two disagree”, and it is your job to work out which of
+them is wrong.
+
+<Prompts ids={['test-what', 'assertion-what', 'assertion-throws', 'test-can-be-wrong']} />
+
+## Which kind of equal?
+
+The chapter on references showed that `===` on objects asks “the same
+object?”, not “the same contents?”. Tests need both questions, and a
+third one for decimals:
+
+<Figure takeaway="toBe asks “same object?”; toEqual asks “same contents?”." caption="Two separate arrays with the same contents. toBe compares the arrows and fails; toEqual compares slot by slot and passes. Below: a computed decimal is not exactly 0.3, so it needs toBeCloseTo.">
+  <SameOrEqual />
+</Figure>
+
+<Examples of="assertion">
+
+```js
+expect([1, 2]).toEqual([1, 2]); // pass
+expect({ x: 1 }).toEqual({ x: 1 }); // pass
+```
+
+```js
+expect(0.1 + 0.2).toBeCloseTo(0.3); // pass
+```
+
+```js
+expect(() => evaluate({ kind: 'pow' }))
+  .toThrow(); // pass if it throws
+```
+
+</Examples>
+
+`toEqual` looks inside: two arrays are equal if they have the same
+length and equal items in every slot, and two objects if they have the
+same properties with equal values. `toBeCloseTo` allows a tiny
+difference, because `0.1 + 0.2` is `0.30000000000000004` in JavaScript
+(chapter 35 shows why). `toThrow` checks the
+opposite of normal: it is handed a *function*, calls it, and passes only
+if the call throws, which is how you test that bad input is rejected.
+
+Using `toBe` on two lookalike arrays is the classic slip, and the
+message it gives is confusing until you know why:
+
+```js
+expect([1, 2]).toBe([1, 2]);
+// expected [ 1, 2 ], got [ 1, 2 ]
+```
+
+The two sides print the same, yet the assertion fails, because they are
+two separate arrays and `toBe` asks whether they are the same one.
+(Strictly, `toBe` uses `Object.is`, which is `===` except that it treats
+`NaN` as equal to itself, and tells `0` from `-0`.)
+
+<Prompts ids={['tobe-vs-toequal', 'close-to']} />
+
+## Running tests outside the book
+
+In your own projects you do not write `test` yourself. Node comes with
+one, and `node --test` runs every test file it finds<Cite id="node-test" />:
+
+```js
+import test from 'node:test';
+import assert from 'node:assert';
+
+test('max picks the largest', () => {
+  assert.strictEqual(max([3, 7, 2]), 7);
+});
+```
+
+`assert.strictEqual(a, b)` is Node's `toBe`, and
+`assert.deepStrictEqual` is its `toEqual`<Cite id="node-assert" />. The
+engine code in this book's repository uses a popular library called
+Vitest instead, whose `expect(x).toBe(y)` reads exactly like the one you
+have been using.
+
+<OtherLanguages>
+
+```js
+import test from 'node:test';
+import assert from 'node:assert';
+test('max', () => {
+  assert.strictEqual(max([3, 7, 2]), 7);
+});
+```
+
+```python
+# test_max.py, run with: pytest
+def test_max():
+    assert max([3, 7, 2]) == 7
+```
+
+```java
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api
+    .Assertions.assertEquals;
+
+class MaxTest {
+    @Test void max() {
+        assertEquals(7, Max.of(3, 7, 2));
+    }
+}
+```
+
+```c
+#include <assert.h>
+int main(void) {
+    int xs[] = {3, 7, 2};
+    assert(max(xs, 3) == 7);
+    return 0;
+}
+```
+
+</OtherLanguages>
+
+The idea is identical everywhere; the differences are in the details.
+Python's popular pytest uses the plain `assert` statement and finds
+every function whose name starts with `test_`. Java's JUnit puts the
+**expected** value first in `assertEquals(7, ...)`, the opposite order
+to `toBe`. C's `assert` is not a test runner at all: a false assertion
+stops the whole program on the spot, so the first failure is the only
+one you hear about.
+
+<Prompts ids={['node-test', 'keep-tests']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript itself is tested this way. Test262 is the official
+conformance suite for the language: a very large collection of small
+tests, each checking one rule of the specification, which engine
+builders run to show their engine behaves as the standard
+says<Cite id="test262" />. The engine code in this book's repository has
+its own tests too, and the next chapter shows the kind of testing it
+relies on most, which needs no expected answers at all.
+</Callout>
+
+## Your turn
+
+<Exercise id="check" />
+
+<Exercise id="sameItems" />
+
+## What you learned
+
+- A **test** runs code on chosen inputs and checks the results; it runs
+  every time, so it catches what memory forgets.
+- An **assertion** checks one fact and throws if it is false; a test
+  fails if anything in it throws. A test is only as right as its
+  expected value.
+- `toBe` asks “the same value or object?”, `toEqual` compares contents,
+  `toBeCloseTo` allows a tiny decimal difference, and `toThrow` passes
+  only if the call throws.
+
+Next: which inputs to test (the unusual ones, where bugs hide), and how
+to test code when you do not know the right answers.
+
+<Quiz />

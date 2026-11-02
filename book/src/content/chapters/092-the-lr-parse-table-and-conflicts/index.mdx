@@ -1,0 +1,247 @@
+---
+n: 92
+day: 23
+part: III
+title: 'The LR parse table and conflicts'
+tagline: 'Flatten the LR automaton into a table, and a whole parser becomes a ten-line loop that never looks back. Some grammars, though, leave a cell of that table with two different instructions in it, and the loop cannot choose.'
+objectives:
+  - Fill in the ACTION and GOTO table of an LR(0) automaton.
+  - Run a table-driven LR parser by hand, popping states on a reduce and following GOTO.
+  - Recognise a shift/reduce conflict and a reduce/reduce conflict in a table, and say which items cause each.
+  - Write a function that finds every conflict in an LR(0) automaton.
+introduces: [lr-conflict]
+uses: [lr0-item, closure-goto, lr-automaton, shift-reduce, lr-handle, bottom-up-parsing, grammar, production-rule, terminal, nonterminal, ambiguity, dfa, precedence, array, object, set, function, for-of, if, return, while-loop, template-literal]
+sources: [knuth1965, aho2006]
+---
+import TableParseSteps from '../../../components/diagrams/ch092/TableParseSteps';
+import ConflictCell from '../../../components/diagrams/ch092/ConflictCell';
+
+## From a picture to a table
+
+The last chapter ended with a picture: nine states, joined by arrows
+labelled with grammar symbols. A program cannot follow a picture, but
+it can look things up; so we flatten the automaton into a table with
+one row per state and one column per symbol, and the parser becomes a
+loop that asks the table what to do. Here is the grammar again, with
+its rules numbered (the numbers are how the table names them):
+
+```text
+0  S → E
+1  E → E + T
+2  E → T
+3  T → n
+4  T → ( E )
+```
+
+<Analogy title="a choose-your-own-adventure book">
+Each page of the book says "if you open the door, turn to page 41; if
+you run, turn to page 17". You never need to remember the story so far:
+the page you are on already carries it, and the instructions on it are
+all you need.
+<span slot="breaks">In the book you only ever move forward to a new
+page; an LR parser also goes *back*, popping pages off a pile after a
+reduction and continuing from the page underneath.</span>
+</Analogy>
+
+The table has two halves. The **ACTION** half has a column for each
+terminal, plus `$`, a marker the parser puts at the end of the input,
+and each cell says *shift* (and which state to push), *reduce* (and by
+which rule), *accept*, or, if empty, *error*. The **GOTO** half has a
+column for each nonterminal and says which state to push after a
+reduction has put that nonterminal on the stack:
+
+```text
+     n   +   (   )   $  |  E  T
+0   s3  .   s4  .   .  |  1  2
+1   .   s5  .   .   acc|  .  .
+2   r2  r2  r2  r2  r2 |  .  .
+3   r3  r3  r3  r3  r3 |  .  .
+4   s3  .   s4  .   .  |  6  2
+5   s3  .   s4  .   .  |  .  7
+6   .   s5  .   s8  .  |  .  .
+7   r1  r1  r1  r1  r1 |  .  .
+8   r4  r4  r4  r4  r4 |  .  .
+```
+
+Every entry comes from one simple reading of the automaton. An arrow
+on a terminal `a` from state `i` to state `j` gives *shift j* in row
+`i`, column `a` (state 0 on `n` goes to 3, so `s3`); an arrow on a
+nonterminal gives the GOTO entry (state 0 on `E` goes to 1); a complete
+item `A → α ·` in state `i` gives *reduce* by that rule; and the item
+`S → E ·` gives *accept* under `$`. The one surprising thing is the
+rows full of `r2` or `r3`: an LR(0) item never looks at the next token,
+so a reduction goes in **every** column of its row.
+
+<Formal title="The LR(0) table">
+
+```text
+goto(Iᵢ, a) = Iⱼ, a terminal
+    ⇒ ACTION[i, a] = shift j
+goto(Iᵢ, A) = Iⱼ, A nonterminal
+    ⇒ GOTO[i, A] = j
+A → α · in Iᵢ, A ≠ S
+    ⇒ ACTION[i, a] = reduce by A → α,
+      for every terminal a
+S → E · in Iᵢ
+    ⇒ ACTION[i, $] = accept
+```
+
+<span slot="read">If goto from state i on a terminal a is state j, the
+ACTION cell for i and a says shift j. If goto on a nonterminal A is
+state j, the GOTO cell for i and A is j. If state i holds a complete
+item for any rule but the start rule, every ACTION cell in row i says
+reduce by that rule. If it holds the completed start rule, the cell
+under the end marker says accept.</span>
+</Formal>
+
+<Prompts ids={['action-goto', 'reduce-every-column']} />
+
+## The parser is a loop
+
+The stack now holds **state numbers**, not symbols; each state stands
+for the symbol that led into it, so the symbols are only there for us
+to read. One round of the loop: look up the row of the state on top and
+the column of the next token. On *shift j*, push `j` and move to the
+next token. On *reduce by A → α*, pop as many states as `α` has
+symbols, which uncovers the state that was there before `α` was
+started, and push `GOTO[that state, A]`. Stop on *accept*, or report an
+error on an empty cell. Step through it on `n + n`:
+
+<TableParseSteps client:visible />
+
+Notice what popping does for us. After the second `T → n`, popping
+uncovers state 5, not state 0, so GOTO takes the parser to 7 (where
+`E → E + T ·` waits) rather than to 2: the stack underneath remembers
+the context, and the table never has to. Here is the whole parser, with
+the table as data; try `( n )`, `n + + n`, or `( ( n ) )`:
+
+<Run id="lr-driver" />
+
+<Prompts ids={['pop-length', 'reduce-no-token']} />
+
+## When a cell has two answers
+
+Now make the grammar do a little more: add multiplication, which binds
+tighter than `+` (chapter 83's precedence), with a new level `F` for a
+factor:
+
+```text
+E → E + T     E → T
+T → T * F     T → F
+F → ( E )     F → n
+```
+
+Build its LR(0) automaton exactly as before and you get twelve states;
+here is state 2, the state after a `T` at the start, with its row:
+
+<Figure takeaway="A conflict is a table cell with two instructions in it." caption="Top: state 2 of the grammar with *. Its complete item puts r2 in every column, and its item T → T · * F puts s7 under *, so that cell holds two actions. Bottom: a grammar whose state has two complete items gets two reductions in every cell.">
+  <ConflictCell />
+</Figure>
+
+With `T` on the stack and `*` next, the parser cannot tell from the
+table whether to reduce the `T` to an `E` now or to shift the `*` and
+build a bigger `T` first. (Shifting is right, since `*` binds tighter;
+but nothing in an LR(0) table says so.) State 9 has the same problem,
+with `E → E + T ·` beside `T → T · * F`.
+
+<Analogy title="a signpost with two arms">
+You reach a fork where one sign says "Town, left" and the other says
+"Town, right". Each is honest about one route, and you only have one
+pair of legs.
+<span slot="breaks">A walker can try one way and come back; a plain
+LR parser has no going back, so a conflict is not a choice to make
+later but a hole in the table that must be fixed before parsing.</span>
+</Analogy>
+
+<Callout kind="definition">
+An **LR conflict** is an ACTION cell that would need two entries. In a
+**shift/reduce conflict**, a state holds a complete item and an item
+with a terminal after its dot, and the parser cannot tell whether to
+reduce now or shift. In a **reduce/reduce conflict**, a state holds two
+complete items, and the parser cannot tell which rule to reduce by. A
+grammar is **LR(0)** when its LR(0) table has no conflicts.
+</Callout>
+
+<Examples of="lr-conflict">
+
+```text
+state 2:  E → T ·    T → T · * F
+next "*": reduce by E → T, or shift *?
+shift/reduce
+```
+
+```text
+X → A    X → B    A → x    B → x
+state:  A → x ·    B → x ·
+reduce/reduce, in every column
+```
+
+```text
+E → E + E    E → n      (ambiguous)
+state:  E → E + E ·    E → E · + E
+next "+": shift/reduce
+```
+
+</Examples>
+
+The first is the one we met: a conflict that is only there because LR(0)
+reduces without looking at the next token, and the next chapter makes it
+disappear by looking. The second is the plainest reduce/reduce conflict:
+after an `x` the parser has two complete items, and since `A` and `B`
+are made of the same token, nothing it sees can separate them. The third
+is the grammar of chapter 79's ambiguity: with `n + n` on the stack and
+another `+` coming, reducing groups the sum as `(n + n) + n` and
+shifting groups it as `n + (n + n)`; both are right by the grammar,
+which is why no amount of lookahead fixes it. Some conflicts are
+weaknesses of the method, and some are honest reports that the grammar
+itself is ambiguous; telling them apart is most of the skill of writing
+grammars for LR parsers.
+
+<Formal title="When a grammar is LR(0)">
+
+```text
+for every state I:
+  at most one complete item in I, and
+  if A → α · is in I, no item in I
+  has the form B → β · a γ, a terminal
+```
+
+<span slot="read">A grammar is LR(0) when, in every state, there is at
+most one complete item, and a state with a complete item has no item
+whose dot stands before a terminal. The first rule forbids
+reduce/reduce conflicts and the second forbids shift/reduce
+ones.</span>
+</Formal>
+
+<Prompts ids={['sr-cause', 'rr-cause', 'ambiguous-conflict', 'lr0-grammar']} />
+
+<Callout kind="engine" label="Under the hood">
+Knuth's 1965 paper framed the question this way: a grammar is LR(k)
+when every parsing decision can be made with k tokens of
+lookahead<Cite id="knuth1965" />. A conflict-free table is good news
+beyond parsing, too: with exactly one possible move at every step, the
+parser can only ever build one tree, so the grammar is not ambiguous. Almost no real
+programming language is LR(0); the dragon book uses this same
+`E`, `T`, `F` grammar to show why, and then adds lookahead<Cite id="aho2006" />,
+which is the subject of the next chapter.
+</Callout>
+
+## Your turn
+
+<Exercise id="find-conflicts" />
+
+## What you learned
+
+- The **ACTION** table says shift, reduce, accept or error for each
+  state and terminal; the **GOTO** table says which state to push after
+  a reduction. Both are read straight off the LR(0) automaton.
+- The parser keeps **states** on its stack. A reduce pops one state per
+  body symbol, then pushes `GOTO[uncovered state, head]`.
+- An **LR conflict** is a cell with two actions: **shift/reduce** (a
+  complete item beside a dot before a terminal) or **reduce/reduce**
+  (two complete items). A grammar with none is LR(0).
+
+Next: one token of lookahead, used three ways, and the conflicts each
+one removes.
+
+<Quiz />

@@ -1,0 +1,320 @@
+---
+n: 15
+day: 4
+part: I
+title: 'Inheritance: extends and super'
+tagline: 'When two classes share most of their code, you can write the shared part once and let each class start from it. extends says which class to start from; super reaches back to it.'
+objectives:
+  - Make a subclass with extends, and set it up with super(...) in its constructor.
+  - Explain, step by step, why a subclass constructor must call super(...) before it uses this.
+  - Say which parts of a subclass's instance come from the parent and which from the subclass.
+  - Compare inheritance in JavaScript, Python and Java, and the struct trick C programmers use instead.
+introduces: [extends, super-call]
+uses: [class, constructor, instance, new, method, this, instanceof, object, property, dot-access, reference, function, parameter, return, call, undefined, variables, numbers, strings, booleans, comparison, if, console-log]
+sources: [mdn-classes, mdn-extends, mdn-super, mdn-class-constructor, mdn-instanceof]
+---
+import SuperSteps from '../../../components/diagrams/ch015/SuperSteps';
+import InheritParts from '../../../components/diagrams/ch015/InheritParts';
+
+## The same code, twice
+
+In Part III your parser will turn a program's text into objects, one for
+each piece of the program: a number such as `42`, a name such as `x`, a
+sum such as `2 + 3`. Every piece needs to remember which line it came
+from, so that an error message can say where the problem is. Written
+with what we know so far, that looks like this:
+
+```js
+class Num {
+  constructor(line, value) {
+    this.line = line;
+    this.value = value;
+  }
+  where() { return 'line ' + this.line; }
+}
+class Name {
+  constructor(line, text) {
+    this.line = line;
+    this.text = text;
+  }
+  where() { return 'line ' + this.line; }
+}
+```
+
+The `this.line = line` line and the whole `where` method are written
+twice, and a real parser has a dozen kinds of piece; worse, to make
+`where` say `'line 3 of main.drip'` later, you would have to change
+every copy, and miss none. What we want is to write the shared part **once**, in one
+class, and have each kind of piece start from it.
+
+## extends: starting from another class
+
+<Analogy title="a recipe variation">
+A cookbook prints the basic sponge cake once, and the lemon sponge on
+the next page says "make the basic sponge, then fold in the zest of a
+lemon". The lemon version gets every step of the basic one without
+repeating it, and adds its own step at the end.
+<span slot="breaks">A cook may skip a step or do them in any order; a
+subclass always runs its parent's setup, and it must run it first,
+before it adds anything of its own.</span>
+</Analogy>
+
+<Analogy title="a franchise and its head office">
+A new branch of a shop chain follows the head office's rule book for
+everything, and keeps one extra page of its own rules for local things.
+<span slot="breaks">A branch gets its own printed copy of the rule book;
+a subclass gets no copy at all. It keeps a link to the parent's methods
+and uses the one original, as the next chapter shows.</span>
+</Analogy>
+
+Here are the pieces again, with the shared part pulled out into a class
+called `Node` (the usual name for one piece of a parsed program):
+
+```js
+class Node {
+  constructor(line) {
+    this.line = line;
+  }
+  where() { return 'line ' + this.line; }
+}
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+}
+const n = new Num(3, 42);
+n.where(); // 'line 3'
+n.value;   // 42
+```
+
+Lines 1 to 6 are an ordinary class. Line 7 says that `Num` **extends** `Node`: a Num starts with everything a Node
+has. Its constructor takes two values, and its first line,
+`super(line)`, means "run the parent's constructor now, with `line`"; it
+is Node's constructor that stores `this.line`. Then Num's constructor
+stores its own extra, `this.value`. Num never mentions `where`, yet
+`n.where()` works and gives `'line 3'`, because Num **inherited** it
+from Node. Step through what `new Num(3, 42)` does:
+
+<SuperSteps client:visible />
+
+The order matters: in a subclass, the parent builds the object, so until
+`super(...)` has run there is no object for `this` to mean. Compare the
+broken constructor with the working one:
+
+```js
+class Bad extends Node {
+  constructor(line, value) {
+    this.value = value; // too early
+    super(line);
+  }
+}
+new Bad(3, 42);
+// ReferenceError: Must call super
+// constructor in derived class before
+// accessing 'this' or returning from
+// derived constructor
+```
+
+```js
+class Good extends Node {
+  constructor(line, value) {
+    super(line);        // first
+    this.value = value;
+  }
+}
+new Good(3, 42).value; // 42
+```
+
+That message is the wording in Node.js and Chrome (a **derived class**
+is another name for a subclass); leaving `super` out altogether gives
+the same error<Cite id="mdn-extends" />.
+
+<Callout kind="definition">
+**`class B extends A`** makes `B` a **subclass** (or *child class*) of
+the **parent class** `A`: instances of `B` have `A`'s methods as well as
+`B`'s own, and `b instanceof A` is `true` for them<Cite id="mdn-extends" />.
+In `B`'s constructor, **`super(args)`** runs `A`'s constructor on the
+new object with those arguments; it must run before `this` is used, or
+the result is a ReferenceError<Cite id="mdn-super" />. A subclass with no
+constructor gets one that passes all its arguments on to the
+parent's<Cite id="mdn-class-constructor" />.
+</Callout>
+
+<Formal title="What new does for a subclass">
+
+```text
+class B extends A, and new B(a₁, …, aₙ):
+  run B's constructor with a₁ … aₙ
+  super(x₁, …, xₖ)  ⟹  A's constructor makes
+      o from x₁ … xₖ; then this = o
+  this before super(…)  ⟹  ReferenceError
+```
+
+<span slot="read">To make a new B, where B extends A, run B's
+constructor with the arguments. When it reaches super with some
+values, A's constructor runs with those values and makes the object,
+called o; from then on, this means o.
+Using this before super has run is a ReferenceError.</span>
+</Formal>
+
+<Prompts ids={['extends-what', 'super-call-what', 'super-first', 'default-constructor']} />
+
+## What a subclass's instance has
+
+Put together, one Num holds a little from each class, and can use the
+methods of both without holding copies of them.
+
+<Figure takeaway="The parent sets up its part first; the subclass adds the rest." caption="Node's constructor stores line and Node holds where(); Num's constructor calls super(line) and then stores value. The Num object n has both properties, can use Node's where(), and is an instance of both classes.">
+  <InheritParts />
+</Figure>
+
+A subclass can also add methods its parent does not have; those belong
+to the subclass alone:
+
+```js
+class Name extends Node {
+  constructor(line, text) {
+    super(line);
+    this.text = text;
+  }
+  isLong() { return this.text.length > 8; }
+}
+new Name(2, 'x').isLong(); // false
+new Node(2).isLong;        // undefined
+```
+
+`'x'` is not longer than eight letters, so `isLong` gives `false`. A plain Node was never given `isLong`, so
+reading it gives `undefined`: inheritance goes from parent to child,
+never back.
+
+<Examples of="extends super-call">
+
+```js
+class A { hi() { return 'hi'; } }
+class B extends A {}
+new B().hi(); // 'hi'
+```
+
+```js
+class ParseError extends Error {}
+const e = new ParseError('bad digit');
+e.message;           // 'bad digit'
+e instanceof Error;  // true
+```
+
+```js
+class RuntimeError extends Error {
+  constructor(token, message) {
+    super(message);
+    this.token = token;
+  }
+}
+```
+
+<Run id="node-classes" />
+
+</Examples>
+
+The first is the smallest possible subclass: `B` adds nothing, so `hi`
+comes from `A`. The second and third are real: both are error classes
+from this book's own Drip interpreter, which extend JavaScript's
+built-in `Error` class (chapter 24 is all about errors). `ParseError`,
+from `companion/ts/src/parser.ts`, has no body at all, so it gets the
+constructor that passes everything on, and Error's constructor stores `'bad digit'` as the `message`. `RuntimeError`, from
+`companion/ts/src/errors.ts` (shown without its TypeScript type labels,
+which chapter 27 introduces), lets Error store the `message` with
+`super(message)` and then adds the `token` where the problem was found,
+so the error can report its line. The runnable one builds three kinds
+of piece and asks each where it is; try removing a `super` line.
+
+<Prompts ids={['instanceof-parent', 'subclass-adds', 'why-not-copy', 'error-super']} />
+
+<OtherLanguages>
+
+```js
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+}
+const n = new Num(3, 42);
+n.where(); // 'line 3'
+```
+
+```python
+class Num(Node):
+    def __init__(self, line, value):
+        super().__init__(line)
+        self.value = value
+
+n = Num(3, 42)
+n.where()  # 'line 3'
+```
+
+```java
+class Num extends Node {
+    int value;
+    Num(int line, int value) {
+        super(line); // must be first
+        this.value = value;
+    }
+}
+Num n = new Num(3, 42);
+n.where(); // "line 3"
+```
+
+```c
+/* C has no classes: embed the parent */
+struct Node { int line; };
+struct Num {
+    struct Node base; /* must be first */
+    int value;
+};
+int where(struct Node *n) {
+    return n->line;
+}
+struct Num x = { { 3 }, 42 };
+where(&x.base); /* 3 */
+```
+
+</OtherLanguages>
+
+All three languages with classes share the idea, but they check
+different things. Python writes the parent in brackets, `class
+Num(Node)`, and if you forget `super().__init__(line)` there is no error
+at all: the object has no `line`. Java will not compile this
+constructor without `super(line)`, since Node has no constructor that
+takes nothing. C has no classes and no inheritance, so C programmers
+**embed** the parent: a `struct Num` starts with a whole `struct Node`,
+and a function written for Nodes is handed the Num's first part,
+`&x.base`. Because that part sits at the very start, C even allows a
+pointer to the Num to be converted to a pointer to its Node.
+
+<Callout kind="engine" label="Where this goes">
+Drip, the language you build in Part III, has classes too, and in
+chapter 106 you will give it inheritance yourself: each class object in
+your interpreter will remember its parent class, much as `extends`
+does here. Next chapter: what happens when a subclass wants its own
+version of a method it inherited, and how JavaScript finds a method at
+all.
+</Callout>
+
+## Your turn
+
+<Exercise id="str" />
+
+## What you learned
+
+- **`class B extends A`** makes `B` a subclass of `A`: its instances
+  have `A`'s methods too, and `instanceof A` is true for them, but `A`
+  gains nothing from `B`.
+- **`super(args)`** in `B`'s constructor runs `A`'s constructor, which
+  makes the object; only then can `B` use `this`. A subclass with no
+  constructor passes all its arguments to the parent's.
+
+Next: replacing an inherited method, and the chain of objects JavaScript
+searches to find one.
+
+<Quiz />

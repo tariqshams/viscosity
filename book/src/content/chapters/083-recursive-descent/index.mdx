@@ -1,0 +1,290 @@
+---
+n: 83
+day: 21
+part: III
+title: 'Recursive descent parsing'
+tagline: 'Turn a grammar into code by giving each rule its own function. The functions call each other exactly as the rules mention each other, the call stack keeps everyone’s place, and out comes a syntax tree.'
+objectives:
+  - Say what a parser does, and what it needs from the scanner and the grammar.
+  - Turn each piece of a BNF rule into code (a call, a check, an if or a while loop).
+  - Use one token of lookahead to choose between a rule’s alternatives.
+  - Write a recursive descent parser for blocks of statements that nest.
+introduces: [parser, recursive-descent]
+uses: [grammar, production-rule, terminal, nonterminal, bnf, parse-tree, ast, ast-node, expression-vs-statement, tree-printer, token, token-type, lookahead, literal, keyword, identifier, drip, scanner, recursion, base-case, call-stack, tree, function, nested-function, closure, arrow-function, while-loop, array, push, index, object, return, throw, differential-testing-intro, template-literal]
+sources: [ecma262-grammar]
+---
+import RuleToFunction from '../../../components/diagrams/ch083/RuleToFunction';
+import BlockSteps from '../../../components/diagrams/ch083/BlockSteps';
+
+## The missing piece
+
+We have three of the four things a front end needs: the scanner makes
+a flat row of tokens, the grammar says which rows are allowed, and the
+syntax tree is the shape we want at the end. Missing is the program in
+the middle, which reads the tokens left to right, checks them against
+the grammar, and builds the tree.
+That program is the **parser**. You have written a gentle one already,
+in "Checkpoint: from tokens to JSON values"; this chapter shows the
+method behind it, so that you can write one for any grammar, starting
+with Drip's statements.
+
+<Analogy title="a post sorting office">
+Letters arrive in one long stream. The sorter drops each letter into the
+bag for its street, each full bag into the sack for its town, and each
+sack into the van for its region: a flat stream goes in, and nested
+containers come out.
+<span slot="breaks">A sorter can pick up the letters in any order and
+look at each one for as long as they like; a parser takes its tokens
+strictly in order, and decides what to do from the next one or two.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **parser** turns a row of tokens into a syntax tree, following a
+grammar. If the tokens do not fit the grammar, it reports a **syntax
+error** instead (the chapter "Syntax errors and recovery" makes those
+messages good).
+</Callout>
+
+## One function per rule
+
+The method is the most direct one possible: write one function for each
+rule of the grammar, and make each function do, in order, what its rule
+says.
+
+<Analogy title="a manual of procedures">
+An office manual has one page per procedure. The page for "new
+customer" says: take the form, then *follow the "check address" page*,
+then file the form. You turn to that page, follow it, and come back to
+where you were, keeping your place with a bookmark.
+<span slot="breaks">A person following a page that sends them to the
+same page again would soon lose track of their bookmarks; the computer
+keeps a fresh bookmark (a frame on the call stack) for every call, so a
+rule may send it back to itself as often as the tokens need.</span>
+</Analogy>
+
+Here is the grammar for this chapter, a small piece of Drip's
+statements, with tokens written as plain strings:
+
+<Formal title="Blocks of print statements">
+
+```text
+statement → printStmt | block
+printStmt → "print" expr ";"
+block     → "{" statement* "}"
+expr      → NUMBER | IDENTIFIER
+          | "(" expr ")"
+```
+
+<span slot="read">A statement is a print statement or a block. A print
+statement is the keyword print, an expression and a semicolon. A block
+is an opening curly bracket, zero or more statements, and a closing
+curly bracket. An expression is a number, or a name, or an expression
+in round brackets.</span>
+</Formal>
+
+Each piece of a rule becomes one piece of code, in order: a terminal
+becomes a check that takes the token, a nonterminal a call, a star a
+`while` loop, and the function returns the node it built:
+
+<Figure takeaway="Each piece of the rule becomes one piece of the function, in order." caption="The rule for block, and the function that parses it. The terminal { becomes consume('{'); statement* becomes a loop that calls statement until the next token is }; the terminal } becomes consume('}'). Last of all, the function returns the block node.">
+  <RuleToFunction />
+</Figure>
+
+<Formal title="From rule to code">
+
+```text
+rule  A → …        function A() { … }
+nonterminal  B     B()
+terminal  "x"      consume('x')
+( … )*             while (peek() starts it)
+( … )?             if (peek() starts it)
+α | β              if (peek() starts α) α
+                   else β
+```
+
+<span slot="read">A rule for A becomes a function called A. A
+nonterminal B in its body becomes a call to the function B. A terminal
+x becomes consume of x: take the next token, which must be x. A group
+with a star becomes a while loop that runs as long as the next token is
+one that can start the group. A group with a question mark becomes an
+if with the same test. A choice between α and β becomes an if that
+looks at the next token to decide which of the two to parse.</span>
+</Formal>
+
+`peek` and `consume` are two small helpers, the parser's equivalent of
+the scanner's `peek` and `advance`:
+
+```js
+let i = 0;
+const peek = () => ts[i];
+const next = () => ts[i++];
+function consume(t) {
+  if (next() !== t) {
+    throw new Error('Expect ' + t);
+  }
+}
+```
+
+`ts` is the array of tokens and `i` the index of the next one. `peek()`
+returns that token without moving on; `next()` returns it and moves on
+(`i++` adds one after reading); `consume(t)` takes the next token and
+throws if it is not `t`. Now the four rules,
+one function each:
+
+```js
+function statement() {
+  if (peek() === '{') return block();
+  return printStmt();
+}
+function printStmt() {
+  consume('print');
+  const e = expr();
+  consume(';');
+  return { kind: 'print', e };
+}
+function block() {
+  consume('{');
+  const body = [];
+  while (peek() !== '}') {
+    body.push(statement());
+  }
+  consume('}');
+  return { kind: 'block', body };
+}
+```
+
+`statement` is the choice: it peeks, and calls `block` if the next
+token is `{`, otherwise `printStmt`. `printStmt` is its rule in code:
+take `print`, parse an expression, take `;`, return a print node.
+`block` takes `{`, loops while the next token is not `}` (parsing one
+more statement each time and pushing its node onto `body`), then takes
+`}` and returns a block node. If the tokens run out first, the loop
+does not spin for ever: `printStmt`'s `consume('print')` finds no token
+and throws. (`expr`, the fourth rule, is in the runnable example below:
+it takes one token and decides by looking at it.) Watch the functions
+call each other:
+
+<BlockSteps client:visible />
+
+<Callout kind="definition">
+**Recursive descent** is a way to write a parser by hand, with one
+function per grammar rule. A terminal becomes a check, a nonterminal a
+call, an alternative an `if` that looks at the next token, and a `*`
+a `while` loop. Parsing starts at the top rule and *descends* through
+the calls, and because rules mention each other (and themselves), so
+do the functions: that is the *recursive* part.
+</Callout>
+
+<Examples of="parser recursive-descent">
+
+```text
+print 7 ;   →   (print 7)
+```
+
+```text
+{ print 1 ; { print ( x ) ; } }
+→ (block (print 1)
+     (block (print (group x))))
+```
+
+```ts
+function ifStatement(): Stmt {
+  consume('(', "Expect '('...");
+  const condition = expression();
+  consume(')', "Expect ')'...");
+  const then = statement();
+  const otherwise = match('else')
+    ? statement() : null;
+  return { kind: 'if', condition,
+           then, else: otherwise };
+}
+```
+
+</Examples>
+
+The first is the smallest program: `printStmt` takes `print`, `expr`
+takes `7`, and `printStmt` takes `;`. The second nests: the
+outer `block`'s second statement is a block of its own, so `block` runs
+twice at once, one call inside the other, each with its own `body`; the
+brackets round `x` go through `expr` calling itself. The third is real, from `companion/ts/src/parser.ts`
+(error messages shortened): Drip's `if` statement, parsed by the same
+method. `consume` there takes a token *type* and a message; `match`
+takes a token only if it is there and says whether it did, which is how
+`( "else" statement )?` becomes code; and `statement()` may parse
+another `if`, so the functions recurse just as the rules do. (The `if`
+itself was taken by `statement`, which chose this rule.)
+
+<Run id="statements" />
+
+<Prompts ids={['parser-what', 'rd-what', 'rd-star', 'rd-terminal', 'block-twice']} />
+
+## Choosing with one token
+
+`statement` has to choose between two rules, and it decides by looking
+at a single token: `{` means block, anything else means print. That
+works because the two alternatives *start* with different tokens, so
+one token of **lookahead** (the scanner's idea, one level up) settles
+it before any token is taken. "FIRST, FOLLOW and LL(1)" works out, for
+any grammar, which tokens can start each rule, and when one is not
+enough.
+
+The mistake that bites everyone once is deciding with `next()` instead
+of `peek()`:
+
+```js
+function statement() {
+  if (next() === '{') return block();
+  return printStmt();
+}
+// { print 1 ; }  →  Error: Expect {
+```
+
+`next()` *takes* the `{` while asking about it, so `block`'s own
+`consume('{')` finds `print` and throws on good input. Looking must not
+use up the token; only the function whose rule owns it should take it.
+
+<Prompts ids={['peek-not-next', 'one-token']} />
+
+## The companion's parser
+
+Every Drip statement is parsed this way in `companion/ts/src/parser.ts`:
+`declaration` and `statement` each choose by looking at one token, and
+every kind of statement has its own function. Expressions with
+operators are harder, because the parser must also decide which
+operator binds tighter and which way a chain leans; the next chapter,
+"Precedence and associativity", builds that in, and "Pratt parsing"
+shows the shorter method the companion uses.
+Both build the same trees (a differential test of the kind in "Edge
+cases and differential testing", feeding thousands of random
+expressions to both parsers, finds no difference).
+
+<Prompts ids={['companion-split']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript's specification defines its syntax as a context-free
+grammar of productions in this same style<Cite id="ecma262-grammar" />,
+so a recursive descent parser for it has one function per production,
+just as `block` has here ("Parsing JavaScript for real" looks at a
+production engine). Writing a parser by hand also makes it easy to give
+every mistake its own precise error message.
+</Callout>
+
+## Your turn
+
+<Exercise id="blockParser" />
+
+<Exercise id="ifParser" />
+
+## What you learned
+
+- A **parser** reads tokens left to right, checks them against the
+  grammar and builds a syntax tree.
+- **Recursive descent**: one function per rule; terminals are checks
+  (`consume`), nonterminals are calls, alternatives are `if`s on the
+  next token, and `*` is a `while` loop.
+- Choose with `peek()`, which looks without taking; take a token only in
+  the function whose rule owns it.
+- Because rules mention each other, the functions do too, and the call
+  stack keeps every rule's place.
+
+<Quiz />

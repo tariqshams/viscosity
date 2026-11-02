@@ -1,0 +1,283 @@
+---
+n: 63
+day: 16
+part: III
+title: 'From source text to a running program'
+tagline: 'You type one line, press Run, and a 7 appears. Between those two moments the line passes through a short chain of programs, each with one job; this chapter names every link in that chain, and the two halves it falls into.'
+objectives:
+  - Name the stages that take a line of source code to its output, and say what each stage hands to the next.
+  - Split a language implementation into its front end and back end, and say why the cut saves work.
+  - Follow one line of Drip through every stage, and put Drip and Viscosity side by side.
+introduces: [compiler-pipeline, front-end-back-end]
+uses: [function, call, return, array, string-index, tree, recursion, module, program-structure, typescript, discriminated-union, aos-vs-soa, typed-array, variables, strings, numbers]
+sources: [coopertorczon2022, makor2022]
+---
+import PipelineSteps from '../../../components/diagrams/ch063/PipelineSteps';
+import TwoPipelines from '../../../components/diagrams/ch063/TwoPipelines';
+import HubFigure from '../../../components/diagrams/ch063/HubFigure';
+
+## A string goes in, a 7 comes out
+
+Here is a complete program in Drip, the small language you are about to
+build:
+
+```
+print 1 + 2 * 3;
+```
+
+Run it and you see `7`, which feels like nothing at all; however, think
+about what the program that runs it actually receives. It is not a sum,
+and it is not even the word `print`: it is a string, sixteen characters
+in a row (`'p'`, `'r'`, `'i'` and so on, numbered from 0, exactly as in
+*Strings up close*). Somewhere between that row of characters and the
+`7`, something has to notice that `print` is one word, that `2 * 3`
+happens before the `+`, and that the answer should be shown. Nobody
+sensible does all of that in one go; the work is split into stages.
+
+<Analogy title="an assembly line">
+A car is not built by one worker doing everything. It moves down a line,
+and each station does one job (weld the frame, paint it, fit the seats)
+and passes it on; each station only needs to know what arrives and what
+it must hand over.
+<span slot="breaks">On a factory line the same car moves along and grows.
+In a language implementation each stage hands on something of a
+*different kind* (characters become tokens, tokens become a tree), and
+the earlier form is usually thrown away.</span>
+</Analogy>
+
+<Analogy title="reading a sentence in a new language">
+When you read a language you are still learning, you first see letters,
+then group them into words, then work out which words belong together
+(this is the subject, that is the verb), and only then understand the
+sentence and perhaps act on it.
+<span slot="breaks">A person does all of this at once and goes back to
+reread when confused; Drip does the steps strictly one after another,
+and each stage finishes the whole program before the next one starts.</span>
+</Analogy>
+
+## The pipeline
+
+Step through what happens to that one line, and watch the strip along
+the top: it shows which stage you are in.
+
+<PipelineSteps client:visible />
+
+Each stage is an ordinary function: it takes the previous stage's
+output and returns something more organised. Here is the heart of
+Drip's `run`, simplified from `companion/ts/src/drip.ts`:
+
+```ts
+const tokens = scan(source, reporter);
+const program = parse(tokens, reporter);
+const locals = resolve(program, reporter);
+interp.interpret(program, locals);
+```
+
+Line 1 is the **scanner**: it turns the source string into an array of
+tokens (the words of the program). Line 2 is the **parser**: it turns
+the tokens into a **syntax tree**, the same kind of tagged-union tree
+you built in *Tagged unions: the shape of every syntax tree*. Line 3 is
+an extra check over the tree, which works out which variable each name
+refers to (the chapter *Resolving variables* builds it). Line 4 is the
+interpreter, which walks the tree and does what it says (the next
+chapter, *Interpreters and compilers*, sets it beside the other way to
+finish the journey). The
+`reporter` is an object that collects error messages, handed to every
+stage so that any of them can complain; the real `run` also stops after
+parsing if the reporter holds an error, which is why a program with a
+spelling mistake in it never prints anything at all. Four calls, four modules,
+one job each, as *Modules: import and export* promised.
+
+<Callout kind="definition">
+A **compiler pipeline** is a chain of stages where each stage's output
+is the next stage's input. For Drip: **source** (a string) → the scanner
+→ **tokens** → the parser → a **syntax tree** → then either an
+interpreter, which produces **output**, or a compiler, which produces
+another form of the program, sometimes by way of an **intermediate
+representation** (an **IR**: a form designed for the compiler's own
+use rather than for people).
+</Callout>
+
+<Formal title="A pipeline is functions applied in turn">
+
+```text
+scan      : string  → Token[]
+parse     : Token[] → Tree
+interpret : Tree    → output
+
+run(src) = interpret(parse(scan(src)))
+```
+
+<span slot="read">Each of the first three lines gives a stage's input
+and output: scan takes a string and gives an array of tokens, and so
+on. The last line says that running a program is the three stages
+applied one inside another, innermost first, which only works because
+each stage's output is exactly what the next one takes in.
+Mathematicians write the same thing as run = interpret ∘ parse ∘ scan,
+read "interpret after parse after scan".</span>
+</Formal>
+
+<Examples of="compiler-pipeline">
+
+```text
+"print 7;"
+→ print  7  ;  eof
+→ Print(Number 7)
+→ 7
+```
+
+```text
+'[1, 2]'
+→ [  1  ,  2  ]  end
+→ an array node with two numbers
+→ the value [1, 2]
+```
+
+<Run id="first-line" />
+
+</Examples>
+
+The first is the smallest pipeline there is: eight characters become
+four tokens (the last, `eof`, marks the end), the tokens become a tree
+with one `Print` node holding the number 7, and walking the tree prints
+`7`. The second is one you have already built: the checkpoint's JSON
+parser is a two-stage pipeline, a scanner and then a parser, where the
+tree *is* the answer. The third is the real Drip pipeline on two lines;
+the tokens of each line stay in the order you wrote them, but the
+brackets change the shape of the tree, so the second line works out
+`1 + 2` first and prints `9`. Change the numbers, or add a third
+`print`.
+
+<Prompts ids={['pipeline-order', 'scanner-io', 'parser-io', 'why-stages', 'stop-early']} />
+
+## Front end and back end
+
+Look at the pipeline again and you can cut it in two. The **front end**
+reads the program and works out what it says; the **back end** makes it
+happen. The front end cares about the language you write in (the
+scanner must know that `fn` and `let` are Drip words), while the back
+end cares about the target (a program that walks the tree, a bytecode
+machine, a real processor).
+The point of the cut is that whatever sits in the middle, a tree or an
+IR, can be shared: one front end can feed several back ends, and
+several front ends can feed one back end.
+
+<Analogy title="a hub airport">
+Ten cities that all want direct flights to each other need forty-five
+routes; if every city instead flies to one hub, ten routes connect them
+all, and adding an eleventh city adds one route, not ten.
+<span slot="breaks">Changing planes costs a passenger an hour. Going
+through an IR costs a compiler a little work too, and sometimes loses a
+detail that the IR has no way to say.</span>
+</Analogy>
+
+<Figure takeaway="A shared middle turns M × N translators into M + N." caption="Left: three languages and three targets, each pair joined directly, need nine translators. Right: every language is turned into one shared IR and every target is made from it, so six pieces do the same job.">
+  <HubFigure />
+</Figure>
+
+<Callout kind="definition">
+The **front end** of a language implementation turns source text into a
+structured form (tokens, then a tree or IR) and reports errors in the
+source; it depends on the **source language**. The **back end** turns
+that structure into the result (output, bytecode or code); it depends
+on the **target**. Production compilers often add a **middle end** of
+analysis and improvement passes between the two<Cite id="coopertorczon2022" />.
+</Callout>
+
+<Formal title="Why the middle pays">
+
+```text
+M languages, N targets
+direct:        M × N  translators
+through an IR: M + N  pieces
+3 and 4:       12  versus  7
+```
+
+<span slot="read">With M source languages and N targets, writing one
+translator for every pair takes M times N of them. With a shared IR you
+write one front end per language and one back end per target, M plus N
+pieces; for three languages and four targets that is seven pieces
+instead of twelve, and the gap grows quickly.</span>
+</Formal>
+
+<Figure takeaway="Same shape: front end, middle, back end." caption="Drip's tree-walker (top) and Viscosity (bottom). Viscosity's front end lowers JavaScript into its own IR, called VIR; the middle analyses how arrays of objects are used and plans their layout; the back end writes JavaScript out again.">
+  <TwoPipelines />
+</Figure>
+
+<Examples of="front-end-back-end">
+
+```text
+scan ─┬─ evaluate → 3
+      └─ compile  → push 1 …
+```
+
+```text
+front: scan, parse   → tree
+back:  tree-walker   → output
+```
+
+```text
+JavaScript ─┐           ┌─ emit JS
+            ├─ VIR, plan┤
+Python ─────┘           └─ emit Python
+```
+
+</Examples>
+
+The first is the tiny sums language of this chapter's exercise and the
+next one's: one `scan` function is the front end; the evaluator you
+write below is one back end, and the next chapter gives the same front
+end a second back end, one that writes instructions instead of
+answering. The second is Drip's
+tree-walker, the top row of the figure: scanning and parsing make the
+tree, and walking it is the whole back end. The third is
+Viscosity's own repository, which has a front end for JavaScript and
+another for a subset of Python; both lower their programs into the same
+VIR, so the analysis and layout planning in the middle is written once,
+and each language gets its own small emitter at the end.
+
+One honest note about Drip: its two implementations share the language,
+the keyword table and the test programs, but not a front end. The VM in
+Part IV has its own scanner, and its compiler turns tokens straight into
+bytecode with no tree in between; Part IV explains why it does without
+the tree.
+
+<Prompts ids={['front-end', 'ir-why', 'viscosity-kind']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity is a **source-to-source** compiler: JavaScript in, JavaScript
+out. Its front end reads your program and **lowers** it into VIR
+(turns it into a simpler form, closer to the machine); its middle works
+out how each array of objects is used, and plans a new layout where that
+is safe; its back end writes the program out again, with
+those arrays stored as columns in typed arrays (the layouts you measured
+in Part II). The idea comes from research on doing this transformation
+automatically<Cite id="makor2022" />. To build it you need every stage
+in this chapter, so Part III starts at the very front, with the scanner.
+</Callout>
+
+## Your turn
+
+The exercise builds a complete, tiny pipeline: the scanner (the front
+end) is written for you, and you write the back end, an evaluator for
+sums like `1 + 2 - 4`.
+
+<Exercise id="mini-interp" />
+
+## What you learned
+
+- A **compiler pipeline** passes a program through stages: source →
+  **tokens** → **tree** → output (or another form of the program); each
+  stage is a function with one job, and running is the stages applied in
+  turn.
+- A syntax error found by an early stage stops the pipeline before
+  anything runs.
+- The **front end** understands the source language and the **back
+  end** produces the result for a target; a shared tree or **IR** in the
+  middle turns M × N translators into M + N pieces.
+- **Viscosity** is a source-to-source compiler with an IR (VIR) in the
+  middle; Drip is where you learn to build each stage.
+
+Next: the two ways to finish the journey, interpreting and compiling.
+
+<Quiz />

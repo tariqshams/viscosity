@@ -1,0 +1,170 @@
+---
+n: 312
+day: 78
+part: XII
+title: 'Benchmarks: three implementations'
+tagline: 'One language, three implementations: a tree-walker, a bytecode VM, and the same VM in Rust. The same eleven programs ran on all three. Reading the results honestly takes more care than producing them.'
+objectives:
+  - Say how each committed number was measured, and where the methods differ.
+  - Read speed-ups between all three implementations, and explain why some vary more than others.
+  - Handle the two programs that don’t give a time, zoo_batch and string_equality.
+  - Summarize speed-ups with a geometric mean, in code with tests.
+introduces: [implementation-comparison]
+uses: [drip-rs, profiling, shared-corpus, tree-walking-interpreter, virtual-machine, bytecode, constant-pool, global-variable, end-to-end-benchmark, benchmark-isolation, jit-warmup, median-p95, release-build, enum, match, option, rust-iterator, vec, slice]
+sources: [nystrom2021]
+---
+import ThreeWaySteps from '../../../components/diagrams/ch312/ThreeWaySteps';
+
+## Eleven programs, three times
+
+The folder `companion/corpus/benchmark` holds eleven Drip programs:
+deep recursion (`fib`), allocation (`binary_trees`, `trees`), method
+calls (`method_call`, `zoo`), field access (`properties`) and more. They
+have now run on three implementations of Drip, all written in this book:
+
+- the **tree-walker** in TypeScript, from Part III;
+- the **TypeScript VM**, compiling to bytecode, from Part IV;
+- **drip-rs**, the same VM in Rust, from this Part.
+
+Two results files hold the numbers.
+`companion/ts/results/drip-bench-2026-10-31.json` has the two
+TypeScript columns. `companion/rust/results/drip-rs-bench-2026-10-31.json`
+has drip-rs's, and copies the TypeScript columns beside them. Every
+number below is read from those files.
+
+<Callout kind="intuition">
+Three cars drive the same eleven routes. One is an old design, one is a
+new design, and one is the new design with a different engine. Comparing
+the second and third tells you about the engine. Comparing the first and
+second tells you about the design. Comparing the first and third mixes
+the two.
+</Callout>
+
+<Prompts ids={['three-what']} />
+
+## How each number was made
+
+Before reading results, read methods. They differ:
+
+- **TypeScript**: `scripts/bench.mjs` starts a fresh Node v22 process
+  per program, loads the interpreter, then times compiling and running
+  with `performance.now()`. One run per program (`"runs": 1`), at
+  18:28 UTC.
+- **drip-rs**: `scripts/bench.sh` builds with `--release`, runs each
+  program three times in fresh processes, and keeps the best wall-clock
+  time from the shell's `date +%s%N`, process start-up included. At 19:55
+  UTC, rustc 1.97.
+
+Same shared cloud VM, same day, an hour and a half apart. Best of three
+against one run favours drip-rs a little. Process start-up, which only
+drip-rs's timer includes, is small: five runs of a one-line program took
+2.5 to 2.9 ms from the shell, next to programs of 0.3 to 5 seconds. Chapter 277 said to treat a 10%
+difference here as a rumour. The differences below are bigger than that.
+
+<Prompts ids={['ts-method', 'rs-method', 'not-same-clock']} />
+
+## The results
+
+<ThreeWaySteps client:visible />
+
+The three ratio steps tell different stories. The TypeScript VM against
+the tree-walker spreads widely. It is several times faster on `fib`,
+`properties` and `zoo`, and *slower* on `equality` and `instantiation`.
+Chapter 106 saw that and couldn't say why from one run. A different design
+wins in different places.
+
+drip-rs against the TypeScript VM is far tighter: 3.31× to 5.68×. That
+fits what the port is. Same compiler, same opcodes, same collector, one
+instruction for one instruction. What changed is the cost of each step: ahead-of-time compiled Rust, with
+`Value` a 16-byte enum, against V8 running the TypeScript VM, with its
+values typed `null | boolean | number | Obj`. Which of the differences
+matters most, this comparison can't say. drip-rs against the
+tree-walker multiplies the two effects, so it spreads again, from 3.68× on
+`equality` to 16.23× on `fib`.
+
+<Callout kind="definition">
+An **implementation comparison** runs the same programs, with the same
+inputs, on several implementations of one language, on the same machine,
+and compares each program's time. It tells you which implementation was
+faster on which kind of program, in that run. It doesn't tell you *why*:
+that takes a profile of each. It doesn't rank languages either.
+</Callout>
+
+<Prompts ids={['design-vs-lang', 'impl-comparison']} />
+
+## The two programs without a bar
+
+**`zoo_batch`** runs method calls in batches of 10,000 until `clock()`
+says ten seconds have passed, then prints the sum, the number of batches
+and the time. All three implementations took about 10 seconds, by
+construction. The useful number is in the output, which the drip-rs file
+records: `183600000 3060 10.00165605545044`, so 3060 batches. The
+TypeScript file keeps no output. The drip-rs `.md` adds a count measured
+by hand on the same machine that day: 844 batches for the TypeScript VM
+and 205 for the tree-walker. In work per second, drip-rs did about 3.6
+times the TypeScript VM's work, in line with the other programs.
+
+**`string_equality`** compares eight long strings with `==` again and
+again. The
+tree-walker ran it in 13.9 seconds. Both VMs refuse to compile it, with
+the same first line, exit code 65, and the same 1700 lines of errors in
+all:
+
+```
+[line 32] Error at 'a4': Too many constants
+in one chunk.
+```
+
+Each mention of a global such as `a1` compiles to `OP_GET_GLOBAL` with
+the name as a constant. The compiler doesn't reuse an earlier copy, and a
+one-byte operand can only address 256 constants. clox has the same
+limit<Cite id="nystrom2021" />. The tree-walker has no constant table, so
+it never hits it. A limit, not a slowness, and the same in both VMs, as a
+port should be.
+
+<Prompts ids={['zoo-batch-why', 'zoo-batch-ratio', 'streq-why']} />
+
+## One number for nine programs
+
+People will ask "how much faster?" and want one number. Average the
+nine drip-rs-vs-TS-VM ratios the ordinary way and you get 4.06×. But
+average the inverse ratios, "how much slower is the TS VM?", and invert
+that, and you get a different answer. Ratios multiply, so the fair
+average is the **geometric mean**: the ninth root of their product. For
+those nine programs it is 4.00×, and inverting every ratio gives exactly
+its inverse. The diagram's notes compute it for each comparison from the
+JSON.
+
+<Prompts ids={['geomean']} />
+
+<Callout kind="engine" label="Under the hood">
+Programs report their own clocks too. fib's output in the drip-rs file
+ends `1.4670805931091309`, while its row says 1460 ms. The printed clock
+covers only the timed part of the program, and comes from the last run,
+while the row keeps the best run of three, process and all. Small
+inconsistencies like this are normal in honest data. Hide them and the
+numbers look cleaner and mean less. And a profile from chapter 310 would
+be the next step for any row that surprises you: `equality` is
+drip-rs's smallest gain over the tree-walker, and a profile would say
+where its time goes.
+</Callout>
+
+## Your turn
+
+<Exercise id="summarize" />
+
+## What you learned
+
+- An **implementation comparison** runs the same corpus on several
+  implementations and compares program by program.
+- Read the method first: one run against best of three, and timers
+  that start in different places.
+- The two VMs differ by 3.31× to 5.68×, a narrow band, because only the
+  language changed. Against the tree-walker, design and language
+  multiply.
+- A fixed-time benchmark compares work done; a program that fails has
+  no ratio.
+- Summarize ratios with a **geometric mean**: 4.00× here for drip-rs
+  over the TypeScript VM.
+
+<Quiz />

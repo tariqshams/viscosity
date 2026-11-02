@@ -1,0 +1,235 @@
+---
+n: 147
+day: 37
+part: V
+title: 'V8’s garbage collector'
+tagline: 'Your Drip VM stops the world and marks everything. V8 splits its heap by age instead, and empties the young part by carrying out the few objects still in use and abandoning the rest, which is why short-lived garbage is so cheap.'
+objectives:
+  - Describe V8’s young and old generations, and why they are collected differently.
+  - Trace a scavenge, with semispaces, forwarding addresses and promotion.
+  - Explain why a scavenge costs what survives, not what was allocated, and check it with `--trace-gc`.
+  - Read a `--trace-gc` line for a scavenge.
+introduces: [scavenger]
+uses: [garbage-collection, roots, mark-sweep, tricolor, generational-gc, heap-object, object-list, stack-and-heap, memory, pointer, address, contiguous, reference, object, property, call-stack, scalar-replacement, allocation-sinking]
+sources: [v8-trash-talk, v8-orinoco-scavenger]
+---
+import ScavengeSteps from '../../../components/diagrams/ch147/ScavengeSteps';
+import Generations from '../../../components/diagrams/ch147/Generations';
+
+## Watching it work
+
+Here is a loop that makes three million small objects and keeps one in
+ten of them:
+
+```js
+const keep = [];
+for (let i = 0; i < 3e6; i++) {
+  const p = { x: i, y: i };
+  if (i % 10 === 0) keep.push(p);
+}
+console.log(keep.length);
+```
+
+Each pass builds a two-field object `p`; every tenth one is pushed onto
+`keep`, so it stays in use, and the other nine are garbage as soon as
+the next pass begins. The last line prints `300000`. Run it with
+`--trace-gc`, which makes V8 print one line for every collection (real
+output, Node v22.23.4, which runs V8 12.4, with the process prefix
+removed and the lines cut short):
+
+```
+$ node --trace-gc gc.js
+22 ms: Scavenge 4.4 (5.1) -> 3.5 (6.1) MB,…
+24 ms: Scavenge 4.4 (6.1) -> 3.6 (6.4) MB,…
+…
+67 ms: Mark-Compact 13.4 (28.7) -> 10.2 …
+…
+300000
+```
+
+Each line starts with the time since the program began and the name of
+the collector. The numbers either side of `->` are the size of the
+objects before and after, in megabytes, with the heap's total memory in
+brackets. That run had 25 scavenges and one Mark-Compact: two different
+collectors, for two different kinds of object. This chapter takes the
+first apart; the next, *Mark-compact and the write barrier*, takes the
+second.
+
+## Two generations
+
+Your Drip collector from *Garbage collection: mark and sweep* treats
+every object alike. V8 does not, because objects are not alike.
+
+<Analogy title="paper cups and mugs in a café">
+A busy café goes through hundreds of paper cups a day, each used for a
+few minutes and thrown away, and owns a few dozen mugs that last for
+years. So it keeps a bin by the counter, emptied many times a day
+without anyone looking inside, and washes and shelves the mugs on a
+slower routine of their own.
+<span slot="breaks">A café knows a cup from a mug by looking at it;
+V8 cannot tell how long an object will live, only how long it has lived
+so far, so it guesses that an object which has survived a while will
+keep surviving.</span>
+</Analogy>
+
+V8's heap has a **young generation**, split into a nursery and an
+intermediate part, and an **old generation**. Objects start in the
+nursery; one that survives a collection becomes intermediate, and one
+that survives another moves to the old
+generation<Cite id="v8-trash-talk" />. Most objects never get that far:
+the *generational hypothesis* says that most objects die
+young<Cite id="v8-trash-talk" />, and in the loop above nine `p`s in ten
+are garbage by the next iteration.
+
+<Figure takeaway="Most objects die young, so the young space is emptied often and cheaply." caption="V8’s generations. An object moves right each time it survives a scavenge; after two, it is old.">
+  <Generations />
+</Figure>
+
+<Prompts ids={['gc68-gens']} />
+
+## The Scavenger
+
+The young generation is collected by the **Scavenger**, which collects
+nothing else. It uses two halves of equal size, called
+**semispaces**: objects are allocated one after another in the first,
+*from-space*, while the second, *to-space*, stays empty. A scavenge
+copies every object still in use from one into the other, and then the
+two swap roles<Cite id="v8-trash-talk" />.
+
+<Analogy title="moving out of a house">
+Moving out of a house full of clutter, you could sort through every box
+and bin the junk; or you could carry out only the few things you want
+and leave the rest behind for the house clearance. If you keep very
+little, carrying it out is far quicker than sorting.
+<span slot="breaks">Your things do not refer to each other; objects do,
+so every pointer to a moved object has to be found and changed to its
+new address, which is what the forwarding address in the stepper is
+for.</span>
+</Analogy>
+
+The scavenge starts from its **roots**, the places that are known to be
+in use without asking anyone else: the stack, the globals, and a list
+of old objects that point into the young generation (kept up to date by
+a small piece of code called the *write barrier*, which the next
+chapter builds). Step through one:
+
+<ScavengeSteps client:visible />
+
+Copying finds, moves and fixes pointers in one go. Each moved object
+leaves a **forwarding address** behind in its old copy, so other
+pointers to it can be updated, and so it is never copied
+twice<Cite id="v8-trash-talk" />. This algorithm, with the scan pointer
+chasing the end of to-space, is *Cheney's*, and V8 used it until
+version 6.2; a post from late 2017 describes its replacement, a
+parallel Scavenger in which several threads copy at once and take work
+from each other when they run out<Cite id="v8-orinoco-scavenger" />. In
+V8 12.4, `node --v8-options` lists `--parallel-scavenge` as on by
+default, describes the new space as "two semi-spaces", and lists the
+alternative young-generation collector, `--minor-ms`, as off.
+
+<Callout kind="definition">
+The **Scavenger** is V8's young-generation collector. It copies the
+objects reachable from its roots (the stack, globals, and recorded
+old-to-new references) out of **from-space** into **to-space**,
+leaving a **forwarding address** in each old copy, then swaps the two
+spaces. An object that survives a second scavenge is **promoted** to
+the old generation. Its cost depends on the survivors, not on how much
+was allocated<Cite id="v8-trash-talk" />.
+</Callout>
+
+The design has a price, and it is worth saying plainly: half of the
+young generation is always empty, waiting to be the next to-space, so
+the Scavenger trades memory for speed. That is a good trade only
+because the young generation is small and most of what is in it dies;
+copying the whole old generation into a second, empty copy of itself
+would waste a great deal of memory and time on objects that were going
+to live anyway, which is why the old generation gets a different
+collector.
+
+<Formal title="What a scavenge costs">
+
+```text
+work(scavenge) ≈ c × live(from-space)
+promote(o) ⇔ survived(o) ≥ 2
+```
+
+<span slot="read">The work of one scavenge is roughly some constant c
+times the amount of live data in from-space; the dead objects add
+nothing, because they are never visited. An object o is promoted to
+the old generation exactly when it has survived two scavenges.</span>
+</Formal>
+
+<Prompts ids={['scav-what', 'scav-half', 'scav-roots', 'scav-forward', 'scav-promote']} />
+
+## Cheap garbage, measured
+
+If a scavenge costs what survives, then the same loop should get
+cheaper per scavenge as fewer objects survive. Here is the loop above
+three ways, keeping none, one in ten and all of the objects, each run
+with `--trace-gc` (Node v22.23.4, one run each; the times wobble from
+run to run):
+
+<Examples of="scavenger">
+
+```text
+keep none:  117 scavenges, 0.09 ms each
+```
+
+```text
+keep 1/10:   25 scavenges, about 1.8 ms
+```
+
+```text
+keep all:    21 scavenges, about 16 ms
+```
+
+</Examples>
+
+The first keeps nothing, so each scavenge finds almost nothing to copy
+and takes under a tenth of a millisecond, however many objects were
+made. (That run also passes `--no-turbo-escape`; without it, the
+previous chapter's escape analysis removes the objects entirely and
+only 2 scavenges happen.) The second is the loop at the top of the
+chapter: a tenth of the objects survive, and each scavenge takes about
+twenty times longer. The third keeps every object, so every scavenge
+copies everything, about 16 ms each. The number of scavenges goes
+*down* as more survives, because V8 grows the young space when its
+objects keep surviving, but the time per scavenge goes up with the
+survivors, exactly as the definition says.
+
+Promotion shows up too. After pushing a million objects onto `keep`,
+`v8.getHeapSpaceStatistics()` (Node's view of V8's spaces) reported 33
+MB used in `old_space`, up from 2.5 MB at the start: the survivors were
+promoted out of the young generation, as the stepper's last step shows.
+
+<Prompts ids={['scav-cost', 'scav-trace']} />
+
+<Callout kind="engine" label="Under the hood">
+The previous chapter's numbers make more sense now. With escape
+analysis, the `len2` loop needed 3 scavenges; without it, about 1700,
+and each one paused the program, however briefly. A scavenge is cheap
+because short-lived objects are cheap to the
+collector<Cite id="v8-trash-talk" />, but an object that is never
+allocated is cheaper still. Viscosity's struct-of-arrays columns help
+in the same way: a `Float64Array` keeps a million numbers in one
+buffer, rather than in a million objects for the Scavenger to copy and
+promote.
+</Callout>
+
+## Your turn
+
+<Exercise id="cheney" />
+
+## What you learned
+
+- V8's heap has a **young generation** (nursery and intermediate) and
+  an **old generation**, because most objects die young.
+- The **Scavenger** copies the survivors from **from-space** to
+  **to-space**, leaving **forwarding addresses**, then swaps the two
+  **semispaces**.
+- Its roots are the stack, the globals and the recorded **old-to-new**
+  pointers; an object that survives twice is **promoted**.
+- A scavenge costs what **survives**: 0.09 ms with nothing kept, about
+  16 ms with everything kept, in this chapter's runs.
+
+<Quiz />

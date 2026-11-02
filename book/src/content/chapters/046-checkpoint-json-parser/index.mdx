@@ -1,0 +1,252 @@
+---
+n: 46
+day: 12
+part: I
+title: 'Checkpoint: JSON and its scanner'
+tagline: 'Time to build something whole. Over this chapter and the next you will write a parser for JSON, the text format almost every program uses to save and send data; this half covers the format itself, the types, and the scanner that cuts the text into tokens.'
+objectives:
+  - Read and write JSON, and say exactly which texts are not JSON (trailing commas, single quotes, NaN, leading zeros).
+  - Describe JSON values and JSON tokens as TypeScript types, before writing any code.
+  - Scan a JSON number and a JSON string by following the grammar, with clear errors for bad input.
+  - Assemble a complete scanner that turns JSON text into a list of tokens.
+introduces: [json]
+uses: [typescript, type-annotation, type-checking, type-erasure, union-type, narrowing, discriminated-union, generic, type-driven-design, illegal-states-unrepresentable, branded-type, string-index, char-code, string-methods, template-literal, string-building, throw, try-catch, error-object, recursion, tree, function, parameter, return, call, undefined, object, property, dot-access, bracket-access, array, index, length, push, for-of, while-loop, variables, numbers, strings, booleans, comparison, logical-operators, if, for-loop, console-log]
+sources: [rfc8259, mdn-json, mdn-json-parse, ts-object-types]
+---
+import JsonTree from '../../../components/diagrams/ch046/JsonTree';
+import NumberRails from '../../../components/diagrams/ch046/NumberRails';
+import ScanSteps from '../../../components/diagrams/ch046/ScanSteps';
+
+## A checkpoint
+
+This chapter and the next are a **checkpoint**: rather than one new idea
+at a time, you build one whole program, mostly on your own, out of what
+Part I has taught. The book gives you the types and a plan; the
+exercises go from small to large, each with a full walkthrough for
+afterwards. Try each one before reading its walkthrough; getting stuck
+for a while is part of the point.
+
+One honest note: you are writing a small **parser** (a program that
+reads text and builds a structure from it), and parsing is a large
+subject that Part III teaches properly, in the chapters on grammars and
+recursive descent parsing. JSON is the friendliest case there is, so we
+can follow its shape now and learn the theory later.
+
+## What JSON is
+
+Programs constantly hand data to each other as text: a settings file, a
+reply from a server, the profile Viscosity's command line reads. The
+most common format for it, readable from every language, is **JSON**<Cite id="rfc8259" />.
+
+```json
+{"name": "drip", "tags": ["vm", "gc"],
+ "v": 2, "ok": true, "next": null}
+```
+
+<Figure takeaway="JSON text describes a tree of six kinds of value." caption="The text above, drawn as the tree it describes: an object whose five keys hold a string, an array (of two strings), a number, a boolean and null.">
+  <JsonTree />
+</Figure>
+
+<Analogy title="flat-pack furniture">
+A wardrobe is taken apart, packed flat, posted, and rebuilt at the other
+end. `JSON.stringify` flattens a value into
+text; `JSON.parse` rebuilds it.
+<span slot="breaks">A rebuilt wardrobe is the same wardrobe; some
+values do not survive the trip: `undefined` properties vanish, `NaN`
+becomes `null`, and a `Map`, a class or a brand comes back as a plain
+object or number.</span>
+</Analogy>
+
+<Analogy title="a strict postal format">
+Every post office can read an address because the format is fixed:
+name, street, town, postcode, in that order.
+<span slot="breaks">A post office forgives a misspelt street; JSON
+forgives nothing. One comma too many and `JSON.parse` refuses the whole
+text.</span>
+</Analogy>
+
+<Callout kind="definition">
+**JSON** (JavaScript Object Notation) is a text format for data, defined
+by RFC 8259<Cite id="rfc8259" />. A JSON value is one of six kinds:
+`null`; `true` or `false`; a number; a string in double quotes; an
+array, `[` values separated by commas `]`; or an object, `{` members
+separated by commas `}`, where each member is a string key, a colon and
+a value. Spaces, tabs and line breaks are allowed between any two
+pieces. In JavaScript, `JSON.parse` turns JSON text into a value and
+`JSON.stringify` turns a value into JSON text<Cite id="mdn-json" />.
+</Callout>
+
+<Formal title="JSON's grammar (from RFC 8259, simplified)">
+
+```text
+value  = object / array / string
+       / number / true / false / null
+array  = "[" [ value *( "," value ) ] "]"
+object = "{" [ member *( "," member ) ] "}"
+member = string ":" value
+number = [ "-" ] int [ frac ] [ exp ]
+```
+
+<span slot="read">Each line is a rule: the name on the left is made of
+what is on the right. A slash means "or"; square brackets mean "this
+part is optional"; *( ) means "this part, repeated any number of times,
+including none"; text in quotes is those exact characters. So an array
+is a "[", then optionally a value followed by any number of comma-value
+pairs, then a "]". The chapter on grammars teaches this notation
+properly.</span>
+</Formal>
+
+<Examples of="json">
+
+```js
+JSON.parse('[1, 2]');     // [1, 2]
+JSON.stringify({ a: 1 }); // '{"a":1}'
+```
+
+```js
+JSON.parse('[1, 2,]');
+// SyntaxError: Unexpected token ']',
+// "[1, 2,]" is not valid JSON
+JSON.parse('01');
+// SyntaxError: Unexpected number in
+// JSON at position 1 ...
+```
+
+```ts
+// engine/ts/packages/cli/src/profile.ts
+let json: unknown;
+try {
+  json = JSON.parse(text);
+} catch {
+  throw new Error(msg);
+}
+```
+
+<Run id="json-round-trip" />
+
+</Examples>
+
+The first goes there and back: text into an array, and an object into
+text. The second is the strictness, in
+Node's exact words (the `...` hides a line and column): a trailing comma
+and a leading zero look like JavaScript, but are not JSON, and nor are
+single quotes, comments or `NaN`<Cite id="mdn-json" />. The third is how
+Viscosity's command line reads a profile: `JSON.parse` throws a
+`SyntaxError` for bad text, which the engine turns into its own message
+(shortened to `msg` here). The result is typed `unknown` ("could be
+anything; check before use", the safe opposite of `any`), because it came
+from outside, and the code after it checks the shape by hand: the border
+pattern from the last two chapters. The runnable one prints
+`{"n":1,"s":"hi","list":[true,null],"nan":null,"m":{}}`: `NaN` became
+`null`, `gone` vanished, and the `Map` became an empty object; the
+`\u00e9` escape comes back as `é`.
+
+<Prompts ids={['json-what', 'json-kinds', 'json-strict', 'json-unknown']} />
+
+## The plan: types first
+
+Designing with types says to write the data down first. A JSON value
+becomes this type, which refers to itself, just as `Expr` did in the
+tagged unions chapter:
+
+```ts
+type Json =
+  | null | boolean | number | string
+  | Json[]
+  | { [key: string]: Json };
+```
+
+The last line is an **index signature**: an object with any string keys,
+each holding a `Json`<Cite id="ts-object-types" />. Turning text into a
+`Json` takes two stages, as in every compiler in this book: a
+**scanner** cuts the text into **tokens**, the words of JSON (a bracket,
+a colon, a number, a string, a keyword), skipping spaces; then, next
+chapter, a parser builds the tree. The tokens, each remembering where it
+started, for error messages:
+
+```ts
+type Punct =
+  '[' | ']' | '{' | '}' | ':' | ',';
+type Word = 'true' | 'false' | 'null';
+type Token =
+  | { kind: Punct; at: number }
+  | { kind: Word; at: number }
+  | { kind: 'num'; value: number;
+      at: number }
+  | { kind: 'str'; value: string;
+      at: number }
+  | { kind: 'end'; at: number };
+```
+
+Only numbers and strings carry a value; the `'end'` token marks where
+the text ran out, so the parser never reads past the last token. Step
+through the scanner at work:
+
+<ScanSteps client:visible />
+
+<Prompts ids={['two-stages', 'token-at', 'end-token', 'index-signature']} />
+
+<OtherLanguages>
+
+```js
+const v = JSON.parse('[1, 2.5]');
+v[0] + v[1]; // 3.5: one number type
+```
+
+```python
+import json
+v = json.loads('[1, 2.5]')
+type(v[0]), type(v[1])  # int, float
+json.loads('NaN')  # nan, accepted
+```
+
+```java
+// The Java standard library has no
+// JSON parser: programs add a library.
+```
+
+```c
+/* Nor does C's: a parsed value is
+   usually kept as a tagged struct */
+struct json { int kind; /* ... */ };
+```
+
+</OtherLanguages>
+
+JavaScript and Python both read JSON out of the box, with two real
+differences: Python keeps whole numbers and decimals apart (`int` and
+`float`) where JavaScript has one number type, and Python's `json.loads`
+accepts `NaN`, which is not JSON at all. Java and C leave JSON to
+libraries, and in C a parsed value is a tagged struct, a hand-built
+version of our `Json` union.
+
+## Your turn
+
+The exercises build the scanner piece by piece. Numbers are the
+fiddliest part, so here is their grammar as a railway:
+
+<Figure takeaway="Follow the tracks: any route is a valid number." caption="The JSON number grammar. A minus sign is optional; the whole part is a single 0, or 1 to 9 followed by any digits (so 01 is not a number); then an optional fraction, a point and at least one digit; then an optional exponent, e or E, an optional sign and at least one digit.">
+  <NumberRails />
+</Figure>
+
+<Exercise id="skipSpace" />
+
+<Exercise id="scanNumber" />
+
+<Exercise id="scanString" />
+
+<Exercise id="tokenize" />
+
+## What you learned
+
+- **JSON** is a strict text format for six kinds of value; trailing
+  commas, single quotes, leading zeros and `NaN` are not JSON.
+- Types first: a recursive `Json` type with an **index signature** for
+  objects, and a `Token` union whose tokens remember where they began.
+- A **scanner** cuts text into tokens, following the grammar one
+  character at a time, and refuses bad input with a clear error.
+
+Next: the parser, which turns your tokens into a `Json` tree, and the
+finished program, tested against `JSON.parse` itself.
+
+<Quiz />

@@ -1,0 +1,175 @@
+---
+n: 143
+day: 36
+part: V
+title: 'Holey arrays'
+tagline: 'Every elements kind has a twin with holes in it; a hole is not undefined, reading one can wander off up the prototype chain, and once an array has had one, V8 12.4 never forgets.'
+objectives:
+  - Explain what a hole is, and why it is not the same as storing undefined.
+  - Explain why holey arrays need extra checks, using the prototype chain.
+  - Predict whether an array ends up PACKED or HOLEY from the way it was built, including new Array(n).
+  - Combine both one-way rules to predict an array's full elements kind.
+introduces: [holey-array]
+uses: [elements-kind, array, index, length, push, array-loop, object, property, prototype-chain, smi, undefined, inline-cache, shape]
+sources: [v8-elements-kinds, v8-src-elements-kind]
+---
+import HoleReadSteps from '../../../components/diagrams/ch143/HoleReadSteps';
+import SixKinds from '../../../components/diagrams/ch143/SixKinds';
+
+## An index with nothing in it
+
+The previous chapter's kinds all began with `PACKED_`, and one of the
+stepper's lines ended in `HOLEY_ELEMENTS`. That other half of the name is
+about a question every array read has to answer: is there really an
+element at this index? In most languages the answer is always yes for an
+index below the length; in JavaScript it is not:
+
+```js
+const xs = [0, , 2];  // a hole at 1
+const ys = [];
+ys[3] = 'x';          // holes at 0, 1, 2
+```
+
+`xs` has length 3, but nothing at index 1 (the empty space between the
+commas); `ys` has length 4, and only index 3 holds anything. A hole is not
+the same as storing `undefined`: `Object.hasOwn(xs, 1)` is `false`, the
+array simply does not have an element 1, and reading `xs[1]` makes
+JavaScript look further, at the object the array inherits from,
+`Array.prototype`<Cite id="v8-elements-kinds" />.
+
+<Analogy title="numbered lockers">
+A row of lockers numbered 0 to 2, where locker 1 has never been assigned
+to anyone. Ask for whatever is in locker 1 and the attendant does not hand
+you an empty box; she goes to the office to ask whether anything for
+locker 1 was left there, and only then tells you there is nothing.
+<span slot="breaks">An unassigned locker is still a real, empty locker; a
+hole is a marker that says "no element here", and the look-up it causes
+goes through the prototype objects, which code can change.</span>
+</Analogy>
+
+<Analogy title="an egg box">
+In a full egg box you can reach into any cup without looking. Once you
+know some cups might be empty, you have to look before every grab, even
+in the cups that are full.
+<span slot="breaks">You can refill an egg box and forget it was ever
+short; in V8 12.4 an array that has had a hole stays HOLEY even after
+every hole is filled.</span>
+</Analogy>
+
+Step through a read of index 1, first from a packed array and then from a
+holey one:
+
+<HoleReadSteps client:visible />
+
+Usually nothing is on the prototypes and the read gives `undefined`, but
+code can put something there, and then a hole shows it:
+
+<Run id="hole-proto" />
+
+That is why holes are costly: for a packed array V8 knows every index
+below the length has its own element, while for a holey one a read needs
+extra checks and may have to search the prototype
+chain<Cite id="v8-elements-kinds" />.
+
+<Callout kind="definition">
+A **holey array** has at least one index below its `length` with no
+element of its own. Each basic kind has a holey variant
+(`HOLEY_SMI_ELEMENTS`, `HOLEY_DOUBLE_ELEMENTS`, `HOLEY_ELEMENTS`), and
+PACKED → HOLEY is one-way too: filling every hole later does not make the
+array packed again<Cite id="v8-elements-kinds" />.
+</Callout>
+
+<Formal title="When an array is holey">
+
+```text
+holey(a) ⇔ at some time, ∃ i < a.length :
+              ¬ hasOwn(a, i)
+```
+
+<span slot="read">An array a is holey if and only if (⇔), at some moment
+in its life, there existed (∃) an index i below its length for which a
+did not (¬) have an own element. "At some time" is the one-way part: the
+condition only has to have been true once.</span>
+</Formal>
+
+<Figure caption="The six common elements kinds. Every example is what %DebugPrint reported for it in Node v22.23.4 (V8 12.4)." takeaway="Two one-way moves: down to a more general base, right to holey.">
+  <SixKinds />
+</Figure>
+
+<Examples of="holey-array">
+
+```js
+[0, , 2]   // HOLEY_SMI_ELEMENTS
+```
+
+```js
+const h = new Array(3); // HOLEY_SMI
+for (let i = 0; i < 3; i++) h[i] = i;
+// still HOLEY_SMI_ELEMENTS
+new Array(3).fill(0);   // HOLEY_SMI too
+```
+
+```js
+// building n particles' x values:
+const xs = [];
+for (let i = 0; i < n; i++) xs.push(i);
+// PACKED_SMI_ELEMENTS: push never
+// skips an index
+```
+
+</Examples>
+
+The first is the smallest hole, written directly. The second is the
+common surprise: `new Array(3)` makes an array of length 3 with three
+holes, and filling them in order does not make it packed. The V8 post
+that describes the lattice adds a 2025 update saying `fill` is now an
+exception to this rule<Cite id="v8-elements-kinds" />, but that is too
+recent for Node 22, where `new Array(3).fill(0)` is still
+`HOLEY_SMI_ELEMENTS` (checked with `%DebugPrint`). The third is the
+habit to keep: start from `[]` and `push`, which always writes at the
+current length, so no index is ever skipped.
+
+Element loads see the difference too. Reading a hole once with
+`--log-ic` gives a line that ends in a modifier the other loads in this
+book never had:
+
+```
+KeyedLoadIC 2:29 0 1 1 .HOLES
+```
+
+(Node v22.23.4, V8 12.4, for `xs[1]` on `[0, , 2]`.) The cache records
+that this load may meet holes, which is the extra checking of the
+stepper, written down.
+
+<Prompts ids={['holey-what', 'hole-not-undefined', 'holey-why', 'holey-new-array', 'holey-fill', 'holey-avoid', 'holey-one-way', 'holes-log']} />
+
+<Callout kind="engine" label="Under the hood">
+A typed array can never be holey: every index below its length holds a
+number, and `%DebugPrint` reports a fixed kind such as `FLOAT64ELEMENTS`
+for a `Float64Array`<Cite id="v8-elements-kinds" />. Viscosity's
+struct-of-arrays columns are typed arrays for exactly this reason, among
+others: no hole checks, ever.
+</Callout>
+
+## Your turn
+
+The first exercise combines both one-way rules; the second (extra
+practice) joins two kinds.
+
+<Exercise id="kindAfter" />
+
+<Exercise id="joinKinds" />
+
+## What you learned
+
+- A **hole** is an index below `length` with no element of its own; it is
+  not `undefined`, and reading it continues along the prototype chain.
+- Every basic kind has a **holey** variant, and PACKED → HOLEY is one-way;
+  in V8 12.4 even `new Array(n).fill(v)` stays holey.
+- Build arrays with literals or `push` to keep them packed, or use a
+  typed array, which has no holes at all.
+
+Next: the feedback all these caches collect, and the bets V8's optimizing
+compilers place on it.
+
+<Quiz />

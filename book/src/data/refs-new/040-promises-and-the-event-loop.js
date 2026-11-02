@@ -1,0 +1,53 @@
+// New references for chapter 40 (Asynchronous code: promises and the event loop).
+// developer.mozilla.org and nodejs.org/en/learn were read from their sources:
+// MDN's markdown in the mdn/content repository, and the rendered Node.js page.
+export default [
+  {
+    id: 'mdn-settimeout',
+    authors: ['MDN contributors'],
+    title: 'Window: setTimeout() method',
+    venue: 'MDN Web Docs',
+    year: null,
+    doi: null,
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/api/window/settimeout/index.md (slug Web/API/Window/setTimeout): “setTimeout() is an asynchronous function, meaning that it returns immediately after scheduling the callback function”; “setting delay to 0 will execute in the next event cycle rather than immediately”; the actual delay may be longer than set. Behaviour checked by running the chapter’s examples on Node v22.23.4.',
+    shaped: 'Chapter 40: setTimeout as the first asynchronous function, a delay of 0 meaning a later turn of the event loop, and timers firing in the order they fall due.',
+  },
+  {
+    id: 'node-event-loop',
+    authors: ['The Node.js project contributors'],
+    title: 'The Node.js Event Loop',
+    venue: 'Node.js Learn (nodejs.org)',
+    year: null,
+    doi: null,
+    url: 'https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick (fetched and read as text): the event loop is what lets Node.js perform non-blocking I/O although “a single JavaScript thread is used by default”, by “offloading operations to the system kernel whenever possible”; when an operation completes, its callback is queued; between runs of the loop Node “checks if it is waiting for any asynchronous I/O or timers and shuts down cleanly if there are not any”.',
+    shaped: 'Chapter 40: timers, files and network work are watched by the host outside the JavaScript thread, which queues a callback when each finishes; Node exits when nothing is pending.',
+  },
+  {
+    id: 'mdn-promise',
+    authors: ['MDN contributors'],
+    title: 'Promise',
+    venue: 'MDN Web Docs',
+    year: null,
+    doi: null,
+    url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/promise/index.md (slug Web/JavaScript/Reference/Global_Objects/Promise): the states pending, fulfilled and rejected; “settled” means fulfilled or rejected; then, catch and finally return new promises, so they chain; a handler that throws rejects the new promise; with no matching handler the new promise settles like the original.',
+    shaped: 'Chapter 40: what a promise is, its three states, and how then, catch and finally chain.',
+  },
+  {
+    id: 'mdn-using-promises',
+    authors: ['MDN contributors'],
+    title: 'Using promises (JavaScript Guide)',
+    venue: 'MDN Web Docs',
+    year: null,
+    doi: null,
+    url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/guide/using_promises/index.md (slug Web/JavaScript/Guide/Using_promises), section “Guarantees”: then callbacks are never invoked before the current run of the event loop completes, are still invoked if added after the promise settled, and run in the order they were added; functions passed to then are never called synchronously, even on an already-resolved promise; always return a value from a then callback.',
+    shaped: 'Chapter 40: then callbacks always run in a later turn, even on a settled promise, and the missing-return mistake in a chain.',
+  },
+];

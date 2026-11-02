@@ -10,6 +10,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const RETITLE = {
   'map-of-the-territory': ['From source text to a running program', 'from-source-to-running-program'],
+  'derivations-parse-trees-and-ambiguity': ['Derivations and parse trees', 'derivations-and-parse-trees'],
+  'first-follow-and-ll1': ['FIRST and FOLLOW', 'first-and-follow'],
+  'slr-lalr-and-lr1': ['SLR parsing: lookahead from FOLLOW sets', 'slr-parsing'],
+  'parser-generators-peg-glr-and-incremental-parsing': ['Parser generators and PEGs', 'parser-generators-and-pegs'],
+  'numbers-strings-names': ['Numbers and strings', 'numbers-and-strings'],
   'evaluating-expressions': ['Running expressions: a tree that computes', 'running-expressions'],
   'statements-and-state': ['Doing things in order: statements and variables', 'statements-and-variables'],
   'control-flow': ['Choosing and repeating: if, while and for', 'choosing-and-repeating'],

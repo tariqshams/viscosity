@@ -1,0 +1,339 @@
+---
+n: 25
+day: 7
+part: I
+title: 'Modules: import and export'
+tagline: 'An interpreter is too big for one file. Modules let each file keep its own secrets and share only what it chooses, so a big program becomes a set of small ones with clear borders.'
+objectives:
+  - Explain why a module's names are private unless it exports them.
+  - Read and write export and import statements, including renaming and default exports.
+  - Recognize the errors a wrong import produces, and what strict mode changes.
+  - Imitate a module inside a single snippet with the module pattern.
+introduces: [module, import-export]
+uses: [function, return, call, array, push, object, property, dot-access, reference, aliasing, scope, closure, nested-function, arrow-function, for-of, class, instanceof, throw, try-catch, error-object, string-methods, string-index, variables, strings, booleans, comparison, if, console-log]
+sources: [mdn-modules, mdn-strict-mode]
+---
+import ModuleFiles from '../../../components/diagrams/ch025/ModuleFiles';
+import ImportSteps from '../../../components/diagrams/ch025/ImportSteps';
+
+## One file is too many names
+
+By the end of Part III your interpreter will have a scanner, a parser,
+an evaluator and a set of error classes. Put all of that in one file and
+every name can see every other name: the scanner has a `pos` for its
+place in the text, the parser wants a `pos` for its place in the
+tokens, one gets renamed `pos2`, and a month later somebody uses the
+wrong one. Worse, you cannot tell *who uses what*, so changing the
+scanner's insides means reading the whole file first. What we want is a
+border around each part, with a small, deliberate door in it.
+
+## Private by default
+
+<Analogy title="a restaurant kitchen and its menu">
+Customers never see the kitchen's knives, pans and half-made sauces;
+they get the menu, a short list of dishes the kitchen promises. The
+cooks can rearrange the kitchen however they like, as long as every
+dish on the menu still arrives.
+<span slot="breaks">A restaurant can quietly drop a dish from the menu
+and apologize; drop or rename an export and every file that imports it
+breaks at once, before it even runs.</span>
+</Analogy>
+
+<Analogy title="lending a neighbour your ladder">
+Your house is full of your things, and the neighbours cannot reach any
+of them; you choose to lend out the ladder, and only the ladder.
+<span slot="breaks">A lent ladder leaves your house; an exported value
+is shared, not handed over, so both files use the very same function or
+object (an extra arrow to it, in chapter 7's terms), and a change one
+file makes to a shared object is seen by the other.</span>
+</Analogy>
+
+In JavaScript, a **module** is a file. Every name declared at the top of
+a module is private to that file, unless you mark it with `export`:
+
+```js
+// scanner.js
+function isDigit(c) {
+  return c >= '0' && c <= '9';
+}
+
+export function scan(src) {
+  // ... uses isDigit ...
+}
+```
+
+`isDigit` has no `export`, so it belongs to `scanner.js` alone; `scan`
+does, so other files may ask for it with `import`:
+
+```js
+// parser.js
+import { scan } from './scanner.js';
+
+export function parse(src) {
+  const tokens = scan(src);
+  // ...
+}
+```
+
+Line 2 says "from `scanner.js` in this same folder (that is what `./`
+means), bring in the exported name `scan`". `parser.js` can then call
+`scan`, but it cannot see `isDigit` at all, so the scanner's author may
+rewrite, rename or delete it without breaking anything outside.
+
+<Figure takeaway="Export the menu, keep the kitchen." caption="Three modules. Dashed names are private to their file. Each file exports a few names (its menu), and the next file imports them. main.js never sees scan or isDigit: it only needs parse.">
+  <ModuleFiles />
+</Figure>
+
+<Callout kind="definition">
+A **module** is a file with its own scope: the names declared at its top
+level are private to it unless they are **exported**. Nothing a module
+declares becomes a global name that other files can see by
+accident<Cite id="mdn-modules" />.
+</Callout>
+
+<Examples of="module">
+
+```js
+// a.js
+const secret = 42;
+export const answer = secret;
+```
+
+```js
+// count.js
+let count = 0;
+// main.js (no import)
+console.log(count);
+// ReferenceError: count is not defined
+```
+
+```js
+// errors.js
+export class ParseError extends Error {}
+const internal = 'only errors.js';
+```
+
+</Examples>
+
+In the first, `secret` stays inside `a.js`, while `answer` (the same
+value) is the one name others may import. The second shows that a
+top-level `let` is not a global: `main.js` never imported `count`, so to
+it the name does not exist. The third is realistic: your interpreter
+keeps its error classes in one small module, and every other file
+imports exactly the class it needs.
+
+<Prompts ids={['module-what', 'export-why', 'not-global']} />
+
+## export and import
+
+Step through what happens when one module imports from another, and what
+happens when it asks for a name that was never exported:
+
+<ImportSteps client:visible />
+
+An import is not a copy but a link to the exporting module's own
+name<Cite id="mdn-modules" />, so there is only ever one `scan`, and the
+importer cannot assign to it (it is **read-only**, like a `const`),
+though an object it holds can still be changed.
+
+<Callout kind="definition">
+**`export`** in front of a top-level declaration shares it.
+**`import { a, b } from './file.js'`** brings exported names into
+another module, as read-only links; `import { a as b }` renames one on
+the way in. A module may also have one **default export**
+(`export default parse;`), imported without braces under any name you
+choose: `import parse from './parser.js';`<Cite id="mdn-modules" />.
+</Callout>
+
+<Examples of="import-export">
+
+```js
+// math.js
+export function double(n) { return n * 2; }
+// main.js
+import { double } from './math.js';
+double(4); // 8
+```
+
+```js
+import { scan as tokenize } from
+  './scanner.js';
+import parse from './parser.js';
+import * as errors from './errors.js';
+```
+
+```js
+// main.js
+import { ParseError } from './errors.js';
+import { parse } from './parser.js';
+try { parse('1 +'); }
+catch (e) {
+  if (!(e instanceof ParseError)) throw e;
+  console.log('syntax error at', e.pos);
+}
+```
+
+</Examples>
+
+The first is a named export and its import: the braces hold the exact
+exported name. The second shows the other forms: `scan as tokenize`
+imports `scan` but calls it `tokenize` here; `parse` with no braces is
+the default export; and `* as errors` gathers every export into one
+object, used as `errors.ParseError`. The third is the shape of your
+interpreter's `main.js`: import the error class and the parser, run the
+parser, and report a `ParseError` with its position.
+
+Two mistakes are common, and both stop the program with an exact
+message. Asking for a name that is not exported is caught before any of
+the program runs:
+
+```js
+import { isDigit } from './scanner.js';
+// SyntaxError: The requested module
+// './scanner.js' does not provide an
+// export named 'isDigit'
+```
+
+and assigning to an imported name throws when that line is reached:
+
+```js
+import { count } from './count.js';
+count = 5;
+// TypeError: Assignment to constant
+// variable.
+```
+
+Fix the first by exporting `isDigit` (if others really need it), and
+the second by exporting a function that changes the value, so the
+owning module does the changing.
+
+Module code also runs in **strict mode** automatically<Cite id="mdn-modules" />,
+which turns some silent mistakes into thrown errors<Cite id="mdn-strict-mode" />:
+assigning to a name you never declared (`totl = 5`, a typo for `total`)
+quietly creates a global variable in an old-style script, but throws a
+`ReferenceError` in a module.
+
+<Prompts ids={['import-syntax', 'import-readonly', 'missing-export']} />
+
+## A module in one snippet
+
+The code runner in this book runs one snippet at a time, so `import`
+cannot run here: there are no other files to import from. However, you
+already know another way to build a border with a door in it: a
+function's local variables are private, and a closure keeps them alive,
+so a function can return an object holding only the functions it
+shares. Read this runnable example, then run it:
+
+<Run id="module-pattern" />
+
+- `let count = 0;` lives inside the call to `makeCounter`, so nothing
+  outside can read or reset it directly.
+- `next` and `reset` are nested functions, so they see `count` through
+  their closure; `next` adds one and returns it, `reset` sets it to 0.
+- `return { next, reset };` (short for `{ next: next, reset: reset }`)
+  is the menu: an object holding the two functions.
+- `a` and `b` are two separate calls, so each has its own `count`: after
+  two calls to `a.next()`, the line `console.log(a.next(), b.next())`
+  prints `3 1`, and `a.count` is `undefined`, because the object has no
+  such property.
+
+A function that hides its variables and returns an object of functions
+is called the **module pattern**; it needs no special syntax, only the
+closures of chapter 12, and it is how JavaScript programs were split up
+before `import` existed.
+
+<Prompts ids={['module-pattern', 'pattern-private']} />
+
+<OtherLanguages>
+
+```js
+// scanner.js
+function isDigit(c) { /* ... */ }
+export function scan(src) { /* ... */ }
+
+// parser.js
+import { scan } from './scanner.js';
+```
+
+```python
+# scanner.py
+def _is_digit(c): ...
+def scan(src): ...
+
+# parser.py
+from scanner import scan
+```
+
+```java
+// Scanner.java
+public class Scanner {
+    private static boolean isDigit(char c)
+        { /* ... */ }
+    public static Token[] scan(String s)
+        { /* ... */ }
+}
+// Parser.java: Scanner.scan(src)
+```
+
+```c
+/* scanner.h: the "exports" */
+Token *scan(const char *src);
+
+/* scanner.c */
+static int is_digit(char c) { /*...*/ }
+Token *scan(const char *src) { /*...*/ }
+
+/* parser.c */
+#include "scanner.h"
+```
+
+</OtherLanguages>
+
+The idea is the same everywhere; who enforces the border differs. In
+Python every top-level name *can* be imported, and the underscore in
+`_is_digit` is only a polite "please don't". Java marks each member
+`public` or `private`, and the class, not the file, is the unit. C
+splits a module in two: the header `scanner.h` lists what others may
+call and `#include` pastes it in, while `static` hides `is_digit`
+outside `scanner.c`. JavaScript is strict: nothing leaves a module
+without `export`.
+
+<Callout kind="engine" label="Why compilers like modules">
+An `import` can only appear at the top level of a module, naming its
+file with a plain string<Cite id="mdn-modules" />, so a tool can find a
+program's whole web of files by reading the source, without running any
+of it (a separate dynamic `import()` form works differently). Exports
+matter to Viscosity too: an exported array of particles may be held and
+changed by any importing file, so every export is a door out of the
+module that Viscosity's escape analysis must check before it changes
+how data is laid out.
+</Callout>
+
+## Your turn
+
+The core exercise builds the start of a scanner with the module
+pattern; the extra one finds a module's exports by reading its text, the
+way tools do.
+
+<Exercise id="makeReader" />
+
+<Exercise id="exportedNames" />
+
+## What you learned
+
+- A **module** is a file whose top-level names are private unless it
+  **exports** them; nothing becomes global by accident.
+- **`import { a } from './file.js'`** brings in exported names as
+  read-only links, not copies; `as` renames, braces-free imports take
+  the **default export**, and `* as ns` gathers everything.
+- Importing a name that is not exported is an error before anything
+  runs, and assigning to an import throws; module code is in **strict
+  mode**.
+- The **module pattern** (a function returning an object of functions,
+  with closures over private variables) gives the same privacy in one
+  snippet.
+
+Next: in what order a program's modules run, and how to divide a
+program into modules that each have one clear job.
+
+<Quiz />

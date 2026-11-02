@@ -1,0 +1,285 @@
+---
+n: 77
+day: 20
+part: III
+title: 'Grammars'
+tagline: 'The scanner checks that every word is spelled right; nothing yet checks that the words come in a sensible order. A grammar is a short list of rules that says exactly which orders are allowed, and a handful of them can describe every program anyone will ever write.'
+objectives:
+  - Read a production rule aloud, and say which of its symbols are terminals and which are nonterminals.
+  - Write a small grammar for a piece of Drip, and say which token rows it allows.
+  - Explain how a rule that mentions itself describes endlessly many programs, and why it needs a way out.
+  - Describe a grammar formally as nonterminals, terminals, rules and a start symbol.
+introduces: [grammar, production-rule, terminal, nonterminal]
+uses: [token, token-type, scanner, literal, identifier, keyword, drip, language-spec, regular-expression, recursion, base-case, function, array, index, length, while-loop, if, comparison, booleans]
+sources: [ecma262-grammar]
+---
+import ReadRuleSteps from '../../../components/diagrams/ch077/ReadRuleSteps';
+import DerivePlay from '../../../components/diagrams/ch077/DerivePlay';
+
+## Right words, wrong order
+
+Give Drip's scanner this line:
+
+```
+print + ; 3 (
+```
+
+It does not complain: `print` is a keyword, `+`, `;` and `(` are good
+tokens, and `3` is a number literal. Every word is spelled correctly;
+however, the line means nothing, in the same way that "sat the on cat
+mat the" is good English words in a bad order. The scanner cannot catch
+this, because it looks at one token at a time, and the problem is in how
+the tokens are arranged. We need rules about **order**, written down
+precisely enough for a program to check them.
+
+## Rules for sentences
+
+<Analogy title="a form with blanks">
+A greetings card company prints cards from templates: "Dear ___, happy
+___!", where the first blank says *a name* under it and the second says
+*an occasion*. A separate sheet lists what may go in each blank: a name
+is "Ada" or "Alan"; an occasion is "birthday" or "anniversary". Any card
+you can fill in from those sheets is allowed, and nothing else is.
+<span slot="breaks">A real blank takes whatever you write in it; a
+grammar's blank only takes what its own rules allow, and those rules may
+contain more blanks, even blanks of the same kind.</span>
+</Analogy>
+
+<Analogy title="a cookbook with sub-recipes">
+A cookbook says "a sandwich is bread, a filling, then bread", and on
+another page "a filling is cheese, or ham and tomato". To follow the
+sandwich recipe you turn to the filling page, follow that, and come back.
+The printed words (bread, cheese) are things you actually use; the
+recipe names (sandwich, filling) only tell you which page to turn to.
+<span slot="breaks">A cookbook tells you how to *make* one thing; a
+grammar is more like a judge, deciding whether a row of tokens you
+already have could have been made by its recipes.</span>
+</Analogy>
+
+Here is a grammar for a very small piece of Drip: print statements that
+add numbers, with brackets allowed.
+
+<Formal title="A grammar for adding numbers">
+
+```text
+stmt → "print" expr ";"
+expr → expr "+" item
+expr → item
+item → NUMBER
+item → "(" expr ")"
+```
+
+<span slot="read">Read each arrow as "is made of", or "can be made of"
+when a name has several rules. A stmt is made of the keyword print, then
+an expr, then a semicolon. An expr can be made of an expr, then a plus
+sign, then an item. An expr can also be made of a single item. An item
+can be made of one number token. An item can also be made of an opening
+bracket, an expr, and a closing bracket.</span>
+</Formal>
+
+Words in quotes are exact tokens; `NUMBER` in capitals stands for any
+token of the number type (such as `3` or `4.25`); and the bare words
+`stmt`, `expr` and `item` are the blanks, each one the name of some
+rules. As such, `print 3;` fits (a `stmt` whose `expr` is one `item`,
+which is the number `3`), and so does `print (1 + 2) + 3;`, but
+`print + ; 3 (` does not, because no rule lets a `stmt` start with
+`print +`. (How you show, step by step, that a row of tokens fits is
+called a *derivation*, and it has its own chapter, "Derivations, parse
+trees and ambiguity"; here we only learn to write and read the rules.)
+
+<Callout kind="definition">
+A **grammar** is a set of rules that says which rows of tokens are valid
+programs. Each rule is a **production rule**: one name (the rule's
+*head*), an arrow, and a *body*, the row of symbols that name may be
+replaced by. One name may have several rules; any of them may be used.
+</Callout>
+
+<Examples of="grammar production-rule">
+
+```text
+greeting → "hello" name
+name → "Ada"
+name → "Alan"
+```
+
+```text
+letDecl → "let" IDENTIFIER ";"
+letDecl → "let" IDENTIFIER "=" NUMBER ";"
+```
+
+```text
+WhileStatement :
+  while ( Expression ) Statement
+```
+
+</Examples>
+
+The first is the smallest useful grammar: a `greeting` is the word
+`hello` followed by a `name`, and a `name` is `Ada` or `Alan`, so the
+whole grammar allows exactly two sentences, `hello Ada` and `hello Alan`.
+The second has two rules for one head, which is how a grammar says "or":
+`let x;` fits the first rule and `let x = 4;` fits the second, while
+`let = 4;` fits neither, because both bodies need an `IDENTIFIER` right
+after `let`. The third is real: it is how JavaScript's own specification
+writes the rule for a `while` loop, with a colon where we write an arrow
+and no quotes round its terminals<Cite id="ecma262-grammar" />.
+
+<Prompts ids={['grammar-what', 'scanner-cant', 'arrow-read']} />
+
+## Terminals and nonterminals
+
+Every symbol in a rule's body is one of two sorts, and telling them
+apart is most of what reading a grammar means. Step through one rule:
+
+<ReadRuleSteps client:visible />
+
+<Callout kind="definition">
+A **terminal** is a symbol that stands for a token, such as `"print"`
+(exactly that keyword) or `NUMBER` (any token of that type). It is where
+the rules stop: a terminal is never replaced. A **nonterminal** is the
+name of one or more rules, such as `expr`: a blank to be filled in. One
+nonterminal is the **start symbol**, the one every program begins from
+(here, `stmt`).
+</Callout>
+
+<Examples of="terminal nonterminal">
+
+```text
+item → "(" expr ")"
+terminals: "(" and ")"
+nonterminals: item, expr
+```
+
+```text
+item → NUMBER
+NUMBER is a terminal: any number token
+```
+
+```text
+ifStmt → "if" "(" expr ")" stmt
+         "else" stmt
+```
+
+</Examples>
+
+In the first, the brackets are in quotes, so they are terminals, each
+meaning one bracket token; `item` and `expr` have rules of their own, so
+they are nonterminals. The second shows a terminal standing for a whole
+*type* of token: `NUMBER` matches `3`, `0.5` or `1000` alike, because
+the scanner already decided they are numbers. The third is a shape Drip
+really uses, with four terminals (`"if"`, the brackets and `"else"`) and
+three nonterminals (`ifStmt`, `expr`, and `stmt` once per branch).
+
+The most common slip is putting quotes round a name that should be a
+blank:
+
+```text
+stmt → "print" "expr" ";"   ✗
+stmt → "print" expr ";"     ✓
+```
+
+The first asks for three exact tokens, so it allows only `print expr;`
+(printing a variable called `expr`); the second leaves a blank that any
+expression can fill.
+
+<Formal title="A grammar as four things">
+
+```text
+G = (N, Σ, P, S)
+every rule in P:  A → α
+  where A ∈ N  and  α ∈ (N ∪ Σ)*
+S ∈ N
+```
+
+<span slot="read">A grammar G is four things: N, the set of
+nonterminals; Σ (the Greek capital sigma), the set of terminals, the
+alphabet of tokens; P, the set of production rules; and S, the start
+symbol. Every rule in P has the form "A is made
+of α", where A is one nonterminal (the symbol ∈ reads "is a member of")
+and α (the Greek letter alpha) is a row of zero or more symbols, each
+one either a nonterminal or a terminal (∪ reads "together with", and the
+star means "a row of any length", the star from "Regular expressions as
+a language"). S is one of the nonterminals. For our grammar, N is stmt,
+expr and item; Σ is print, plus, the brackets, the semicolon and NUMBER;
+and S is stmt.</span>
+</Formal>
+
+Because every head is a *single* nonterminal, an `expr` may be replaced
+the same way wherever it stands, whatever surrounds it; grammars like
+this are called **context-free**, and they are the kind almost every
+programming language is defined with (JavaScript's specification says
+so in as many words<Cite id="ecma262-grammar" />).
+
+<Prompts ids={['terminal-what', 'nonterminal-what', 'quoted-name']} />
+
+## Rules that mention themselves
+
+Look again at `expr → expr "+" item`: `expr` appears on both sides.
+Each use gains one more `+ item` and still leaves an `expr` to fill in,
+so you can use it again; and `item → "(" expr ")"` puts a whole new
+`expr` inside brackets, which can hold more brackets. With five rules, the grammar allows `print 1;`,
+`print 1 + 2;`, `print ((1) + 2) + 3;` and endlessly many more.
+
+This is **recursion**, exactly as in the chapter "Recursion and the call
+stack", and like any recursion it needs a base case. If `expr` had only
+its recursive rule, every use would leave another `expr` behind, and no
+row of tokens could ever be finished; `expr → item` and `item → NUMBER`
+are the ways out. Recursion is also what grammars have that regular
+expressions lack: a regular expression can describe a number or a name,
+but no regular expression can check that every `(` has its `)` at any
+depth of nesting, and a grammar does it with one rule.
+
+Try it: fill in the blanks yourself. Each button uses one rule on the
+underlined nonterminal, and you are done when only terminals are left.
+
+<DerivePlay client:visible />
+
+A program can do the same, choosing rules at random; here the grammar
+is plain JavaScript data, one list of bodies per nonterminal:
+
+<Run id="randomSentences" />
+
+`rules` maps each nonterminal to its list of bodies. `make(sym)` looks
+the symbol up: with no rules it is a terminal, so it is written out (a
+`NUMBER` becomes a random digit); otherwise one body is chosen and
+`make` is called on each of its symbols, which is the recursion. Past
+`depth` 3 it always takes the first body, the way out, so every sentence
+finishes, and every line it prints fits the grammar.
+
+<Prompts ids={['recursive-rule', 'no-way-out']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript itself is defined this way. Its specification describes its
+syntax as a context-free grammar of productions, each with a nonterminal
+on the left, and calls the tokens its terminal symbols; it writes
+recursive rules for lists such as function arguments, and marks an
+optional symbol with a small "opt"<Cite id="ecma262-grammar" />.
+A grammar says only which programs are well formed; what they *mean*
+is the rest of the specification, and the rest of this book.
+</Callout>
+
+## Your turn
+
+Both exercises use the grammar-as-data form from the runnable example;
+the second is extra practice.
+
+<Exercise id="sortSymbols" />
+
+<Exercise id="selfRules" />
+
+## What you learned
+
+- A **grammar** is a set of **production rules** saying which rows of
+  tokens are valid; the scanner checks words, the grammar checks order.
+- In a rule, **terminals** are tokens (in quotes, or a token type such
+  as `NUMBER`); **nonterminals** are rule names, blanks still to be
+  filled in, and one of them is the start symbol.
+- A rule that mentions itself gives endlessly many programs, and needs a
+  non-recursive way out, like any recursion.
+- Formally, a grammar is four things: nonterminals, terminals, rules
+  and a start symbol.
+
+Next: a shorter way to write the same rules, called BNF, and the whole
+of Drip's grammar written in it.
+
+<Quiz />

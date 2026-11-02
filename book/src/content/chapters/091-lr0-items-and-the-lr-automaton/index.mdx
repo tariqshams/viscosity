@@ -1,0 +1,296 @@
+---
+n: 91
+day: 23
+part: III
+title: 'LR(0) items and the LR automaton'
+tagline: 'A shift-reduce parser has to know, at every moment, whether the top of its stack is ready to be reduced. It finds out with a small machine, built from the grammar ahead of time, that remembers how far through each rule the parser has got.'
+objectives:
+  - Write an LR(0) item, and say what the dot in it means.
+  - Work out the closure of a set of items, and goto on one symbol, by hand.
+  - Build the LR(0) automaton of a small grammar, state by state.
+  - Run the automaton over a stack to find out whether the top is a handle.
+introduces: [lr0-item, closure-goto, lr-automaton]
+uses: [shift-reduce, lr-handle, bottom-up-parsing, grammar, production-rule, terminal, nonterminal, derivation, parse-tree, dfa, finite-automaton, accepting-state, subset-construction, first-set, token, parser, array, function, for-of, for-loop, if, return, map-filter-reduce, arrow-function]
+sources: [knuth1965, aho2006]
+---
+import ClosureSteps from '../../../components/diagrams/ch091/ClosureSteps';
+import Lr0Automaton from '../../../components/diagrams/ch091/Lr0Automaton';
+
+## Is the top of the stack a handle?
+
+The last chapter's parser works by **shifting** tokens onto a stack and
+**reducing** whenever the top of the stack is a **handle**, the body of
+a rule that should be replaced by its head right now. That leaves one
+question unanswered, and it is the whole question: how does the parser
+*know* that the top of the stack is a handle? It could try every rule
+against the stack after every token; however, that is slow, and it
+repeats the same work, because the stack changes one symbol at a time.
+
+A scanner had the same problem with characters, and chapter 73 solved
+it with a DFA, whose current state summarises everything read so far.
+This chapter builds that kind of machine for a parser: its states
+summarise the stack, so each shift or reduce costs one step instead of
+a fresh look. We will build it for this grammar:
+
+```text
+S → E
+E → E + T
+E → T
+T → n
+T → ( E )
+```
+
+Here `E` is an expression, `T` a term, `n` stands for a number token,
+and `+`, `(` and `)` are themselves; to keep things short, in these
+chapters capital letters are nonterminals and everything else is a
+terminal. The first rule is one we add on top of the grammar: `S → E`
+gives the parser a single rule whose completion means "the whole input
+was one expression; we are done".
+
+## Items: a rule with a dot in it
+
+<Analogy title="a bookmark in a recipe">
+Halfway through a recipe you put a bookmark between "fold in the flour"
+and "bake for twenty minutes". The bookmark says what you have done and
+what comes next, without you having to remember any of it; and if you
+are following two recipes at once, you have two bookmarks.
+<span slot="breaks">A cook follows one recipe they chose; a parser
+often keeps bookmarks in several rules at once, because it does not yet
+know which one the input is following.</span>
+</Analogy>
+
+The parser's bookmark is written as a dot inside a rule. Every rule
+gives one item for each place the dot can stand:
+
+```text
+E → · E + T    nothing seen yet
+E → E · + T    seen an E; a + should come
+E → E + · T    seen E +; a T should come
+E → E + T ·    seen all of it: reduce
+```
+
+<Callout kind="definition">
+An **LR(0) item** is a production rule with a dot somewhere in its body.
+The symbols before the dot have been seen (they are on top of the
+stack); the symbols after it are what the parser hopes to see next. An
+item with the dot at the end is **complete**: its whole body is on the
+stack, so it is a candidate for a reduction.
+</Callout>
+
+<Formal title="An item">
+
+```text
+A → α · β      where A → αβ is a rule
+```
+
+<span slot="read">A goes to alpha, dot, beta, where A goes to alpha
+beta is a rule of the grammar. Alpha is the part already seen and beta
+the part still to come; either may be empty. When beta is empty the
+item is complete.</span>
+</Formal>
+
+<Examples of="lr0-item">
+
+```text
+T → · n     about to see a number
+T → n ·     saw it: reduce n to T
+```
+
+```text
+T → · ( E )   T → ( · E )
+T → ( E · )   T → ( E ) ·
+```
+
+```text
+after "( n +": inside a bracket,
+E → E + · T   is where we are
+```
+
+</Examples>
+
+A body of one symbol gives two items, before and after; a body of three
+gives four, one for each gap. The third is the parser halfway through
+`(1 + 2)`: it has shifted `(`, reduced the number to an `E` and shifted
+the `+`, and the item says that what it needs next is a `T`.
+
+<Prompts ids={['item-what', 'item-count', 'item-complete']} />
+
+## Closure and goto
+
+Stand at `E → E + · T`. The parser wants a `T`, but no `T` arrives in
+the input; numbers and brackets do. So, if we are waiting for a `T`, we
+are also, at the same moment, at the very start of every rule for `T`:
+`T → · n` and `T → · ( E )`. Adding those items, and repeating for any
+new dot that lands in front of a nonterminal, is called **closure**.
+
+<Analogy title="a to-do list that unfolds">
+If the next line on your list is "get to the station", then the first
+step of every way of getting there (walk to the bus stop, unlock the
+bike) has quietly become something you might be about to do; and if
+"unlock the bike" means "find the key", that joins the list too.
+<span slot="breaks">You would pick one way and forget the others; a
+parser keeps them all, because only the coming tokens can tell it
+which way the input goes.</span>
+</Analogy>
+
+The second operation moves forward. **goto** of a set of items on a
+symbol `X` takes every item with `X` right after its dot, moves the dot
+over `X`, and closes the result: it answers "if `X` is the next thing on
+the stack, where are we then?".
+
+<Callout kind="definition">
+The **closure** of a set of items: for every item with a dot in front
+of a nonterminal `B`, add `B → · γ` for every rule `B → γ`; repeat until
+nothing new is added. **goto(I, X)**: take the items of `I` of the form
+`A → α · X β`, make them `A → α X · β`, and take the closure. If no item
+has `X` after its dot, the result is empty.
+</Callout>
+
+<Formal title="closure and goto">
+
+```text
+B → γ in G,  A → α · B β in closure(I)
+──────────────────────────────────────
+      B → · γ in closure(I)
+
+goto(I, X) = closure({ A → α X · β |
+                 A → α · X β in I })
+```
+
+<span slot="read">If the grammar has a rule B goes to gamma, and the
+closure already holds an item with the dot in front of B, then the
+closure also holds B goes to dot gamma. And goto of I on X is the closure
+of all the items of I that had X right after the dot, with the dot
+moved over it.</span>
+</Formal>
+
+<Examples of="closure-goto">
+
+```text
+closure({ E → E + · T })
+= E → E + · T,  T → · n,  T → · ( E )
+```
+
+```text
+I = closure({ S → · E })
+goto(I, n) = { T → n · }
+goto(I, +) = { }   (no dot before +)
+```
+
+```text
+goto(I, "(") = closure({ T → ( · E ) })
+= T → ( · E ),  E → · E + T,  E → · T,
+  T → · n,  T → · ( E )
+```
+
+</Examples>
+
+In the first, the dot is before `T`, so both `T` rules join, and that
+is all, since their dots stand before terminals, which add nothing. The
+second starts from the closure of `S → · E` (five items, as the
+step-through below shows): on `n` only `T → · n` moves, and on `+`
+nothing does, so the answer is empty, which is a syntax error. The third
+is closure working twice: the dot before `E` brings in the `E` rules,
+and the dot in `E → · T` brings in the `T` rules. The left-recursive
+rule `E → E + T` is added once and no more, since adding an item that
+is already there changes nothing (so left recursion, the trouble of
+chapter 87, is no trouble here).
+
+<Prompts ids={['closure-why', 'closure-stops', 'goto-what']} />
+
+## The LR(0) automaton
+
+Start from the closure of `S → · E`, call it state 0, and try goto on
+every symbol that stands after a dot; each new item set is a new state,
+and each item set we have seen before is an arrow back to an old one.
+Keep going until nothing new appears. Step through it:
+
+<ClosureSteps client:visible />
+
+<Figure takeaway="The LR(0) automaton is a DFA whose states are item sets and whose arrows are goto." caption="The nine states found above. The arrow from nowhere marks state 0. Arrows on terminals happen when the parser shifts a token; arrows on nonterminals happen after a reduction puts that nonterminal on the stack.">
+  <Lr0Automaton />
+</Figure>
+
+<Callout kind="definition">
+The **LR(0) automaton** (also called the *canonical collection* of
+LR(0) items) is the DFA whose start state is the closure of `S → · E`,
+whose states are the item sets reachable from it by goto, and whose
+transition on `X` from state `I` is `goto(I, X)`. It reads grammar
+symbols, terminals and nonterminals alike, and a state with a complete
+item `A → α ·` says "`α` is on top of the stack, and it may be a handle".
+</Callout>
+
+What it reads is the important part: the automaton does not read the
+input, it reads the **stack**, from bottom to top. Run it over the
+symbols on the stack, and the state you end in holds every item that
+fits what is there.
+
+<Examples of="lr-automaton">
+
+```text
+stack: n
+0 -n-> 3   T → n ·   reduce n to T
+```
+
+```text
+stack: ( E
+0 -(-> 4 -E-> 6   T → ( E · ), E → E · + T
+nothing complete: shift the next token
+```
+
+<Run id="walk-stack" />
+
+</Examples>
+
+The first is the first decision on any input that starts with a
+number: state 3's only item is complete, so the number is a handle. In
+the second, state 6 has no complete item, so the parser must shift (a
+`)` or a `+`) before it can reduce. The runnable one holds the arrows as
+data and walks a stack through them: `E + T` ends in state 7 (reduce),
+`E +` in state 5 (keep going), and `+` finds no arrow at all, because no
+valid program has a stack like that.
+
+If this feels familiar, it is the subset construction of chapter 75
+again: an item is like one NFA state, closure follows the ε-moves, and
+goto is one step on a symbol. (A real LR parser never reruns the machine
+from the bottom: it keeps the state number beside each stack symbol, so
+it only takes the last step again.)
+
+<Prompts ids={['dfa-reads-stack', 'nine-states']} />
+
+<Callout kind="engine" label="Under the hood">
+Donald Knuth defined LR(k) grammars in 1965: those a parser can handle
+in one left-to-right pass, deciding each step with at most k tokens of
+lookahead<Cite id="knuth1965" />. (The two letters are usually read as
+Left-to-right and Rightmost derivation, because the reductions of a
+bottom-up parse, read backwards, are a rightmost derivation.)
+The automaton in this chapter is the k = 0 case, which is why its items
+are called LR(0) items: nothing in them looks at the next token. The
+dragon book's chapter 4 works through the same constructions, on a
+slightly larger version of this grammar<Cite id="aho2006" />. The next
+chapter turns the automaton into a table and shows where it breaks.
+</Callout>
+
+## Your turn
+
+The core exercise writes `closure` and `goto` for real, over a grammar
+given as data; the tests rebuild some of the states in the step-through.
+
+<Exercise id="closure-goto" />
+
+## What you learned
+
+- An **LR(0) item** is a rule with a dot: what is before the dot is on
+  the stack, what is after is still to come; a dot at the end means a
+  possible reduction.
+- **Closure** adds `B → · γ` for every nonterminal `B` just after a dot,
+  until nothing changes; **goto(I, X)** moves the dot over `X` and takes
+  the closure.
+- The **LR(0) automaton** has item sets as states and goto as arrows;
+  it reads the stack, and the state it ends in says whether the top is
+  a handle.
+
+Next: the automaton as a table, a parser that runs it, and the places
+where it cannot decide.
+
+<Quiz />

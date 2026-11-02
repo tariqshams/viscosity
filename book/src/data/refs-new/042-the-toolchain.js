@@ -1,0 +1,67 @@
+// New references for chapter 42 (The toolchain: tsconfig, modules and npm).
+// typescriptlang.org was read from its source markdown in the
+// microsoft/TypeScript-Website repository (v2 branch) on GitHub, and every
+// behaviour was checked by running tsc 5.9.3 (and tsc 6.0.2 for the
+// version differences).
+export default [
+  {
+    id: 'ts-tsconfig-json',
+    authors: ['The TypeScript team (Microsoft) and contributors'],
+    title: 'What is a tsconfig.json (TypeScript Handbook)',
+    venue: 'typescriptlang.org documentation',
+    year: null,
+    doi: null,
+    url: 'https://www.typescriptlang.org/docs/handbook/tsconfig-json.html',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/documentation/copy/en/project-config/tsconfig.json.md (permalink /docs/handbook/tsconfig-json.html): a tsconfig.json marks the root of a project and holds the root files and compiler options; tsc with no input files searches the current directory and then the parent chain; “When input files are specified on the command line, tsconfig.json files are ignored.” Checked with tsc 5.9.3 (ignored silently) and tsc 6.0.2 (error TS5112).',
+    shaped: 'Chapter 42: what tsconfig.json is, how tsc finds it, and why naming files on the command line skips it.',
+  },
+  {
+    id: 'ts-option-module',
+    authors: ['The TypeScript team (Microsoft) and contributors'],
+    title: 'TSConfig Reference: module',
+    venue: 'typescriptlang.org documentation',
+    year: null,
+    doi: null,
+    url: 'https://www.typescriptlang.org/tsconfig/#module',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/tsconfig-reference/copy/en/options/module.md: “You very likely want \"nodenext\" for modern Node.js projects and preserve or esnext for code that will be bundled.” The extension error (TS2835) and the import/require output were checked with tsc 5.9.3.',
+    shaped: 'Chapter 42: module "nodenext" as the setting for Node projects.',
+  },
+  {
+    id: 'ts-option-strict',
+    authors: ['The TypeScript team (Microsoft) and contributors'],
+    title: 'TSConfig Reference: strict',
+    venue: 'typescriptlang.org documentation',
+    year: null,
+    doi: null,
+    url: 'https://www.typescriptlang.org/tsconfig/#strict',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/tsconfig-reference/copy/en/options/strict.md: strict enables the whole strict mode family, individual checks can then be turned off, and future versions may add stricter checks under the flag. The family members were read from tsc 5.9.3 --help --all (“default: false, unless strict is set”): alwaysStrict, noImplicitAny, noImplicitThis, strictBindCallApply, strictBuiltinIteratorReturn, strictFunctionTypes, strictNullChecks, strictPropertyInitialization, useUnknownInCatchVariables. strict itself is “default: false” in tsc 5.9.3; the website (built with TypeScript 6.0.2) lists it as true, and tsc 6.0.2 reports strict errors with no flags.',
+    shaped: 'Chapter 42: what strict turns on, overriding one check, and the change of default between TypeScript 5.9 and 6.0.',
+  },
+  {
+    id: 'ts-option-noimplicitany',
+    authors: ['The TypeScript team (Microsoft) and contributors'],
+    title: 'TSConfig Reference: noImplicitAny',
+    venue: 'typescriptlang.org documentation',
+    year: null,
+    doi: null,
+    url: 'https://www.typescriptlang.org/tsconfig/#noImplicitAny',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/tsconfig-reference/copy/en/options/noImplicitAny.md: without it TypeScript falls back to any when it cannot infer a type; with it, an error is issued wherever it would have inferred any (error 7006 in the page’s example). Checked with tsc 5.9.3.',
+    shaped: 'Chapter 42: the implicit any that loose mode allows, and error TS7006.',
+  },
+  {
+    id: 'ts-option-strictnullchecks',
+    authors: ['The TypeScript team (Microsoft) and contributors'],
+    title: 'TSConfig Reference: strictNullChecks',
+    venue: 'typescriptlang.org documentation',
+    year: null,
+    doi: null,
+    url: 'https://www.typescriptlang.org/tsconfig/#strictNullChecks',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/tsconfig-reference/copy/en/options/strictNullChecks.md: when false, null and undefined are effectively ignored; when true they have their own distinct types and using them where a concrete value is expected is an error; the page’s example is Array.prototype.find possibly returning undefined (error 18048). Checked with tsc 5.9.3.',
+    shaped: 'Chapter 42: strictNullChecks, and narrowing the result of find before using it.',
+  },
+];

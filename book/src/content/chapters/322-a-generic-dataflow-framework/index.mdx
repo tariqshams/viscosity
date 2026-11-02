@@ -1,0 +1,245 @@
+---
+n: 322
+day: 81
+part: XIII
+title: 'A generic dataflow framework'
+tagline: 'Chapter 165 said most of a compiler’s middle is one framework with many instances. engine/rust doesn’t have that framework. It has one hand-written fixpoint. Here you design the framework as Rust traits, build its solver, and see that Viscosity’s real loop is one instance of it, with two differences that matter.'
+objectives:
+  - Say what engine/rust really has for dataflow, and why it has no framework.
+  - Design a lattice and a problem as Rust traits, with the fact type as an associated type.
+  - Write a worklist solver generic over the lattice, and say why it must stop.
+  - Map Viscosity’s numeric fixpoint onto the design, including its round cap and how it fails closed.
+introduces: [generic-dataflow]
+uses: [viscosity-rs, ir-arena, rust-ssa, plugin-trait, dataflow, lattice, fixpoint, worklist, constant-propagation, ssa, phi-node, trait, trait-object, rust-generics, trait-bound, monomorphization, vec, option, enum, match, struct, impl, python-array-module, semantic-differences, typed-array]
+sources: [coopertorczon2022, klabnik2026]
+---
+import SolverSteps from '../../../components/diagrams/ch322/SolverSteps';
+
+## The framework that isn’t there
+
+Chapter 165 ended with a promise: facts on a lattice, a rule per
+instruction, a merge, and a worklist are the machinery under most of
+an optimizing compiler, one framework with many
+instances<Cite id="coopertorczon2022" />. So you might expect the Rust
+port to have a `trait Lattice` somewhere. Search `engine/rust/crates`
+for `trait` and you find exactly one: `LanguagePlugin` (chapter 316).
+
+What it has instead is one fixpoint, written directly over its own
+state: `numeric_inference` in `crates/core/src/analysis.rs`, a port of
+the same loop in `analysis.ts`. The other analyses in that file
+(collections, escapes, bounds) are single passes over use lists, not
+lattice problems. One instance doesn’t justify a framework, and the
+parity guarantee (chapter 320) pins the exact order the loop visits
+things.
+
+So this chapter does two things. It **designs** a generic framework
+in Rust: everything in the next three sections is this book’s design,
+not code in the repo. Then it lines the design up against the real
+loop.
+
+<Prompts ids={['gd-no-framework']} />
+
+## A lattice is a trait
+
+<Callout kind="intuition">
+A tax form works for every household because the form never knows
+what a household is. It only asks for a few numbers and says how to
+combine them. A generic solver is the form: it never looks inside a
+fact, it only asks for the top, the bottom and how two facts merge.
+</Callout>
+
+A lattice needs a starting point, a safe answer and a merge:
+
+```rust
+pub trait Lattice: Clone + PartialEq {
+    // the optimistic start
+    fn top() -> Self;
+    // claims nothing: always safe
+    fn bottom() -> Self;
+    // the highest fact below both
+    fn meet(&self, o: &Self) -> Self;
+}
+```
+
+A problem says how many nodes there are, which nodes each one reads,
+and its rule. The fact type is an associated type, as `Extra` is in
+`LanguagePlugin`, because each problem has exactly one:
+
+```rust
+pub trait Problem {
+    type Fact: Lattice;
+    fn len(&self) -> usize;
+    fn deps(&self, n: usize)
+        -> Vec<usize>;
+    fn transfer(&self, n: usize,
+        f: &[Self::Fact]) -> Self::Fact;
+}
+```
+
+Nodes are plain `usize`s, like the typed ids of chapter 315 without the
+newtype. For “is it a number?”, `Fact = bool`, `top` is `true`, and
+`meet` is `&&`. For chapter 168’s constants, `Fact` is an enum `Top`,
+`K(i64)` or `Varies`.
+
+<Callout kind="definition">
+A **generic dataflow framework** is a solver written once, generic over
+the lattice: any analysis that supplies a fact type with `top`,
+`bottom` and `meet`, and a **transfer function** per node, gets a
+fixpoint from the same code. In Rust, the lattice and the problem are
+traits, the fact is an associated type, and the solver is a generic
+function bounded by `P: Problem`.
+</Callout>
+
+<Prompts ids={['gd-what', 'gd-assoc']} />
+
+## The solver
+
+The worklist solver, from the design (the exercise asks you to write
+its loop):
+
+```rust
+pub fn solve<P: Problem>(p: &P)
+    -> Vec<P::Fact>
+{
+    let us = users(p); // reverse deps
+    let n = p.len();
+    let mut f = vec![P::Fact::top(); n];
+    let mut work: Vec<usize> =
+        (0..n).rev().collect();
+    let mut queued = vec![true; n];
+    while let Some(v) = work.pop() {
+        queued[v] = false;
+        let new = p.transfer(v, &f)
+            .meet(&f[v]);
+        // if new != f[v]: store it, and
+        // push v's users not yet queued
+    }
+    f
+}
+```
+
+Two choices are worth naming. The solver stores `transfer(..)` met
+with the old fact, which **clamps**: a fact can only move down. With a
+lattice of finite height, each node changes a bounded number of times,
+so the stack must empty, whatever the transfer does. And it is
+generic, not `&dyn Problem`: it needs to build a `Vec<P::Fact>`, and
+monomorphization makes every `transfer` and `meet` a direct call that
+rustc can inline<Cite id="klabnik2026" />.
+
+<Prompts ids={['gd-clamp', 'gd-queued', 'gd-mono']} />
+
+## Viscosity’s loop, as an instance
+
+The real loop, trimmed from `analysis.rs`:
+
+```rust
+const MAX_ROUNDS: usize = 1000;
+// ...in numeric_inference:
+for v in &m.values {
+    let optimistic = matches!(v.op,
+        Op::Phi | Op::LoadBinding { .. }
+        | Op::FieldGet { .. }
+        | Op::Param { .. });
+    self.num[v.id.index()] =
+        optimistic || self.compute(v);
+}
+let mut converged = false;
+for _round in 0..self.max_rounds {
+    let mut changed = false;
+    // every value, in id order, in
+    // place: int, then num; then every
+    // binding; then every field
+    if !changed {
+        converged = true;
+        break;
+    }
+}
+if !converged {
+    self.num.fill(false);
+    self.int.fill(false);
+    // ...and every field fact
+}
+```
+
+(Chapter 165’s TypeScript sketch was simplified: both engines cap at
+1000 rounds and fail closed like this.) Read against the design:
+
+| design | `analysis.rs` |
+|---|---|
+| nodes | values, bindings, collection fields |
+| `Fact` | `bool`; Python: two `Vec<bool>`s |
+| `top` / `bottom` | `true` / `false` |
+| `transfer` | `compute`, `compute_int`, stores, `field_stays_numeric` |
+| strategy | rounds in id order, capped |
+
+The Python pair is a product lattice: “is a float” and “is an int”,
+side by side (the optional exercise builds it). The nodes are of three
+kinds, not one: a binding is numeric if every store to it is, and a
+field if every record and every write puts a number there.
+
+Step through the same small problem both ways:
+
+<SolverSteps client:visible />
+
+<Prompts ids={['gd-rounds', 'gd-converged', 'gd-nodes', 'gd-python']} />
+
+## Two differences that matter
+
+**No clamp on values.** Binding and field facts are `old && ...`, so
+once false they stay false: that part clamps. Value facts are
+recomputed from their rules every round, and the first pass reads
+values not yet computed as `false` (the code says so). So the loop
+counts changes in both directions and doesn’t lean on a height
+argument to stop. It caps the rounds instead.
+
+**It fails closed.** If round 1000 still changes something, nothing is
+proven: every value, int and field fact is reset to `false`. A unit
+test in `analysis.rs` pins this with a budget of zero rounds:
+
+```rust
+let (m, s) = sum_module(); // 1 + 2
+let a = Analyzer::new(&m, 0).run();
+assert!(!a.is_number(s));
+```
+
+The runnable version below has the same three outcomes: a budget of
+1000 is quiet in round 3; a budget of 2 reaches the right facts but
+never sees a quiet round, so it fails closed; a budget of 0 proves
+nothing.
+
+<Run id="rounds-play" />
+
+<Prompts ids={['gd-fail-closed', 'gd-rise']} />
+
+<Callout kind="engine" label="Under the hood">
+Could the port swap its rounds for the design’s worklist? For a
+problem whose rules only move facts down, any fair order reaches the
+same fixpoint, so the answers would match. Viscosity’s start isn’t
+quite that, and its facts decide typed columns and index checks, so
+the port keeps the reference’s rounds and order exactly, and the
+parity fixtures check the result. A framework would earn its place
+when a second analysis needs a lattice. Until then, one honest loop
+with a cap is less code to keep identical.
+</Callout>
+
+## Your turn
+
+<Exercise id="solver" />
+
+<Exercise id="product" />
+
+## What you learned
+
+- engine/rust has **no generic dataflow framework**: one fixpoint,
+  `numeric_inference`, and one trait in the whole engine,
+  `LanguagePlugin`.
+- The design: `Lattice` (`top`, `bottom`, `meet`) and `Problem` (an
+  associated `Fact`, `deps`, `transfer`) as traits, and a solver
+  generic over `P: Problem`, monomorphized per problem.
+- A **clamped** worklist only moves facts down, so it stops on a
+  finite lattice.
+- The real loop is an instance: nodes are values, bindings and fields;
+  facts are `bool`s (a pair for Python); the strategy is rounds in id
+  order, capped at `MAX_ROUNDS` = 1000, and it **fails closed**.
+
+<Quiz />

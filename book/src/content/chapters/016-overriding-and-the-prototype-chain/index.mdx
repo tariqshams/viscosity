@@ -1,0 +1,329 @@
+---
+n: 16
+day: 4
+part: I
+title: 'Overriding and the prototype chain'
+tagline: 'A subclass can replace a method it inherited and still call the original. Underneath, every object is linked to another, and JavaScript finds a method by walking along those links.'
+objectives:
+  - Override an inherited method, and still reach the parent's version with super.method().
+  - Trace a property lookup along the prototype chain, link by link, to where it is found or to null.
+  - Tell an object's own properties from inherited ones, and explain shadowing.
+  - Compare how JavaScript, Python, Java and C find a method.
+introduces: [method-override, prototype-chain]
+uses: [extends, super-call, class, constructor, instance, new, method, this, instanceof, object, property, dot-access, reference, function, parameter, return, call, undefined, array, length, array-loop, while-loop, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-super, mdn-prototype-chain, mdn-object-getprototypeof, mdn-object-hasown, mdn-using-classes, mdn-instanceof]
+---
+import OverrideTree from '../../../components/diagrams/ch016/OverrideTree';
+import LookupSteps from '../../../components/diagrams/ch016/LookupSteps';
+
+## Every piece shows itself
+
+Last chapter's program pieces all inherit `where` from `Node`. Now each
+should also be able to show itself as text, for error messages and for
+debugging: a number as `'42'`, a sum as `'(2 + 3)'`. Node can give a
+dull default, but each kind of piece needs its own version, under the
+same name, so that any code can call `p.show()` without asking what
+kind of piece `p` is.
+
+<Analogy title="a sticky note in the office manual">
+Every team shares one manual, but your team has stuck a note over the
+page on filing expenses: "we do it this way". Your team follows the
+note; every other team still follows the printed page. Lifting the note
+to read the page underneath, then doing one thing more, is
+`super.method()`.
+<span slot="breaks">Anyone can peel off a sticky note; an override is
+written into the class, and the parent's method is never changed, only
+passed over for that subclass and its instances.</span>
+</Analogy>
+
+```js
+class Node {
+  constructor(line) { this.line = line; }
+  where() { return 'line ' + this.line; }
+  show() { return '?'; }
+}
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+  show() { return String(this.value); }
+}
+new Num(3, 42).show();  // '42'
+new Node(3).show();     // '?'
+```
+
+Node and Num both define `show`. For a Num, JavaScript looks in Num
+first, finds `show` there, and stops, so Num's version **overrides** the
+one it inherited and gives `'42'` (`String(...)` turns the number into
+text). A plain Node still uses its own, `'?'`. For `where`, Num has no
+version, so the search carries on to Node.
+
+<Figure takeaway="The nearest version wins." caption="Node holds where() and a default show(). Num and Add each define their own show(), which overrides Node's for their instances; where() is only in Node, so every kind of piece uses that one.">
+  <OverrideTree />
+</Figure>
+
+Sometimes a subclass wants the parent's answer *and* a bit more. A call
+such as `f(x)` might know its column as well as its line, and
+**`super.where()`** runs Node's `where` on the same object:
+
+```js
+class Call extends Node {
+  constructor(line, col) {
+    super(line);
+    this.col = col;
+  }
+  where() {
+    const w = super.where();
+    return w + ', col ' + this.col;
+  }
+}
+new Call(2, 5).where(); // 'line 2, col 5'
+```
+
+Inside Call's `where`, `super.where()` runs Node's version with `this`
+still the Call, so it gives `'line 2'`, and Call adds the column.
+(`this.where()` there would call Call's own `where`, which would call
+itself again, without end.)
+
+<Callout kind="definition">
+A subclass **overrides** a method when it defines a method with the
+same name as one it inherited; its instances then use the subclass's
+version, and the parent's own instances are unaffected. Inside the
+subclass's methods, **`super.m(...)`** calls the parent's `m`, with
+`this` unchanged<Cite id="mdn-super" />.
+</Callout>
+
+<Examples of="method-override">
+
+```js
+class A { f() { return 1; } }
+class B extends A { f() { return 2; } }
+new B().f(); // 2
+new A().f(); // 1
+```
+
+```js
+class Loud extends A {
+  f() { return super.f() * 10; }
+}
+new Loud().f(); // 10
+```
+
+<Run id="show-nodes" />
+
+</Examples>
+
+In the first, `B` overrides `f`, so a B gives `2` while an A still gives
+`1`. In the second, Loud's `f` asks the parent for its answer, `1`, and
+multiplies it by ten. The runnable one puts three kinds of piece in one
+array; the loop calls `show()` on each without knowing its kind, and
+each answers with its own class's version (the plain Node falls back to
+`'?'`). Add a class of your own and watch it join in.
+
+<Prompts ids={['override-what', 'override-which', 'super-method']} />
+
+## Where methods live: the prototype chain
+
+"JavaScript looks in Num first, then in Node" is true, but where exactly
+does it look? Not in the object: `n` holds only `line` and `value`.
+
+```js
+const n = new Num(3, 42);
+Object.hasOwn(n, 'line');  // true
+Object.hasOwn(n, 'where'); // false
+n.where();                 // 'line 3'
+n.toString();   // '[object Object]'
+```
+
+`Object.hasOwn(o, key)` asks whether `o` itself holds a property called
+`key`, an **own property**<Cite id="mdn-object-hasown" />; `line` is one
+and `where` is not, yet `n.where()` works. Stranger still, `n.toString()`
+works though nobody wrote a `toString`.
+
+<Analogy title="asking up the line at work">
+You ask a colleague a question. If they do not know, they ask their
+manager, who may ask head office; the first person who knows answers,
+and if even head office does not know, the answer is "nobody knows".
+<span slot="breaks">People forget, and pass on half answers; the chain
+is fixed and exact, and JavaScript climbs it in a moment, on every
+read of a property that is not the object's own.</span>
+</Analogy>
+
+<Analogy title="a word you do not know">
+You look a word up in your own notebook first, then in your class
+textbook's glossary, then in the big dictionary in the library.
+<span slot="breaks">You can choose which book to try; JavaScript always
+tries the same links in the same order, and stops at the first that has
+the word, even if a later one has a better answer.</span>
+</Analogy>
+
+Every object has a hidden link to one other object, its **prototype**,
+and that object has a prototype of its own, and so on, until a link
+holds `null`. For `n`, the prototype is `Num.prototype`, the object
+where Num's methods are kept (the "stored once, with the class" of
+chapter 14); its prototype is `Node.prototype`, which holds Node's
+methods, and then comes `Object.prototype`, which holds methods every
+object has, such as `toString`<Cite id="mdn-prototype-chain" />.
+Reading a property walks along this chain:
+
+<LookupSteps client:visible />
+
+<Callout kind="definition">
+An object's **prototype** is the object it is linked to, given by
+`Object.getPrototypeOf(o)`<Cite id="mdn-object-getprototypeof" />. The
+**prototype chain** is that link, its link, and so on, ending at `null`.
+Reading `o.key` looks for an own property `key` on `o`, then on each
+prototype in turn, and gives the first one found, or `undefined` if the
+chain runs out<Cite id="mdn-prototype-chain" />. For `class B extends A`,
+an instance's chain is `B.prototype`, then `A.prototype`, then
+`Object.prototype`. `o instanceof C` asks whether `C.prototype` is on
+`o`'s chain<Cite id="mdn-instanceof" />.
+</Callout>
+
+<Formal title="Looking up a property">
+
+```text
+lookup(o, k):
+  o = null        ⟹  undefined
+  k is own on o   ⟹  o's own k
+  otherwise       ⟹  lookup(proto(o), k)
+```
+
+<span slot="read">To look up the key k on o: if o is null, the chain
+has run out and the answer is undefined; if k is one of o's own
+properties, that is the answer; otherwise, look k up on o's prototype,
+in the same way.</span>
+</Formal>
+
+Since the search stops at the first match, a property written on the
+object itself hides any inherited one with the same name, for that
+object only; this is called **shadowing**, and overriding is the same
+rule one link up<Cite id="mdn-prototype-chain" />.
+
+<Examples of="prototype-chain">
+
+```js
+const P = Object.getPrototypeOf;
+P(n) === Num.prototype;     // true
+P(P(n)) === Node.prototype; // true
+P(Object.prototype);        // null
+```
+
+```js
+Object.hasOwn(Node.prototype, 'where');
+// true: where lives here, once
+n.colour; // undefined: chain ran out
+```
+
+```js
+const m = new Num(5, 1);
+n.where = () => 'here';
+n.where(); // 'here'
+m.where(); // 'line 5'
+```
+
+</Examples>
+
+The first follows the links by hand: one step from `n` is
+`Num.prototype`, two steps is `Node.prototype`, and Object's prototype
+is `null`, the end. The second shows that `where` is an own property of
+`Node.prototype`, the one place it is stored, and that a key no link
+has gives `undefined`. The third is shadowing: writing `n.where` puts a
+new own property on `n`, which is found first, so `n` says `'here'`,
+while `m`, which has no own `where`, still reaches Node's.
+
+<Prompts ids={['proto-what', 'own-property', 'chain-end', 'shadow', 'instanceof-chain']} />
+
+<OtherLanguages>
+
+```js
+// the chain, read by hand
+Object.getPrototypeOf(n) === Num.prototype;
+n.where(); // found on Node.prototype
+```
+
+```python
+# Python's search order for a class
+[c.__name__ for c in Num.__mro__]
+# ['Num', 'Node', 'object']
+n.where()  # found in Node
+```
+
+```java
+// Java searches Num, then Node, then
+// Object, but the classes are fixed
+// before the program runs
+n.where(); // Node's where
+```
+
+```c
+typedef const char *(*ShowFn)(void);
+struct Class {
+    struct Class *parent;
+    ShowFn show; /* NULL if not defined */
+};
+ShowFn find(struct Class *c) {
+    while (c != NULL && c->show == NULL)
+        c = c->parent;
+    return c != NULL ? c->show : NULL;
+}
+```
+
+</OtherLanguages>
+
+All four try the nearest class first, then its parent. Python calls the order the *method resolution order* and
+lets you read it as `Num.__mro__`. In Java, a class's methods cannot
+change while the program runs, so the compiler checks before the program
+runs that a method exists somewhere up the line. JavaScript's chain is
+made of ordinary objects that can change at any moment (add a method to
+`Node.prototype` and every Node and Num has it at once), so in
+principle the search happens on every read. C has none of this, so you build it:
+each `struct Class` points to its parent and holds a function pointer
+(`NULL` if this class has none), and `find` walks up until one has a
+`show`.
+
+<Callout kind="engine" label="Under the hood">
+In chapter 106 you will write this search for Drip. Your interpreter's
+instances look in their own fields first and then ask their class,
+which looks in its own methods and then its parent's; the companion's
+`findMethod` (in `companion/ts/src/runtime.ts`) does it in one line,
+using features later chapters introduce, and is the same as this loop:
+
+```js
+findMethod(name) {
+  let c = this;
+  while (c !== null) {
+    if (c.methods.has(name)) {
+      return c.methods.get(name);
+    }
+    c = c.superclass;
+  }
+  return undefined;
+}
+```
+
+(`methods` is a `Map`, a table from names to methods; next chapter.)
+</Callout>
+
+## Your turn
+
+<Exercise id="add" />
+
+<Exercise id="findOwner" />
+
+## What you learned
+
+- A subclass **overrides** a method by defining one with the same name;
+  the nearest version wins, and **`super.m()`** reaches the parent's,
+  with the same `this`.
+- Every object links to a **prototype**, which links to another, ending
+  at `null`: the **prototype chain**. Methods live once on
+  `Class.prototype`, not in each instance.
+- Reading `o.key` checks `o`'s **own properties**, then each link in
+  turn, and gives the first match or `undefined`; an own property
+  **shadows** an inherited one.
+
+Next: `Map` and `Set`, two built-in classes for looking things up fast.
+
+<Quiz />

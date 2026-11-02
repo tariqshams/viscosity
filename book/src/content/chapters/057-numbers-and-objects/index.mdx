@@ -1,0 +1,337 @@
+---
+n: 57
+day: 15
+part: II
+title: 'How JavaScript stores numbers and objects'
+tagline: 'The language promises that every number is a 64-bit double; behind that promise, V8 keeps small integers inside the slot itself, boxes everything else, and puts a hidden header in front of every object.'
+objectives:
+  - Describe the IEEE 754 double format that every JavaScript number follows, and read its three parts.
+  - Explain how V8 stores small integers (Smis) and other numbers (HeapNumbers), and decide which one a value needs.
+  - Sketch what an object looks like in memory, header first.
+  - Compare an object's layout with a C struct, a Java object and a Python object.
+introduces: [ieee754, smi, heap-number, object-header]
+uses: [float64, binary, bit, byte, bit-ops, memory, address, pointer, stack-and-heap, object, property, arrow-function, typed-array, arraybuffer, reference, numbers, cache-line, for-loop, console-log]
+sources: [mdn-number, v8-react-cliff, v8-pointer-compression, v8-fast-properties, mdn-typed-arrays]
+---
+import Float64Bits from '../../../components/diagrams/ch057/Float64Bits';
+import TagSteps from '../../../components/diagrams/ch057/TagSteps';
+import ObjectLayout from '../../../components/diagrams/ch057/ObjectLayout';
+
+## Two numbers that look the same
+
+Here are three ordinary lines:
+
+```js
+let a = 42;
+let b = 4.2;
+const p = { x: 0.5, n: 3 };
+```
+
+To the language, `a` and `b` are both 64-bit doubles, and `p` is an
+object with two numbers in it. Inside V8, though, `a` is stored quite
+differently from `b`, and `p` is a small block of bookkeeping with the
+numbers behind it (one of them not even inside the object). Where bytes sit decides
+how fast a loop runs, so this chapter shows where JavaScript's own
+numbers and objects sit.
+
+## Every number is a double
+
+The language says every JavaScript number is a 64-bit floating-point
+value in the **IEEE 754** double format<Cite id="mdn-number" />: the
+`float64` from the chapter on floats and typed arrays. IEEE 754 is the
+standard's name, and Python, Java and C doubles use it too.
+
+<Analogy title="a form with three boxes">
+Picture a form for writing down a number in scientific notation: one box
+for the sign (+ or −), a small box for the power of ten, and a long box
+for the digits, so 6.02 × 10²³ is written as "+", "23" and "602". Every
+number, huge or tiny, fits the same three boxes.
+<span slot="breaks">IEEE 754 works in twos rather than tens, never
+writes the leading 1 of the digits (it is always there, so it is
+implied), and stores the power with 1023 added so it is never negative;
+none of that is on a paper form.</span>
+</Analogy>
+
+<Figure takeaway="A double is a sign, an exponent and a fraction." caption="The number 1.5 in IEEE 754 form. The sign bit is 0 (positive). The exponent bits say 1023, which means 2 to the power 0. The fraction holds the digits after an implied leading 1: binary 1.1, which is 1.5.">
+  <Float64Bits />
+</Figure>
+
+<Callout kind="definition">
+**IEEE 754** is the standard format for floating-point numbers. Its
+**double** uses 64 bits: one **sign** bit, 11 **exponent** bits (a power
+of two, stored with 1023 added) and 52 **fraction** bits (the
+significant digits after an implied leading 1, also called the
+*mantissa*). Whole numbers are all exact up to 2<sup>53</sup> − 1<Cite id="mdn-number" />.
+</Callout>
+
+<Formal title="Reading a double">
+
+```text
+value = (−1)ˢ × 1.f × 2^(e − 1023)
+1.5:  s = 0,  e = 1023,  f = .1 (binary)
+−0:   s = 1,  e = 0,  f = 0
+```
+
+<span slot="read">The value is plus or minus (by the sign bit), times
+"one point f", times two to the power of the stored exponent minus
+1023. For 1.5 the sign is 0, the
+power is zero, and binary 1.1 is one and a half. The third line is the
+odd one: an exponent of all zeros is a special case that means zero (or
+a very tiny number), and with the sign bit set it is minus zero, a value
+that must remember its sign.</span>
+</Formal>
+
+<Examples of="ieee754">
+
+```js
+Number.isInteger(5.0); // true: 5.0 is 5
+```
+
+```js
+0 === -0;          // true
+Object.is(0, -0);  // false
+1 / -0;            // -Infinity
+```
+
+```js
+NaN === NaN;          // false
+Number.isNaN(0 / 0);  // true
+```
+
+</Examples>
+
+The first shows there is no separate whole-number type: `5.0` and `5`
+are the same value. The second shows a value the format has and integers do not:
+`-0`, a zero with the sign bit set. `===` says it equals `0`, but
+`Object.is` (which compares the exact value) can tell them apart, and
+dividing by it gives `-Infinity`, so an engine must never quietly turn
+`-0` into `0`. The third is IEEE 754's "not a number", the result of
+`0 / 0`, the one value not equal to itself (so you test for it with
+`Number.isNaN`).
+
+The language, however, only fixes what numbers *behave* like. An engine
+may store them however it likes, as long as no program can tell the
+difference<Cite id="v8-react-cliff" />; and V8 does.
+
+<Prompts ids={['ieee-parts', 'engine-free']} />
+
+## Small integers live in the slot
+
+Loop counters, array indexes and lengths are small whole numbers, and
+they are everywhere. Giving each one its own 8-byte double, in its own
+box on the heap, would waste memory and time, so V8 uses a trick called
+**pointer tagging**: a slot that would normally hold an address can hold
+a small integer instead, and its lowest bit says which of the two it
+is<Cite id="v8-pointer-compression" />.
+
+<Analogy title="pigeonholes and claim tickets">
+At a hotel desk, a small letter for you goes straight into your
+pigeonhole; a big parcel goes on a shelf in the back room, and your
+pigeonhole gets a claim ticket saying where to find it. A dot in the
+corner of the slip tells the clerk at a glance whether it is the letter
+itself or a ticket.
+<span slot="breaks">Parcels on a shelf stay as they are; a HeapNumber is
+never changed once made, so "changing" the number means putting a new
+parcel on the shelf and a new ticket in the pigeonhole, and throwing the
+old parcel away later.</span>
+</Analogy>
+
+Step through four variables and watch the tag bit decide:
+
+<TagSteps client:visible />
+
+<Callout kind="definition">
+A **Smi** (small integer) is an integer stored directly in a
+pointer-sized slot, marked by a lowest bit of 0; anything else in a slot
+is a pointer to a heap object. A **HeapNumber** is a heap object that
+holds one double; V8 uses it for numbers that are not Smis, such as
+`4.2`, `-0`, `NaN` or integers that are too big<Cite id="v8-react-cliff" />.
+HeapNumbers are immutable, so changing the value means allocating a new
+one<Cite id="v8-react-cliff" />.
+</Callout>
+
+How big a Smi can be depends on how V8 was built. With **pointer
+compression**, which the V8 team added to save memory in Chrome, slots
+are 32 bits and a Smi carries 31 bits including its sign; a 64-bit build
+without it uses 32-bit Smi payloads<Cite id="v8-pointer-compression" />.
+
+<Formal title="Tagging a small integer">
+
+```text
+slot = n × 2          (lowest bit 0: a Smi)
+n    = slot ÷ 2
+−2³⁰ ≤ n ≤ 2³⁰ − 1   (31 bits)
+```
+
+<span slot="read">To store a small integer n, V8 doubles it, which
+shifts every bit one place left and leaves a 0 in the lowest bit; to
+read it back, it halves the slot. Pointers have their lowest bit set
+to 1. With pointer compression, n must lie between minus two to the thirty and
+two to the thirty minus one, inclusive.</span>
+</Formal>
+
+<Examples of="smi heap-number">
+
+```js
+let i = 0;      // Smi
+i = i + 1;      // still a Smi: 1
+```
+
+```js
+let t = 4.2;    // HeapNumber
+let z = -0;     // HeapNumber
+// HeapNumber with pointer compression:
+let big = 2 ** 30;
+```
+
+<Run id="tag" />
+
+</Examples>
+
+The first is the common case: a loop counter is always a small whole
+number, so it never touches the heap. The second shows the three ways to miss: `4.2` has a fraction,
+`-0` needs its sign bit (and an integer has only one zero), and
+`2 ** 30` is a whole number but one too big for 31 bits, so each gets a
+HeapNumber box and the variable holds its address. (Without pointer
+compression, as on the Node this book's benchmark used, it still
+fits.) The third you can
+run, with the bit operators from the chapter on bits and bytes: `tag`
+shifts 42 left by one, giving `84` with a lowest bit of 0; `isSmi` checks
+that bit with `s & 1`; `value` shifts back and recovers `42` (and `-5`
+works too). The made-up address `4097` is odd, so it reads as a pointer.
+(Real heap addresses are even, because objects start on aligned
+boundaries, so V8 is free to set the low bit itself.)
+
+<Prompts ids={['smi-what', 'tag-bit', 'heapnumber-what', 'heapnumber-update']} />
+
+## What an object looks like
+
+An object is a block of memory too, and V8's blog describes its start:
+the first word (one pointer-sized slot) points to the object's **hidden class** (its shape: which
+properties it has and where each one sits), then come pointers to a
+store for extra properties and a store for indexed elements, and after
+that the **in-object properties**, the fastest kind<Cite id="v8-fast-properties" />.
+
+<Analogy title="a moving box and a packing list">
+Every box in a house move carries a label at the top before its
+contents: "see packing list 7" (which says the plates are on the left,
+the cups on the right), plus "extra bits: bag 3" and "loose items: tray
+5". Boxes packed the same way share one packing list, so the label is
+short, but every box still has its own label.
+<span slot="breaks">You can open a box and look; an object's header is
+invisible to JavaScript, and no program can read it, which is exactly
+why the engine is free to design it however it likes.</span>
+</Analogy>
+
+<Figure takeaway="An object is a header, then its fields; numbers that are not Smis live elsewhere." caption="Two objects of the same shape. Each starts with a three-word header; both hidden-class words point to one shared shape that says where x and n live. n is a Smi, stored in its slot; x is a double, so its slot points to a box on the heap.">
+  <ObjectLayout />
+</Figure>
+
+<Callout kind="definition">
+The **object header** is the hidden bookkeeping at the start of every
+object; in V8 it is a pointer to the object's hidden class, then
+pointers to its properties store and its elements store<Cite id="v8-fast-properties" />.
+Objects with the same shape share one hidden class, but each object has
+its own header.
+</Callout>
+
+<Examples of="object-header">
+
+```js
+const e = {};  // a header, no fields
+```
+
+```js
+const a = { x: 0.5, n: 3 };
+const b = { x: 2.5, n: 7 };
+// one hidden class, two headers
+```
+
+```js
+const p = { x: 0, y: 0, vx: 1.5,
+  vy: -2, mass: 1, health: 100 };
+// 3 header words + 6 field slots
+```
+
+</Examples>
+
+The first shows that even an empty object pays for a header. The
+second is the picture above: `a` and `b` share one hidden class, and
+each pays for its own header and slots. The third is our particle: three header words, six slots, and
+for each field holding a value that is not a Smi (here `vx = 1.5`) a
+pointer to somewhere else again. A million particles means a million headers, overhead
+that a struct of arrays does not carry.
+
+<OtherLanguages>
+
+```js
+// JavaScript (V8): header, then slots
+const p = { x: 0.5, n: 3 };
+```
+
+```python
+# CPython: every object, every float,
+# starts with a header of its own
+p = {"x": 0.5, "n": 3}
+```
+
+```java
+// a header, then fields stored inline
+class P { double x; int n; }
+P p = new P();
+```
+
+```c
+/* no header at all: 8 + 4 bytes of
+   data, plus padding */
+struct P { double x; int n; };
+struct P p = { 0.5, 3 };
+```
+
+</OtherLanguages>
+
+The four genuinely differ here. A C `struct` is the data and nothing
+else: the compiler knows the layout, so there is no header. A Java
+object has a small header, but its `double` and `int` fields sit inline,
+raw, because their types are declared. In CPython every value has its
+own header (a reference count and a pointer to its type), so even `0.5`
+is a boxed object. V8 sits in between: a header per object, small
+integers inline as Smis, other numbers often boxed.
+
+<Prompts ids={['header-what', 'shared-shape']} />
+
+<Callout kind="engine" label="Under the hood">
+A `Float64Array` has none of this: it stores raw 64-bit doubles side by
+side, with no tags, no boxes and no per-element headers<Cite id="mdn-typed-arrays" />,
+and the pointer compression post itself recommends Float64 typed arrays
+for number-crunching code<Cite id="v8-pointer-compression" />. That is
+why Viscosity's struct-of-arrays columns are `Float64Array`s: whatever
+the source program wrote, a column of doubles stays a column of doubles.
+</Callout>
+
+## Your turn
+
+The core exercise turns the Smi rule into code; the extra one pulls the
+exponent bits out of a real double.
+
+<Exercise id="smiFits" />
+
+<Exercise id="exponentBits" />
+
+## What you learned
+
+- Every JavaScript number behaves like an **IEEE 754** double: a sign,
+  an exponent and a fraction, 64 bits in all, with special values such as
+  `-0` and `NaN`.
+- V8 stores small integers as **Smis**, inside the slot itself, marked by
+  a lowest bit of 0.
+- Other numbers (fractions, `-0`, `NaN`, big integers) become
+  **HeapNumbers**: immutable boxes on the heap, so an update allocates.
+- Every object starts with an **object header**: a hidden-class pointer
+  plus pointers to its properties and elements stores, then its fields.
+
+Next: how V8 decides to store each *field* of an object, and the
+TypeScript line that made this book's particle loop several times
+slower.
+
+<Quiz />

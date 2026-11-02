@@ -1,0 +1,257 @@
+---
+n: 225
+day: 57
+part: IX
+title: 'A small Python front-end'
+tagline: 'Python has no braces: a block ends where the spaces stop. The tokenizer turns those spaces into tokens, and after that Python parses like every language you have parsed before. The trick is knowing exactly which part of Python to accept.'
+objectives:
+  - Turn indentation into INDENT and DEDENT tokens with a stack of widths.
+  - Explain why lines inside brackets produce no NEWLINE and no indentation tokens.
+  - Describe the Python subset Viscosity accepts, and what happens to a file outside it.
+  - Read the parser’s block rule and its operator table.
+introduces: [python-subset, indentation-tokens]
+uses: [token, token-type, lexeme, scanner, lookahead, maximal-munch, keyword, reserved-word-table, grammar, production-rule, ast, ast-node, parser, recursive-descent, pratt-parser, binding-power, precedence, syntax-error, language-plugin, lowering, vir, array, push, string-index, function, for-loop, while-loop, comparison, logical-operators, throw, error-object]
+sources: [python-lexical, cpython-tokenize, python-expressions]
+---
+import IndentSteps from '../../../components/diagrams/ch225/IndentSteps';
+
+## Where does the loop end?
+
+Here is a Python function:
+
+```py
+def step(ps):
+    for p in ps:
+        p.x += p.vx
+    return ps
+print(1)
+```
+
+In JavaScript, a `{` opens the loop body and a `}` closes it. Here
+nothing closes anything. The body of `for` is everything indented
+further than the `for`, and it ends at `return`, because `return` moves
+back to the left. The spaces at the start of a line *are* syntax.
+
+That sounds like a problem for a parser. The parsers you wrote in Part
+III ignore whitespace. Python's own answer is neat: let the tokenizer
+measure the spaces, and turn each change into a token. The parser never
+sees a space.
+
+<Callout kind="intuition">
+Picture a stack of trays. Every time a line is indented further than the
+one before, you put a tray on the stack with the new width written on
+it. When a line comes back to the left, you take trays off until the top
+one shows that line's width. Each tray you take off closes one block. If
+no tray in the stack has that width, the line doesn't belong anywhere.
+</Callout>
+
+## A stack of widths
+
+Step through the tokenizer on that function:
+
+<IndentSteps client:visible />
+
+This is the core of `frontend-python/src/tokens.ts`, simplified (the
+real one also expands tabs to the next multiple of 8 and skips blank and
+comment-only lines):
+
+```ts
+const indents = [0];
+// at the start of every logical line:
+let col = 0;
+while (src[i] === ' ') { col++; i++; }
+let top = indents[indents.length - 1];
+if (col > top) {
+  indents.push(col);
+  toks.push({ type: 'indent' });
+} else {
+  while (col < top) {
+    indents.pop();
+    toks.push({ type: 'dedent' });
+    top = indents[indents.length - 1];
+  }
+  if (col !== top) {
+    err('inconsistent indentation');
+  }
+}
+```
+
+At the end of the file, one `dedent` is pushed for every width still on
+the stack above 0, so every block that was opened gets closed.
+
+<Callout kind="definition">
+**Indentation tokens** are the tokens a tokenizer emits for significant
+whitespace. A stack holds the widths of the open blocks, starting with 0.
+A wider line pushes its width and emits **INDENT**. A narrower line pops
+every larger width, emitting one **DEDENT** per pop, and must then match
+the new top exactly. Each logical line ends with a **NEWLINE** token.
+For the parser, INDENT and DEDENT are just `{` and `}`.
+</Callout>
+
+Here is the same algorithm in JavaScript, working on a list of lines.
+Change the indentation and watch the tokens:
+
+<Run id="indents" />
+
+<Prompts ids={['it-what', 'it-stack', 'it-two', 'it-bad']} />
+
+## Brackets switch it off
+
+Python lets a long expression run over several lines if it is inside
+brackets:
+
+```py
+ps.append(P(float(i),
+            1.0))
+```
+
+The second line's indentation means nothing, and there is no NEWLINE
+between the two lines: they are one logical line. The tokenizer keeps a
+`depth` counter: `(`, `[` and `{` add one, the closing brackets subtract
+one, and while `depth > 0` a line end produces no NEWLINE and the next
+line's width is not measured.
+
+<Callout kind="pitfall">
+The real tokenizer had a bug here, found while writing this chapter and
+since fixed. A line end inside brackets set its “at the start of a
+line” flag, and the flag was still set when the bracket closed. So the
+line end *after* `1.0))` was mistaken for a blank line, and its NEWLINE
+was lost. The next statement ran into this one, the parser stopped with
+“expected end of line”, and the whole file was left untouched. It
+failed safely, but every file with a bracket that closed on a
+continuation line was skipped. The corpus program `multiline_call.py`
+now pins the fix, and the optional exercise below gets it right too.
+</Callout>
+
+<Prompts ids={['it-brackets']} />
+
+## The part of Python it accepts
+
+Viscosity doesn't need all of Python. It needs the part that numeric,
+data-heavy code uses, and it needs to know *exactly* where that part
+ends. The parser accepts:
+
+- `def` functions, `return`, `pass`, `break`, `continue`, `global`
+- `@dataclass` classes with annotated fields
+- `if` / `elif` / `else`, `while`, `for x in ...`
+- assignment, `+=` and friends, `x: float = ...`
+- arithmetic, comparisons, `and` / `or` / `not`, calls with keyword
+  arguments, lists like `[]` and `[a, b]`, `import` and `from ... import`
+
+Everything else is refused with a clear message. These are real ones:
+
+```
+list comprehensions: not supported by
+Viscosity's Python subset at line 1
+near 'for'
+dict and set literals: not supported …
+slices: not supported …
+default parameter values: not …
+chained comparisons: not supported …
+'try': not supported …
+```
+
+When the parser refuses, the plugin catches the error, returns an empty
+module, and `emit` returns the file exactly as it was. Nothing is
+half-transformed. The cost is that the reason stays inside the plugin:
+`viscosity explain` only says “No arrays of objects found.”
+
+<Callout kind="definition">
+The **Python subset** is the part of Python that Viscosity's parser
+accepts: functions, dataclass records, lists, `for`/`while`/`if`,
+assignment, arithmetic and calls. A file that uses anything else is a
+syntax error *for Viscosity* (not for Python), and is left unchanged.
+Failing closed like this means a construct Viscosity doesn't understand
+can never be mis-transformed.
+</Callout>
+
+Why refuse chained comparisons, which look harmless? Because they mean
+something else in JavaScript. Python reads `1 < 3 < 2` as
+`1 < 3 and 3 < 2`, so it is `False`<Cite id="python-expressions" />.
+JavaScript reads `(1 < 3) < 2`, which is `true < 2`, which is `true`.
+A parser that treated it as an ordinary binary operator would build the
+wrong tree.
+
+<Prompts ids={['ps-what', 'ps-fail', 'ps-chain']} />
+
+## Blocks and binding powers
+
+With INDENT and DEDENT in the stream, Python's block rule is short.
+This is `block()` from `parser.ts`:
+
+```ts
+function block() {
+  op(':');
+  if (peek().type !== 'newline') {
+    return simpleLine(); // if x: y = 1
+  }
+  p++;                   // NEWLINE
+  if (peek().type !== 'indent') {
+    fail('expected an indented block');
+  }
+  p++;                   // INDENT
+  const body = [];
+  while (peek().type !== 'dedent' &&
+         peek().type !== 'eof') {
+    body.push(...statement());
+  }
+  p++;                   // DEDENT
+  return body;
+}
+```
+
+It is the same recursive descent as Part III, with INDENT for `{` and
+DEDENT for `}`. Statements start with a keyword (`def`, `for`, ...) and
+are parsed by one function each. Expressions use binding powers, as in
+chapter 85, from one table:
+
+```ts
+const BIN = {
+  or: 1, and: 2,
+  '<': 4, '==': 4, in: 4, 'not in': 4,
+  is: 4, 'is not': 4,
+  '|': 5, '^': 6, '&': 7, '<<': 8,
+  '+': 9, '-': 9,
+  '*': 10, '/': 10, '//': 10, '%': 10,
+};
+```
+
+(Trimmed.) Two operators are two words, `not in` and `is not`, so the
+parser looks one token ahead to spot them. And `elif` is handled with a
+small trick: the parser rewrites the `elif` token to `if` and parses the
+rest as a nested `if` statement in the `else` branch.
+
+<Prompts ids={['pp-block', 'pp-elif']} />
+
+<Callout kind="engine" label="Under the hood">
+This is CPython's own design. Its language reference describes the same
+stack: a single 0 pushed before the first line, a push and an INDENT for
+a wider line, a DEDENT per pop for a narrower one, and an error if the
+width matches nothing on the stack<Cite id="python-lexical" />. Running
+CPython's `tokenize` module<Cite id="cpython-tokenize" /> on the
+function at the top of this chapter gives the same INDENT, DEDENT and
+NEWLINE tokens, in the same places, as Viscosity's tokenizer. The
+reference also notes that an *inconsistent* dedent is the lexer's
+error, while an unexpected indent is found by the parser. Viscosity
+splits them the same way.
+</Callout>
+
+## Your turn
+
+<Exercise id="nest" />
+
+<Exercise id="logicalLines" />
+
+## What you learned
+
+- **Indentation tokens** turn significant whitespace into INDENT and
+  DEDENT, using a stack of open-block widths that starts at 0.
+- Inside brackets, line ends and indentation don't count: one logical
+  line can span several physical lines.
+- The **Python subset** covers functions, dataclasses, lists, loops,
+  `if`, assignment, arithmetic and calls. Anything else is refused, and
+  the file is left exactly as it was.
+- After tokenizing, Python parses with the same recursive descent and
+  binding powers as any other language.
+
+<Quiz />

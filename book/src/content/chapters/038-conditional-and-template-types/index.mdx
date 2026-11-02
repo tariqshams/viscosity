@@ -1,0 +1,321 @@
+---
+n: 38
+day: 10
+part: I
+title: 'TypeScript V: conditional, template and utility types'
+tagline: 'Types can make choices, spell out strings and filter unions, and the utility types TypeScript ships with (Partial, Pick, Omit, Record) are built from nothing more than that and the mapped types of the last chapter.'
+objectives:
+  - Write a conditional type, and predict how it handles a union one member at a time.
+  - Build string types from patterns with template literal types, including every combination of two unions.
+  - Use Partial, Pick, Omit, Record and Exclude, and read how each one is defined.
+  - Compare typing a partial update in TypeScript with Python, Java and C.
+introduces: [conditional-type, template-literal-type, utility-types]
+uses: [typescript, type-annotation, type-checking, interface, type-erasure, union-type, narrowing, discriminated-union, generic, generic-constraint, generic-inference, keyof, indexed-access-type, mapped-type, template-literal, copy-spread, function, parameter, return, call, array, object, property, bracket-access, for-of, undefined, variables, numbers, strings, comparison, if, console-log]
+sources: [ts-conditional-types, ts-template-literal-types, ts-utility-types, ts-mapped-types]
+---
+import DistributeSteps from '../../../components/diagrams/ch038/DistributeSteps';
+import CrossGrid from '../../../components/diagrams/ch038/CrossGrid';
+
+## All the kinds but one
+
+The tagged-unions chapter's syntax tree has three kinds of node, and last
+chapter's `Expr['kind']` lists them without writing them out again:
+`'num' | 'add' | 'mul'`. Now suppose a function handles only the nodes
+with two children. Its kind is "every kind except `'num'`", and writing
+`'add' | 'mul'` by hand brings back the old problem: add a `'sub'` node
+and the hand-written list is silently wrong. We want the checker to
+*compute* "this union, minus that member", and for that a type needs to
+make a choice.
+
+## Conditional types: a type that chooses
+
+```ts
+type IsStr<T> =
+  T extends string ? 'yes' : 'no';
+type A = IsStr<'hi'>; // 'yes'
+type B = IsStr<42>;   // 'no'
+```
+
+This is the conditional operator `c ? x : y` (from chapter 36), moved to
+types. The question it may ask is always the same one: does the type on
+the left fit the type on the right (is it assignable to it, the same
+`extends` as in a constraint)? If so, the result is the first type;
+otherwise, the second.
+
+<Analogy title="a coin sorter">
+Tip a handful of mixed coins into a coin sorter and each coin rolls along
+on its own until it drops through the first slot it fits; a mixed handful
+goes in, and sorted coins come out.
+<span slot="breaks">A sorter moves real coins while you watch; a
+conditional type sorts *types*, inside the checker, before the program
+runs, and its only question is "does it fit?", never "is it bigger?".</span>
+</Analogy>
+
+That handful of mixed coins is exactly what happens with a union: when
+the checked type is a bare type parameter and a union arrives, the
+conditional type is applied to each member separately, and the answers
+are joined back into a union. That is how `Exclude`, one of TypeScript's
+own types, removes members:
+
+<DistributeSteps client:visible />
+
+<Callout kind="definition">
+A **conditional type**, `T extends U ? X : Y`, is `X` when `T` is
+assignable to `U` and `Y` otherwise. When `T` is a type parameter and is
+given a union, the conditional type **distributes**: it is worked out for
+each member and the results are joined, with `never` dropping out. In
+the `extends` part, `infer E` names a piece of `T` for the true branch to
+use<Cite id="ts-conditional-types" />.
+</Callout>
+
+<Examples of="conditional-type">
+
+```ts
+type Bin = Exclude<Expr['kind'], 'num'>;
+// 'add' | 'mul'
+```
+
+```ts
+type ElementOf<T> =
+  T extends (infer E)[] ? E : never;
+type E1 = ElementOf<string[]>; // string
+type E2 = ElementOf<number>;   // never
+```
+
+```ts
+type Whole<T> =
+  [T] extends [string] ? 'yes' : 'no';
+type W = Whole<string | number>; // 'no'
+```
+
+</Examples>
+
+The first is the problem from the start, solved: add a `'sub'` node to
+`Expr` and `Bin` grows by itself. The second uses `infer`: "if `T` is an
+array of something, call that something `E` and answer `E`", so it pulls
+the element type out of an array type, and anything that is not an array
+gives `never`. The third shows how to switch distribution off: wrapping
+both sides in square brackets makes the union be tested as a whole, and
+`string | number` as a whole does not fit `string`.
+
+<Formal title="Distribution over a union">
+
+```text
+C<T> = T extends U ? X : Y
+C<A | B> = C<A> | C<B>
+S | never = S
+```
+
+<span slot="read">If C is a conditional type on a bare type parameter T,
+then C of a union is the union of C applied to each member. And joining
+never to any union S leaves S unchanged, because never has no values to
+add.</span>
+</Formal>
+
+<Prompts ids={['cond-what', 'cond-distribute', 'cond-never', 'cond-infer']} />
+
+## Template literal types: strings built from patterns
+
+Chapter 22's template literals build strings at run time:
+`` `get${name}` ``. The same backticks in a type build string *types*:
+
+```ts
+type Getter = `get${'X' | 'Y'}`;
+// 'getX' | 'getY'
+type Corner =
+  `${'top' | 'bottom'}-${'left' | 'right'}`;
+```
+
+<Analogy title="a set menu">
+A set menu offers one of two starters and one of two mains; the kitchen
+can serve four different meals without anyone writing four menus.
+<span slot="breaks">A diner picks one meal; a template literal type is
+the union of *every* combination at once, so three unions of ten names
+each already make a thousand string types.</span>
+</Analogy>
+
+<Figure takeaway="Two unions in one pattern make every combination." caption="Corner pairs each of 'top' and 'bottom' with each of 'left' and 'right', giving a union of four exact strings.">
+  <CrossGrid />
+</Figure>
+
+TypeScript also has four built-in types that change the case of a string
+type: `Uppercase`, `Lowercase`, `Capitalize` (first letter only) and
+`Uncapitalize`<Cite id="ts-template-literal-types" />.
+
+<Callout kind="definition">
+A **template literal type** is a string type written like a template
+literal, `` `a${T}b` ``, where `T` is a string literal type or a union of
+them. Each union inside it is expanded, so the result is the union of
+every combination of its parts<Cite id="ts-template-literal-types" />.
+</Callout>
+
+<Examples of="template-literal-type">
+
+```ts
+type Up = Uppercase<'vx'>;     // 'VX'
+type Cap = Capitalize<'vx'>;   // 'Vx'
+```
+
+```ts
+const c: Corner = 'middle';
+// error: Type '"middle"' is not
+// assignable to type '"top-left" |
+// "top-right" | "bottom-left" |
+// "bottom-right"'.
+```
+
+```ts
+type Getters<T> = {
+  [K in keyof T as K extends string
+    ? `get${Capitalize<K>}` : never]:
+    () => T[K];
+};
+// Getters<Particle>: getX, getY,
+// getVx, getVy, each () => number
+```
+
+</Examples>
+
+The first changes case, the way `toUpperCase` does on a value. The second
+is the payoff of the grid: only the four exact corner names fit, and the
+error lists them. The third combines everything so far: a mapped type
+whose keys are renamed with `as` (each key `K` becomes the type after
+`as`), a conditional type that keeps only string keys (since `Capitalize`
+only accepts strings), and a template literal that spells each new name,
+so `x` becomes `getX`, holding a function that returns `T['x']`.
+
+<Prompts ids={['tmpl-what', 'tmpl-cross', 'tmpl-cap']} />
+
+## Utility types: the ones TypeScript ships with
+
+Some of these types are needed so often that TypeScript defines them for
+you, with no import. They are not built into the checker; they are
+written in TypeScript itself, from mapped and conditional types:
+
+```ts
+type Partial<T> = { [P in keyof T]?: T[P] };
+type Pick<T, K extends keyof T> =
+  { [P in K]: T[P] };
+type Exclude<T, U> =
+  T extends U ? never : T;
+type Omit<T, K extends keyof any> =
+  Pick<T, Exclude<keyof T, K>>;
+```
+
+(`keyof any` means "any type a key can have".)
+
+<Analogy title="ready-made parts in a hardware shop">
+You could cut every bracket and hinge yourself, but the shop sells the
+common sizes ready-made, and because they are standard, everyone who
+reads your plans knows exactly what each one is.
+<span slot="breaks">A shop's parts arrive sealed; TypeScript's utility
+types are ordinary code you can read (they live in a file called
+`lib.es5.d.ts`), and you could write any of them yourself.</span>
+</Analogy>
+
+<Callout kind="definition">
+The **utility types** are generic types TypeScript provides globally.
+`Partial<T>` makes every property optional; `Required<T>` makes every
+property required; `Readonly<T>` makes every property read-only;
+`Pick<T, K>` keeps the keys `K`; `Omit<T, K>` keeps all keys but `K`;
+`Record<K, V>` has keys `K`, each holding a `V`; `Exclude<T, U>` drops
+from a union the members that fit `U`, and `Extract<T, U>` keeps
+them<Cite id="ts-utility-types" />.
+</Callout>
+
+<Examples of="utility-types">
+
+```ts
+type XY = Pick<Particle, 'x' | 'y'>;
+type Pos = Omit<Particle, 'vx' | 'vy'>;
+// both are { x: number; y: number }
+```
+
+```ts
+const r: Record<'x' | 'y', number> =
+  { x: 1 };
+// error: Property 'y' is missing in type
+// '{ x: number; }' but required in type
+// 'Record<"x" | "y", number>'.
+```
+
+<Run id="update" />
+
+</Examples>
+
+The first shows two routes to the same type: `Pick` names the keys to
+keep, `Omit` the keys to drop. The second uses `Record` for a table whose
+keys are known in advance, and the checker insists every key is filled.
+The runnable one is the most common utility of all: an update function
+whose patch is a `Partial<Particle>`, so any subset of fields may be
+given, and a misspelt field is rejected by `tsc`.
+
+<OtherLanguages>
+
+```ts
+function update(p: Particle,
+  patch: Partial<Particle>): Particle {
+  return { ...p, ...patch };
+}
+update(p, { x: 3 });
+```
+
+```python
+from dataclasses import replace
+q = replace(p, x=3.0)
+# a wrong name fails at run time:
+# TypeError (unexpected keyword)
+```
+
+```java
+// records cannot copy-with-changes:
+Particle q = new Particle(
+    3.0, p.y(), p.vx(), p.vy());
+```
+
+```c
+Particle q = p; /* struct copy */
+q.x = 3.0;
+```
+
+</OtherLanguages>
+
+The task is the same in all four: a copy of a particle with some fields
+changed. TypeScript describes "any subset of the fields" as one computed
+type, and checks the names before running; Python's `replace` checks the
+names only when the line runs; Java and C have no such type, so you copy
+and change fields one by one (C copies a whole `struct` with a plain
+`=`).
+
+<Prompts ids={['util-partial', 'util-omit', 'util-written']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity's engine uses these every day: its `compile` function takes
+`opts: Partial<PlanOptions> = {}` (in `engine/ts/packages/core/src/index.ts`),
+so a caller passes only the options they want to change, and its
+analysis ranks side effects with a `Record<RhsEffect, number>` table, so
+adding a new kind of effect without a rank is a type error. All of it is
+erased, so none of it costs anything at run time.
+</Callout>
+
+## Your turn
+
+<Exercise id="omit" />
+
+<Exercise id="makeGetters" />
+
+## What you learned
+
+- A **conditional type**, `T extends U ? X : Y`, chooses between two
+  types; given a union, it **distributes** over the members, and `infer`
+  names a part of the checked type.
+- A **template literal type** builds string types from a pattern, with
+  every combination of the unions inside it, and `Capitalize` and friends
+  change case.
+- The **utility types** (`Partial`, `Required`, `Readonly`, `Pick`, `Omit`,
+  `Record`, `Exclude`, `Extract`) are ordinary mapped and conditional
+  types that TypeScript ships with.
+
+Next: values that come one at a time, with iterators and generators.
+
+<Quiz />

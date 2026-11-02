@@ -1,0 +1,256 @@
+---
+n: 75
+day: 19
+part: III
+title: 'From regular expressions to fast scanners'
+tagline: 'Two recipes, each short enough to fit on a card, turn any regular expression into a machine: the first builds an NFA one operator at a time, and the second turns that NFA into a DFA that reads each character with a single table lookup.'
+objectives:
+  - Build an NFA from a regular expression with Thompson’s construction, one rule per operator.
+  - Turn an NFA into a DFA with the subset construction, by naming each set of NFA states.
+  - Explain why the result reads input as fast as a hand-written scanner, and what the construction can cost.
+  - Write Thompson’s construction, and the subset construction, in JavaScript.
+introduces: [thompson-construction, subset-construction]
+uses: [regular-expression, regex-operators, regular-language, finite-automaton, dfa, nfa, accepting-state, scanner, keyword, identifier, recursion, tree, discriminated-union, set, map, array, object, for-of, while-loop, function, return, strings, if, comparison, console-log]
+sources: [thompson1968, rabinscott1959, aho2006, hmu2006]
+---
+import ThompsonPieces from '../../../components/diagrams/ch075/ThompsonPieces';
+import SubsetSteps from '../../../components/diagrams/ch075/SubsetSteps';
+
+## From a pattern to a machine, automatically
+
+You now have three pieces that have not yet been joined up: patterns,
+which are easy for people to write (chapter 72); DFAs, which are fast
+for computers to run (chapter 73); and NFAs, which sit in between,
+because they are easy to build and still mean the same languages. This
+chapter joins them into a pipeline that a program can follow with no
+human help:
+
+```text
+pattern --Thompson--> NFA
+NFA --subset--> DFA (a table)
+```
+
+That pipeline is what a scanner generator runs inside, and it is why
+you can write a scanner as a list of patterns rather than as a page
+of hand-written loops.
+
+## Thompson's construction
+
+In 1968, Ken Thompson published a program that compiled a regular
+expression into machine code for the IBM 7094 and then used it to search
+text<Cite id="thompson1968" />; the way of building an automaton from a
+pattern that bears his name works like this. Every pattern is a tree
+(chapter 72), so we build a small NFA for each leaf, and then, working
+upwards, wrap the machines of the children into a machine for their
+parent. Every machine we make has exactly **one start state and one
+accepting state**, which is what lets the pieces snap together.
+
+<Analogy title="plumbing fittings">
+Every pipe fitting has one way in and one way out, whatever it does
+inside; a T-piece splits one pipe into two and another joins them again,
+and a bypass with a return pipe lets water go round as often as it
+likes. Because the ends always match, you can build any layout from a
+handful of fitting types.
+<span slot="breaks">Water goes down every branch at once whether you
+like it or not; an NFA's "water" is the set of possible states, and it
+is only a way of keeping count, not something that physically flows.</span>
+</Analogy>
+
+<Figure takeaway="Five small rules build an NFA for any regular expression." caption="One rule per kind of pattern. A character or ε is one arrow between two new states. For rs, an ε-arrow joins the end of N(r) to the start of N(s). For r|s, a new start fans out to both machines by ε, and both join a new end. For r*, ε-arrows let you skip N(r) altogether or go round it again.">
+  <ThompsonPieces />
+</Figure>
+
+The railway pictures of chapter 72 were the same idea in disguise: the
+star's track had a "skip" line and a "go round again" loop, and those
+are the two extra ε-arrows here.
+
+In code, each call returns a machine `{ start, accept, edges }` in the
+format of the last chapter, and `fresh()` hands out a new state number
+each time it is called. Here are the character rule and the alternation
+rule (the exercise writes the other two):
+
+```js
+let n = 0;
+const fresh = () => n++;
+function build(r) {
+  if (r.t === 'chr') {
+    const s = fresh();
+    const f = fresh();
+    return { start: s, accept: [f],
+      edges: [[s, r.c, f]] };
+  }
+  if (r.t === 'alt') {
+    const a = build(r.a);
+    const b = build(r.b);
+    const s = fresh();
+    const f = fresh();
+    return { start: s, accept: [f],
+      edges: [...a.edges, ...b.edges,
+        [s, null, a.start],
+        [s, null, b.start],
+        [a.accept[0], null, f],
+        [b.accept[0], null, f]] };
+  }
+  // 'eps', 'cat' and 'star' are similar
+}
+```
+
+For a character, the machine is two new states and one arrow labelled
+with that character. For `r|s`, the function first builds both children
+(recursion: they may be any size), then makes a new start and a new
+accepting state, and returns all the children's edges plus four
+ε-arrows: from the new start into each child, and from each child's
+accepting state out to the new end (`null` is the ε label, as before).
+
+<Callout kind="definition">
+**Thompson's construction** builds an NFA from a regular expression by
+recursion on its tree: a character `a` becomes `s -a-> f`, ε becomes
+`s -ε-> f`, `rs` joins the end of `N(r)` to the start of `N(s)` with an
+ε-move, `r|s` adds a new start and end joined to both by ε-moves, and
+`r*` adds a new start and end with ε-moves to skip `N(r)` or to repeat
+it. Each step adds at most two states, so the NFA has at most twice as
+many states as the pattern has characters and operators<Cite id="aho2006" />.
+</Callout>
+
+<Examples of="thompson-construction">
+
+```text
+a      0 -a-> 1          2 states
+```
+
+```text
+a|b    4 -ε-> 0 -a-> 1 -ε-> 5
+       4 -ε-> 2 -b-> 3 -ε-> 5   6 states
+```
+
+```text
+(a|b)*c: the a|b machine above, wrapped
+by star (2 more states), then joined by
+ε to the c machine (2 more): 10 states
+```
+
+</Examples>
+
+The first is the base case. The second follows the code exactly: the
+children are built first, so they get states 0 to 1 and 2 to 3
+(numbers are handed out in the order `fresh` is called), and the new
+start and end are 4 and 5. The
+third is the running example of chapter 72, built bottom-up: six states
+for `a|b`, two more for the star and two for `c`, so ten states, with
+many ε-arrows; it is bigger than the smallest machine for the same
+language, which is fine, because the next step tidies it up.
+
+<Prompts ids={['thompson-one-end', 'thompson-alt', 'thompson-star', 'thompson-size']} />
+
+## The subset construction
+
+An NFA built this way is correct, but running it means moving a whole
+set of pins at every character. The second recipe does all of that pin
+moving **once, ahead of time**, and writes the results down in a table.
+The idea comes straight from the last chapter's simulation: whatever
+string you feed the NFA, the pins always form one of a limited number of
+sets, so give each set that can occur a name, and let that name be a
+state of a DFA.
+
+<Analogy title="photographs of the pins">
+Imagine photographing the map every time the pins settle, and numbering
+each *different* photo. Next to each photo you note, for every
+character, which photo comes next. That notebook is the DFA: to run it,
+you never move pins again; you look up the next photo number.
+<span slot="breaks">You can only take photos of arrangements that can
+actually happen, which is what keeps the notebook small in practice; in
+the worst case there are 2ⁿ possible arrangements of pins on n states,
+and some languages really need that many photos.</span>
+</Analogy>
+
+Step through it on the "keyword `if` or a name" machine from the last
+chapter, where `x` stands for any other letter:
+
+<SubsetSteps client:visible />
+
+<Callout kind="definition">
+The **subset construction** turns an NFA into a DFA with the same
+language. Each DFA state stands for a set of NFA states. The start state
+is the ε-closure of the NFA's start; from a DFA state `T`, the arrow for
+a character `c` leads to the ε-closure of all the states reachable from
+`T` by `c`; new sets are added until no new set appears. A DFA state is
+accepting if its set contains an accepting NFA state<Cite id="rabinscott1959" />.
+</Callout>
+
+<Formal title="One step of the subset construction">
+
+```text
+move(T, c) = { r | q ∈ T, q -c-> r }
+D₀ = ε-closure({ q₀ })
+Dtran[T, c] = ε-closure(move(T, c))
+T accepting  ⟺  T ∩ F ≠ ∅
+```
+
+<span slot="read">move of T and c is every state r you can reach from
+some state q in T by one arrow labelled c. The first DFA state, D
+nought, is the ε-closure of the NFA's start. The DFA's transition from
+T on c is the ε-closure of that move. And a DFA state T accepts exactly
+when it shares at least one state with F, the NFA's accepting
+states.</span>
+</Formal>
+
+<Examples of="subset-construction">
+
+```text
+NFA for a|b (above), start {4,0,2}:
+on a: {1,5}   on b: {3,5}
+3 DFA states, two of them accepting
+```
+
+```text
+if-or-name (stepper): 4 DFA states,
+A={0,1,4} B={2,5} C={5} D={3,5}
+```
+
+<Run id="subset-steps" />
+
+</Examples>
+
+In the first, the start set is the closure of 4, and reading `a` or `b`
+each reaches a set containing 5, the accepting state, so the DFA is
+"start, then one accepting state per letter". In the second, notice
+that D, "just read `if`", is the only state that knows the keyword is
+complete; that is how one table can recognise every token rule at once.
+The runnable one computes the first rows of that table with `closure`
+and `move`; the optional exercise writes the whole loop.
+
+<Prompts ids={['subset-state', 'subset-accepting', 'subset-blowup', 'subset-why-fast']} />
+
+<Callout kind="engine" label="Under the hood">
+The resulting DFA needs one table lookup per character, which is why a
+generated scanner can be as fast as a careful hand-written one.
+Thompson's own 1968 program went another way: it compiled the pattern
+straight into IBM 7094 machine code and ran that code over the text to
+be searched<Cite id="thompson1968" />.
+The dragon book calls the pattern-to-NFA recipe the McNaughton-Yamada-
+Thompson algorithm and builds the subset construction on top of it, as
+here<Cite id="aho2006" />; Hopcroft, Motwani and Ullman give the proof
+that the two machines accept the same language<Cite id="hmu2006" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="thompson" />
+
+<Exercise id="subset" />
+
+## What you learned
+
+- **Thompson's construction** builds an NFA from a pattern's tree, one
+  small rule per operator; every piece has one start and one accepting
+  state, and the NFA has at most two states per symbol and operator.
+- The **subset construction** names each set of NFA states that can
+  occur, making it a DFA state; arrows are ε-closures of moves, and a
+  set is accepting if it holds an accepting NFA state.
+- Together they turn any regular expression into a table-driven DFA
+  that reads each character with one lookup.
+
+Next: making that DFA as small as possible, and the tools (lex, flex,
+re2c) that do all of this for a whole list of token rules.
+
+<Quiz />

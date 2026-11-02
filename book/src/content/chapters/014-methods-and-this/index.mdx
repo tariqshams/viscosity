@@ -308,7 +308,7 @@ It checks where an object came from, not what it contains.
 "Stored once, with the class" is literal: every class has one hidden
 object holding its methods, and each instance keeps a link to it, so
 `p.move` is found by following that link<Cite id="mdn-using-classes" />.
-That link is also what `instanceof` follows. In chapter 88 you will build
+That link is also what `instanceof` follows. In chapter 105 you will build
 classes, instances, methods and `this` yourself, inside your own
 interpreter, and see that `this` is nothing more than one extra,
 hidden argument handed to every method call.
@@ -330,6 +330,6 @@ hidden argument handed to every method call.
   code); to pass one on, wrap it: `() => p.move()`.
 - **`instanceof`** checks which class made an object, not what it holds.
 
-Next: `Map` and `Set`, two built-in classes for looking things up fast.
+Next: inheritance, where one class builds on another with `extends` and `super`.
 
 <Quiz />

@@ -1,0 +1,271 @@
+---
+n: 272
+day: 68
+part: XI
+title: 'Box, Rc and RefCell'
+tagline: 'Rust’s standard library has three tools for data that doesn’t fit one owner and a few borrows. Try to build a VM’s object graph out of them and each one gives way somewhere: Rc leaks cycles, and RefCell turns a borrowing mistake into a crash at run time.'
+objectives:
+  - Use Box to put a value on the heap, and to build a recursive type such as a syntax tree.
+  - Share a value between several owners with Rc, and mutate it through RefCell.
+  - Show why a cycle of Rc pointers leaks, and why a RefCell double borrow panics.
+  - Explain why drip-rs doesn’t build its object graph from Rc<RefCell<..>>.
+introduces: [box, rc, refcell]
+uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, struct, impl, self-receiver, enum, match, option, trait, rust-generics, rust-closure, closure, upvalue, instance, field, bound-method, ast, heap-object, stack-and-heap, pointer, aliasing, garbage-collection, roots, mark-sweep, chunk]
+sources: [klabnik2026, rust-std-rc, rust-std-cell]
+---
+import CycleSteps from '../../../components/diagrams/ch272/CycleSteps';
+
+## Who owns the upvalue?
+
+Here is a variation on chapter 130's counter, in Drip:
+
+```
+fn makeCounter() {
+  let n = 0;
+  fn inc() { n = n + 1; }
+  fn get() { return n; }
+  inc();
+  return get;
+}
+```
+
+`inc` and `get` both capture `n`. In the TypeScript VM, both closures
+hold a reference to one `ObjUpvalue`, and nobody asks which closure
+*owns* it: JavaScript's collector frees it once nothing can reach it.
+
+Rust asks that about every value: one owner, and borrows that end
+(chapter 259). A VM's heap breaks both rules constantly. Closures share
+upvalues; a field can hold a bound method whose receiver is the instance
+itself. The standard library has three tools for data that doesn't fit
+the rules. Let's see how far they get.
+
+## Box: one owner, on the heap
+
+<Callout kind="intuition">
+A `Box` is a locker key. The thing itself is in a locker down the hall
+(the heap); you carry only the key. Hand the key to someone and the
+locker is theirs. Whoever holds the key when they leave empties it.
+</Callout>
+
+Try to write chapter 81's syntax tree as a Rust enum:
+
+```rust
+enum Expr {
+    Num(f64),
+    Add(Expr, Expr),
+}
+```
+
+Rust 1.97 (trimmed):
+
+```
+error[E0072]: recursive type `Expr`
+  has infinite size
+3 |     Add(Expr, Expr),
+  |         ---- recursive without
+  |              indirection
+help: insert some indirection (e.g.,
+  a `Box`, `Rc`, or `&`)
+```
+
+An `Expr` holding two `Expr`s would contain itself, so it has no
+finite size. A `Box<Expr>` is a pointer, 8 bytes on this machine, so
+`Add(Box<Expr>, Box<Expr>)` has a fixed size; the children live on the
+heap.
+
+<Callout kind="definition">
+A **`Box<T>`** is a pointer to a `T` stored on the heap. The box is the
+`T`'s only owner: moving the box moves ownership, and dropping the box
+drops the `T` and frees its memory<Cite id="klabnik2026" />. No counting
+happens at run time.
+</Callout>
+
+A tree is the perfect case: each node has one parent, which owns it.
+
+<Prompts ids={['box-what', 'box-recursive']} />
+
+## Rc: shared, counted ownership
+
+The upvalue has two owners, so a `Box` won't do.
+
+<Callout kind="intuition">
+`Rc` is a shared flat with a sign-in sheet on the door. Each new tenant
+signs in; each one who moves out signs off. The last to leave turns off
+the lights.
+</Callout>
+
+`Rc::new(v)` puts `v` on the heap next to a counter set to 1.
+`Rc::clone(&r)` doesn't copy `v`: it copies the pointer and adds 1.
+Dropping an `Rc` subtracts 1, and when the count reaches 0, `v` is
+dropped<Cite id="rust-std-rc" />.
+
+There is a catch. Try to change the upvalue through one owner:
+
+```rust
+let up = Rc::new(Upvalue { value: 0.0 });
+let a = Rc::clone(&up);
+a.value += 1.0;
+```
+
+```
+error[E0594]: cannot assign to data in
+  an `Rc`
+```
+
+Of course: `a` and `up` point at the same value, and chapter 260 said
+many readers *or* one writer. An `Rc` only gives out shared access.
+
+<Callout kind="definition">
+An **`Rc<T>`** ("reference counted") is a pointer to a heap value that
+has several owners. It stores a **strong count**: `Rc::clone` adds 1,
+dropping an `Rc` subtracts 1, and the value is dropped when the count
+reaches 0. Through an `Rc` you can only read<Cite id="rust-std-rc" />.
+</Callout>
+
+<Prompts ids={['rc-what', 'rc-immutable']} />
+
+## RefCell: the borrow checker, at run time
+
+<Callout kind="intuition">
+A library book with a slip inside the cover. Anyone may read it in the
+reading room at the same time, but to take it home and write in the
+margins you need everyone else to hand it back first. The librarian
+checks the slip each time, not once when the library was built.
+</Callout>
+
+A `RefCell<T>` holds a value and a little borrow counter. `borrow()`
+gives you a reader, `borrow_mut()` a writer, and each call first checks
+the rules from chapter 260. Put one inside an `Rc` and you have shared,
+mutable data: `Rc<RefCell<Upvalue>>`, the textbook way to share mutable
+state<Cite id="klabnik2026" />.
+
+<Run id="rc-share" />
+
+It prints `owners: 3` (the original plus two closures), `get sees 2`,
+and then `owners: 1`. It works.
+
+But "checked at run time" means *failing* at run time too. Drip happily
+runs `a.heal(a)`: heal `a` using its own hit points. Here is that
+method written with `RefCell`:
+
+```rust
+fn heal(me: &RefCell<Instance>,
+    other: &RefCell<Instance>) {
+    let mut m = me.borrow_mut();
+    let o = other.borrow();
+    m.hp += o.hp / 2.0;
+}
+```
+
+`heal(&a, &b)` is fine. Then `heal(&a, &a)`, built with
+cargo and rustc 1.97 (the panic line is wrapped here):
+
+```
+a: 12
+
+thread 'main' (24945) panicked at
+  src/main.rs:12:19:
+RefCell already mutably borrowed
+```
+
+The compiler saw two parameters and no broken rule. The rule was broken
+by *which objects were passed*, and in a VM the Drip program makes that
+choice. Any VM code that holds a borrow while it touches another object
+is one aliasing program away from a panic.
+
+<Callout kind="definition">
+A **`RefCell<T>`** moves borrow checking from compile time to run time.
+`borrow()` returns a shared guard and `borrow_mut()` an exclusive one;
+each guard releases its borrow when dropped. Asking for a borrow that
+breaks the rules (a writer while anyone else holds one, or a reader while
+a writer does) **panics**<Cite id="rust-std-cell" />.
+</Callout>
+
+<Prompts ids={['refcell-what', 'refcell-panic', 'refcell-vm']} />
+
+## Cycles never reach zero
+
+Give each object a `field` that can hold another, and a `Drop` that
+prints. Then build a chain and a cycle:
+
+```rust
+// Obj { name, field }, with a Drop
+// that prints "free" and the name
+{
+    let a = new("a");
+    let b = new("b");
+    a.borrow_mut().field =
+        Some(Rc::clone(&b));
+}
+{
+    let c = new("c");
+    let d = new("d");
+    c.borrow_mut().field =
+        Some(Rc::clone(&d));
+    d.borrow_mut().field =
+        Some(Rc::clone(&c));
+    println!("c has {} owners",
+        Rc::strong_count(&c));
+}
+println!("end of main");
+```
+
+Run with rustc 1.97, it prints:
+
+```
+free a
+free b
+c has 2 owners
+end of main
+```
+
+The chain is freed. `c` and `d` never are. Step through the counts:
+
+<CycleSteps client:visible />
+
+The standard library is blunt: a cycle between `Rc` pointers will
+never be deallocated<Cite id="rust-std-rc" />. The Rust book adds that
+a leak is still memory *safe*<Cite id="klabnik2026" />. The usual fix is
+`Weak`, a non-owning pointer for the edge that points "back".
+
+A VM can't use that fix. `let a = Node(); a.me = a;` is a one-line
+cycle, and a recursive local function captures itself through an
+upvalue. The program decides which edges point back. A VM needs the
+question mark-and-sweep asks (chapter 131): what can the roots reach?
+
+<Prompts ids={['cycle-leak', 'weak-what']} />
+
+<Callout kind="engine" label="Under the hood">
+drip-rs's `object.rs` opens with this argument: safe Rust can't link
+objects with raw pointers as clox does, and `Rc<RefCell<..>>` "would
+hand memory management to Rust instead of to our own garbage
+collector". Chapter 273 shows what it does instead. The tools still
+appear where they fit. A string's characters are a `Box<str>`, owned by
+one string object. Each compiled function's bytecode is an `Rc<Chunk>`,
+shared by the function object, every call frame running it, and the
+VM register that holds the running chunk. A chunk is frozen once compiled and holds no `Rc` itself: no
+`RefCell` needed, and no cycle possible.
+</Callout>
+
+<Prompts ids={['drip-rc']} />
+
+## Your turn
+
+<Exercise id="sharedUpvalue" />
+
+<Exercise id="boxExpr" />
+
+## What you learned
+
+- A **`Box<T>`** puts a value on the heap with exactly one owner. It
+  makes recursive types like syntax trees possible.
+- An **`Rc<T>`** shares a value among owners with a **strong count**,
+  and drops it when the count reaches 0. It only gives shared access.
+- A **`RefCell<T>`** checks the borrowing rules at run time, and
+  **panics** when they are broken: `RefCell already mutably borrowed`.
+- **Cycles** of `Rc` never reach a count of 0, so they **leak**. A
+  VM's object graph is full of cycles that the program, not you, decides.
+- drip-rs uses `Box` and `Rc` only where ownership is simple, and gives
+  its objects to its own collector instead.
+
+<Quiz />

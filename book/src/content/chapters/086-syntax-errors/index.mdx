@@ -1,0 +1,212 @@
+---
+n: 86
+day: 22
+part: III
+title: 'Syntax errors and recovery'
+tagline: 'Real programs are typed by people, so they arrive broken. A good parser says exactly where, keeps going, and finds the next mistake too, without inventing ones that are not there.'
+objectives:
+  - Read a Drip syntax error and say which token the parser was looking at.
+  - Explain the two goals of error recovery, and what a cascading error is.
+  - Trace panic mode, skipping tokens to a safe point, on a broken program.
+  - Explain why a program with a syntax error runs none of its statements.
+introduces: [syntax-error, error-recovery, panic-mode]
+uses: [parser, pratt-parser, recursive-descent, grammar, token, lexeme, token-type, source-location, keyword, scanner, expression-vs-statement, compiler-pipeline, drip, throw, try-catch, error-object, error-propagation, class, instanceof, set, while-loop, function, if]
+sources: [nystrom2021]
+---
+import SyncSteps from '../../../components/diagrams/ch086/SyncSteps';
+
+## Three typos, one run
+
+Say you have written twenty lines of Drip, and three of them have a
+typo. One parser stops at the first and tells you about it. You fix it,
+run again, meet the second, fix that, run again. Another parser tells
+you all three at once. A third tells you about the three, and then
+about forty more that are not really there, because it got lost after
+the first.
+
+You want the second parser. This chapter is about how to be it.
+
+## What a syntax error is
+
+<Callout kind="intuition">
+Read “the cat sat on.” and you stop, because the sentence promised
+something after “on” and delivered a full stop. You know exactly where
+it broke: at the full stop, which is where you noticed. A parser is the
+same kind of reader, and its rule book is the grammar.
+</Callout>
+
+In the Drip parser, every place where the grammar *requires* a
+particular token goes through `consume`:
+
+```ts
+const consume = (t, message) => {
+  if (check(t)) return advance();
+  throw error(peek(), message);
+};
+// e.g. at the end of a print statement:
+consume(';', "Expect ';' after value.");
+```
+
+`error` reports the problem right away, then hands back a `ParseError`
+for `consume` to throw. The report always names the token the parser was
+looking at. For `print 1 +;` and for `print 1 +` (no `;` at all),
+Drip says:
+
+```
+[line 1] Error at ';': Expect expression.
+[line 1] Error at end: Expect expression.
+```
+
+The format is `[line N] Error at 'lexeme': message`, or `at end` when
+the parser ran out of tokens (`errors.ts`). Note that the place named is
+where the parser *noticed*. A missing `;` at the end of line 1 is
+usually reported at the first token of line 2.
+
+<Callout kind="definition">
+A **syntax error** is source code that breaks the grammar: at some
+point the parser needs a certain kind of token and finds another. The
+parser reports it with the line, the token where it noticed, and what it
+expected. Nothing has run yet: syntax errors are found before the
+program starts.
+</Callout>
+
+Here is a program with three broken lines. Run it and read the errors:
+one per line, all from a single run.
+
+<Run id="three-typos" />
+
+<Prompts ids={['syntax-error-what', 'where-noticed', 'at-end']} />
+
+## Don't stop at the first
+
+Reporting one error is easy: throw, and let the whole parse fail.
+Reporting *several* is harder, because after an error the parser is in
+the middle of something it no longer understands. If it carried on
+from exactly where it stopped, it might treat the rest of a broken
+statement as the start of a new one, and report errors that are only
+echoes of the first. Those are called **cascading** errors, and they
+send people hunting for problems that do not exist.
+
+<Callout kind="intuition">
+A pianist who loses their place does not keep playing the wrong notes
+and hope. They skip ahead to the start of the next bar, where they know
+exactly where they are, and carry on from there.
+</Callout>
+
+<Callout kind="definition">
+**Error recovery** is what a parser does after a syntax error so that
+it can keep parsing and report later errors too. It has two goals that
+pull against each other: find as many **real** errors as possible, and
+report no **cascading** ones.
+</Callout>
+
+<Prompts ids={['recovery-goals', 'cascade-what']} />
+
+## Panic mode
+
+Drip uses the oldest and simplest strategy. The `ParseError` thrown by
+`consume` unwinds all the way out of whatever was being parsed, up to
+`declaration()`, the function that parses one statement:
+
+```ts
+// simplified from parser.ts
+function declaration(): Stmt | null {
+  try {
+    if (match('let')) return letDecl();
+    // … fn, class, statement()
+  } catch (e) {
+    if (!(e instanceof ParseError)) throw e;
+    synchronize();
+    return null; // drop this statement
+  }
+}
+```
+
+Then `synchronize()` throws tokens away until it reaches a point where
+a new statement probably starts: just after a `;`, or just before a
+keyword that begins a statement (`let`, `fn`, `class`, `if`, `while`,
+`for`, `print`, `return`). In the real code that keyword check is a
+`switch`; here it is a set called `STARTS`. Step through it on a
+four-line program with two mistakes:
+
+<SyncSteps client:visible />
+
+<Callout kind="definition">
+**Panic mode** is error recovery by skipping. On an error the parser
+abandons the current statement, discards tokens until it reaches a
+**synchronization point** (a token after which the grammar is likely to
+make sense again), and resumes normal parsing there.
+</Callout>
+
+The price is visible in the step-through: `print x;` was skipped
+without being checked. If it had contained a mistake, that mistake
+would only show up on the next run. Panic mode accepts that, because a
+missed error costs you one more run, while a fake error costs you
+confusion.
+
+Not every error needs panic. When the parser reads `a + b = 3`, it
+parses `a + b`, sees the `=`, and finds that the target is not a name.
+It reports `Invalid assignment target.` but does **not** throw. The
+parser knows exactly where it is, so it simply carries on.
+
+<Prompts ids={['panic-what', 'sync-points', 'skip-first', 'no-throw-target']} />
+
+## A syntax error stops everything
+
+What happens to the statements that parsed fine? They are never run.
+Here is the top of `run` in `companion/ts/src/drip.ts`:
+
+```ts
+const tokens = scan(source, reporter);
+const program = parse(tokens, reporter);
+if (reporter.hadError)
+  return { stdout, stderr, exitCode: 65 };
+// … only now does anything run
+```
+
+The scanner and the parser share one `reporter`, so an unterminated
+string from the scanner and a missing `;` from the parser both set
+`hadError`. If anything went wrong, Drip prints the errors and stops
+with exit code 65, the code its test suite uses for “this program is
+not valid Drip”. Half a program is never run.
+
+<Prompts ids={['exit-65']} />
+
+<Callout kind="engine" label="Under the hood">
+Drip's bytecode compiler in Part IV (`companion/ts/src/vm/compiler.ts`)
+recovers the same way but without throwing. It keeps a `panicMode`
+flag: the first error sets it, and while it is set, further errors are
+silently dropped. At the end of each statement, if the flag is set, it
+synchronizes and clears it. Both versions print messages in the exact
+format of the Lox test suite from *Crafting Interpreters*, so the
+corpus in `companion/corpus` checks every message word for
+word<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+The core exercise writes `synchronize` itself, over an array of
+lexemes. The extra one is a broken Drip program for you to repair,
+using the errors Drip gives you.
+
+<Exercise id="sync" />
+
+<Exercise id="fix-drip" />
+
+## What you learned
+
+- A **syntax error** is a token the grammar did not allow. Drip reports
+  the line, the token where it noticed, and what it expected.
+- **Error recovery** lets a parser report several real errors in one
+  run, without **cascading** errors that are only echoes.
+- In **panic mode**, the parser abandons the statement, skips tokens to
+  a **synchronization point** (after a `;` or before a statement
+  keyword), and starts again.
+- It always skips at least one token, so it can never get stuck.
+- Some errors, like an invalid assignment target, are reported without
+  panicking.
+- If any error was reported, Drip runs nothing and exits with code 65.
+
+Next, at last, the tree does something: we evaluate it.
+
+<Quiz />

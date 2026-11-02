@@ -1,0 +1,301 @@
+---
+n: 78
+day: 20
+part: III
+title: 'Writing grammars down: BNF'
+tagline: 'Five rules to say "numbers joined by plus signs" is too many. BNF, with three small shorthands, says it in one line; and with it, the whole of Drip fits on a page you can read aloud.'
+objectives:
+  - Write rules in BNF, and read the shorthands |, ( ), ? and * aloud.
+  - Unfold each shorthand into plain rules, and explain why that adds no power.
+  - Read Drip's statement grammar, and trace how blocks nest inside blocks.
+  - Say what a grammar can describe that the shorthands alone (a regular expression) cannot.
+introduces: [bnf]
+uses: [grammar, production-rule, terminal, nonterminal, token, token-type, identifier, keyword, drip, language-spec, regular-expression, recursion, base-case, function, array, index, length, while-loop, if, comparison, booleans]
+sources: [ecma262-grammar]
+---
+import ShorthandSteps from '../../../components/diagrams/ch078/ShorthandSteps';
+import DripGrammarMap from '../../../components/diagrams/ch078/DripGrammarMap';
+
+## Five rules for one idea
+
+In the last chapter it took five plain rules to describe print statements
+that add numbers, and two of them only said "an `item`, then any number
+of `+ item`". Drip's whole grammar written that way would run to dozens
+of rules, and JavaScript's to hundreds, with the *idea* of each rule ("a
+list of arguments separated by commas") lost among helper rules that
+exist only to make things repeat. We want a shared, compact way to write
+rules down, which a person can read aloud and a program can still follow
+exactly.
+
+## BNF
+
+The standard way is called **BNF** (the letters stand for Backus–Naur
+form). In its plain form it is exactly what you already know: a head, an
+arrow, and a body of terminals and nonterminals. Older books and some
+specifications spell the same rule differently, with `::=` for the arrow
+and angle brackets round each nonterminal, so all three of these say
+the same thing:
+
+<Examples of="bnf">
+
+```text
+stmt → "print" expr ";"
+```
+
+```text
+<stmt> ::= "print" <expr> ";"
+```
+
+```text
+PrintStatement :
+  print Expression ;
+```
+
+</Examples>
+
+The first is the arrow style this book uses, with terminals in quotes.
+In the second, `::=` reads "is made of" and the angle brackets mark the
+nonterminals. The third is the style of JavaScript's own specification,
+with a colon, capitalised names and no quotes<Cite id="ecma262-grammar" />
+(JavaScript has no `print` statement, so this rule is made up, but the
+spelling is real). Read all three the same way: "a print statement is
+made of the keyword print, then an expression, then a semicolon".
+
+<Prompts ids={['bnf-what']} />
+
+## Three shorthands
+
+<Analogy title="a knitting pattern">
+Knitting patterns use a shorthand: "*knit 2, purl 2; repeat from * to
+end of row" saves writing "knit 2, purl 2" forty times, and "(make 1)" in
+brackets can mean "only if you want the wider size". Anyone who knows
+the shorthand can expand it back into every single stitch.
+<span slot="breaks">"To the end of the row" depends on how long the row
+is; a grammar's repeat has no outside limit, so it may repeat zero times
+or a million, and the tokens alone decide.</span>
+</Analogy>
+
+<Analogy title="repeat signs in music">
+Sheet music marks a passage with repeat signs instead of printing it
+twice, and a bracket over a bar marked "1." says "play this only the
+first time through". The written page is shorter, and the music you hear
+is exactly the same.
+<span slot="breaks">A repeat in music is played a fixed number of times,
+written on the page; a star in a grammar allows any number of repeats,
+including none.</span>
+</Analogy>
+
+Here are the five rules from the last chapter, written with the
+shorthands; they become three lines:
+
+```text
+stmt → "print" expr ";"
+expr → item ( "+" item )*
+item → NUMBER | "(" expr ")"
+```
+
+A bar `|` means "or", joining several bodies for one head into one line,
+so the third line is both rules for `item`. Brackets `( )` group symbols
+into one piece. A star `*` after a piece means "zero or more times", so
+the second line reads "an expr is an item, followed by zero or more
+pairs of a plus sign and an item". A question mark `?` after a piece
+means "optional: once, or not at all". The star has replaced the rule
+that mentioned itself, and both grammars allow exactly the same rows.
+Step through how each shorthand unfolds back into plain rules:
+
+<ShorthandSteps client:visible />
+
+<Callout kind="definition">
+**BNF** is the standard notation for grammars: each production rule is
+a nonterminal, an arrow (or `::=`), and a row of terminals and
+nonterminals. Most grammars use *extended* BNF (often written **EBNF**),
+which adds four shorthands: `|` for alternatives, `( )` for grouping,
+`*` for "zero or more times" and `?` for "optional". Some also write `+`
+for "one or more times".
+</Callout>
+
+<Formal title="What each shorthand means">
+
+```text
+A → α | β      is   A → α
+                    A → β
+A → α ( β )?   is   A → α
+                    A → α β
+A → α ( β )*   is   A → α R
+                    R → β R
+                    R → ε
+```
+
+<span slot="read">Here A is a nonterminal, α and β (the Greek letters
+alpha and beta) stand for any rows of symbols, and R is a brand-new
+nonterminal. "A is made of α or β" is two rules: A is made of α, and A
+is made of β. "A is made of α, then β optionally" is also two rules: A
+is made of α alone, or of α then β. "A is made of α, then zero or more
+βs" needs the helper R: A is made of α then R, where R is made of one β
+and then R again, or of ε (the Greek letter epsilon), which means the
+empty row of symbols, nothing at all. That last rule is R's way
+out.</span>
+</Formal>
+
+Since every shorthand unfolds into plain rules, they let you describe
+nothing new; they only make grammars shorter and easier to read.
+
+<Examples of="bnf">
+
+```text
+bool → "true" | "false"
+```
+
+```text
+call → IDENTIFIER "(" args? ")"
+args → expr ( "," expr )*
+```
+
+```text
+fnDecl → "fn" IDENTIFIER
+         "(" params? ")" block
+params → IDENTIFIER ( "," IDENTIFIER )*
+```
+
+</Examples>
+
+The first is the bar alone: a `bool` is the token `true` or the token
+`false`. The second combines two shorthands into the shape of every
+function call: a name, a bracket, *optionally* some arguments, and a
+closing bracket, where the arguments are one `expr` followed by zero or
+more `, expr` pairs; so `f()`, `f(x)` and `f(x, y, z)` fit, while
+`f(x,)` does not, because each comma brings an `expr` with it. The third
+is Drip's real rule for declaring a function: the keyword `fn`, a name,
+its parameters in brackets (names separated by commas, or none) and a
+block, the body.
+
+The mistake people make most often is putting a shorthand on the wrong
+piece:
+
+```text
+args → expr "," expr*     ✗
+args → expr ( "," expr )* ✓
+```
+
+Without the brackets the star applies only to the `expr` just before
+it, so the first rule demands exactly one comma, and allows `x,` and
+`x, y z`, but not `x, y, z`; with the brackets, the comma and the
+`expr` repeat together.
+
+<Prompts ids={['bar-means', 'star-means', 'question-means', 'star-binds', 'epsilon-what']} />
+
+## Drip's grammar on one page
+
+With the shorthands, the statements of Drip fit in a few lines. This is
+the part the next chapters build a parser for; read it slowly, aloud:
+
+<Formal title="Drip's statements">
+
+```text
+program     → declaration* EOF
+declaration → letDecl | fnDecl
+            | statement
+letDecl     → "let" IDENTIFIER
+              ( "=" expression )? ";"
+statement   → printStmt | ifStmt
+            | block | exprStmt
+printStmt   → "print" expression ";"
+ifStmt      → "if" "(" expression ")"
+              statement
+              ( "else" statement )?
+block       → "{" declaration* "}"
+exprStmt    → expression ";"
+```
+
+<span slot="read">A program is zero or more declarations, then the end
+of the input (EOF, a token the scanner adds at the very end). A
+declaration is a let declaration, a function declaration (the fnDecl
+rule above), or a statement. A let declaration is the keyword let, a
+name, optionally an equals sign and an expression, then a semicolon. A
+statement is a print statement, an if statement, a block or an
+expression statement. A print statement is the keyword
+print, an expression and a semicolon. An if statement is the keyword
+if, a condition in brackets, a statement, and optionally the keyword
+else and a second statement. A block is zero or more
+declarations between curly brackets. An expression statement is an
+expression followed by a semicolon.</span>
+</Formal>
+
+(The full grammar also has `while`, `for`, `return` and classes, and its
+`expression` has rules of its own, which the chapter on recursive
+descent parsing builds.)
+
+<Figure takeaway="Two loops of rules let statements nest to any depth." caption="Which rules use which: an arrow from one rule to another means the second appears in the first one's body. The dashed arrows close two loops: a block holds declarations, which can be statements, which can be blocks; and an if statement holds statements, which can be if statements.">
+  <DripGrammarMap />
+</Figure>
+
+Those two loops are what give Drip its nesting. A `block` holds
+declarations, a declaration can be a statement, and a statement can be
+a block, so `{ { print 1; } }` is a block inside a block; an `ifStmt`
+holds a `statement`, which can be another `ifStmt`, so `else if` needs
+no rule of its own (it is an `else` whose statement happens to be an
+`if`).
+
+<Prompts ids={['nest-how']} />
+
+## Shorthands and regular expressions
+
+The shorthands may look familiar: `|`, grouping and `*` are exactly the
+three operators of a regular expression, from "Regular expressions as a
+language", only applied to tokens rather than characters. As such, a
+rule that uses shorthands but never mentions a nonterminal can be
+written as a regular expression. Here, with one letter per token type,
+JavaScript's own regular expressions check calls with number arguments:
+
+<Run id="callRegex" />
+
+`args` is the rule `NUMBER ( "," NUMBER )*`, with `n` for a number: an
+`n`, then zero or more `,n` pairs. `call` adds the name and brackets:
+`^` and `$` say the whole row must match, `\(` and `\)` are bracket
+tokens (a bare bracket would group; inside a JavaScript string the
+backslash is doubled), and `?` makes the arguments optional. It prints
+`true` for the first three rows and `false` for the last three.
+
+That works because nothing here nests. The moment an argument may be a
+whole call, `f(g(h(1)))`, the rule for `call` mentions `call` (through
+`expr`), and no regular expression can check nesting to any depth; the
+chapter "Derivations, parse trees and ambiguity" shows where grammars
+and regular expressions sit in one family of descriptions, and why.
+
+<Prompts ids={['regex-limit']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript's specification is written in its own dialect of BNF. Its
+productions use a colon for the arrow, it writes lists such as function
+arguments with recursive rules rather than a star, and it marks an
+optional symbol with a small "opt" after it, where we write
+`?`<Cite id="ecma262-grammar" />, which unfolds exactly as `?` does.
+</Callout>
+
+## Your turn
+
+The first exercise turns a star into a loop; the second, for extra
+practice, adds a `?`.
+
+<Exercise id="isSum" />
+
+<Exercise id="isCall" />
+
+## What you learned
+
+- **BNF** writes each rule as `head → body` (or `<head> ::= body`).
+- Extended BNF adds `|` (or), `( )` (group), `?` (optional) and `*`
+  (zero or more); each one unfolds into plain rules, so they add
+  readability, not power.
+- A shorthand applies to the single piece just before it; brackets make
+  a bigger piece.
+- Drip's statement grammar fits on a page, and two loops of rules let
+  blocks and `if` statements nest.
+- Shorthands alone are regular expressions over tokens; nesting needs
+  rules that mention themselves.
+
+Next: "Derivations, parse trees and ambiguity" shows, step by step, how
+a row of tokens is proved to fit a grammar, and what goes wrong when it
+fits in two different ways.
+
+<Quiz />

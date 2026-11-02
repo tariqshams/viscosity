@@ -1,0 +1,259 @@
+---
+n: 61
+day: 16
+part: II
+title: 'Benchmarking honestly'
+tagline: 'A stopwatch around a loop feels like science, but the engine is rewriting your code while you time it, and is allowed to delete work whose answer nobody uses. Here is how this book''s harness avoids both traps.'
+objectives:
+  - Explain JIT warm-up, V8's tiers and deoptimization, and why a benchmark must discard its first runs.
+  - Explain dead-code elimination, and why a compiler is allowed to do it.
+  - Keep measured work alive with a sink.
+  - Fix a naive stopwatch benchmark so that it warms up and sinks every result.
+introduces: [jit-warmup, dead-code-elimination]
+uses: [function, parameter, return, callback, first-class-function, while-loop, array, length, for-loop, for-of, numbers, object, typed-array, field-representation, aos-vs-soa, cpu-cache, console-log]
+sources: [v8-maglev, llvm-passes, mdn-performance-now]
+---
+import WarmupSteps from '../../../components/diagrams/ch061/WarmupSteps';
+import TierLadder from '../../../components/diagrams/ch061/TierLadder';
+
+## A stopwatch is not enough
+
+Every chart in this part of the book came from a benchmark, and you have
+been asked to trust it. Here is the benchmark almost everyone writes
+first:
+
+```js
+const t0 = performance.now();
+sumAll(xs);
+const t1 = performance.now();
+console.log(t1 - t0, 'ms');
+```
+
+`performance.now()` returns the time in milliseconds, with a fraction<Cite id="mdn-performance-now" />,
+so `t1 - t0` is how long `sumAll` took. It looks reasonable, yet it is
+wrong in four separate ways. It times the function the very first time
+it runs, before the engine has optimized it. It throws the result away,
+so a clever compiler is allowed to skip the work. It trusts a single
+measurement on a machine doing a hundred other things. And it may run
+straight after some *other* benchmark that left the engine in an odd
+state. This chapter fixes the first two, which are both about the
+engine changing your code while you time it; the next chapter fixes the
+other two.
+
+## Warm-up: time the code that really runs
+
+A JavaScript engine does not run your function the same way every time.
+V8 first compiles everything to **bytecode** (a compact list of simple
+instructions) and runs it in an interpreter, and while it runs, it
+records how the program behaves, including the shapes of the objects
+and the types of the values it sees; this record is called
+**feedback**. Functions that get **hot** (called often, or looping a
+lot) are compiled again by faster **tiers**: first Sparkplug, then the
+optimizing compilers Maglev and TurboFan, which use the feedback to
+generate machine code specialized for what they saw<Cite id="v8-maglev" />.
+
+<Figure takeaway="Code climbs the tiers as it gets hot, and can fall back." caption="V8's tiers, as the V8 team describes them. Every function starts as bytecode in the Ignition interpreter; hot functions move up; the optimizing tiers build on feedback, and drop back down (deoptimize) when one of their guesses turns out wrong.">
+  <TierLadder />
+</Figure>
+
+That optimized code is *speculative*: it is built on guesses such as
+"`p` always has this shape". If a guess turns out wrong, V8 throws the
+optimized code away and falls back to a lower tier, which is called
+**deoptimization**<Cite id="v8-maglev" />. Step through one function
+warming up, and then deoptimizing:
+
+<WarmupSteps client:visible />
+
+<Analogy title="a runner's first lap">
+Timing a runner on their first lap of the morning, still stiff and
+tying a shoelace, tells you little about how fast they run. A coach lets
+them warm up first, then times the laps that follow.
+<span slot="breaks">A runner warms up the same way every morning; an
+engine's warm-up depends on what the code has seen, so code that later
+meets different data can lose its speed again (a deoptimization) in a
+way no runner does.</span>
+</Analogy>
+
+<Analogy title="a new barista">
+On a new barista's first morning, every order means reading the menu
+and checking the recipe card, so it is slow. After a week they know
+that the regular at nine wants a flat white and start it as she walks
+in; when one day she asks for tea instead, the guess is wrong, the milk
+goes down the sink, and they go back to the card.
+<span slot="breaks">A barista remembers people; V8's feedback is about
+the shapes and types of values at particular places in the code, and it
+can be thrown away and relearned at any moment, without anyone being
+told.</span>
+</Analogy>
+
+<Callout kind="definition">
+**JIT warm-up** is the period in which code gets faster as the engine
+observes it and recompiles it with better tiers (a **JIT**, "just in
+time", compiler is one that compiles while the program runs). A
+benchmark that wants steady-state speed must run the code until it is
+warm, and only then start measuring. **Deoptimization** is throwing
+away optimized code whose guesses broke, and falling back to slower
+code.
+</Callout>
+
+<Examples of="jit-warmup">
+
+```js
+sumAll(xs); // 1st call: bytecode, slow
+sumAll(xs); // ...
+sumAll(xs); // 500th: optimized, fast
+```
+
+```js
+// only numbers seen so far...
+for (let i = 0; i < 1e6; i++) add(i, 1);
+add('a', 'b'); // a string: deopt
+```
+
+<Run id="warmup" />
+
+</Examples>
+
+The first shows the problem in three lines: the same call, on the same
+data, takes different times depending on how many times it has run
+before, because the engine has moved it up the tiers in between. The
+second shows the fall back down: after a million calls with numbers, the
+optimized `add` is built on the guess "both arguments are numbers", and
+the first string breaks it. The third you can run: it times eight
+rounds of summing a million-element `Float64Array`, and prints each
+round's time and, at the end, the total. On most machines the first
+round or two are noticeably slower than the rest, though the exact
+numbers depend on your device (and a browser rounds the timer, so very
+fast rounds may show as 0). This book's harness handles warm-up by
+running the work for 300 milliseconds, and at least five times, before
+recording anything.
+
+<Prompts ids={['warmup-why', 'first-call', 'tiers', 'feedback', 'deopt']} />
+
+## Dead code: make the result matter
+
+The second trap is subtler, because the code it breaks looks fine.
+Compilers delete work whose result nobody uses: it is a standard
+optimization called **dead-code elimination**, and LLVM, for example,
+ships several passes that do it<Cite id="llvm-passes" />. A benchmark
+loop whose answer is thrown away is a perfect candidate, and an
+optimizing compiler that removes it would make your benchmark report a
+near-zero time for a loop that never ran.
+
+<Analogy title="homework nobody marks">
+A student notices that the teacher never collects question 4, so they
+stop doing it; every mark they get is exactly the same as before, and
+they finish sooner.
+<span slot="breaks">The student is cutting a corner the teacher would
+object to; a compiler that removes dead code is doing nothing wrong,
+because the program's output cannot differ, and the only "victim" is a
+benchmark that was timing work nobody needed.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Dead-code elimination** is a compiler deleting computations whose
+results are never used and that have no other effect (no printing, no
+storing, no throwing). A **sink** is a variable that collects every
+measured result and is used at the end, so the measured work stays
+observable.
+</Callout>
+
+<Formal title="What makes a computation dead">
+
+```text
+live(v) ⇐ v is printed, stored or returned
+live(v) ⇐ v is used to compute a live w
+dead(v) ⇔ not live(v)
+```
+
+<span slot="read">A value is live if it is printed, stored somewhere the
+outside world can see, or returned; it is also live if it helps compute
+some other live value. Every value that cannot be reached by those two
+rules is dead, and a compiler may remove the work that produces it
+(provided that work has no other effect, such as throwing an
+error).</span>
+</Formal>
+
+<Examples of="dead-code-elimination">
+
+```js
+const area = w * h; // never used:
+// a compiler may delete this line
+```
+
+```js
+let s = 0;
+for (const x of xs) s += x;
+// s is never used: the loop is dead
+```
+
+```js
+let sink = 0;
+sink += sumAll(xs); // keep the result
+console.log(sink);  // now it is live
+```
+
+</Examples>
+
+The first is the simplest case: `area` is computed and then never read,
+so by the rules above it is dead, and so is the multiplication. The
+second is the benchmark case: the loop builds `s`, but nothing reads `s`
+afterwards, so the whole loop is dead, and an optimizer that can prove
+it may remove the loop. The third is the fix this book's harness uses:
+every result is added into `sink`, and `sink` is printed, so the sum is
+live, the loop that produced it is live, and the work has to happen.
+Spot the difference between the two:
+
+```js
+// broken: the result goes nowhere
+const t0 = performance.now();
+sumAll(xs);
+const ms = performance.now() - t0;
+```
+
+```js
+// working: the result is kept
+const t0 = performance.now();
+sink += sumAll(xs);
+const ms = performance.now() - t0;
+```
+
+Neither throws an error, which is what makes this trap dangerous: the
+broken version quietly reports a number, and you have no way to tell
+from the number alone whether the work happened.
+
+<Prompts ids={['dce-what', 'dce-legal', 'sink-why']} />
+
+<Callout kind="engine" label="Under the hood">
+The harness behind this book's charts (`engine/ts/packages/bench`)
+builds both defences into its core: a warm-up of at least 300
+milliseconds and five runs, and a `sink` that every run's result is
+added into, read at the end of each case. It also has to deal with the
+two traps of the next chapter: a single timing is one roll of the dice,
+and one benchmark can leave the engine in a state that changes the next
+one's result.
+</Callout>
+
+## Your turn
+
+The core exercise hands you the broken stopwatch from the start of the
+chapter; fix its first two problems.
+
+<Exercise id="warmBench" />
+
+## What you learned
+
+- **JIT warm-up:** V8 interprets bytecode first and recompiles hot code
+  with faster tiers that rely on feedback, so a benchmark must warm up
+  before it measures.
+- **Deoptimization** throws optimized code away when one of its guesses
+  breaks, and the code is slow again for a while.
+- **Dead-code elimination** may delete work whose result is never used;
+  it is legal because the program's output cannot change.
+- A **sink** keeps every measured result observable, so the work cannot
+  be deleted.
+
+Next: how to summarize noisy timings honestly, and why every case in
+this book's benchmark ran in its own fresh process.
+
+<Quiz />

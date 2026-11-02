@@ -1,4 +1,4 @@
-// New references for the second half of chapter 35 (staged split: conditional, template literal and utility types).
+// New references for the second half of chapter 37 (staged split: conditional, template literal and utility types).
 export default [
   {
     id: 'ts-conditional-types',
@@ -10,7 +10,7 @@ export default [
     url: 'https://www.typescriptlang.org/docs/handbook/2/conditional-types.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/documentation/copy/en/handbook-v2/Type%20Manipulation/Conditional%20Types.md (front matter permalink /docs/handbook/2/conditional-types.html)',
-    shaped: 'Chapter 35b: T extends U ? X : Y, infer, and distribution over unions (and avoiding it with [T]).',
+    shaped: 'Chapter 37b: T extends U ? X : Y, infer, and distribution over unions (and avoiding it with [T]).',
   },
   {
     id: 'ts-template-literal-types',
@@ -22,7 +22,7 @@ export default [
     url: 'https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/documentation/copy/en/handbook-v2/Type%20Manipulation/Template%20Literal%20Types.md (front matter permalink /docs/handbook/2/template-literal-types.html)',
-    shaped: 'Chapter 35b: string types built from patterns, every combination of unions, and Uppercase, Lowercase, Capitalize and Uncapitalize.',
+    shaped: 'Chapter 37b: string types built from patterns, every combination of unions, and Uppercase, Lowercase, Capitalize and Uncapitalize.',
   },
   {
     id: 'ts-utility-types',
@@ -34,6 +34,6 @@ export default [
     url: 'https://www.typescriptlang.org/docs/handbook/utility-types.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/documentation/copy/en/reference/Utility%20Types.md (front matter permalink /docs/handbook/utility-types.html); definitions compared with lib/lib.es5.d.ts of the typescript 5.9.3 npm package',
-    shaped: 'Chapter 35b: Partial, Required, Readonly, Pick, Omit, Record, Exclude, Extract, NonNullable and ReturnType, and how each is built from mapped and conditional types.',
+    shaped: 'Chapter 37b: Partial, Required, Readonly, Pick, Omit, Record, Exclude, Extract, NonNullable and ReturnType, and how each is built from mapped and conditional types.',
   },
 ];

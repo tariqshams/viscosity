@@ -1,0 +1,350 @@
+---
+n: 36
+day: 9
+part: I
+title: 'TypeScript III: generics in depth'
+tagline: 'A blank in a type is only useful if you can say what may fill it. Constraints say what a type must be able to do, inference fills the blanks for you, and defaults fill them when nothing else can.'
+objectives:
+  - Limit a type parameter with extends, and explain why that keeps more information than a plain annotation.
+  - Predict what TypeScript infers for a generic call, including through a callback, and fill a blank by hand when it cannot.
+  - Give a type parameter a default, and say when the default is used.
+  - Compare generics in TypeScript with Python, Java and C.
+introduces: [generic-constraint, generic-inference, generic-default]
+uses: [typescript, type-annotation, type-checking, interface, type-erasure, generic, union-type, function, parameter, argument, return, call, array, length, push, object, property, dot-access, map, callback, arrow-function, for-of, undefined, variables, numbers, strings, comparison, if, console-log]
+sources: [ts-generics, ts-more-on-functions]
+---
+import ConstraintGate from '../../../components/diagrams/ch036/ConstraintGate';
+import InferSteps from '../../../components/diagrams/ch036/InferSteps';
+
+## A blank that knows too little
+
+In the generics chapter you met `first<T>`, whose type has a blank, `T`,
+that each call fills in, and you saw the checker fill it from the
+arguments. Now try a function that returns the longer of two strings or two arrays:
+
+```ts
+function longest<T>(a: T, b: T): T {
+  return a.length >= b.length ? a : b;
+}
+// error: Property 'length' does not
+// exist on type 'T'.
+```
+
+(The `? :` is the **conditional operator**: `c ? x : y` is `x` when `c`
+is true and `y` otherwise, a one-line `if`.) The checker is right to
+refuse: `T` may be *any* type, and a number has no `length`. We want to
+say
+"`T` can be any type, **as long as** it has a numeric `length`".
+
+## Constraints: what the blank must be able to do
+
+<Analogy title="a job advert">
+An advert says "drivers wanted: must hold a driving licence". Anyone may
+apply, and the employer does not care about the rest; however, on the
+first day it can hand every new driver a set of keys, because the advert
+promised a licence.
+<span slot="breaks">An employer checks licences one person at a time, at
+the interview; the checker proves the promise for every call before the
+program runs, and the check is then erased.</span>
+</Analogy>
+
+<Analogy title="a plug socket">
+A wall socket takes any appliance with the right plug, and does not care
+what the appliance does; once plugged in, a kettle is still a kettle, not
+a "generic plugged-in thing".
+<span slot="breaks">A plug either fits or it does not; a type passes a
+constraint as long as it has *at least* what is asked, so a type with many
+extra properties fits a constraint that asks for one.</span>
+</Analogy>
+
+The word for "as long as" is `extends`:
+
+```ts
+function longest<
+  T extends { length: number }
+>(a: T, b: T): T {
+  return a.length >= b.length ? a : b;
+}
+longest('ab', 'c');      // 'ab': a string
+longest([1, 2], [1, 2, 3]); // number[]
+longest(10, 100);
+// error: Argument of type 'number' is not
+// assignable to parameter of type
+// '{ length: number; }'.
+```
+
+`T extends { length: number }` reads "T is some type with at least a
+numeric `length`". Inside the function, that promise makes `a.length`
+allowed; at each call, the checker tests the argument against it, so a
+string or an array passes and `10` fails<Cite id="ts-more-on-functions" />.
+
+<Figure takeaway="A constraint lets through every type with what it asks for, and each keeps its own name." caption="Four argument types meet T extends { length: number }. string and Particle[] both have a numeric length, so T becomes that exact type. number has no length; a Set has size instead, so both are rejected.">
+  <ConstraintGate />
+</Figure>
+
+Why not skip `T` and label the parameters directly? Because the answer
+would forget what it was:
+
+```ts
+type HasLen = { length: number };
+function longer(a: HasLen, b: HasLen) {
+  return a.length >= b.length ? a : b;
+}
+longer('ab', 'c').toUpperCase();
+// error: Property 'toUpperCase' does not
+// exist on type '{ length: number; }'.
+longest('ab', 'c').toUpperCase(); // fine
+```
+
+(`type` names a type, as in the tagged-unions chapter.) `longer` accepts the same
+arguments, however its result is only "a thing with a length", so string
+methods are gone; `longest` hands back `T`, which here is `string`.
+
+<Callout kind="definition">
+A **generic constraint**, `T extends C`, limits a type parameter to types
+that have at least what `C` describes. Inside the generic, anything `C`
+allows is allowed on `T`; at each use, the type that fills `T` must
+satisfy `C`, or the checker reports an error<Cite id="ts-generics" />.
+</Callout>
+
+<Examples of="generic-constraint">
+
+```ts
+function size<T extends { length: number }>(
+  x: T) { return x.length; }
+size('hello'); // 5
+```
+
+```ts
+interface Named { name: string }
+function hello<T extends Named>(x: T) {
+  return 'Hello, ' + x.name;
+}
+hello({ name: 'Ada', age: 36 }); // fine
+```
+
+```ts
+function kindOf<T extends { kind: string }>(
+  node: T) { return node.kind; }
+kindOf({ kind: 'num', value: 1 }); // 'num'
+```
+
+</Examples>
+
+The first is the smallest constraint: `size` accepts anything with a
+numeric `length`. The second shows that extra properties are fine: the
+`age` was never asked for, and the object still fits. The third works on
+any syntax-tree node from the tagged-unions chapter, since each has a
+`kind`.
+
+<Formal title="The typing rule for a constrained call">
+
+```text
+f : <T extends C>(x: T) => T
+Γ ⊢ a : A        A ≤ C
+──────────────────────────
+     Γ ⊢ f(a) : A
+```
+
+<span slot="read">If f is a generic function whose blank T must fit C,
+and the argument a has type A, and A fits C (the symbol ≤ reads "is
+assignable to": A has at least what C asks for), then the call f(a) has
+type A, the argument's own exact type, not C.</span>
+</Formal>
+
+<Prompts ids={['constraint-what', 'constraint-error', 'constraint-keeps']} />
+
+## Inference: filling the blanks for you
+
+No call above wrote `longest<string>(...)`, because inference filled the
+blank. With one blank that is easy; here is what happens with two, and
+where it stops working.
+
+<Analogy title="a crossword">
+In a crossword, once you write one answer across, its letters fill in
+part of the answers going down; those follow from the squares already
+filled.
+<span slot="breaks">A crossword solver can guess, rub out and try again;
+the checker does not guess. When the clues disagree, it reports an error
+and leaves you to fill the blank yourself.</span>
+</Analogy>
+
+Step through how the checker fills two blanks in one call:
+
+<InferSteps client:visible />
+
+<Callout kind="definition">
+**Generic inference** is the checker working out the type arguments of a
+generic call by lining up each argument's type with its parameter's type.
+When it cannot (nothing to read, or clues that disagree), you write the
+type arguments yourself, as in
+`f<string>(...)`<Cite id="ts-more-on-functions" />.
+</Callout>
+
+<Examples of="generic-inference">
+
+```ts
+first([true, false]);
+// T is boolean, so: boolean | undefined
+```
+
+```ts
+function combine<T>(a: T[], b: T[]): T[] {
+  return a.concat(b);
+}
+combine([1, 2], ['a']);
+// error: Type 'string' is not
+// assignable to type 'number'.
+combine<number | string>([1, 2], ['a']);
+```
+
+```ts
+const seen = new Map();
+// Map<any, any>: nothing to infer from
+const ids = new Map<string, number>();
+```
+
+</Examples>
+
+In the first, the argument is a `boolean[]`, so `T` is `boolean`. In the
+second the clues disagree: the first array says `T` is `number`, so the
+`'a'` is reported; if mixing is what you want, fill the blank by hand
+with `number | string`. The third catches people in real code: `new
+Map()` has nothing to learn from, so it becomes `Map<any, any>`, which
+switches checking off; writing `<string, number>` keeps it on.
+
+<Prompts ids={['infer-what', 'infer-callback', 'infer-explicit', 'infer-empty']} />
+
+## Defaults: a blank with a usual answer
+
+Some generic types are nearly always filled the same way: a token from a
+scanner usually carries its text as a string, though a number token might
+carry the number itself. A **default** makes the usual case short.
+
+<Analogy title="ordering a coffee">
+Ask for "a latte" and you get ordinary milk; you only mention the milk
+if you want something else.
+<span slot="breaks">A barista might ask which milk you would like; the
+checker never asks, and it also checks that the default itself fits the
+blank's constraint.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **generic default**, `<T = D>`, gives a type parameter a fallback type
+`D`. It is used when you leave the type argument out and inference has
+nothing to fill it with. Parameters with defaults must come after those
+without, and a default must satisfy the parameter's constraint, if it has
+one<Cite id="ts-generics" />.
+</Callout>
+
+<Examples of="generic-default">
+
+```ts
+interface Token<V = string> {
+  kind: string;
+  value: V;
+}
+const t: Token = { kind: 'op', value: '+' };
+const n: Token<number> =
+  { kind: 'num', value: 42 };
+```
+
+```ts
+function make<T = string>(): T[] {
+  return [];
+}
+make();         // string[]
+make<number>(); // number[]
+```
+
+```ts
+interface Pair<A = string, B> { a: A; b: B }
+// error: Required type parameters may
+// not follow optional type parameters.
+```
+
+</Examples>
+
+In the first, `Token` alone means `Token<string>`, while `Token<number>`
+chooses for itself. In the second, `make()` has nothing to infer from, so
+the default `string` is used (with no default, `T` would be `unknown`, the
+type that allows nothing until you check). The third breaks the ordering
+rule: after a blank with a default, every blank needs one, so that
+`Pair<number>` could never be ambiguous.
+
+<OtherLanguages>
+
+```ts
+function longest<
+  T extends { length: number }
+>(a: T, b: T): T {
+  return a.length >= b.length ? a : b;
+}
+```
+
+```python
+from collections.abc import Sized
+
+def longest[T: Sized](a: T, b: T) -> T:
+    return a if len(a) >= len(b) else b
+```
+
+```java
+static <T extends CharSequence> T longest(
+        T a, T b) {
+    return a.length() >= b.length() ? a : b;
+}
+```
+
+```c
+/* no generics: pass sizes and pointers */
+const void *longest(const void *a,
+                    size_t na,
+                    const void *b,
+                    size_t nb) {
+    return na >= nb ? a : b;
+}
+```
+
+</OtherLanguages>
+
+TypeScript and Java read almost alike, `extends` and all, and both
+compilers erase the type parameters before running. Python (3.12 or
+later) writes the constraint as `T: Sized`, but Python itself never
+checks it; a separate checker such as mypy does, much like `tsc`. Java's
+constraint must be a named type (`CharSequence` covers strings), while
+TypeScript accepts any shape. C has no generics: you pass untyped
+pointers (`void *`) and sizes, and nothing checks how the result is used.
+
+<Prompts ids={['default-what', 'default-order']} />
+
+Try it below; the last line is one `tsc` would reject.
+
+<Run id="longest" />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity's compiler fills in generic types everywhere (such as
+`Map<ValueId, Collection>`), and the companion VM's heap has a
+constrained one, `allocate<T extends Obj>(o: T): T`, which hands back
+the exact kind of object it was given. Erased, they cost nothing at run
+time.
+</Callout>
+
+## Your turn
+
+<Exercise id="byId" />
+
+<Exercise id="maxBy" />
+
+## What you learned
+
+- A **generic constraint**, `T extends C`, says what a blank must have,
+  and keeps the exact type that filled it.
+- **Generic inference** fills the blanks from the arguments, callbacks
+  included; when clues are missing or disagree, fill them yourself.
+- A **generic default**, `<T = D>`, is used when you leave the blank out
+  and there is nothing to infer.
+
+Next: types that are computed from other types, key by key.
+
+<Quiz />

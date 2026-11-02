@@ -1,0 +1,340 @@
+---
+n: 40
+day: 10
+part: I
+title: 'Asynchronous code: promises and the event loop'
+tagline: 'Reading a file or asking a server takes ages by a computer’s clock, and JavaScript refuses to sit and wait. Here is what it does instead: a queue, a loop, and a value you can hold before it exists.'
+objectives:
+  - Explain what asynchronous means, and predict the order in which setTimeout callbacks run.
+  - Describe the event loop, and why a long-running loop freezes everything else.
+  - Make a promise, settle it, and read its result with then, catch and finally.
+  - Compare how JavaScript, Python, Java and C run code “later”.
+introduces: [event-loop, promise]
+uses: [callback, first-class-function, arrow-function, function, parameter, return, call, undefined, array, push, length, object, property, method, class, constructor, new, this, closure, throw, try-catch, error-object, error-propagation, call-stack, while-loop, for-of, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-execution-model, mdn-settimeout, node-event-loop, mdn-promise, mdn-using-promises]
+---
+import EventLoopSteps from '../../../components/diagrams/ch040/EventLoopSteps';
+import PromiseStates from '../../../components/diagrams/ch040/PromiseStates';
+
+## A program that has to wait
+
+Reading a file or asking a server takes ages by a computer's clock,
+and if JavaScript stopped to wait, a web page would freeze while it
+waited. Here is what it does instead:
+
+```js
+console.log('order');
+setTimeout(() => console.log('food'), 1000);
+console.log('next');
+```
+
+`setTimeout(fn, ms)` asks for the callback `fn` to be called after
+`ms` milliseconds (thousandths of a second). The output is `order`,
+`next`, and a second later `food`:
+`setTimeout` did not wait; it *scheduled* the callback and returned at
+once. Code that starts something now and finishes it later is called
+**asynchronous**. Who calls that callback, and when? And how do we
+handle a result that arrives later without drowning in callbacks?
+
+## The event loop
+
+<Analogy title="one cook and a rail of order tickets">
+A café has one cook, who takes the oldest ticket from the rail, makes
+that dish from start to finish, then takes the next. While a cake bakes,
+the cook does not stand and watch; a timer rings, and "take the cake
+out" goes onto the rail as a new ticket.
+<span slot="breaks">A real cook can stop halfway through one dish to
+stir another. JavaScript never does: once a callback starts, it runs to
+its end before anything else runs, however urgent the next ticket
+is.</span>
+</Analogy>
+
+<Analogy title="leaving your number at a busy shop">
+Rather than stand at the counter while the shop fetches your order, you
+leave your number and get on with your day; they ring when it is ready.
+The number you leave is the callback.
+<span slot="breaks">The shop can ring you in the middle of a sentence.
+JavaScript never interrupts code that is running: the "ring" waits in a
+queue until the code running now has completely finished.</span>
+</Analogy>
+
+JavaScript runs your code on one **thread** (one line of work, done a
+step at a time), so the café's rule applies: one piece of code runs at a
+time, all the way through. The waiting happens elsewhere: the browser or
+Node (the program that runs JavaScript outside a browser) keeps the
+timer, and when it fires, the callback joins a **queue** (a waiting
+line: first in, first out). Step through it:
+
+<EventLoopSteps client:visible />
+
+<Callout kind="definition">
+The **event loop** runs the program's code to the end, then, again and
+again, takes the oldest callback in the **queue** and runs it, waiting
+when the queue is empty. Each callback **runs to completion**: nothing
+else runs until it returns<Cite id="mdn-execution-model" />. Timers,
+file reads and network replies are watched outside your JavaScript, by
+the browser or Node, which queue a callback as each one
+finishes<Cite id="node-event-loop" />. A function that schedules work
+and returns before it is done, like `setTimeout`, is **asynchronous**.
+</Callout>
+
+<Formal title="The event loop as a loop">
+
+```text
+run the program's code
+repeat forever:
+  wait until the queue is not empty
+  job ← take the oldest job
+  run job until it returns
+```
+
+<span slot="read">Run the whole program. Then, for ever: wait until a
+job is queued, take the one that has waited longest, and run it to its
+end before looking at the queue again. (Node ends the program once
+nothing is queued and no timer or file read is pending.)</span>
+</Formal>
+
+<Examples of="event-loop">
+
+```js
+setTimeout(() => console.log('B'), 0);
+console.log('A');
+// A, then B
+```
+
+```js
+setTimeout(() => console.log('B'), 20);
+setTimeout(() => console.log('A'), 10);
+// A, then B
+```
+
+```js
+setTimeout(() => console.log('timer'), 0);
+const end = Date.now() + 200;
+while (Date.now() < end) {}
+console.log('loop done');
+// loop done, then timer
+```
+
+</Examples>
+
+The first shows that a delay of `0` does not mean "now" but "in a later
+turn of the loop"<Cite id="mdn-settimeout" />, so `A` prints first. In
+the second, timers fire in the order they fall due, not the order they
+were set. The third is a mistake everyone makes once: `Date.now()` is
+the time in milliseconds, so the empty `while` keeps the thread busy for
+200 ms, and the timer, due at once, waits for it; in a browser, the page
+cannot answer clicks meanwhile either.
+
+Run this, then change the delays and predict the new order before you
+run it again:
+
+<Run id="timer-order" />
+
+A one-line `log` saves typing. `start` and `end` print first, because the whole snippet runs before
+any callback; then the timers fire in order of their delays, so `0 ms`
+comes before `10 ms` and `20 ms`, whatever order they were written in.
+
+<Prompts ids={['async-what', 'zero-delay', 'no-interrupt', 'who-waits']} />
+
+<OtherLanguages>
+
+```js
+setTimeout(() => console.log('later'), 100);
+console.log('now');
+// now, then later
+```
+
+```python
+import asyncio
+
+async def main():
+    loop = asyncio.get_running_loop()
+    loop.call_later(0.1, print, 'later')
+    print('now')
+    await asyncio.sleep(0.2)
+
+asyncio.run(main())  # now, then later
+```
+
+```java
+// import java.util.concurrent.*;
+var ex = Executors
+    .newSingleThreadScheduledExecutor();
+ex.schedule(
+    () -> System.out.println("later"),
+    100, TimeUnit.MILLISECONDS);
+System.out.println("now");
+ex.shutdown(); // now, then later
+```
+
+```c
+#include <stdio.h>
+#include <unistd.h>
+
+int main(void) {
+    sleep(1); /* everything stops here */
+    printf("later\n"); /* so "later" */
+    printf("now\n");   /* comes first */
+    return 0;
+}
+```
+
+</OtherLanguages>
+
+Python's `asyncio` is much like JavaScript, but you start its loop
+yourself, with `asyncio.run`. Java runs the callback on a *second
+thread*, truly at the same time as other code, which brings problems
+(two threads changing one object at once) that JavaScript avoids.
+Standard C has no event loop: `sleep` stops everything.
+
+## Promises: a value that will be ready later
+
+Callbacks have two problems. A step that needs an earlier step's result
+must go *inside* its callback, so three steps nest three deep. And
+`try` and `catch` cannot catch an error thrown in a callback:
+
+```js
+try {
+  setTimeout(() => {
+    throw new Error('too late');
+  }, 0);
+} catch (e) { console.log('caught'); }
+// Error: too late (and the program stops)
+```
+
+The `try` only *scheduled* the callback, and was over; when the
+callback throws, in a later turn, no `catch` is on the call stack, so
+Node stops the program. We want something to hold *now* that stands for
+the result *later*, including a result that is an error.
+
+<Analogy title="the buzzer at a food court">
+You order, pay, and are handed a buzzer at once, before your food
+exists; it is your claim on the food. Later it buzzes because the food
+is ready, or the counter calls you over to say they have run out.
+<span slot="breaks">You can glance at a buzzer to see whether it has
+gone off. Your code cannot peek at a promise: it can only ask for a
+function to be called when it settles. (Node's console shows the state,
+for debugging, but your program cannot read it.)</span>
+</Analogy>
+
+<Analogy title="an IOU note">
+A friend writes "I owe you £10" on a slip of paper: a real thing you
+can keep or pass on, though the money comes later; one day it is paid,
+or your friend admits it never will be.
+<span slot="breaks">An IOU can be paid in part, or paid twice by
+mistake. A promise settles exactly once, with one whole value or one
+reason, and everyone who asks it gets that same answer.</span>
+</Analogy>
+
+<Figure takeaway="Pending, then fulfilled or rejected, once." caption="A promise starts pending. resolve(v) fulfils it with the value v, and every then callback receives v; reject(e) rejects it with the reason e, and every catch callback receives e.">
+  <PromiseStates />
+</Figure>
+
+Here is a promise made by hand, for a delay:
+
+```js
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+wait(1000).then(() => console.log('done'));
+```
+
+`new Promise(...)` makes a pending promise and runs the function you
+give it at once, handing it two functions, usually named `resolve` and
+`reject` (this one needs only the first). It passes `resolve` to
+`setTimeout`, so a second later the timer calls `resolve()` and the
+promise is fulfilled. `wait` returns the promise straight away, and
+`.then(...)` asks for a callback once it is fulfilled.
+
+<Callout kind="definition">
+A **promise** is an object standing for a result that may not exist
+yet. It starts **pending** and **settles** once: **fulfilled** with a
+value, or **rejected** with a reason (usually an
+`Error`)<Cite id="mdn-promise" />. `p.then(f)` calls `f(value)` on
+fulfilment, `p.catch(g)` calls `g(reason)` on rejection, and
+`p.finally(h)` calls `h()` either way; each returns a **new** promise
+for its callback's result, so they chain, and their callbacks always
+run in a later turn of the loop, never straight
+away<Cite id="mdn-using-promises" />.
+</Callout>
+
+<Examples of="promise">
+
+```js
+Promise.resolve(5)
+  .then((n) => console.log(n));
+console.log('first');
+// first, then 5
+```
+
+```js
+Promise.resolve(2)
+  .then((n) => n * 10)
+  .then((n) => { throw new Error(n); })
+  .then(() => console.log('skipped'))
+  .catch((e) => console.log(e.message))
+  .finally(() => console.log('end'));
+// 20, then end
+```
+
+```js
+import { readFile } from 'node:fs/promises';
+readFile('main.drip', 'utf8')
+  .then((src) => console.log(src.length))
+  .catch((e) => console.log(e.message));
+// ENOENT: no such file or directory...
+```
+
+</Examples>
+
+In the first, `Promise.resolve(5)` is already fulfilled, yet `first`
+prints first: a `then` callback always waits for a later turn. In the
+chain, each `then` hands its result to the next, so `20` arrives where
+it is thrown; that rejects the step's promise, the next `then` is
+skipped and `catch` gets the error, as a thrown error skips lines on
+its way to a `catch` block; `finally` runs either way. The third is real
+Node code: `readFile` returns a promise for a file's text, rejected
+here because the file is missing.
+
+The commonest promise mistake is a missing `return` in a `then` callback
+with braces:
+
+```js
+Promise.resolve(2)
+  .then((n) => { n * 10; })
+  .then((m) => console.log(m));
+// undefined
+```
+
+With braces, the arrow has a full body, so `n * 10` is worked out and
+thrown away and the callback returns `undefined`. Write
+`(n) => n * 10`, or `{ return n * 10; }`.
+
+<Prompts ids={['promise-what', 'promise-states', 'then-returns', 'then-later']} />
+
+## Your turn
+
+The core exercise wraps an old callback-style function in a real
+promise; the extra one builds a tiny promise of your own, to show what
+is inside one.
+
+<Exercise id="promisify" />
+
+<Exercise id="later" />
+
+## What you learned
+
+- **Asynchronous** code starts work now and finishes it later.
+- The **event loop** runs callbacks from a **queue** one at a time;
+  each **runs to completion**, so a slow one delays everything.
+- A **promise** is **pending**, then **fulfilled** or **rejected**,
+  once; `then`, `catch` and `finally` return new promises, so they
+  chain.
+
+Next: `async` and `await`, which let promise code read top to bottom,
+and the second, faster queue that promise callbacks really wait in.
+
+<Quiz />

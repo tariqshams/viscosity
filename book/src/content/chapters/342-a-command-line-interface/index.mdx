@@ -1,0 +1,266 @@
+---
+n: 342
+day: 86
+part: XIV
+title: 'A command-line interface'
+tagline: 'The engine is a library. People reach it through the terminal, as a list of words, two output streams and one small number when it finishes. Here is the Rust CLI that turns those into a compile: a hand-written parser, two kinds of error, and a help text it shares with TypeScript.'
+objectives:
+  - Say what a CLI receives from the shell and what it gives back, including the exit status.
+  - Read the Rust CLI's hand-written argument parser and write one in the same style.
+  - Tell a usage error from any other error, and say why only one prints the help.
+  - Say what clap would change, and why parity makes that a real cost here.
+introduces: [cli, argument-parsing]
+uses: [rust, cargo, crate, struct, enum, match, pattern, option, result, question-mark, string-vs-str, slice, vec, rust-closure, rust-iterator, error-enum, cargo-test, workspace, viscosity-rs, engine-parity, rust-explain, rust-pgo, data-parallelism, diagnostic, npm-package, compile-time-performance]
+sources: [rust-book-ch12-cli, rust-std-env-args, rust-std-exitcode, clap-readme]
+---
+import ArgvSteps from '../../../components/diagrams/ch342/ArgvSteps';
+
+## A library needs a front door
+
+Part XIII built a library, `compile(source, &JsPlugin, opts)`. Nobody
+types that. They type this:
+
+```
+$ viscosity explain particles.js
+```
+
+The crate that answers is `engine/rust/crates/cli`, built into a binary
+called `viscosity`. Most of its `main.rs` is plumbing between the shell
+and the compiler. That plumbing has conventions older than Rust, and
+Viscosity adds one rule: the Rust CLI must behave like the TypeScript
+one.
+
+<Callout kind="intuition">
+A CLI is a counter at the post office. You slide a form under the glass
+(the words you typed). The clerk hands back a receipt through one slot
+and complaints through another. And as you leave, a light over the door
+turns green or red, so the next person in the queue (often a script)
+knows how it went without reading anything.
+</Callout>
+
+<Callout kind="definition">
+A **command-line interface** (**CLI**) is a program driven from a
+terminal. It receives a list of strings, its **arguments**, from the
+shell. It writes results to **standard output** (stdout) and messages to
+**standard error** (stderr), so a user can send the results to a file
+and still see the errors<Cite id="rust-book-ch12-cli" />. When it ends,
+it returns an **exit status** to whoever started it: 0 for success, and
+by convention anything else for failure<Cite id="rust-book-ch12-cli" />.
+</Callout>
+
+In Rust the arguments come from `std::env::args()`, the program's path
+first<Cite id="rust-std-env-args" />, and `main` can return an
+`ExitCode`, with `SUCCESS` and `FAILURE` built in<Cite id="rust-std-exitcode" />.
+
+<Prompts ids={['cli-three-outputs', 'stderr-why']} />
+
+## A loop and a match
+
+Track B's outline planned this chapter around clap, the usual Rust
+library for parsing arguments. The real CLI doesn't use it. Its parser
+is a `while` loop with one `match` arm per flag, simplified here from
+`parse_args` in `main.rs`:
+
+```rust
+let mut i = 1; // argv[0] is the command
+while i < argv.len() {
+    let a = argv[i].as_str();
+    let mut next = || {
+        i += 1;
+        argv.get(i).cloned().ok_or_else(
+            || Usage(format!(
+                "{a} needs a value"
+            )),
+        )
+    };
+    match a {
+        "-o" | "--out" => {
+            args.out = next()?
+        }
+        "--frames" => args.frames = true,
+        // ... --mode, --bounds, --jobs ...
+        _ if !a.starts_with('-') => {
+            args.files.push(a.to_string())
+        }
+        _ => return Err(Usage(format!(
+            "unknown option {a}"
+        ))),
+    }
+    i += 1;
+}
+```
+
+The closure `next` is the one clever part. It borrows `i` mutably,
+moves it on to the flag's value and returns it, or a usage error if the
+line ended; `?` passes the error straight up. Words without a dash are
+files, so flags and files can come in any order:
+
+<ArgvSteps client:visible />
+
+<Callout kind="definition">
+**Argument parsing** turns the list of words into typed options: here,
+an `Args` struct with the command, the files, the output path and a
+`CompileOptions`. A **flag** like `--frames` is a switch. An
+**option** like `-o out/` takes the next word as its value. The other
+words are **positional** arguments: the command, then the files.
+</Callout>
+
+<Prompts ids={['next-closure', 'positional']} />
+
+## Two kinds of error
+
+Some failures are about the command line itself: an unknown flag, a
+missing value, no files. Help is useful then. A missing file or a
+syntax error is different, and 27 lines of help would bury the one
+line that matters. So the error type makes the distinction:
+
+```rust
+/// Only a usage error (the command line
+/// itself was wrong) gets the help text.
+enum CliError {
+    Usage(String),
+    Other(String),
+}
+
+impl From<String> for CliError {
+    fn from(e: String) -> Self {
+        CliError::Other(e)
+    }
+}
+```
+
+With the `From` impl, `?` turns a plain `String` error into `Other`
+(chapter 279). It all ends in one `match` in `main`:
+
+```rust
+match run(&argv, &mut out, &mut err) {
+    Ok(true) => ExitCode::SUCCESS,
+    Ok(false) => ExitCode::FAILURE,
+    Err(CliError::Usage(e)) => {
+        // message, blank line, HELP
+        ExitCode::FAILURE
+    }
+    Err(CliError::Other(e)) => {
+        // "viscosity: {e}" only
+        ExitCode::FAILURE
+    }
+}
+```
+
+(The `write!` calls are shortened to comments.) I ran the release
+build: `--mode fast`, `--bogus`, a missing file and a syntax error all
+exit 1, and only the first two print the help. This program plays the
+same game:
+
+<Run id="dispatch" />
+
+<Prompts ids={['usage-vs-other', 'exit-one']} />
+
+## The help, the version, and many files
+
+`--help`, `-h` and no arguments print `HELP`, a 27-line string
+constant, and exit 0. The TypeScript CLI has the same constant (the
+website's CLI reference is generated from it). The Rust copy differs
+only where the port does: two languages, not three, since TypeScript
+input is rejected; `profile` "needs node" (chapter 331); `--jobs` runs
+in parallel; and there is no `--parser`.
+
+`--version` prints `viscosity 0.0.1` from both. Rust bakes the number
+in when it compiles: `env!("CARGO_PKG_VERSION")` is the workspace
+version from `Cargo.toml`. The TS CLI reads `package.json` when it
+runs. Both checks look only at the first word, so
+`viscosity explain a.js --help` is "unknown option --help" (followed by
+the help anyway).
+
+Given several files, `explain` prints each report under a
+`== a.js ==` header, in your order, however many threads compiled them
+(chapter 340). `build` needs `-o <dir>` and writes each file there
+under its own name. A file that fails is reported as
+`viscosity: bad.js: Unexpected token (1:6)` while the others
+still compile: that is `Ok(false)`, status 1. A single file's error
+ends the run.
+
+<Prompts ids={['version-source', 'multi-fail']} />
+
+## What clap would change
+
+clap is the "Command Line Argument Parser for Rust", declarative or
+procedural<Cite id="clap-readme" />. Here is part of the CLI in clap's
+declarative style. It is design, not code from the repo; I built it
+against clap 4.6.7 to see what it does.
+
+```rust
+// Design: not in the repository.
+#[derive(Parser)]
+#[command(version)]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Show every decision and why
+    Explain {
+        files: Vec<String>,
+        #[arg(long)]
+        frames: bool,
+        #[arg(long, default_value_t = 64.0)]
+        min_size: f64,
+    },
+}
+```
+
+Shorter, and clap writes the help itself. But it is a different CLI.
+On `--bogus` it printed `error: unexpected argument '--bogus' found`,
+not `viscosity: unknown option --bogus`, and exited with status 2,
+clap's code for usage errors, as GNU `ls` and Python's argparse
+use<Cite id="clap-readme" />. It refused `--min-size 0x10`, which both
+real CLIs read as 16 because they follow JavaScript's `Number()` (the
+Rust one has `js_to_number` for that). It accepted `--min-size inf`,
+which both refuse.
+
+The repository doesn't say why the port skipped clap. The code points
+one way: the port promises to behave like the TypeScript CLI, and
+`multi_file.rs` runs both CLIs and compares their output, and, for bad
+`--min-size` values, their messages and exit statuses. With clap, those
+would be clap's to choose. Size is a weaker reason: clap's derive build
+added 17 crates, and `cargo tree` already lists 84 outside the
+workspace under the CLI.
+
+<Prompts ids={['clap-diff', 'why-hand']} />
+
+<Callout kind="engine" label="Under the hood">
+A CLI's messages and exit statuses are part of its public API: scripts
+depend on them (chapter 343). One rough edge I found: `main` collected
+`std::env::args()`, so a file name that isn't valid UTF-8 panicked
+before parsing, with exit status 101, as the standard library
+documents<Cite id="rust-std-env-args" />. It now collects `args_os()`,
+and such a file compiles (`tests/os_args.rs`). The TS CLI turns the bad
+byte into U+FFFD and then can't open the file.
+</Callout>
+
+## Your turn
+
+Write `parse` for a small part of the CLI: files, `-o`, `--frames` and
+`--mode`. The messages are given; your job is the walk, and deciding
+what each word is.
+
+<Exercise id="parse" />
+
+## What you learned
+
+- A **CLI** gets its **arguments** as strings, writes results to
+  **stdout** and messages to **stderr**, and ends with an **exit
+  status**: 0 for success, 1 for every failure in Viscosity.
+- **Argument parsing** in the Rust CLI is a `while` loop and a `match`:
+  flags set booleans, options take the next word through a `next`
+  closure, and other words are files.
+- `CliError` separates **usage errors**, which print the help, from
+  everything else, which doesn't.
+- The **help** is one constant in each CLI; the versions differ only
+  where the ports do.
+- clap would be shorter, and would change messages, number parsing and
+  the exit status (2), all of which parity holds fixed.
+
+<Quiz />

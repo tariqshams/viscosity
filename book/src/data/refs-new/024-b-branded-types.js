@@ -1,4 +1,4 @@
-// New references for the second half of chapter 42 (staged split: branded types).
+// New references for the second half of chapter 44 (staged split: branded types).
 export default [
   {
     id: 'ts-type-compatibility',
@@ -10,7 +10,7 @@ export default [
     url: 'https://www.typescriptlang.org/docs/handbook/type-compatibility.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/documentation/copy/en/reference/Type%20Compatibility.md (front matter permalink /docs/handbook/type-compatibility.html; typescriptlang.org itself was not reachable from the authoring machine): “Type compatibility in TypeScript is based on structural subtyping. Structural typing is a way of relating types based solely on their members. This is in contrast with nominal typing.”, and C# and Java given as nominally-typed languages.',
-    shaped: 'Chapter 42b: structural typing, why two aliases of number are the same type, and the contrast with nominal typing in Java.',
+    shaped: 'Chapter 44b: structural typing, why two aliases of number are the same type, and the contrast with nominal typing in Java.',
   },
   {
     id: 'ts-object-types',
@@ -22,7 +22,7 @@ export default [
     url: 'https://www.typescriptlang.org/docs/handbook/2/objects.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/documentation/copy/en/handbook-v2/Object%20Types.md (front matter permalink /docs/handbook/2/objects.html): sections “Intersection Types” (“An intersection type is defined using the & operator”), “Index Signatures” and “readonly Properties”.',
-    shaped: 'Chapters 42b and 25: intersection types (A & B) for brands, and index signatures ({ [key: string]: T }) for JSON objects.',
+    shaped: 'Chapters 44b and 25: intersection types (A & B) for brands, and index signatures ({ [key: string]: T }) for JSON objects.',
   },
   {
     id: 'ts-path-brand',
@@ -34,6 +34,6 @@ export default [
     url: 'https://github.com/microsoft/TypeScript/blob/v5.9.3/src/compiler/types.ts',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript/v5.9.3/src/compiler/types.ts, lines 21–23: “// branded string type used to store absolute, normalized and canonicalized paths”, “// arbitrary file name can be converted to Path via toPath function”, “export type Path = string & { __pathBrand: any; };”. The same declaration appears as `type Path = string & { __pathBrand: any; }` in lib/typescript.d.ts of the typescript 5.9.3 npm package installed in book/node_modules.',
-    shaped: 'Chapter 42b: a real branded type in a production compiler, made in one place (toPath).',
+    shaped: 'Chapter 44b: a real branded type in a production compiler, made in one place (toPath).',
   },
 ];

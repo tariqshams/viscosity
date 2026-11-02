@@ -1,0 +1,223 @@
+---
+n: 315
+day: 79
+part: XIII
+title: 'VIR in Rust'
+tagline: 'Both engines print the same VIR, line for line. Underneath, the TypeScript blocks hold instruction objects while the Rust blocks hold numbers: four kinds of typed id into arenas that the module owns. Here is why, and what it changes.'
+objectives:
+  - Compare the TypeScript VIR with the arena IR in engine/rust’s vir crate, type by type.
+  - Explain why a Rust block holds ValueIds instead of instructions, and what happens to a removed instruction’s slot.
+  - Read VIR’s Op enum and Use lists as replacements for TypeScript’s optional fields and object references.
+  - Explain why the port formats numbers with js_number instead of Rust’s own formatting.
+introduces: [ir-arena]
+uses: [viscosity-rs, vir, record-collection-nodes, ssa, ssa-construction, phi-node, basic-block, cfg, arena, typed-index, object-handle, struct, impl, enum, match, pattern, option, vec, ownership, borrow, borrow-checker, shared-vs-mutable, size-of, typescript, interface, optimization-report, rust-iterator, drip-rs]
+sources: [braun2013, rust-std-flt2dec, ecma262]
+---
+import ArenaSteps from '../../../components/diagrams/ch315/ArenaSteps';
+
+## The same listing
+
+Chapter 202 printed VIR with `printFunc`. The Rust crate has a
+`print_func`. I lowered the same three-line particle program with both
+engines and compared the listings with `diff`: no difference. Here is
+the loop body from either one:
+
+```
+  b6:  ; preds b5
+    %18 = index.get %13, %15
+    %19 = field.get %18 .x
+    %20 = field.get %18 .vx
+    %21 = binop + %19, %20
+    field.set %18, %21 .x
+    br b7
+```
+
+Same blocks, same phis, same numbers. The analyses read the same graph
+in both engines, and that is what makes parity possible. But the data
+structures behind the text differ, and the difference is ownership.
+
+## Who owns an instruction?
+
+In TypeScript, a block holds its instruction objects, and the module
+keeps a second list of the very same objects, by id:
+
+```ts
+interface Block {
+  insts: Inst[];   // the objects
+  term: Terminator;
+  preds: BlockId[];
+}
+interface Module {
+  values: Inst[];  // the same objects
+}
+```
+
+Two references to one object are nothing in JavaScript. In Rust a value
+has one owner (chapter 259), so the port picks one: the module.
+
+```rust
+pub struct Block {
+    pub id: BlockId,
+    pub insts: Vec<ValueId>,
+    pub term: Terminator,
+    pub preds: Vec<BlockId>,
+}
+pub struct Module {
+    pub functions: Vec<Func>,
+    pub bindings: Vec<Binding>,
+    pub values: Vec<Inst>,
+    // language, source, main
+}
+```
+
+(Adapted from `crates/vir/src/lib.rs`.) Every instruction of every
+function lives in `values`, and its id is its index. A block is a list
+of ids. Step through the real VIR of a small `sum(n)` function:
+
+<ArenaSteps client:visible />
+
+<Callout kind="intuition">
+A library doesn't let each reading list own its books. The books stay
+on the shelves, and a reading list is a column of shelf numbers. Ten
+lists can name the same book, and a book taken out of every list still
+has its shelf.
+</Callout>
+
+<Callout kind="definition">
+An **IR arena** stores the nodes of an intermediate representation in
+`Vec`s owned by one container, here the `Module`, and refers to them by
+**typed ids**: `ValueId`, `BlockId`, `FuncId` and `BindingId`, each a
+`u32` newtype. A node's id is its index in its arena, ids never move,
+and a reference between nodes is an id rather than a pointer.
+</Callout>
+
+<Prompts ids={['ira-what', 'ira-block', 'ira-dead']} />
+
+## Four kinds of id
+
+In the TypeScript VIR, `type ValueId = number` and
+`type BlockId = number` are only names for `number`. I checked with
+`tsc --strict`: a `BlockId` passes as a `ValueId` without a word. The
+Rust crate writes the newtype once, as a `macro_rules!` template
+(chapter 298), and stamps it out four times. Simplified:
+
+```rust
+macro_rules! id_type {
+    ($name:ident, $prefix:literal) => {
+        #[derive(Copy, Clone, PartialEq,
+            Eq, PartialOrd, Ord, Hash)]
+        pub struct $name(pub u32);
+        // + index(), and Debug that
+        // prints "%3", "b1", "f0", ...
+    };
+}
+id_type!(ValueId, "%");
+id_type!(BlockId, "b");
+```
+
+Each id is 4 bytes. Run it, then uncomment the marked line:
+
+<Run id="typed-vir" />
+
+```
+error[E0308]: mismatched types
+   |     m.inst(b);
+   |            ^ expected `ValueId`,
+   |              found `BlockId`
+```
+
+That is rustc 1.97 on the program above (trimmed). It is chapter 273's
+idea, applied to a compiler's IR instead of a VM's heap.
+
+<Prompts ids={['ira-alias', 'ira-copy']} />
+
+## Optional fields become variants
+
+A TypeScript `Inst` carries every possible payload as an optional
+field, `value?`, `field?`, `binding?`, `fields?` and more, and code
+that knows the op asserts the right one is there:
+`m.bindings[i.binding!].name`. The Rust `Op` is an enum whose 22
+variants carry their own data:
+
+```rust
+pub enum Op {
+    Const(Const),
+    LoadBinding { binding: BindingId },
+    FieldGet { field: String },
+    IndexGet,
+    // ... 22 in all
+}
+```
+
+A `match` on `Op::LoadBinding { binding }` hands you the binding;
+there is nothing to assert. `op.name()` still returns the TypeScript
+spelling, `"index.get"`, because explain text quotes it. The other types
+change the same way. `Terminator` is an enum whose `CondBr` has an
+`else_` field (`else` is a keyword). A binding's owner is
+`Option<FuncId>` where TypeScript used `-1`. And a use is
+`Use::Inst(ValueId)` or `Use::Term { func, block }`, ids again where
+TypeScript stored object references.
+
+<Prompts ids={['ira-op', 'ira-use']} />
+
+## Numbers, the JavaScript way
+
+Explain text puts numbers in sentences, and TypeScript formats them with
+JavaScript's `String(x)`. Rust's `{}` agrees for everyday numbers and
+disagrees for large and tiny ones (chapter 294). So the port formats
+every number in its output with `vir::js_number`, the same algorithm
+as drip-rs's `format_number`: take the shortest round-trip digits from
+Rust's `{:e}`<Cite id="rust-std-flt2dec" />, then place the point as
+ECMAScript does<Cite id="ecma262" />. One case differs from drip-rs:
+`js_number(-0.0)` is `"0"`, as `String(-0)` is, where Drip prints `-0`.
+
+To see it matter, I compiled the particle program with a minimum size
+of `1e21` through both engines' `compile`. Both printed this line
+(wrapped here):
+
+```
+· about 100 elements: below the
+  1e+21-element threshold, where
+  the benefit is too small
+```
+
+With `{}`, Rust would have written `1000000000000000000000`.
+
+<Prompts ids={['ira-number']} />
+
+<Callout kind="engine" label="Under the hood">
+Arenas make the borrow checker's job easy. The analyses take `&Module`
+and pass ids around, so any number of them can read at once. The SSA
+builder (Braun et al.'s algorithm, chapter 163<Cite id="braun2013" />)
+does not own the module either: in the words of `builder.rs`, every
+method that touches it takes `&mut Module`, which "lets a front-end
+keep one module and switch between several function builders (one per
+nested function) freely". A removed phi keeps its slot, marked
+`opaque` with the note `removed-trivial-phi`, so no id ever moves, and
+`all_insts()` walks blocks, not `values`, so it skips such slots. The
+cost is indirection: on this machine an `Inst` is 112 bytes, and every
+step from a block to an instruction is an index into `values`.
+</Callout>
+
+<Prompts ids={['ira-borrow']} />
+
+## Your turn
+
+<Exercise id="useLists" />
+
+## What you learned
+
+- The TypeScript VIR shares instruction objects between blocks and
+  `values`. The Rust **IR arena** gives them one owner, `Module::values`,
+  and blocks list **typed ids**.
+- `ValueId`, `BlockId`, `FuncId` and `BindingId` are `u32` newtypes made
+  by one macro; mixing them is E0308, where TypeScript's number aliases
+  mix silently.
+- Ids never move: a removed phi keeps its slot, and walks go through
+  blocks.
+- Optional fields become **enum variants** with their data, and use
+  lists hold ids.
+- Numbers in the output go through `js_number`, so they print as
+  JavaScript prints them.
+
+<Quiz />

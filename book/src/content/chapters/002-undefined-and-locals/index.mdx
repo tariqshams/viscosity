@@ -10,7 +10,7 @@ objectives:
   - Follow calls inside calls, each with its own page of local variables.
 introduces: [undefined, local-variable]
 uses: [function, parameter, argument, return, call, variables, numbers, strings, if, console-log, comparison]
-sources: [mdn-functions, nystrom2021]
+sources: [mdn-functions]
 ---
 import CallSteps from '../../../components/diagrams/ch002/CallSteps';
 import NestedCalls from '../../../components/diagrams/ch002/NestedCalls';
@@ -271,9 +271,8 @@ which sits on top of `hypot`'s page while it runs and is thrown away when
 it returns. `Math.sqrt`, the square root, is a function built into
 JavaScript, and you call it in exactly the same way. Every program in this
 book, from a 50-line calculator to Viscosity itself, is this idea
-repeated; Crafting Interpreters, the book this one borrows its shape from,
-builds a whole programming language one small function at a
-time<Cite id="nystrom2021" />.
+repeated: a whole programming language, built one small function at a
+time.
 
 <Run id="leftovers" />
 

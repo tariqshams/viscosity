@@ -1,0 +1,250 @@
+---
+n: 47
+day: 12
+part: I
+title: 'Checkpoint: from tokens to JSON values'
+tagline: 'The second half of the checkpoint: turn the scanner’s tokens into a tree of JSON values, with errors that point at the right place, and then prove the finished program right by testing it against JSON.parse itself.'
+objectives:
+  - Write a parser whose functions follow the shape of the data, one function per kind of value.
+  - Explain why arrays and objects make the parser recursive, and what each call returns.
+  - Report structural mistakes with a custom error class that carries a position.
+  - Test a whole program against a trusted implementation, and explain the one place ours differs.
+introduces: [checkpoint-ts]
+uses: [typescript, type-annotation, type-checking, type-erasure, union-type, narrowing, discriminated-union, generic, type-driven-design, illegal-states-unrepresentable, string-methods, template-literal, string-building, throw, try-catch, error-object, error-propagation, class, constructor, this, new, instanceof, recursion, base-case, call-stack, tree, test, assertion, edge-case, differential-testing-intro, function, parameter, return, call, undefined, object, property, dot-access, bracket-access, array, index, length, push, for-of, while-loop, variables, numbers, strings, booleans, comparison, logical-operators, if, for-loop, console-log, json]
+sources: [rfc8259, mdn-json-parse, jsontestsuite]
+---
+import GrammarCode from '../../../components/diagrams/ch047/GrammarCode';
+import ParseSteps from '../../../components/diagrams/ch047/ParseSteps';
+
+## From a list to a tree
+
+Last chapter's scanner turns `[1, [2, 3]]` into a flat list of ten
+tokens; we want the tree they describe, an array whose second element is
+another array. This chapter writes that **parser** and tests the
+finished program; the exercises do most of the work.
+
+The idea: let the shape of the data decide the shape of the code. In
+last chapter's grammar, a value is a string, a number, a word, an array
+or an object, and an array is a `[`, values separated by commas, and a
+`]`. Write one function per rule, and wherever a rule says "value", call
+the value function.
+
+<Figure takeaway="One function per grammar rule." caption="Each rule becomes a function. The value rule looks at one token and decides; the array and object rules are loops, and because their elements are values, they call parseValue again. That call back to parseValue is the recursion that lets arrays hold arrays.">
+  <GrammarCode />
+</Figure>
+
+<Analogy title="parcels inside parcels">
+You open a parcel and find smaller parcels inside. You open each of
+those the same way, and only finish the big parcel once every parcel
+inside it is done.
+<span slot="breaks">You can open parcels in any order you like; a parser
+must take its tokens strictly left to right, finishing the inner array
+before it may look at the comma after it.</span>
+</Analogy>
+
+<Analogy title="brackets in a sentence">
+In a sentence with an aside (like this one (and this)), you finish
+reading the inner brackets before you carry on with the outer ones, and
+every opening bracket must be closed.
+<span slot="breaks">A reader forgives a missing bracket; a parser
+refuses it.</span>
+</Analogy>
+
+```ts
+function parseValue(
+  toks: Token[], i: number,
+): Parsed {
+  const t = toks[i];
+  if (t.kind === 'num') {
+    return { value: t.value, next: i + 1 };
+  }
+  // ... str, true, false, null ...
+  if (t.kind === '[') {
+    return parseArray(toks, i);
+  }
+  throw new JsonError(
+    `unexpected ${t.kind}`, t.at);
+}
+```
+
+`parseValue` reads the token at index `i` and decides. A number is a
+**base case**: one token, no further calls, so it returns the value and
+`next: i + 1`, the index of the token after it. A `[` hands over to
+`parseArray`, which calls `parseValue` for each element, so an array
+inside an array is handled by the same code, one call deeper. Every
+function returns `Parsed`, `{ value, next }`, so its caller knows where
+to carry on. Anything else, such as a `]`
+or the end token where a value should be, throws a `JsonError`, a
+custom error class like the error objects chapter's `ParseError`, whose
+`at` field is the token's own `at`.
+
+<Formal title="What every call promises">
+
+```text
+parseValue(toks, i) = { value: v, next: j }
+  ⟹  toks[i] … toks[j − 1] spell
+      exactly one JSON value, v
+```
+
+<span slot="read">If parseValue, started at token i, returns the value v
+and the index j, then (the arrow ⟹ reads "means that") the tokens from
+i up to, but not including, j are exactly one complete JSON value, and v
+is that value. parseArray relies on this for every element.</span>
+</Formal>
+
+Step through the calls for `[1, [2, 3]]`, watching the call stack (from
+the recursion chapter) grow and shrink:
+
+<ParseSteps client:visible />
+
+This has a name: **recursive descent parsing**, one function per
+grammar rule, calling each other as the rules mention each other, and
+this is the gentle version. JSON is the friendliest grammar there is,
+because one token always says what comes next; programming languages are
+harder (operators, precedence, error recovery), and Part III's chapters
+on grammars, recursive descent parsing and Pratt parsing take that on
+properly.
+
+<Prompts ids={['shape-code', 'base-case-json', 'next-what', 'recursion-why']} />
+
+## Is it right? Ask JSON.parse
+
+A parser is easy to get almost right, with the mistakes hiding in
+corners: an empty array, a trailing comma, a key that is not a string,
+text after the value. Rather than work out each answer by hand, compare
+against an implementation you trust: this is
+**differential testing**, from the edge cases chapter, and `JSON.parse`
+is the natural reference<Cite id="mdn-json-parse" />. Real parser
+authors do the same at scale: the JSONTestSuite collection is a large
+set of small files, each named for whether a parser must accept it, must
+reject it, or may do either<Cite id="jsontestsuite" />.
+
+<Callout kind="definition">
+The **checkpoint program** is a whole TypeScript program written with
+Part I's habits and no scaffolding: types first; small functions with
+signatures that say what they return; a border that refuses bad input
+with an error carrying its position; and tests against a trusted
+implementation.
+</Callout>
+
+<Examples of="checkpoint-ts">
+
+```ts
+parse('{"a": [1, {"b": null}]}');
+// { a: [1, { b: null }] }
+```
+
+```ts
+parse('[1 2]');
+// JsonError: expected , or ] at 3
+parse('[1] 2');
+// JsonError: extra input at 4
+```
+
+```ts
+for (const s of ['[]', '{"a": 1}']) {
+  expect(parse(s))
+    .toEqual(JSON.parse(s));
+}
+```
+
+<Run id="proto-corner" />
+
+</Examples>
+
+The first is the whole program: text in, a tree of plain objects and
+arrays out, just what `JSON.parse` gives. The second shows errors
+pointing at the token where the parser noticed the problem: in `[1 2]`,
+the `2` at index 3 is neither `,` nor `]`; in `[1] 2`, a whole value has
+been read, and `parse` refuses the extra token at index 4. The third is
+the heart of the final exercise's tests: our answer must equal
+`JSON.parse`'s (and for bad input, both must throw).
+
+The runnable one shows the one corner where our simple parser and
+`JSON.parse` disagree. `out[key] = value` normally creates a property,
+but assigning to `__proto__` changes the object's prototype (where it
+looks up missing properties) instead, so `{"__proto__": 1}` comes out of
+our parser as `{}`, while `JSON.parse` makes a real
+property<Cite id="mdn-json-parse" />. `Object.defineProperty` always
+creates a property, and fixes it: the run prints `[]`, then
+`['__proto__']` twice. One more corner is a choice, not a bug: RFC 8259 says keys
+*should* be unique and warns that parsers handle duplicates differently,
+many keeping the last<Cite id="rfc8259" />; `JSON.parse` keeps the
+last, and so does `out[key] = value`.
+
+<Prompts ids={['differential-json', 'proto-key', 'duplicate-keys', 'end-check']} />
+
+<OtherLanguages>
+
+```js
+const v = JSON.parse('{"a": [1, 2.5]}');
+v.a[1]; // 2.5: plain objects, arrays
+```
+
+```python
+import json
+v = json.loads('{"a": [1, 2.5]}')
+v['a']  # [1, 2.5]: a dict and a list
+```
+
+```java
+sealed interface Json
+    permits JNum, JStr, JArr, JObj {}
+record JNum(double n) implements Json {}
+record JStr(String s) implements Json {}
+record JArr(List<Json> xs)
+    implements Json {}
+record JObj(Map<String, Json> m)
+    implements Json {}
+```
+
+```c
+enum kind { J_NULL, J_BOOL, J_NUM,
+            J_STR, J_ARR, J_OBJ };
+struct json {
+    enum kind kind;     /* the tag */
+    double num;         /* for J_NUM */
+    struct json *items; /* for J_ARR */
+    size_t len;
+};
+```
+
+</OtherLanguages>
+
+JavaScript and Python hand back everyday objects, arrays, dicts and
+lists, because their values carry their kind while the program runs.
+Java needs a type for "any JSON value": a sealed interface with one
+record per kind (plus two more, for booleans and null) is its version of
+our `Json` union. In C you build the tagged union by hand, a `kind`
+field saying which other fields mean something, and manage the memory
+for `items` yourself.
+
+## Your turn
+
+From a warm-up to the finished program. Each starter has a short
+stand-in scanner; if you wrote your own `tokenize`, paste it in instead.
+
+<Exercise id="scalar" />
+
+<Exercise id="parseArrays" />
+
+<Exercise id="parse" />
+
+<Exercise id="stringify" />
+
+## What you learned
+
+- A parser can follow the shape of the data: one function per grammar
+  rule, calling `parseValue` wherever a rule says "value", so nesting
+  makes it **recursive**, with single tokens as the base case.
+- Each call returns `{ value, next }`: the tokens it used spell exactly
+  one value.
+- Errors carry the position of the token where the problem was noticed,
+  in a custom `JsonError`, and `parse` refuses anything after the value.
+- **Differential testing** against `JSON.parse` checks the whole program
+  on good and bad input; it also finds corners such as `__proto__`.
+
+That completes Part I, and the JavaScript and TypeScript the rest of
+the book needs.
+
+<Quiz />

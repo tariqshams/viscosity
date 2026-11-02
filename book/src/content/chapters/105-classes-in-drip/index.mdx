@@ -1,0 +1,221 @@
+---
+n: 105
+day: 27
+part: III
+title: 'Records with behaviour: classes in Drip'
+tagline: 'Two maps and one small environment are all Drip needs for objects. And because of that environment, a Drip method never forgets its this.'
+objectives:
+  - Describe how the interpreter represents a class, an instance and its fields.
+  - Trace a property read through fields first, then the class’s methods.
+  - Explain how binding a method creates an environment holding this, and why a Drip method keeps its this when passed around.
+  - Predict what an initializer returns and which init mistakes the resolver rejects.
+introduces: [drip-class, field, bound-method]
+uses: [resolver, scope-depth, static-analysis, captured-environment, environment-lifetime, environment, scope-chain, closure, callable, arity, runtime-value, runtime-error, syntax-error, tree-walking-interpreter, drip, class, constructor, instance, this, method, new, object, property, dot-access, map, reference, identity, callback, first-class-function, function, call, return, parameter, variables]
+sources: [nystrom2021, bynensmeurer2018, mdn-this]
+---
+import BindSteps from '../../../components/diagrams/ch105/BindSteps';
+import InstanceFigure from '../../../components/diagrams/ch105/InstanceFigure';
+
+## A method that doesn't forget
+
+Here is a Drip class. It looks a lot like chapter 13's JavaScript:
+
+```
+class Cake {
+  init(flavour) {
+    this.flavour = flavour;
+  }
+  taste() {
+    print "Mmm, " + this.flavour;
+  }
+}
+
+let c = Cake("lemon");
+c.taste();  // Mmm, lemon
+let f = c.taste;
+f();        // Mmm, lemon
+```
+
+Two differences. There is no `new`: you call the class like a function,
+and `init` plays the constructor. And look at the last line. In
+JavaScript, `const f = p.move; f();` lost its `this`, because `this` is
+decided by the dot in each call<Cite id="mdn-this" />. In Drip, `f()`
+still knows it belongs to `c`. By the end of this chapter you'll know
+exactly which object makes that work.
+
+<Prompts ids={['call-the-class']} />
+
+## Classes, instances and fields
+
+<Callout kind="intuition">
+A class is a recipe card pinned to the wall; an instance is one cake on
+the counter. Each cake carries its own decorations (fields). When
+someone asks a cake "how do you taste?", and it has no answer written on
+itself, it points at the recipe card.
+</Callout>
+
+<Figure caption="Each instance has its own map of fields and a pointer to its class. The class holds the methods, once, for every instance." takeaway="Fields live on the instance; methods live on the class.">
+  <InstanceFigure />
+</Figure>
+
+A `class` statement makes a `DripClass`: a name and a `Map` from method
+name to `DripFunction`. Calling the class makes a `DripInstance`, binds
+`init` to it, runs `init` and returns the instance:
+
+```ts
+call(interp, args: Value[]): Value {
+  const inst = new DripInstance(this);
+  this.findMethod('init')
+    ?.bind(inst).call(interp, args);
+  return inst;
+}
+```
+
+(The class's arity is `init`'s arity, or 0 if there is no `init`.) An
+instance is just its class plus a second `Map`:
+
+```ts
+class DripInstance {
+  fields = new Map<string, Value>();
+  constructor(readonly klass: DripClass) {}
+  get(name: Token): Value {
+    const n = name.lexeme;
+    if (this.fields.has(n))
+      return this.fields.get(n)!;
+    const m = this.klass.findMethod(n);
+    if (m) return m.bind(this);
+    throw new RuntimeError(name,
+      `Undefined property '${n}'.`);
+  }
+  set(name: Token, value: Value) {
+    this.fields.set(name.lexeme, value);
+  }
+}
+```
+
+Fields are never declared. `b.size = 3` simply creates `size` if it
+isn't there yet. Reading checks the fields *first*, so a field can hide a
+method of the same name. In the interpreter, a `get` expression like
+`c.taste` first checks that the object is an instance at all; if not,
+you get `Only instances have properties.`
+
+<Callout kind="definition">
+A **Drip class** is a runtime value holding a name and a map of methods.
+Calling it creates an **instance**, which holds a pointer to its class
+and a map of **fields**: per-instance data, created simply by assigning
+to them. Reading `obj.name` returns the field if there is one, otherwise
+the class's method, otherwise it is a runtime error.
+</Callout>
+
+<Run id="fields" />
+
+<Prompts ids={['fields-where', 'field-created', 'field-first', 'not-instance']} />
+
+## this, and bound methods
+
+How does `taste`'s body find `this`? Not by a special rule. `this` is
+looked up like any other variable, in an environment, at a distance the
+resolver worked out. The resolver wraps every class's methods in one
+extra scope that declares `this`:
+
+```ts
+case 'class':
+  declare(s.name);
+  define(s.name);
+  begin();
+  scopes.at(-1)!.set('this', true);
+  for (const m of s.methods)
+    fn(m, m.name.lexeme === 'init'
+      ? 'initializer' : 'method');
+  end();
+```
+
+So at run time there must be a matching environment with `this` in it,
+between a method's body and the environment where the class was
+declared. It is made by `bind`, every time a method is read off an
+instance:
+
+```ts
+bind(inst: DripInstance) {
+  const env = new Environment(
+    this.closure,
+  );
+  env.define('this', inst);
+  return new DripFunction(
+    this.decl, env, this.isInitializer,
+  );
+}
+```
+
+<BindSteps client:visible />
+
+<Callout kind="definition">
+A **bound method** is a method together with the instance it was read
+from. Drip makes one by wrapping the method's captured environment in a
+new environment whose only variable is `this`, and returning a new
+function value that captures it. The binding happens when the method is
+*read*, so `this` travels with the value wherever it goes.
+</Callout>
+
+Now the puzzle from the start is solved. `let f = c.taste` stored the
+bound method, and its closure holds `this = c`. Calling `f()` later,
+with no dot, makes no difference. The same is true when you pass a
+method as a callback:
+
+<Run id="bound-callback" />
+
+Notice the last line: each read of `t.add` binds again, so it makes a
+new function value, and two of them aren't the same object.
+
+<Prompts ids={['this-where', 'bind-makes', 'keeps-this', 'new-each-read']} />
+
+## init always returns this
+
+`init` is marked as an initializer (that `isInitializer` flag), and an
+initializer's call always returns the `this` from its closure, whatever
+its body does. So calling `c.init("plum")` directly re-runs it and gives
+you `c` back. For the same reason, `return "x";` inside `init` is a
+resolver error: `Can't return a value from an initializer.` A bare
+`return;` is fine.
+
+<Prompts ids={['init-returns']} />
+
+<Callout kind="engine" label="Under the hood">
+Every `this.flavour` in Drip is a hash-map lookup by name in that
+instance's own `Map`. JavaScript engines do better for objects that
+share a shape: objects with the same properties, added in the same
+order, share one hidden class, which records where each property sits,
+so a property read can go straight to a fixed position<Cite id="bynensmeurer2018" />.
+Drip has no shapes. Part IV's VM still keeps fields in a hash table, its
+own this time.
+
+And there's a hidden cost in `get`: every method read allocates *two*
+objects, a new environment and a new `DripFunction`, even for an
+immediate call like `c.taste()`. Next chapter, you'll see what that
+costs in real benchmarks. Drip's classes follow Lox's design from
+*Crafting Interpreters*<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="tally" />
+
+<Exercise id="getProp" />
+
+## What you learned
+
+- A **Drip class** is a name plus a map of methods. Calling it makes an
+  instance, binds `init` to it and runs it.
+- An instance holds its class and a map of **fields**. Fields appear when
+  you assign them, and a read checks fields before methods.
+- `this` is an ordinary variable, found at a distance the resolver
+  computed. `bind` creates the environment that holds it.
+- A **bound method** carries its instance with it, so a Drip method
+  never loses its `this`, even as a callback.
+- An initializer always returns `this`; returning a value from it is a
+  resolver error.
+
+Next: classes that build on other classes, `super`, and a hard look at
+how fast all of this really is.
+
+<Quiz />

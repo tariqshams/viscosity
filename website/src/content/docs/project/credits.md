@@ -76,7 +76,7 @@ Robert Nystrom (2021). Free web edition at craftinginterpreters.com (© 2015–2
 
 ESTree contributors. github.com/estree/estree. [github.com/estree/estree/blob/master/es5.md](https://github.com/estree/estree/blob/master/es5.md)
 
-**What it shaped:** Chapter 14: real JavaScript ASTs are a discriminated union; every ESTree node has a string `type` field that says which kind of node it is.
+**What it shaped:** Chapter 29: real JavaScript ASTs are a discriminated union; every ESTree node has a string `type` field that says which kind of node it is.
 
 ## Open-source components
 

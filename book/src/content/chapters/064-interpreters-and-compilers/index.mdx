@@ -1,0 +1,197 @@
+---
+n: 64
+day: 16
+part: III
+title: 'Interpreters and compilers'
+tagline: 'A syntax tree says what a program means, but it has computed nothing. You can do the work now, or write the program down again for something else to run later; most real systems, including the engine running this page, do both.'
+objectives:
+  - Explain the difference between an interpreter and a compiler, and the promise a correct compiler keeps.
+  - Say why a system might compile, and why it might interpret instead.
+  - Place Drip's tree-walker, Drip's VM, tsc, V8 and Viscosity by what they compile and what they interpret.
+  - Write a tiny compiler, and the machine that runs its output.
+introduces: [interpreter, compiler]
+uses: [compiler-pipeline, front-end-back-end, function, call, return, array, push, string-index, tree, recursion, module, typescript, typed-array, variables, strings, numbers, while-loop]
+sources: [v8-ignition]
+---
+import TwoRoutesSteps from '../../../components/diagrams/ch064/TwoRoutesSteps';
+import WhoRunsWhat from '../../../components/diagrams/ch064/WhoRunsWhat';
+
+## Two ways to finish the journey
+
+The last chapter followed `print 1 + 2 * 3;` from a string to a syntax
+tree, and stopped there. The tree says that `2 * 3` comes first and that
+the answer should be printed; however, it has computed nothing at all,
+and no `7` has appeared yet. There are two ways to finish the journey:
+do the work now, or write the program down again in another form, for
+something else to run later.
+
+<Analogy title="an interpreter and a translator">
+To get a speech in Japanese to an English audience, an **interpreter**
+stands beside the speaker and says each sentence in English as it is
+spoken. A **translator** takes the whole speech home and comes back with
+an English text; the translator never gives the speech, and someone
+else reads the text out later, as often as they like.
+<span slot="breaks">A human translator may reword freely to make the
+English read well; a compiler may change *how* the program does its
+work, but never *what* it does, for any input at all.</span>
+</Analogy>
+
+<Analogy title="a pianist and a music box maker">
+A pianist reads sheet music and plays it, note by note, there and then.
+A music box maker reads the same sheet once and punches the tune into a
+metal drum; after that the box plays the tune by itself, with nobody
+reading anything.
+<span slot="breaks">A music box plays the same tune every time; a
+compiled program still reads its input each time it runs, so it can do
+different things on different days.</span>
+</Analogy>
+
+Step through both roads, starting from the same tree:
+
+<TwoRoutesSteps client:visible />
+
+An **interpreter** runs the program itself: Part III's interpreter walks
+the syntax tree, and every node it visits *does* something (an addition
+adds, a `print` prints). A **compiler** runs nothing; it reads a program
+and writes out the same program in another form, which might be machine
+code for the processor, **bytecode** (a list of simple instructions,
+like the six in the diagram, for a program called a **virtual machine**
+to run) or source code in another language. Notice in the diagram that
+the compiler visits the tree in the same order the interpreter does; the
+only difference is that where the interpreter computes `2 * 3`, the
+compiler writes down `mul`.
+
+<Callout kind="definition">
+An **interpreter** is a program that runs another program directly,
+producing its output. A **compiler** is a program that translates a
+program into another form (machine code, bytecode or source code)
+without running it. A **bytecode VM** combines them: compile to
+bytecode, then interpret the bytecode.
+</Callout>
+
+<Formal title="What each one promises">
+
+```text
+interp(P, input) = output
+compile(P)       = P′
+run(P′, input)   = interp(P, input)
+```
+
+<span slot="read">An interpreter takes a program P and its input and
+gives the output. A compiler takes only the program, never the input,
+and gives a new program P′ (said "P prime"). The third line is the
+promise every correct compiler keeps: for every possible input, running
+P′ gives the same output that interpreting P would.</span>
+</Formal>
+
+<Examples of="interpreter compiler">
+
+```text
+interpreter:  1 + 2  →  3
+compiler:     1 + 2  →  push 1
+                        push 2
+                        add
+```
+
+```text
+tsc app.ts   → app.js    (compiles)
+node app.js  → output    (runs it)
+```
+
+<Run id="same-line-vm" />
+
+</Examples>
+
+In the first, the interpreter answers `3` straight away, while the
+compiler answers nothing: it writes three instructions that *would*
+compute `3` on a little machine that keeps numbers on a stack (push 1,
+push 2, then add the top two). The second is the TypeScript compiler
+from *The toolchain: tsconfig and modules*: `tsc` translates TypeScript
+into JavaScript and runs neither, and Node runs the result afterwards,
+perhaps many times. The third runs two Drip lines on Drip's bytecode VM,
+compiler and interpreter in one: the first line prints `7` and the
+second, whose brackets change the tree, prints `9`, the same output the
+tree-walker in the last chapter gave, by a different road. That
+sameness is the third line of the formal box, checked on one program.
+
+<Prompts ids={['interp-def', 'compiler-def', 'compiler-input']} />
+
+## Why compile at all?
+
+If an interpreter gives the answer straight away, why would anyone
+write the program out again first? There are three common reasons. The
+first is **doing the reading once**: an interpreter that walks a tree
+pays for the walk every time a loop goes round, while compiled
+instructions have already been worked out, so a program that runs a
+million times (or one loop that goes round a million times) pays for
+the translation once. The second is **a faster target**: machine code
+runs on the processor directly, with no other program reading it. The
+third is **the only target that can run**: a browser runs JavaScript,
+not TypeScript, so TypeScript has to be compiled before it can go
+anywhere, and Viscosity's output is JavaScript for the same reason.
+
+Interpreting has its own strengths, which is why Part III starts there:
+it starts at once, with no translation step to wait for; it is far
+simpler to write, so it is the clearest way to pin down what a language
+means; and since it runs the tree built from your source, every error
+it finds can point straight at the line you wrote.
+
+<Prompts ids={['compile-once', 'why-interp']} />
+
+## Most real systems are both
+
+The line between the two is not a wall; most real systems compile
+*and* interpret, at different moments, as the figure shows.
+
+<Figure takeaway="Real systems mix the two." caption="Four systems from this book. Blue steps compile (translate without running); orange steps interpret (run). Drip's tree-walker only interprets and tsc only compiles; Drip's VM and V8 do both, one after the other.">
+  <WhoRunsWhat />
+</Figure>
+
+Drip's VM in Part IV compiles your source into bytecode and then runs
+an interpreter loop over that bytecode. The
+JavaScript engine running this page goes one step further: V8 compiles
+each function to a compact bytecode, which its interpreter, Ignition,
+runs, and code that runs often is compiled *again*, by an optimizing
+compiler, into machine code<Cite id="v8-ignition" />. Viscosity, the
+compiler this book builds towards, is a **source-to-source** compiler:
+it reads JavaScript and writes JavaScript, and then hands that to an
+engine like V8, which compiles and interprets it in its turn.
+
+<Prompts ids={['vm-both', 'v8-both', 'source-to-source']} />
+
+<Callout kind="engine" label="Under the hood">
+Bytecode machines come in two main shapes. Drip's VM keeps its working
+values on a **stack**, as in this chapter's diagram: `add` takes the top
+two values and pushes the sum. Ignition is a **register machine** with a
+special register called the accumulator, so its instructions name where
+their values live instead of always using the top of a
+stack<Cite id="v8-ignition" />. You will build the stack machine in
+Part IV, and take V8's pipeline apart in Part V.
+</Callout>
+
+## Your turn
+
+The core exercise turns last chapter's evaluator into a compiler: the
+same front end, a second back end. The extra one builds the machine that
+runs the compiler's output.
+
+<Exercise id="mini-compile" />
+
+<Exercise id="mini-exec" />
+
+## What you learned
+
+- An **interpreter** runs a program directly and produces its output;
+  a **compiler** translates it into another form without running it,
+  and a correct one keeps the meaning for every input.
+- Compiling pays when a program runs often, when the target is faster,
+  or when the target is the only thing that can run; interpreting starts
+  at once, is simpler, and points errors straight at your source.
+- A **bytecode VM** does both: compile to bytecode, then interpret it.
+  V8 adds a second compiler for code that runs often.
+- **Viscosity** is a source-to-source compiler: JavaScript in,
+  JavaScript out.
+
+Next: meet Drip itself, the language your pipeline will run.
+
+<Quiz />
