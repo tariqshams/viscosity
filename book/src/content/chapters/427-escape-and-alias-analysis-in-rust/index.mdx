@@ -18,9 +18,9 @@ import AllowedUses from '../../../components/diagrams/ch427/AllowedUses';
 
 ## A refusal, pointed at
 
-A value **escapes** (in the sense of "Escape analysis") when it reaches a
+A value **escapes** (in the sense of *Escape analysis*) when it reaches a
 place the compiler cannot follow, and two names are **aliases** when they
-reach the same object (see "Alias analysis"); either way, rewriting the
+reach the same object (see *Alias analysis*); either way, rewriting the
 array into columns would break whoever holds the other name. Here is a
 program that does three such things with elements of `ps`:
 
@@ -171,7 +171,7 @@ value ends up.</span>
 ## Into known functions, and not elements
 
 The collection pass follows the array into a **known function**'s
-parameter (see "Collection discovery in Rust"), and the uses inside are
+parameter (see *Collection discovery in Rust*), and the uses inside are
 then checked like any others, so an element that leaves the function is
 caught there; however, an *element* passed to a function is never
 followed.
@@ -226,7 +226,7 @@ fine.</span>
 </Analogy>
 
 Viscosity keeps no **points-to sets** (lists of which objects each name
-may reach, as the chapter "Alias analysis" describes). It needs none,
+may reach, as the chapter *Alias analysis* describes). It needs none,
 because SSA already says when two names are one value: in
 `const e = ps[0]; e.x += 1;` the name `e` *is* the `index.get`, so its
 field access is fine. Anything else that gives an element a second name

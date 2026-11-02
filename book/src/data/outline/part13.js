@@ -32,7 +32,7 @@ export default {
     { n: 433, title: 'The order of a field write in Rust', introduces: {
 
     } },
-    { n: 434, title: 'AoSoA and hot/cold in Rust', introduces: {
+    { n: 434, title: 'AoSoA in Rust', introduces: {
       'rust-aosoa': 'AoSoA and splitting in Rust',
     } },
     { n: 435, title: 'Block sizes and typed columns in Rust', introduces: {

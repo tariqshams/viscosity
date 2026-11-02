@@ -66,7 +66,7 @@ export const prompts = {
   },
   'ssa-or-binding': {
     q: 'Which JS variables does lowering turn into SSA values?',
-    a: 'Simple kinds (const, let, var, param, catch) that no other function uses, that aren’t assigned in a `try`, and that aren’t initialized with an array.',
+    a: 'Simple kinds (const, let, var, param, catch) that no other function uses, that aren’t assigned in a `try`, and that aren’t initialised with an array.',
   },
   'mem-replace': {
     q: 'Why does `lower_function` call `std::mem::replace(&mut self.f, state)`?',
@@ -355,7 +355,7 @@ export const quiz = [
     q: 'Which variable stays an SSA value?',
     options: [
       { t: '`let n = 0;` read and written by a nested function', why: 'Used in another function: it becomes a binding with load/store.' },
-      { t: '`const ps = [];` used only in its own function', why: 'Array-initialized variables always become bindings, so the analyses see every read and write.' },
+      { t: '`const ps = [];` used only in its own function', why: 'Array-initialised variables always become bindings, so the analyses see every read and write.' },
       { t: '`let s = 0;` assigned inside a `try` block', why: 'Assigned in a `try`: SSA would be unsound across exception edges.' },
       { t: '`let i = 0;` used only in its own loop', correct: true, why: 'A simple kind, used only in its owner, not in a `try`, not an array.' },
     ],

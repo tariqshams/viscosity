@@ -648,7 +648,7 @@ export const quiz = [
     q: 'Your design solver clamps: it stores `transfer(..).meet(&old)`. What does that guarantee?',
     options: [
       { t: 'The most precise answer for any transfer function', why: 'Clamping guarantees an end, not precision.' },
-      { t: 'Each fact only moves down, so with a lattice of finite height the worklist empties', correct: true, why: 'Each node can change at most height − 1 times, and each change adds a bounded number of users.' },
+      { t: 'Each fact only moves down, so with a lattice of finite height the worklist empties', correct: true, why: 'Each node can only step down, at most h times on a lattice of height h, and each change adds a bounded number of users.' },
       { t: 'Nodes are visited in id order', why: 'Order is decided by the worklist, not by the clamp.' },
     ],
   },

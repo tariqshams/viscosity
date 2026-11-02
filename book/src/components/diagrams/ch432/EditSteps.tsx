@@ -35,7 +35,7 @@ const STATES: S[] = [
   { done: 2, note: 'Bytes 122..130 next. Replacing text here changes the length of everything after it, but nothing after it is still waiting, so no offset goes stale.' },
   { done: 3, note: 'Bytes 111..118: a proven read-and-write, so a bare index. ps[i].x became ps.x[i]: field first, index second.' },
   { done: 4, note: 'The push: the object literal disappears and its values become arguments, push(i, 1), in field order.' },
-  { done: 5, note: 'The creation: [] becomes new __Vsc_ps(). Every offset used so far was before this one, so applying back to front never needed to recompute a position.' },
+  { done: 5, note: 'The creation: [] becomes new __Vsc_ps(). Every edit applied so far lay after this one, so applying back to front never needed to recompute a position.' },
   { done: 5, prelude: true, note: 'Last, the prelude (the container class, and __vsc_bc because one access needed it) goes on top, after any #! line or "use strict" directive.' },
 ];
 

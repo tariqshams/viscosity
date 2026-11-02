@@ -162,8 +162,8 @@ for &i in &b.insts {
 
 The first follows one id: `ValueId(5)` is slot 5, the comparison
 `%5 = binop < %3, %0`. The second walks block `b1` of `sum`: the loop
-copies each id out of the block's list (the `&v` pattern takes a `u32`
-by value, so no borrow is kept) and looks it up, printing the two phis
+copies each id out of the block's list (the `&v` pattern takes the
+`ValueId` by value, so no borrow is kept) and looks it up, printing the two phis
 and the comparison in block order. The third is the heart of the real
 `build_uses` (from `lib.rs`, the loops over functions and blocks left
 out): for every operand `a` of every live instruction `i`, it records

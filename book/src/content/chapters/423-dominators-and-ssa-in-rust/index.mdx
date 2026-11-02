@@ -18,25 +18,24 @@ import PhiSteps from '../../../components/diagrams/ch423/PhiSteps';
 
 ## Same algorithms, new containers
 
-The chapters "Dominators", "Loops" and "SSA on the fly" taught these
+The chapters *Dominators*, *Loops* and *SSA on the fly* taught these
 ideas, and the TypeScript engine has them in `cfg.ts` and `builder.ts`.
 `engine/rust/crates/core/src/cfg.rs` and `builder.rs` port them almost
 line for line: Cooper, Harvey and Kennedy's dominance algorithm, and Braun
 et al.'s SSA construction during lowering<Cite id="braun2013" />. What
 changes is *where things live*. The
 TypeScript keeps `Map`s keyed by block numbers; in Rust, blocks and values
-sit in the module's arenas (see "VIR in Rust"), so a map from blocks
+sit in the module's arenas (see *VIR in Rust*), so a map from blocks
 becomes a `Vec` indexed by `BlockId`, and "no entry" becomes `None`.
 
-<Analogy title="house numbers on a street">
-On a street where every house has a number, a list of "who lives at
-number 7" is just a row of slots, one per house, and an empty lot is a
-slot marked "nobody". You never need to know where a house *is*, only its
-number. Blocks and values are houses; ids are numbers.
-<span slot="breaks">Houses are never renumbered, and here they never are
-either; however, a street can lose a house and its number still means
-something to anyone who wrote it down. In the arena a removed value keeps
-its slot, so an old id still "works", and still points at the wrong
+<Analogy title="numbered lockers at a pool">
+At a swimming pool, the desk does not write down where each locker
+stands, only its number; a list of who has locker 7 is a row of slots,
+one per locker, and a free locker is a slot marked "nobody". Blocks and
+values are lockers, and ids are the numbers on the keys.
+<span slot="breaks">A pool reuses a locker for the next swimmer; the
+arena never does, so a removed value keeps its slot, and an old key
+still opens it: the id still "works", and quietly hands you the wrong
 thing.</span>
 </Analogy>
 

@@ -18,7 +18,7 @@ import ByIndex from '../../../components/diagrams/ch425/ByIndex';
 
 ## Same pass, new home
 
-The chapter "Finding collections" read the first two steps of
+The chapter *Finding collections* read the first two steps of
 `analysis.ts`: find the **candidate** bindings (variables first given an
 empty array or an array literal), then follow every load of each one
 through its uses, accepting the few uses Viscosity can rewrite and
@@ -51,7 +51,7 @@ struct Analyzer<'m> {
 }
 ```
 
-`m` borrows the module for the lifetime `'m` (the analyzer reads VIR and
+`m` borrows the module for the lifetime `'m` (the analyser reads VIR and
 never changes it); `uses` lists every use of every value; `stores` and
 `loads` file each store and load by binding; `call_sites` lists the call
 instructions of each **known function** (declared once and only ever
@@ -59,7 +59,7 @@ called directly, so every caller is visible); and the last three are the
 collections and two maps into them. `HashMap` here is `FxHashMap` from the
 `rustc-hash` crate, renamed on import: a faster hasher for small
 keys<Cite id="rustc-hash-readme" />. Its iteration order is arbitrary,
-which is fine, because the analyzer only *looks things up* in these maps;
+which is fine, because the analyser only *looks things up* in these maps;
 anything whose order reaches `explain` is a `Vec` or an
 `IndexMap`<Cite id="indexmap-docs" />. One more detail matters later:
 
@@ -84,7 +84,7 @@ with a drawer, so they pass around drawer *numbers* instead: anyone with
 "drawer 3" can open it, look inside and add a file, and the cabinet stays
 where it is.
 <span slot="breaks">If someone took a drawer out and the others slid
-down, every number written on a note would be wrong. The analyzer only
+down, every number written on a note would be wrong. The analyser only
 ever adds collections to the end and never removes one, so the numbers
 stay right.</span>
 </Analogy>
@@ -273,7 +273,7 @@ only less precise than it could be.
 
 - **The collection pass in Rust** keeps the TypeScript closures' state in
   `Analyzer<'m>`, with `inst` returning `&'m Inst`, so instructions do
-  not borrow the analyzer.
+  not borrow the analyser.
 - Collections are referred to by **index** (`usize`), never by reference,
   so the `Vec` of collections can keep changing.
 - `uses_of` copies the use list so that the loop body can call `&mut self`

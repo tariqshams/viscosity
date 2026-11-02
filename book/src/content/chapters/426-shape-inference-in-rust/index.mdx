@@ -18,7 +18,7 @@ import JoinVsList from '../../../components/diagrams/ch426/JoinVsList';
 
 ## One field or two?
 
-A **shape**, in the chapter "Record shapes", is the list of a record's
+A **shape**, in the chapter *Record shapes*, is the list of a record's
 field names, in order, plus what each field may hold; struct of arrays
 only works when every record in a collection has the same shape, because
 each field becomes one column. Here is `comma_field_name.js`, a program in
@@ -47,8 +47,8 @@ ps (line 3) {a, b} → kept as array of
 ```
 
 The collection's fields are `{a, b}`, from the *second* push, because
-the worklist pops the last load first (see "Collection discovery in
-Rust"); and the message prints the one field `a,b` without quotes,
+the worklist pops the last load first (see *Collection discovery in
+Rust*); and the message prints the one field `a,b` without quotes,
 exactly as the reference does. The reference used to
 get the decision wrong: it compared shapes by joining the names into one
 string, and `["a,b"]` and `["a", "b"]` both join to `a,b`. That is bug 3
@@ -135,8 +135,8 @@ that only numbers ever go in, so a field it cannot prove numeric gets the
 plain column even if every value in practice is a number.</span>
 </Analogy>
 
-The second half of a shape comes from the fixpoint of "A generic dataflow
-framework". Each field of each collection is a node, starting optimistic;
+The second half of a shape comes from the fixpoint of *A generic dataflow
+framework*. Each field of each collection is a node, starting optimistic;
 `field_stays_numeric` keeps it only if every record added puts a provable
 number in that position *and* every `field.set` on an element writes one.
 Survivors go into `numeric_fields` and get `Float64Array` columns, the
@@ -174,7 +174,7 @@ All three are real Rust CLI output, trimmed and wrapped. The first pushes
 `{ x: i, tag: 'a' }`: one shape, so struct of arrays, with `x` typed and
 `tag` (a string) in a plain array. The second pushes `{ x: i, y: 0 }` and
 `{ y: 1, x: i }`: the same names in a different order are a different
-shape, as engines' hidden classes are (see "Shapes in depth").
+shape, as engines' hidden classes are (see *Shapes in depth*).
 The third is the Python program `ints_stay_ints.py`, whose `count` holds
 ints: the next section.
 
@@ -228,7 +228,7 @@ match operator.as_str() {
 }
 ```
 
-`n` is "a float", `i` is "an int", and `n_or_i` is either; the analyzer
+`n` is "a float", `i` is "an int", and `n_or_i` is either; the analyser
 picks these rules once, from `m.language == "python"`. Watch them type `ints_stay_ints.py`:
 
 <KindSteps client:visible />

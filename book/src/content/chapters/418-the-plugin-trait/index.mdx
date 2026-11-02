@@ -210,7 +210,7 @@ plan, the analysis and the explain text, and none of them mentions
 
 ## Why not dyn?
 
-*Traits* kept two plugins in one `Vec<&dyn Plugin>`, a list of **trait
+*Trait objects and dyn* kept two plugins in one `Vec<&dyn Plugin>`, a list of **trait
 objects** (values whose type is only known at run time, called through
 a table of function pointers). Try that with the real trait:
 

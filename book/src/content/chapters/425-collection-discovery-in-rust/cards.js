@@ -99,7 +99,7 @@ export const prompts = {
   },
   'cdr-lifetime': {
     q: 'Why does `Analyzer::inst` return `&\'m Inst` rather than a reference tied to `&self`?',
-    a: 'The instruction lives in the module, not in the analyzer. With `\'m`, holding it doesn’t borrow the analyzer, so its fields can still be changed.',
+    a: 'The instruction lives in the module, not in the analyser. With `\'m`, holding it doesn’t borrow the analyzer, so its fields can still be changed.',
   },
   'cdr-index': {
     q: 'TS maps loads to `Collection` objects. What does `collection_of_load` map them to in Rust?',
@@ -284,7 +284,7 @@ In the first test the loads are \`[0, 1, 2]\`; load 2 comes off first (its eleme
 **Common wrong attempts.**
 
 - A queue (\`work.remove(0)\`) visits the first load first, so pushes and bailouts come out in the opposite order to the reference's; the explain text would differ even though every decision is the same.
-- No seen set: a function called with the collection from two places has its parameter checked twice, and every finding inside it is recorded twice. (The real analyzer removes duplicate messages at the end, but its \`length_reads\` and \`index_gets\` would still be doubled.)
+- No seen set: a function called with the collection from two places has its parameter checked twice, and every finding inside it is recorded twice. (The real analyser removes duplicate messages at the end, but its \`length_reads\` and \`index_gets\` would still be doubled.)
 - Checking \`work.contains(&v)\` instead of a seen set: it only looks at what is still waiting, so a parameter that was already visited is visited again.`,
     wrong: [
       {
@@ -329,7 +329,7 @@ export const quiz = [
   {
     q: 'In the TS reference, `collectionOfLoad` maps a value to a `Collection` object. What does the Rust port store instead?',
     options: [
-      { t: '`Rc<RefCell<Collection>>`', why: 'Nothing in the analyzer is reference-counted.' },
+      { t: '`Rc<RefCell<Collection>>`', why: 'Nothing in the analyser is reference-counted.' },
       { t: 'The collection’s index in `self.collections` (a `usize`)', correct: true, why: '`collection_of_load: HashMap<ValueId, usize>`. An index borrows nothing.' },
       { t: 'A `&mut Collection`', why: 'That would keep the `Vec` of collections mutably borrowed for as long as the map exists.' },
     ],

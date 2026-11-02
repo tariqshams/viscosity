@@ -18,7 +18,7 @@ import TypedPlain from '../../../components/diagrams/ch435/TypedPlain';
 
 ## Four is fine, six is not
 
-*AoSoA and hot/cold in Rust* showed that the emitter finds an AoSoA
+*AoSoA in Rust* showed that the emitter finds an AoSoA
 slot with a shift and a mask, which only works when the block size is a
 power of two. So something has to refuse the others. Put `aosoa(6)`
 above the `{x, y, vx}` program of that chapter, and the Rust CLI says
@@ -127,7 +127,7 @@ pub const MAX_BLOCK_SIZE: u64 = 65536;
 ```
 
 so the old annotation now gets `annotated aosoa(1073741824), but the
-block size must be at most 65536`. The corpus program
+block size must be at most 65536`. The test program
 `tests/extra/aosoa_block_sizes.js` holds these cases, and the parity
 test compares both engines on it.
 

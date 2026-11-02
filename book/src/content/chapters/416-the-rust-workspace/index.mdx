@@ -108,7 +108,7 @@ parity: 190/190 (54 Python)
 The first runs the `viscosity` binary, from the `cli` crate, on a
 three-line program that pushes 100 records `{ x, vx }` and then adds
 `vx` to `x` in a loop (I ran it here, and the output is trimmed to its
-first two lines and rewrapped); `--release` builds with optimizations,
+first two lines and rewrapped); `--release` builds with optimisations,
 and everything after `--` goes to the program, not to cargo. The second
 uses the port as a library: `compile` from `core`, handed the JavaScript
 plugin from `frontend-js`, returns a result whose `explain` field is the
@@ -180,7 +180,7 @@ pinned with `=` to the tool it is built with.
 
 Profiles live only in the root manifest; cargo ignores them in
 members<Cite id="cargo-workspaces" />. The release profile asks for
-"thin" link-time optimization, which optimizes across crates but runs
+"thin" link-time optimisation, which optimises across crates but runs
 much faster than the full kind<Cite id="cargo-profiles-debug-lto" />,
 and for one codegen unit, since splitting a crate into more units may
 produce slower code<Cite id="cargo-profiles" />.

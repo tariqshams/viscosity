@@ -150,7 +150,8 @@ be seen.
 The annotation rungs come next. An `aosoa(N)` annotation has its block
 size checked (only powers of two from 2 to 65536 are
 accepted<Cite id="rust-std-is-power-of-two" />, for reasons *AoSoA and
-hot/cold in Rust* explains), and then any annotation returns at
+hot/cold in Rust* and *Block sizes and typed columns in Rust*
+explain), and then any annotation returns at
 once: `aos` keeps the collection, and `soa` or `aosoa(N)` transforms it
 with the reason `annotated @viscosity soa at line 1` followed by the
 usual description. That return happens before the cost rungs, so an

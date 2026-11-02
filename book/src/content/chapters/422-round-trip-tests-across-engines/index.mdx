@@ -176,12 +176,12 @@ Two engines can agree on a wrong answer, so `differential.rs` checks
 behaviour: it runs each original and compiled JavaScript program with
 `node` (in an isolated context, using a copy of the TypeScript test
 runner) and compares everything printed and thrown, and it runs the Python
-ones with `python3`. Chapter "Differential testing at scale" built this
+ones with `python3`. *Differential testing at scale* built this
 test for the TypeScript engine; here it ran 68 of 68 JavaScript and 27 of
 27 Python programs identically. To see both tests catch a real mistake, I
 deleted one line from a copy of `crates/core/src/builder.rs` (the line
 that rewrites a `throw` when a phi is removed, which the chapter
-"Dominators and SSA in Rust" explains):
+*Dominators and SSA in Rust* explains):
 
 <Examples of="cross-implementation-tests">
 
@@ -239,7 +239,7 @@ the port's README lists ten bugs it turned up in the TypeScript engine,
 each fixed in both engines and pinned by a test program. Three were
 **miscompiles** (the compiled program behaved differently), including the
 `throw` above; others were crashes, or quieter slips such as shapes
-compared by joined names (see "Shape inference in Rust"). One shows well
+compared by joined names (see *Shape inference in Rust*). One shows well
 what a second implementation catches: past the end of a string,
 JavaScript's `src[i]` is `undefined`, and a regular-expression test turns
 that into the text `"undefined"`, which contains an `e`, so a `1` at the

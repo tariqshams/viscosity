@@ -188,7 +188,7 @@ so both cut at the same characters, and the fixture shows identical
 output from both engines.
 
 The danger is mixing the two. Hand acorn's `266..280` to the Rust string
-and you get `"9, and a line "`, from a comment two lines up; land inside
+and you get `"9, and a line "`, from the comment on the line above; land inside
 a character and Rust panics, because a string slice must start and end
 on a character boundary<Cite id="rust-std-str" />. When the port does
 need a JavaScript-style offset, `lines::utf16_offset` converts.
@@ -196,7 +196,7 @@ need a JavaScript-style offset, `lines::utf16_offset` converts.
 <Run id="three-lengths" />
 
 Line numbers need care too, because oxc reports none. The plugin counts
-them itself in `lines.rs`, at the same breaks acorn counts: `\n`,
+them itself, with a `LineIndex` (in `lines.rs`) that records where each line starts, at the same breaks acorn counts: `\n`,
 `\r\n`, a lone `\r`, U+2028 and U+2029.
 
 <Prompts ids={['oxc-units', 'oxc-same-cut', 'oxc-lines']} />
@@ -204,7 +204,7 @@ them itself in `lines.rs`, at the same breaks acorn counts: `\n`,
 <Callout kind="pitfall">
 oxc's parser does not report every syntax error: its documentation says
 the list "is not comprehensive", and more expensive checks are left to
-its semantic analyzer<Cite id="oxc-parser-docs" />. When this chapter
+its semantic analyser<Cite id="oxc-parser-docs" />. When this chapter
 was first written the port ran only the parser, so `let a = 1; let a =
 2;` compiled in Rust while acorn rejected it, and no parity fixture
 caught it, because every parity program is valid JavaScript. The fix is

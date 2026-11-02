@@ -197,7 +197,7 @@ so none needs the tree's lifetime.
 `lower.rs` uses the same rule as `lower.ts`: a variable stays an SSA
 value only if it is a simple kind (`const`, `let`, `var`, a parameter
 or a `catch` variable), used in no other function, never assigned in a
-`try`, and not initialized with an array; anything else is a binding.
+`try`, and not initialised with an array; anything else is a binding.
 
 In TypeScript, `lowerFunction` holds its helpers (`read`, `write`,
 `expr` and the rest) as closures sharing the function builder `fb`.
@@ -233,7 +233,7 @@ function add(v) {
     return
 ```
 
-`v` stays an SSA value (`%0`), while `ps` is array-initialized and `n`
+`v` stays an SSA value (`%0`), while `ps` is array-initialised and `n`
 is used inside `add`, so both are bindings. In `n++`, `unop +` turns the
 old value into a number, as JavaScript does, before `1` is added.
 

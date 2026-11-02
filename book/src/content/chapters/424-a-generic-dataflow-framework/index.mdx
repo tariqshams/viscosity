@@ -18,14 +18,14 @@ import LatticeHasse from '../../../components/diagrams/ch424/LatticeHasse';
 
 ## The framework that is not there
 
-The chapters "Dataflow analysis", "Fixpoints and worklists" and "Lattices
-and monotone frameworks" ended with a promise: facts arranged in a
+The chapters *Dataflow analysis*, *Fixpoints and worklists* and *Lattices
+and monotone frameworks* ended with a promise: facts arranged in a
 lattice, a rule per instruction, a way to merge two facts, and a worklist
-are the machinery under most of an optimizing compiler, one framework
+are the machinery under most of an optimising compiler, one framework
 with many instances<Cite id="coopertorczon2022" />. So you might expect
 the Rust port to have a `trait Lattice` somewhere; however, search
 `engine/rust/crates` for `trait` and you find exactly one, `LanguagePlugin`
-(see "The plugin trait"). What the port has instead is one fixpoint,
+(see *The plugin trait*). What the port has instead is one fixpoint,
 written directly over its own state: `numeric_inference` in
 `crates/core/src/analysis.rs`, a port of the same loop in `analysis.ts`.
 The file's other analyses are single passes over use lists, and one
@@ -75,10 +75,10 @@ pub trait Problem {
 }
 ```
 
-`type Fact: Lattice` is an **associated type** (see "Associated types and
-the standard traits"): each problem has exactly one kind of fact, as each
+`type Fact: Lattice` is an **associated type** (see *Associated types and
+the standard traits*): each problem has exactly one kind of fact, as each
 plugin has exactly one `Extra`. Nodes are plain `usize`s, like the typed
-ids of "VIR in Rust" without the wrapper.
+ids of *VIR in Rust* without the wrapper.
 
 <Examples of="generic-dataflow">
 
@@ -107,7 +107,7 @@ The first is the simplest lattice there is, the one Viscosity uses for
 JavaScript: `true` means "provably a number", `false` claims nothing, and
 the meet of two facts is `&&`, since a value built from two others is
 known to be a number only if both are. The second is the constant
-lattice of "Sparse conditional constant propagation", three levels deep; the
+lattice of *Sparse conditional constant propagation*, three levels deep; the
 exercise's tests run the same solver on both. The third is runnable: the
 real strategy (whole rounds, a budget, failing closed) on a four-value
 loop, which the last section explains.
@@ -182,8 +182,8 @@ with n nodes there are at most n times h changes, and each change pushes
 finitely many users: the stack must empty.</span>
 </Formal>
 
-The solver is generic, not `&dyn Problem` (see "Trait objects and
-dispatch"): it builds a `Vec<P::Fact>`, which needs the concrete type, and
+The solver is generic, not `&dyn Problem` (see *Trait objects and
+dispatch*): it builds a `Vec<P::Fact>`, which needs the concrete type, and
 **monomorphization** gives each problem its own copy, so every `transfer`
 and `meet` is a direct call rustc can inline<Cite id="klabnik2026" />.
 

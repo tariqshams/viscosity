@@ -174,7 +174,7 @@ small with a profile of 1000
 
 </Examples>
 
-All three come from the corpus program `tests/extra/upper_bound.js`
+All three come from the test program `tests/extra/upper_bound.js`
 and its profile `tests/profiles/extra_upper_bound.json`, run through
 the Rust CLI. In the first, `small` pushes on one trip in three of a
 loop of 40, so the estimate is "at most 40", and a maximum below 64 is
@@ -225,9 +225,9 @@ with `--profile`, and the fuzzer passed no profile either. Parity holds
 only for what is tested. The fix moved the placeholder and added the
 missing tests: four profiles in `engine/rust/tests/profiles`, checked
 through both the library and the CLI's `--profile` by
-`profiled_output_equals_typescript_output` in `parity.rs` (one of 190
-parity pairs today), and a random profile for each batch of the fuzzer.
-Its fixed-seed run here ended `fuzz: seed 1, 300 programs (134
+`profiled_output_equals_typescript_output` in `parity.rs` (beside the
+190 parity pairs, not among them), and a random profile for each batch
+of the fuzzer. A run of 300 programs with seed 1 here ended `fuzz: seed 1, 300 programs (134
 transformed, 174 may go out of bounds, 20 with an early error), 0
 failing`.
 

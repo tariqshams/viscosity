@@ -137,16 +137,10 @@ for (const p of ps) p.x
       ps.x[p]
 ```
 
-When all the edits are collected they are sorted by start, largest
-first, and applied with `String::replace_range`. Back to front is the
-whole trick: an edit changes the length of the text after it, so if
-edits were applied front to back every later offset would need fixing;
-applied from the end, nothing still waiting has moved. The offsets are
-UTF-8 bytes, oxc's spans, which is also how Rust indexes a `String`, so
-they cut the same characters the TypeScript reference cuts in its
-UTF-16 string. If two edits ever overlap, that is a bug, and the
-emitter returns `internal error: overlapping rewrites` rather than
-writing a broken program. Step through the edits for the program
+As *Emitting JavaScript from Rust* showed, the edits are then sorted by
+start, largest first, and applied with `String::replace_range`, so no
+edit still waiting has moved, and an overlap is reported as `internal
+error: overlapping rewrites` rather than written out. Step through the edits for the program
 above:
 
 <EditSteps client:visible />
@@ -187,7 +181,7 @@ this.f0_ = new Float64Array(cap);
 ```
 
 `length` (field 0) became `f0_`, which the real field `f0_` already
-uses, so it became `f0__`. Explain still says "fields length, f0_",
+uses, so it became `f0__`. Explain still says `{length, f0_}`,
 because columns are an internal detail.
 
 <Prompts ids={['cg-numbered', 'cg-reserved', 'cg-unique']} />
