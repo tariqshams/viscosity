@@ -103,8 +103,8 @@ name → "Alan"
 ```
 
 ```text
-letDecl → "let" IDENTIFIER ";"
-letDecl → "let" IDENTIFIER "=" NUMBER ";"
+letDecl → "let" IDENT ";"
+letDecl → "let" IDENT "=" NUMBER ";"
 ```
 
 ```text
@@ -119,8 +119,8 @@ The first is the smallest useful grammar: a `greeting` is the word
 whole grammar allows exactly two sentences, `hello Ada` and `hello Alan`.
 The second has two rules for one head, which is how a grammar says "or":
 `let x;` fits the first rule and `let x = 4;` fits the second, while
-`let = 4;` fits neither, because both bodies need an `IDENTIFIER` right
-after `let`. The third is real: it is how JavaScript's own specification
+`let = 4;` fits neither, because both bodies need an `IDENT` (any
+identifier token, a name) right after `let`. The third is real: it is how JavaScript's own specification
 writes the rule for a `while` loop, with a colon where we write an arrow
 and no quotes round its terminals<Cite id="ecma262-grammar" />.
 
@@ -156,8 +156,8 @@ NUMBER is a terminal: any number token
 ```
 
 ```text
-ifStmt → "if" "(" expr ")" stmt
-         "else" stmt
+ifStmt → "if" expr block
+         "else" block
 ```
 
 </Examples>
@@ -167,8 +167,10 @@ meaning one bracket token; `item` and `expr` have rules of their own, so
 they are nonterminals. The second shows a terminal standing for a whole
 *type* of token: `NUMBER` matches `3`, `0.5` or `1000` alike, because
 the scanner already decided they are numbers. The third is a shape Drip
-really uses, with four terminals (`"if"`, the brackets and `"else"`) and
-three nonterminals (`ifStmt`, `expr`, and `stmt` once per branch).
+really uses (its full rule, next chapter, makes the `else` part
+optional), with two terminals (`"if"` and `"else"`; Drip needs no
+brackets round the condition) and three nonterminals (`ifStmt`, `expr`,
+and `block` once per branch).
 
 The most common slip is putting quotes round a name that should be a
 blank:

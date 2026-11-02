@@ -17,7 +17,7 @@ export const prompts = {
     a: 'An item, followed by zero or more `+ item` pairs.',
   },
   'question-means': {
-    q: 'In `letDecl → "let" IDENTIFIER ( "=" expression )? ";"`, what does `?` mean?',
+    q: 'In `letDecl → "let" IDENT ( "=" expression )? ";"`, what does `?` mean?',
     a: 'The group is optional: once, or not at all. So `let x;` and `let x = 1;` both fit.',
   },
   'star-binds': {
@@ -42,10 +42,10 @@ export const examples = {
   callRegex: {
     title: 'A rule as a regular expression',
     code: `// One letter per token type:
-// n = NUMBER, i = IDENTIFIER
+// n = NUMBER, i = IDENT
 // args → NUMBER ( "," NUMBER )*
 const args = 'n(,n)*';
-// call → IDENTIFIER "(" args? ")"
+// call → IDENT "(" args? ")"
 const call = new RegExp(
   '^i\\\\((' + args + ')?\\\\)$');
 
@@ -164,7 +164,7 @@ This shape, *a loop for every star*, is exactly how you will write a parser in t
     optional: true,
     title: 'A grammar with an optional part',
     prompt:
-      'Write `isCall(ts)` for this grammar: `call → IDENTIFIER "(" args? ")"` and `args → NUMBER ( "," NUMBER )*`. So `f()`, `f(1)` and `f(1, 2, 3)` are calls; `f(1,)` and `f(,)` are not. The input is an array of token types, such as `[\'identifier\', \'(\', \')\']`.',
+      'Write `isCall(ts)` for this grammar: `call → IDENT "(" args? ")"` and `args → NUMBER ( "," NUMBER )*`. So `f()`, `f(1)` and `f(1, 2, 3)` are calls; `f(1,)` and `f(,)` are not. The input is an array of token types, such as `[\'identifier\', \'(\', \')\']`.',
     starter: `function isCall(ts) {
   // your code here
 }
@@ -222,7 +222,7 @@ test('no name', () => {
 **The solution, line by line.**
 
 - \`function isCall(ts) {\` takes the token types.
-- \`  if (ts[0] !== 'identifier') {\` checks the first symbol of \`call\`, \`IDENTIFIER\`: the function's name.
+- \`  if (ts[0] !== 'identifier') {\` checks the first symbol of \`call\`, \`IDENT\`: the function's name.
 - \`    return false;\` rejects rows with no name, such as \`( )\`.
 - \`  }\` closes it.
 - \`  if (ts[1] !== '(') return false;\` checks the second symbol, the opening bracket.
@@ -276,7 +276,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `ifStmt → "if" "(" expression ")" statement ( "else" statement )?`, what does the `?` allow?',
+    q: 'In `ifStmt → "if" expression block ( "else" block )?`, what does the `?` allow?',
     options: [
       { t: 'Any number of `else` parts', why: 'That would be `*`.' },
       { t: 'The condition to be left out', why: 'The `?` applies only to the group just before it, the `else` part.' },
@@ -293,7 +293,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these does the rule `call → IDENTIFIER "(" ( NUMBER ( "," NUMBER )* )? ")"` allow?',
+    q: 'Which of these does the rule `call → IDENT "(" ( NUMBER ( "," NUMBER )* )? ")"` allow?',
     options: [
       { t: '`f(1, 2)`', correct: true, why: 'A name, a bracket, the optional group present (one number, then one `, NUMBER` pair) and a bracket.' },
       { t: '`f(1,)`', why: 'Each comma must bring a number with it.' },

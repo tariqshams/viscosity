@@ -19,7 +19,7 @@ export const prompts = {
     a: 'Yes: functions are values, so they can be returned, stored in variables and passed around.',
   },
   'class-state': {
-    q: 'Two instances of the same Drip class each set `this.n`. Do they share one `n`?',
+    q: 'Two instances of the same Drip class each set `self.n`. Do they share one `n`?',
     a: 'No: each instance has its own fields.',
   },
   'print-statement': {
@@ -27,8 +27,8 @@ export const prompts = {
     a: 'No, it is a statement: `print x;` needs no parentheses.',
   },
   'zero-true': {
-    q: 'In Drip, does `if (0) print "yes";` print anything?',
-    a: 'Yes, it prints `yes`. Only `nil` and `false` count as false; `0` counts as true.',
+    q: 'In Drip, does `if 0 { print "yes"; }` print anything?',
+    a: 'Yes, it prints `yes`. Only `none` and `false` count as false; `0` counts as true.',
   },
   'closure-drip': {
     q: 'A Drip function is created inside another function. What does it remember?',
@@ -47,7 +47,7 @@ print !true;
 print none;
 
 let cups = 3;
-cups = cups + 1;
+cups += 1;
 print cups;
 print 0.1 + 0.2;`,
   },
@@ -141,17 +141,17 @@ print sumTo(100);`,
 5050`,
     hints: [
       'Start a running total at 0 with `let`, then add each number from 1 to n.',
-      'Drip has no `++` or `+=`. Write `i = i + 1` and `total = total + i`.',
-      'Make sure the loop includes n itself (`i <= n`), and that the function ends with `return total;`.',
+      'Walk the numbers with a range: `for i in 1..something { ... }`, adding each `i` to the total.',
+      'A range stops just before its end, so `1..n` misses n itself; write `1..n + 1`, and end the function with `return total;`.',
     ],
-    walkthrough: `**How to think about it.** Do it by hand first for a small n: the sum up to 4 is 1 + 2 + 3 + 4, which is 10, and you get there by keeping a running total and adding each number in turn. That is a loop with a counter that goes from 1 up to n, *including* n, and a total that starts at 0. In Drip the only new parts are the spelling: \`fn\` and \`let\`, and the step written out in full because there is no \`++\` or \`+=\`. The tests check the printed output, so the function must *return* the total and let the two \`print\` lines show it.
+    walkthrough: `**How to think about it.** Do it by hand first for a small n: the sum up to 4 is 1 + 2 + 3 + 4, which is 10, and you get there by keeping a running total and adding each number in turn. That is a loop with a counter that goes from 1 up to n, *including* n, and a total that starts at 0. In Drip the only new parts are the spelling: \`fn\` and \`let\`, and a \`for\` that walks a range, \`a..b\`, which gives every whole number from \`a\` up to, but not including, \`b\`. The tests check the printed output, so the function must *return* the total and let the two \`print\` lines show it.
 
 **The solution, line by line.**
 
 - \`fn sumTo(n) {\` declares a function called \`sumTo\` with one parameter.
 - \`let total = 0;\` makes the running total inside the function, so every call starts again from zero.
-- \`for (let i = 1; i <= n; i = i + 1) {\` counts \`i\` from 1 while it is at most \`n\`; the condition is \`<=\` because \`n\` itself must be added, and the step is \`i = i + 1\` in full.
-- \`total = total + i;\` adds the current number to the total (again, no \`+=\`).
+- \`for i in 1..n + 1 {\` gives \`i\` the values 1, 2, ... up to \`n\`; the end is \`n + 1\` because a range stops just before its end, and \`n\` itself must be added.
+- \`total = total + i;\` adds the current number to the total (\`total += i;\` says the same thing more briefly).
 - \`}\` ends the loop, and \`return total;\` hands the sum back to the caller.
 - \`}\` ends the function; the two \`print\` lines then show \`55\` and \`5050\`.
 
@@ -159,9 +159,9 @@ Check: 1 + 2 + ... + 10 is 55, and 1 + ... + 100 is 5050 (pair 1 with 100, 2 wit
 
 **Common wrong attempts.**
 
-- \`i < n\` instead of \`i <= n\`: the loop stops before adding \`n\`, so you get 45 and 4950.
-- \`print total;\` instead of \`return total;\`: the function prints inside itself and then returns nothing, which in Drip is \`nil\`, so the output has an extra \`nil\` after each number.
-- \`total += i;\` or \`i++\`: Drip has neither, so the program does not even start; the parser reports \`Expect expression.\` at the \`=\`.`,
+- \`1..n\` instead of \`1..n + 1\`: the loop stops before adding \`n\`, so you get 45 and 4950.
+- \`print total;\` instead of \`return total;\`: the function prints inside itself and then returns nothing, which in Drip is \`none\`, so the output has an extra \`none\` after each number.
+- \`total++;\`: Drip has no \`++\`, so the program does not even start; the parser reports \`line 4: expected an expression, found '+'\` at the second \`+\`.`,
     wrong: [
       {
         code: `fn sumTo(n) {
@@ -174,7 +174,7 @@ Check: 1 + 2 + ... + 10 is 55, and 1 + ... + 100 is 5050 (pair 1 with 100, 2 wit
 
 print sumTo(10);
 print sumTo(100);`,
-        why: 'With `i < n` the loop stops before adding `n`, so you get 45 and 4950. Use `i <= n`.',
+        why: 'The range `1..n` stops just before `n`, so `n` is never added: you get 45 and 4950. Use `1..n + 1`.',
       },
       {
         code: `fn sumTo(n) {
@@ -187,7 +187,7 @@ print sumTo(100);`,
 
 print sumTo(10);
 print sumTo(100);`,
-        why: 'This prints the total inside the function and then returns nothing, so each call also prints `nil`. Use `return total;`.',
+        why: 'This prints the total inside the function and then returns nothing, so each call also prints `none`. Use `return total;`.',
       },
     ],
   },
@@ -226,27 +226,28 @@ print b.inc();`,
 1`,
     hints: [
       'Methods are written inside the class body with no `fn` keyword: `init() { ... }`.',
-      'Fields live on `this`: `this.n = 0;` in `init`.',
-      'In `inc`, change `this.n`, not a plain `n`: a bare `n` is a variable lookup, and there is no variable called `n`.',
+      'Fields live on `self`: `self.n = 0;` in `init`.',
+      'In `inc`, change `self.n`, not a plain `n`: a bare `n` is a variable lookup, and there is no variable called `n`.',
     ],
-    walkthrough: `**How to think about it.** A counter needs a number that survives between calls to \`inc\`, and each counter needs its *own* number, so that \`b\` starts again at 1. That is exactly what a field on an instance gives you: \`init\` runs once for each new instance and can set \`this.n\` to 0, and every method of that instance can read and change it through \`this\`. Methods in a Drip class body are written without \`fn\`.
+    walkthrough: `**How to think about it.** A counter needs a number that survives between calls to \`inc\`, and each counter needs its *own* number, so that \`b\` starts again at 1. That is exactly what a field on an instance gives you: \`init\` runs once for each new instance and can set \`self.n\` to 0, and every method of that instance can read and change it through \`self\`. Methods in a Drip class body are written without \`fn\`.
 
 **The solution, line by line.**
 
 - \`class Counter {\` starts the class.
-- \`init() {\` is the constructor: calling \`Counter()\` makes a new instance and runs \`init\` on it.
-- \`this.n = 0;\` gives the new instance its own field \`n\`, starting at 0, and \`}\` ends \`init\`.
+- \`init() {\` is the constructor: \`new Counter()\` makes a new instance and runs \`init\` on it.
+- \`self.n = 0;\` gives the new instance its own field \`n\`, starting at 0, and \`}\` ends \`init\`.
 - \`inc() {\` is the method that counts.
-- \`this.n = this.n + 1;\` reads the field, adds 1 and stores it back (no \`+=\` in Drip).
-- \`return this.n;\` hands back the new value, so \`print a.inc();\` has something to print; \`}\` ends the method and the next \`}\` the class.
+- \`self.n = self.n + 1;\` reads the field, adds 1 and stores it back (\`self.n += 1;\` would do the same).
+- \`return self.n;\` hands back the new value, so \`print a.inc();\` has something to print; \`}\` ends the method and the next \`}\` the class.
 
 Then \`a\` counts \`1\`, \`2\`, and \`b\`, a new instance with its own \`n\`, prints \`1\`. Compare with \`makeCounter\` in the functions example: a class and a closure are two ways to keep private state alive between calls.
 
 **Common wrong attempts.**
 
-- Writing \`n = n + 1;\` without \`this.\`: a bare \`n\` is a variable, not the field, and there is no variable called \`n\`, so Drip stops with \`Undefined variable 'n'.\`
-- Forgetting \`return this.n;\`: the count goes up, but \`inc\` returns \`nil\`, so every line prints \`nil\`.
-- Writing \`fn inc() {\` inside the class: methods take no \`fn\`, so the parser reports an error.`,
+- Writing \`n = n + 1;\` without \`self.\`: a bare \`n\` is a variable, not the field, and there is no variable called \`n\`, so Drip stops with \`runtime error: undefined variable 'n'\`.
+- Forgetting \`return self.n;\`: the count goes up, but \`inc\` returns \`none\`, so every line prints \`none\`.
+- Writing \`fn inc() {\` inside the class: methods take no \`fn\`, so the parser reports \`expected a method name, found 'fn'\`.
+- Writing \`Counter()\` without \`new\`: Drip stops with \`cannot call a class: use 'new Counter(...)'\`.`,
     wrong: [
       {
         code: `class Counter {
@@ -264,7 +265,7 @@ print a.inc();
 print a.inc();
 let b = new Counter();
 print b.inc();`,
-        why: 'A bare `n` is not the field: Drip looks for a variable `n`, finds none, and stops with “Undefined variable \'n\'.”. Write `this.n`.',
+        why: 'A bare `n` is not the field: Drip looks for a variable `n`, finds none, and stops with “undefined variable \'n\'”. Write `self.n`.',
       },
       {
         code: `class Counter {
@@ -281,7 +282,7 @@ print a.inc();
 print a.inc();
 let b = new Counter();
 print b.inc();`,
-        why: 'The count goes up, but `inc` returns nothing, so every `print` shows `nil`. End with `return this.n;`.',
+        why: 'The count goes up, but `inc` returns nothing, so every `print` shows `none`. End with `return self.n;`.',
       },
     ],
   },
@@ -298,19 +299,19 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does this Drip program print?\n```\nif ("") print "yes";\nelse print "no";\n```',
+    q: 'What does this Drip program print?\n```\nif "" { print "yes"; }\nelse { print "no"; }\n```',
     options: [
       { t: '`no`', why: 'That’s what JavaScript would do. In Drip, the empty string counts as true.' },
       { t: 'Nothing', why: 'One of the two branches always runs.' },
       { t: 'A runtime error', why: 'Any value can be a condition in Drip.' },
-      { t: '`yes`', correct: true, why: 'Only `nil` and `false` are false. `""` is a string, so it counts as true.' },
+      { t: '`yes`', correct: true, why: 'Only `none` and `false` are false. `""` is a string, so it counts as true.' },
     ],
   },
   {
     q: 'Which of these values does Drip treat as false in an `if`?',
     options: [
       { t: '`0`', why: 'That is JavaScript’s rule. In Drip, every number is true.' },
-      { t: '`nil`', correct: true, why: 'Only `nil` and `false` are false in Drip.' },
+      { t: '`none`', correct: true, why: 'Only `none` and `false` are false in Drip.' },
       { t: '`""`', why: 'The empty string is still a string, and every string is true in Drip.' },
       { t: 'a function', why: 'Functions are values like any other, and true.' },
     ],

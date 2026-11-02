@@ -135,25 +135,40 @@ shows `4.25`, because what `print` shows is the value, not the lexeme.
 
 ## Strings
 
-A Drip string starts with `"` and runs to the next `"`. Unlike
-JavaScript, Drip has no escape sequences like `\n` or `\"`, so there is
-no way to put a quote mark inside a string; and a string may run across
-several lines. The case in the `switch`:
+A Drip string starts with `"` and runs to the next `"`, and it may run
+across several lines. Inside it, a backslash starts an **escape**, a
+two-character code for a character that would be awkward to type
+directly: `\n` is a newline, `\t` a tab, `\"` a quote mark that does
+*not* end the string, and `\\` one backslash. The scanner keeps them in
+a small table:
+
+```ts
+const ESCAPES = {
+  n: '\n', t: '\t', '"': '"', '\\': '\\',
+};
+```
+
+and the case in the `switch` builds the value one character at a time:
 
 ```ts
 case '"': {
+  const startLine = line;
+  let value = '';
   while (peek() !== '"' && !atEnd()) {
-    if (peek() === '\n') line++;
-    advance();
+    const ch = advance();
+    if (ch === '\n') line++;
+    if (ch === '\\' && !atEnd()) {
+      value += ESCAPES[advance()];
+    } else {
+      value += ch;
+    }
   }
   if (atEnd()) {
-    error(line, 'Unterminated string.');
+    error('unterminated string', startLine);
     break;
   }
   advance(); // the closing "
-  // the value leaves out both quotes
-  add('string',
-    source.slice(start + 1, current - 1));
+  add('string', value, startLine);
   break;
 }
 ```
@@ -163,9 +178,10 @@ When a book quotes someone, the words between the quote marks are
 reproduced exactly as they were said, and the quote marks themselves
 only show where the quotation starts and stops; nobody said the quote
 marks.
-<span slot="breaks">A book can quote someone who used a quote mark,
-with tricks like single quotes inside double ones. Drip has no such
-trick: the first `"` after the opening one always ends the string.</span>
+<span slot="breaks">A book shows a quote inside a quote with single
+marks inside double ones. Drip's trick is the escape `\"`, and it is
+the scanner's job, not the reader's, to see that this quote mark is
+part of the words.</span>
 </Analogy>
 
 Step through it on a string that spans two lines, and then on one that
@@ -173,17 +189,23 @@ never ends:
 
 <StringSteps client:visible />
 
-Line 2 of the case takes characters until the next one is a quote mark
-or the source runs out. Line 3 matters even though it is short: because
-the loop counts the newlines it passes, every token after a long string
-still gets the right line number. Lines 6 to 9 deal with a string that
-never ends: if the file runs out before the closing quote, the scanner
-reports `Unterminated string.` instead of quietly inventing a quote.
-Line 10 takes the closing quote, and lines 12 and 13 make the token,
-whose lexeme (from `add`) is the whole slice, quotes included, while the
-value is the narrower slice from `start + 1` to `current - 1`, leaving
-both quotes out. For `"hi"` the lexeme is four characters and the value
-is the two-letter string `hi`.
+Line 2 remembers the line the string starts on, where the token (or
+its error) will be reported. Line 4 takes characters until the next
+one is a quote mark or the source runs out. Line 6 matters even though
+it is short:
+because the loop counts the newlines it passes, every token after a long
+string still gets the right line number. Lines 7 and 8 handle an
+escape: after a backslash, the loop takes the *next* character at once
+and adds what the table says, so in `\"` the quote never reaches the
+loop's test on line 4. Every other
+character goes into the value as it is (line 10). Lines 13 to 16 deal
+with a string that never ends: if the file runs out before the closing
+quote, the scanner makes an error token, `unterminated string`, instead
+of quietly inventing a quote. Line 17 takes the closing quote, and line
+18 makes the token, whose lexeme (from `add`) is the whole slice, quotes
+and backslashes included, while the value is the string that was built. (The real code also checks that the character
+after a backslash is one of the four, and reports, say,
+`unknown escape '\q' in a string` if not.)
 
 <Examples of="literal">
 
@@ -191,30 +213,32 @@ is the two-letter string `hi`.
 "hi"     lexeme "hi"   value hi
 ""       lexeme ""     value (empty)
 "a⏎b"    one token, value a⏎b
+"a\tb"   lexeme 6 chars, value a⇥b
 ```
 
 ```
 print "say "hi"";
-// [line 1] Error at 'hi':
-// Expect ';' after value.
-print "say 'hi'";  // say 'hi'
+# line 1: expected ';' after the
+# value, found 'hi'
+print "say \"hi\"";  # say "hi"
 ```
 
 ```
 print "hi;
-// [line 1] Error: Unterminated
-// string.
+# line 1: unterminated string
 ```
 
 </Examples>
 
 The first shows three strings: the plain one, the empty one (two
 characters of lexeme, a value with nothing in it), and one with a
-newline (⏎) inside, which is still one token. The second is a spot the
-difference: without escapes, the second `"` *ends* the string, so the
-scanner makes the string `say `, then the name `hi`, then an empty
-string, and the parser stops at `hi`; using single quotes inside, which
-are ordinary characters to Drip, works. The third is the unterminated
+newline (⏎) inside, which is still one token; and one with an escape,
+whose six characters of lexeme become a value of three: `a`, a tab
+(⇥) and `b`. The second is a spot the
+difference: without a backslash, the second `"` *ends* the string, so
+the scanner makes the string `say `, then the name `hi`, then an empty
+string, and the parser stops at `hi`; written as `\"`, each inner quote
+is part of the value, and the line prints `say "hi"`. The third is the unterminated
 case from the step-through: the closing quote is missing, so the rest of
 the file becomes part of a string that never ends, and the scanner says
 so.
@@ -224,8 +248,7 @@ so.
 <Callout kind="engine" label="Under the hood">
 Drip's literals are deliberately plain. The JSON scanner you wrote in
 the checkpoint had to handle more: a leading minus, exponents such as
-`1e3`, and escapes such as `\n` and `\"` inside strings, each a few
-more lines in its loop. JavaScript has more again (hexadecimal `0xff`,
+`1e3`, and the escape `\u`. JavaScript has more again (hexadecimal `0xff`,
 `1_000`, template literals), and in a real engine the conversion from
 characters to a number is careful work of its own; Drip borrows
 JavaScript's `Number` for exactly that reason<Cite id="mdn-number" />.
@@ -248,10 +271,11 @@ one does the same for strings, errors included.
   lexeme (`'4.25'`) and the **literal value** (`4.25`).
 - Numbers need **two characters of lookahead**: the dot is taken only
   if a digit follows it. `Number` turns the lexeme into the value.
-- A string's value leaves out the quotes; Drip strings have no escapes
-  and may span lines.
+- A string's value leaves out the quotes and turns the escapes `\n`,
+  `\t`, `\"` and `\\` into the characters they stand for; Drip strings
+  may span lines.
 - The string loop counts the newlines it passes, and a string that never
-  ends is reported as `Unterminated string.`
+  ends is reported as `unterminated string`.
 
 Next: the words that carry no value but a name, and how the scanner
 tells your names from the language's own.

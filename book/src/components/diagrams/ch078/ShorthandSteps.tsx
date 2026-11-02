@@ -14,8 +14,8 @@ const STATES: S[] = [
   },
   {
     mark: '?',
-    short: 'letDecl → "let" IDENTIFIER ( "=" expr )? ";"',
-    plain: ['letDecl → "let" IDENTIFIER ";"', 'letDecl → "let" IDENTIFIER "=" expr ";"'],
+    short: 'letDecl → "let" IDENT ( "=" expr )? ";"',
+    plain: ['letDecl → "let" IDENT ";"', 'letDecl → "let" IDENT "=" expr ";"'],
     fits: 'let x;      let x = 1;',
     note: 'A question mark makes the bracketed group optional: present once, or not at all. So it unfolds into two rules, one without the group and one with it.',
   },

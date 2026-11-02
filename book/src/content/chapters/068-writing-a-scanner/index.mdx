@@ -20,18 +20,16 @@ import ScanLoopSteps from '../../../components/diagrams/ch068/ScanLoopSteps';
 
 The last chapter described tokens; now for the program that makes them.
 In the companion code it is a single function, `scan`, in
-`companion/ts/src/scanner.ts`: about eighty lines that take a string
-and return an array of tokens.
+`companion/ts/src/scanner.ts`: about a hundred lines that take a
+string and return an array of tokens.
 
 ```ts
-function scan(
-  source: string,
-  reporter: Reporter,
-): Token[]
+function scan(source: string): Token[]
 ```
 
-The `reporter` is where it sends error messages; everything else
-happens inside. You wrote a smaller relative of this function for JSON
+It takes nothing else, not even somewhere to send error messages: a
+character it cannot use becomes a token too, as you will see below, and
+everything else happens inside. You wrote a smaller relative of this function for JSON
 in *Checkpoint: JSON and its scanner*, and the question it answers is
 the same one: given a long row of characters, where does each word
 start, where does it end, and what kind of word is it?
@@ -163,7 +161,7 @@ while (!atEnd()) {
       break;
     // … more cases
     default:
-      error(line, 'Unexpected character.');
+      error(`unexpected character '${c}'`);
   }
 }
 tokens.push({ type: 'eof', lexeme: '',
@@ -178,8 +176,9 @@ a punctuation token's type is its own spelling (from the last chapter),
 the character `c` *is* the type. The whitespace cases (space, carriage
 return `'\r'` and tab `'\t'`) do nothing at all, so they make no token,
 and a newline only adds one to `line`. The `default` case catches any
-character no other case wanted, such as `@`, and reports it. After the
-loop, one `eof` token is pushed, with an empty lexeme and the last line.
+character no other case wanted, such as `@`, and `error` pushes a token
+of type `error` whose lexeme is the message. After the loop, one `eof`
+token is pushed, with an empty lexeme and the last line.
 
 <Examples of="scanner">
 
@@ -206,22 +205,24 @@ knows brackets, braces and semicolons, skips spaces, counts lines, and
 reports anything else; change the input strings at the bottom and run
 it again.
 
-When the `default` case finds a character it does not know, it reports
-`Unexpected character.` through the reporter, with the current line,
-and *carries on*. One run can therefore report every bad character
-instead of stopping at the first; spot the difference between Drip's
-output for a program with one stray character and for the fixed one:
+When the `default` case finds a character it does not know, it does
+not stop and it prints nothing: it adds an `error` token, with the
+message `unexpected character '@'` as its lexeme and the current line,
+and *carries on*. The parser reports that token when it reaches it, so
+every error, from the scanner or the parser, comes out in source order;
+spot the difference between Drip's output for a program with one stray
+character and for the fixed one:
 
 ```
 print 1 @ 2;
-// [line 1] Error: Unexpected character.
-// [line 1] Error at '2': Expect ';' …
-print 1 + 2;  // 3
+# line 1: unexpected character '@'
+print 1 + 2;  # 3
 ```
 
-The scanner reports the `@` and simply drops it, which leaves `print 1
-2;`, so the parser then complains too. Neither line runs, because the
-pipeline stops before the interpreter if anything was reported.
+The parser reports only the first error in each statement and then
+skips to the next one, so the leftover `1 2` draws no second complaint.
+Nothing runs, because the pipeline stops before the interpreter if
+anything was reported.
 
 <Prompts ids={['newline-case', 'eof-push', 'keep-going']} />
 
@@ -254,7 +255,7 @@ pointers, and a run of digits treated as one number.
   returns `'\0'` at the end.
 - The main loop reads one character, and a `switch` decides what it
   begins. Whitespace makes no token, `'\n'` bumps the line count, and an
-  unknown character is reported while scanning carries on.
+  unknown character becomes an `error` token while scanning carries on.
 - After the loop, one `eof` token marks the end.
 
 Next: the characters that cannot be decided on their own, like the `<`

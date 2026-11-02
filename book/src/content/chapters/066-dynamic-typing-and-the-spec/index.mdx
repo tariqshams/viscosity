@@ -29,7 +29,7 @@ Multiplying a string by a number means nothing in Drip; the question is
 *when* Drip notices. TypeScript, from *TypeScript I: types as labels*,
 would refuse the whole program before running any of it. Drip does not:
 it prints `start`, and only when it reaches line 2 does it stop, with
-`Operands must be numbers.` and the line number. That is what it means
+`cannot use '*' on a string and a number` and the line number. That is what it means
 for a language to be dynamically typed.
 
 <Analogy title="labels on parcels">
@@ -83,7 +83,8 @@ any other pair       →  runtime error
 their sum, tagged number. If both carry the string tag, the result is
 the two strings joined, tagged string. For any other pair of tags, such
 as a number and a string, + does not produce a value at all: the program
-stops with "Operands must be two numbers or two strings."</span>
+stops with a runtime error that names both, such as "cannot add a
+number and a string".</span>
 </Formal>
 
 <Examples of="dynamic-typing">
@@ -91,14 +92,14 @@ stops with "Operands must be two numbers or two strings."</span>
 ```
 let x = 1;
 x = "one";
-print x;  // one
+print x;  # one
 ```
 
 ```
 fn twice(v) { return v + v; }
-print twice(2);     // 4
-print twice("ab");  // abab
-print twice(nil);   // runtime error
+print twice(2);     # 4
+print twice("ab");  # abab
+print twice(none);  # runtime error
 ```
 
 <Run id="type-error" />
@@ -109,18 +110,19 @@ The first shows that a variable has no type of its own: `x` holds a
 number, then a string, and the program prints `one` without complaint.
 The second shows one function working on two kinds of value, because
 the check happens inside `+` on each call: `twice(2)` adds, `twice("ab")`
-joins, and `twice(nil)` stops with the runtime error on its line, after
+joins, and `twice(none)` stops with `cannot add none and none`, after
 the first two lines have already printed. The third is a mistake that
 real programs make all the time, gluing a label onto a number: in Drip
-`"Total: " + 3` is an error (there is no way to turn a number into a
-string at all), so the runnable box prints `start` and then stops.
-Spot the difference with its fix, which keeps both sides strings:
+`"Total: " + 3` is an error (`+` never converts; you turn the number
+into a string yourself, with the built-in function `str`), so the
+runnable box prints `start` and then stops. Spot the difference with
+its fix, which makes both sides strings:
 
 ```
 print "Total: " + 3;
-// Operands must be two numbers
-// or two strings.
-print "Total: " + "3";  // Total: 3
+# runtime error: cannot add
+# a string and a number
+print "Total: " + str(3);  # Total: 3
 ```
 
 <Prompts ids={['dyn-when', 'types-on-values', 'var-change-type']} />
@@ -204,8 +206,9 @@ correct when it does what the spec says, for every program.
 
 JavaScript's spec is a document called ECMA-262, maintained by a
 committee called TC39<Cite id="ecma262" />. Drip has no committee: its
-spec is this book's description of the language, made checkable by
-**265 test programs** in `companion/corpus`. Each test writes down what it should
+spec is this book's description of the language (`book/DRIP.md`),
+made checkable by **more than three hundred test programs** in
+`companion/corpus`. Each test writes down what it should
 do in its own comments, and the test runner compares:
 
 <Figure takeaway="The tests are the spec you can run." caption="A test program carries its expected output in comments. The runner runs it on each implementation and compares the output with the comments line by line; an implementation passes only on an exact match.">
@@ -224,24 +227,23 @@ correct(I)    ⟺  out(I, P) = spec(P)
 (the double arrow, read "if and only if") the output of running t on I
 is equal to the output written in t's comments. I is correct when, for
 every program P at all, its output is the one the spec gives; the tests
-check the first line for 265 programs, which is how we gain confidence
+check the first line for a few hundred programs, which is how we gain confidence
 in the second.</span>
 </Formal>
 
 <Examples of="language-spec">
 
 ```
-// from if/truth.drip
-if (0) print 0;  // expect: 0
-if ("") print "empty";
-// expect: empty
+# from truthiness/what_is_true.drip
+print truth(0);   # expect: true
+print truth("");  # expect: true
 ```
 
 ```
-// from operator/add_bool_string.drip
-true + "s";
-// expect runtime error: Operands
-// must be two numbers or two strings.
+# from operators/add_boolean.drip
+print true + 1;
+# expect runtime error: cannot add
+# a boolean and a number
 ```
 
 ```text
@@ -253,12 +255,13 @@ that check engines against it.
 </Examples>
 
 The first two are real Drip tests, shortened to fit (in the files each
-`// expect` comment sits at the end of its line). The first pins down
-the truth rule from the last chapter: `0` and `""` must count as true,
-so the expected output is `0` and then `empty`. The second expects an
-error instead of output, written as `expect runtime error:` followed by
-the exact message, so an implementation that printed `trues` (as a
-JavaScript-like `+` would) fails. The third is the same arrangement for
+`# expect` comment sits at the end of its line). The first pins down
+the truth rule from the last chapter: the test's function `truth(v)`
+returns `"true"` when `if v` runs its body, and `0` and `""` must both
+count as true, so the expected output is `true` twice. The second
+expects an error instead of output, written as `expect runtime error:`
+followed by the exact message, so an implementation that printed `2`
+(as JavaScript's `+` would) fails. The third is the same arrangement for
 JavaScript, at a much larger scale: a written spec, and a separate,
 official collection of tests that engines run to check that they follow
 it<Cite id="test262" />.
@@ -266,7 +269,7 @@ it<Cite id="test262" />.
 <Prompts ids={['spec-what', 'corpus-role', 'expect-comment', 'not-proof']} />
 
 <Callout kind="engine" label="Under the hood">
-You will build Drip twice, and the companion code runs the same 265
+You will build Drip twice, and the companion code runs the same test
 programs against both, so the two must agree with the spec and with each
 other. That is differential testing, from *Edge cases and differential
 testing*, at the scale of a whole language. JavaScript engines do the
@@ -292,7 +295,7 @@ runner: reading a test's expectations out of its comments.
 - Languages that check at run time still differ: JavaScript converts,
   Python and Drip refuse.
 - A **language spec** says precisely what every program means. Drip's
-  is made runnable by 265 test programs whose comments give the exact
+  is made runnable by hundreds of test programs whose comments give the exact
   expected output or error, and both implementations must pass them.
 - Passing every test is strong evidence, not proof: tests only cover the
   programs someone wrote down.

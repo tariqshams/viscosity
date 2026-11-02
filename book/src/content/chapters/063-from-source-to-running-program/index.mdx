@@ -67,7 +67,7 @@ output and returns something more organised. Here is the heart of
 Drip's `run`, simplified from `companion/ts/src/drip.ts`:
 
 ```ts
-const tokens = scan(source, reporter);
+const tokens = scan(source);
 const program = parse(tokens, reporter);
 const locals = resolve(program, reporter);
 interp.interpret(program, locals);
@@ -82,9 +82,11 @@ refers to (the chapter *Resolving variables* builds it). Line 4 is the
 interpreter, which walks the tree and does what it says (the next
 chapter, *Interpreters and compilers*, sets it beside the other way to
 finish the journey). The
-`reporter` is an object that collects error messages, handed to every
-stage so that any of them can complain; the real `run` also stops after
-parsing if the reporter holds an error, which is why a program with a
+`reporter` is an object that collects error messages, handed to the
+stages that can complain (the scanner never complains itself: a
+character it cannot use becomes an error token, which the parser
+reports when it reaches it); the real `run` also stops after parsing
+if the reporter holds an error, which is why a program with a
 spelling mistake in it never prints anything at all. Four calls, four modules,
 one job each, as *Modules: import and export* promised.
 

@@ -18,7 +18,7 @@ export const prompts = {
     a: 'Always taking the longest run of characters that forms a valid token.',
   },
   'orchid': {
-    q: 'Why is `orchid` one identifier and not the keyword `or` plus `chid`?',
+    q: 'Why is `fortune` one identifier and not the keyword `for` plus `tune`?',
     a: 'Maximal munch: the scanner takes the whole run of letters, then checks whether that word is a keyword.',
   },
   'peek-end': {

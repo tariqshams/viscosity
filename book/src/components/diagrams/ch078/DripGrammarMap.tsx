@@ -1,7 +1,7 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
 // Which of Drip's rules mention which: an arrow from A to B means
-// "B appears in a body of A". The two loops are what let statements nest.
+// "B appears in a body of A". The loops are what let statements nest.
 type N = { id: string; x: number; y: number };
 
 const NODES: N[] = [
@@ -10,9 +10,9 @@ const NODES: N[] = [
   { id: 'letDecl', x: 62, y: 96 },
   { id: 'fnDecl', x: 190, y: 96 },
   { id: 'statement', x: 322, y: 96 },
-  { id: 'block', x: 150, y: 170 },
-  { id: 'printStmt', x: 252, y: 170 },
-  { id: 'ifStmt', x: 350, y: 170 },
+  { id: 'block', x: 110, y: 170 },
+  { id: 'ifStmt', x: 225, y: 170 },
+  { id: 'printStmt', x: 345, y: 170 },
   { id: 'expression', x: 230, y: 244 },
 ];
 
@@ -29,6 +29,7 @@ const EDGES: [string, string, boolean?][] = [
   ['statement', 'block'],
   ['statement', 'printStmt'],
   ['statement', 'ifStmt'],
+  ['ifStmt', 'block'],
   ['letDecl', 'expression'],
   ['printStmt', 'expression'],
   ['ifStmt', 'expression'],
@@ -37,6 +38,10 @@ const EDGES: [string, string, boolean?][] = [
 function down(a: string, b: string, color: string) {
   const p = by[a];
   const c = by[b];
+  if (p.y === c.y) {
+    // same row: a short sideways arrow, edge to edge
+    return <Arrow key={a + b} x1={p.x - w(a) / 2} y1={p.y} x2={c.x + w(b) / 2 + 2} y2={c.y} color={color} width={1.5} />;
+  }
   return <Arrow key={a + b} x1={p.x} y1={p.y + H / 2} x2={c.x} y2={c.y - H / 2 - 1} color={color} width={1.5} />;
 }
 
@@ -44,16 +49,18 @@ export default function DripGrammarMap() {
   const ink = tok('ink', 0.45);
   const loop = tok('brand');
   return (
-    <Svg w={400} h={282} title="A map of Drip's statement rules. program uses declaration; declaration uses letDecl, fnDecl and statement; statement uses block, printStmt and ifStmt; block uses declaration again, and ifStmt uses statement again; letDecl, printStmt and ifStmt use expression.">
+    <Svg w={400} h={282} title="A map of Drip's statement rules. program uses declaration; declaration uses letDecl, fnDecl and statement; statement uses block, printStmt and ifStmt; block uses declaration again; ifStmt uses block, and ifStmt again after else; letDecl, printStmt and ifStmt use expression.">
       {/* program → declaration, sideways */}
       <Arrow x1={62 + w('program') / 2} y1={24} x2={230 - w('declaration') / 2 - 2} y2={24} color={ink} width={1.5} />
       <T x={130} y={14} size={11} mono fill={tok('muted')}>*</T>
       {EDGES.map(([a, b]) => down(a, b, ink))}
       {/* the loops */}
-      <Arrow x1={150 - 30} y1={170 - H / 2} x2={230 - 50} y2={24 + H / 2 + 1} color={loop} width={2} bend={-0.9} dash />
+      <Arrow x1={110 - 20} y1={170 - H / 2} x2={230 - 50} y2={24 + H / 2 + 1} color={loop} width={2} bend={-0.9} dash />
       <T x={8} y={200} size={11} mono fill={loop}>{'block → "{" declaration* "}"'}</T>
-      <Arrow x1={350 + 30} y1={170 - H / 2} x2={322 + 40} y2={96 + H / 2 + 1} color={loop} width={2} bend={0.9} dash />
-      <T x={8} y={216} size={11} mono fill={loop}>{'ifStmt → … "else" statement'}</T>
+      {/* ifStmt mentions itself: else if */}
+      <path d="M256,172 C298,182 292,128 247,155" fill="none" stroke={loop} strokeWidth={2} strokeDasharray="5 4" />
+      <polygon points="247,155 251.4,147.2 255.4,154.4" fill={loop} />
+      <T x={8} y={216} size={11} mono fill={loop}>{'ifStmt → … "else" ifStmt'}</T>
       {NODES.map((n) => {
         const ww = w(n.id);
         const isExpr = n.id === 'expression';

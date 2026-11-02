@@ -43,14 +43,12 @@ wheel and the mirrors are the same as on any car, so almost everything
 you learn carries over, and nothing too fast can happen while you
 learn.
 <span slot="breaks">A learner's car leaves out nothing a driver needs;
-Drip does leave things out on purpose (real languages have far bigger
-libraries, for a start), and a few of the things it leaves out change
-how an implementation has to be built.</span>
+Drip leaves things out on purpose (a big library, for a start), and a
+few of those gaps change how an implementation is built.</span>
 </Analogy>
 
-Every example in this chapter runs on the interpreter you are about to
-write, so edit them freely. Here is most of Drip at a glance, next to
-the JavaScript you know:
+Every example here runs on the interpreter you are about to write, so
+edit them freely. Here is most of Drip next to the JavaScript you know:
 
 <Figure takeaway="Drip is JavaScript's ideas with fewer, plainer words." caption="Each row is one idea spelled two ways. The highlighted Drip column is where the spelling differs; the last row is something Drip simply does not have.">
   <DripAtAGlance />
@@ -60,15 +58,15 @@ the JavaScript you know:
 **Drip** is the small, dynamically typed language this book implements,
 twice: as a tree-walking interpreter in Part III and as a bytecode VM in
 Part IV. It has numbers, strings, booleans and a "no value" value,
-variables, `if`, `while` and `for`, functions and closures, and classes
-with inheritance.
+lists, variables, `if`, `while` and `for`, functions and closures, and
+classes with inheritance.
 </Callout>
 
 <Prompts ids={['drip-why', 'drip-twice']} />
 
 ## Values and variables
 
-Drip has numbers, strings, `true` and `false`, and `nil`, which means
+Drip has numbers, strings, `true` and `false`, and `none`, which means
 "no value" (like JavaScript's `null`). Variables are made with `let`;
 and `print` is a **statement**, a command in the language itself rather
 than a function, so it needs no brackets:
@@ -77,22 +75,23 @@ than a function, so it needs no brackets:
 
 Line 1 prints `3.5`: every number is a 64-bit float, as in JavaScript,
 so dividing does not round down. Line 2 joins two strings with `+`,
-giving `dripdrop`. Line 3 uses the word `and` where JavaScript writes
-`&&` (and `or` for `||`), and prints `true`. Line 4 prints `false`, and
-line 5 prints `nil`. Then `let cups = 3;` makes a variable, and
-`cups = cups + 1;` gives it a new value (Drip has no `+=` or `++`, so
-the sum is written out in full), so `print cups;` shows `4`. The last
-line prints `0.30000000000000004`, the same rounding you met in
-*Floats and typed arrays*, because Drip's numbers are JavaScript's
-numbers underneath. Comments start with `//`, as in JavaScript.
+giving `dripdrop`. Line 3 uses `&&` exactly as JavaScript does (and
+`||` for "or"), and prints `true`. Line 4 prints `false`, and line 5
+prints `none`. Then `let cups = 3;` makes a variable, and
+`cups += 1;` adds 1 to it (Drip has `+=` and `-=`, but no `++`), so
+`print cups;` shows `4`. The last line prints `0.30000000000000004`,
+the same rounding you met in *Floats and typed arrays*, because Drip's
+numbers are JavaScript's numbers underneath. Comments start with `#`
+and run to the end of the line.
 
 <Prompts ids={['print-statement', 'float-div']} />
 
 ## Deciding and repeating
 
-`if`, `while` and `for` look the way you would expect, with the
-condition in brackets and the body in braces (a body of one statement
-may leave the braces out). One rule differs from JavaScript, and it is
+`if`, `while` and `for` look nearly the way you would expect, with two
+small changes: the condition needs no brackets around it, and the body
+always takes braces, even when it is one statement (`if x > 1 { ... }`).
+One more rule differs from JavaScript, and it is
 worth stepping through slowly: which values count as true.
 
 <TruthSteps client:visible />
@@ -100,15 +99,15 @@ worth stepping through slowly: which values count as true.
 <Formal title="Drip's truth rule">
 
 ```text
-truthy(v) = false   if v is nil or false
+truthy(v) = false   if v is none or false
 truthy(v) = true    otherwise
 ```
 
 <span slot="read">To decide an if or a while, Drip asks whether the
 value v is truthy. The answer is false in exactly two cases, when v is
-nil and when v is false, and true for every other value: every number,
+none and when v is false, and true for every other value: every number,
 zero included, every string, the empty one included, and every
-function, class and instance.</span>
+list, function, class and instance.</span>
 </Formal>
 
 <Examples of="drip">
@@ -127,9 +126,10 @@ print cups + 1;
 The first is the smallest useful Drip program: make a variable, print
 a sum, `4`. The second puts the control statements to work. The
 `while` loop doubles `n` while it is below 50, so `n` goes 1, 2, 4, 8,
-16, 32, 64, and `print n;` shows `64`. The `for` loop has JavaScript's
-three parts (start, condition, step), with the step written as
-`i = i + 1`, and prints `0`, `1` and `2`. The last two lines test `0`:
+16, 32, 64, and `print n;` shows `64`. The `for` loop walks a
+**range**: `0..3` means 0, 1, 2, stopping just before 3, so it prints
+`0`, `1` and `2` (`for x in xs` walks a list the same way, one element
+at a time). The last two lines test `0`:
 in Drip that is true, so the program prints `0 is true`, the opposite
 of what JavaScript would do, whose rules list `0` and the empty string
 among the values that count as false<Cite id="ecma262" />. The third is the most realistic, a small
@@ -153,7 +153,7 @@ function `count` that adds 1 to `n` and returns it; `makeCounter`
 returns `count` itself (no brackets after it, so it is not called).
 `let c = makeCounter();` keeps that function in `c`, and each `c()`
 updates the same `n`, printing `1` and then `2`. The last line prints a
-function as a value: `<fn makeCounter>`. Each call to `makeCounter`
+function as a value: `fn makeCounter`. Each call to `makeCounter`
 makes a new `n`, and the `count` it returns keeps that `n` alive after
 the call has finished; making that work inside the interpreter is the
 job of the chapter *Closures in Drip*.
@@ -162,17 +162,18 @@ job of the chapter *Closures in Drip*.
 
 ## Classes
 
-Drip has classes with methods, `this` and a constructor, which must be
-called `init`. You make an instance by calling the class like a
-function, with no `new`. A class inherits from another with `<`, and
-`super.name(...)` calls the parent's version of a method. That is what
-the third example above does: `Cup` has `init(ml)`, which stores the
-amount on the new instance as `this.ml`, and a method `pour(x)` that
-takes `x` away and returns what is left. `Mug < Cup` inherits both and
-replaces `pour` with one that first prints a warning and then calls
-`super.pour(x)`. So `Mug(300)` runs `Cup`'s `init` with `ml` set to
-300, `m.pour(50)` prints `careful, hot` and then `250`, and printing
-the instance itself shows `Mug instance`.
+Drip has classes with methods, `self` (Drip's name for JavaScript's
+`this`) and a constructor, which must be called `init`. You make an
+instance with `new`, as in JavaScript. A class inherits from another
+with `extends`, and `super.name(...)` calls the parent's version of a
+method. That is what the third example above does: `Cup` has
+`init(ml)`, which stores the amount on the new instance as `self.ml`,
+and a method `pour(x)` that takes `x` away and returns what is left.
+`Mug extends Cup` inherits both and replaces `pour` with one that first
+prints a warning and then calls `super.pour(x)`. So `new Mug(300)` runs
+`Cup`'s `init` with `ml` set to 300, `m.pour(50)` prints
+`careful, hot` and then `250`, and printing the instance itself shows
+its class and fields, `Mug { ml: 250 }`.
 
 <Prompts ids={['class-state']} />
 
@@ -195,14 +196,14 @@ line; the second exercise is extra practice with classes.
 
 ## What you learned
 
-- **Drip** is this book's own small language. It has numbers (64-bit
-  floats), strings, booleans, `nil`, functions, closures and classes.
-- `print` is a statement; logic uses `and` and `or`; there is no `+=`
-  or `++`.
-- Only `nil` and `false` count as false; `0` and `""` are true.
-- Classes use `init` for the constructor, `this` for the instance, `<`
-  to inherit and `super` to reach the parent; instances are made by
-  calling the class, with no `new`.
+- **Drip** is this book's own small language: numbers (64-bit floats),
+  strings, booleans, `none`, lists, functions, closures and classes.
+- `print` is a statement; comments start with `#`; there is `+=` but no
+  `++`; conditions take no brackets and bodies always take braces.
+- Only `none` and `false` count as false; `0` and `""` are true.
+- Classes use `init` for the constructor, `self` for the instance,
+  `extends` to inherit and `super` to reach the parent; instances are
+  made with `new`.
 
 Next: what happens when a Drip operation meets the wrong kind of value,
 and who decides what every program should do.

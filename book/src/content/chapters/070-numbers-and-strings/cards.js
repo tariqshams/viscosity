@@ -23,15 +23,15 @@ export const prompts = {
   },
   'unterminated': {
     q: 'What does Drip’s scanner do if the file ends before a string’s closing quote?',
-    a: 'It reports the error `Unterminated string.` and makes no string token.',
+    a: 'It makes an error token, `unterminated string`, on the line where the string began, and no string token.',
   },
   'number-host': {
     q: 'How does Drip’s scanner turn the lexeme `\'4.25\'` into a number?',
     a: 'It hands it to JavaScript’s own `Number`, which gives the 64-bit float 4.25.',
   },
   'no-escapes': {
-    q: 'Can a Drip string contain a `"` character?',
-    a: 'No: Drip strings have no escapes like `\\"`, so the first `"` after the opening one always ends the string.',
+    q: 'How do you put a `"` character inside a Drip string?',
+    a: 'With the escape `\\"`: after a backslash the scanner takes the next character at once, so that quote does not end the string.',
   },
 };
 
@@ -46,7 +46,7 @@ print 1.5 + 2.5;
 print "Drip strings
 can span lines";
 print "";
-print "say 'hi'";`,
+print "say \\"hi\\"\\tand bye";`,
   },
 };
 
@@ -157,7 +157,7 @@ function scanNumber(s, i) {
     optional: true,
     title: 'Scan a string',
     prompt:
-      'Write `scanString(s, i)`. The character `s[i]` is an opening `"`. Find the closing `"` and return `{ value, end }`: `value` is the text between the quotes, and `end` is the index just after the closing quote. If the string runs out first, **throw** an `Error` with the message `Unterminated string.`',
+      'Write `scanString(s, i)`. The character `s[i]` is an opening `"`. Find the closing `"` and return `{ value, end }`: `value` is the text between the quotes, and `end` is the index just after the closing quote. If the string runs out first, **throw** an `Error` with the message `unterminated string`. (Leave escapes out here: assume the string contains no backslash.)',
     starter: `function scanString(s, i) {
   // your code here
 }
@@ -169,7 +169,7 @@ console.log(scanString('"hi";', 0));`,
     j++;
   }
   if (j >= s.length) {
-    const msg = 'Unterminated string.';
+    const msg = 'unterminated string';
     throw new Error(msg);
   }
   return {
@@ -209,8 +209,8 @@ test('no closing quote', () => {
 - \`while (j < s.length && s[j] !== '"') {\` keeps going while there is text left and the character is not a quote...
 - \`j++;\` ...taking it into the string. A newline is taken like any other character, which is why Drip strings may span lines (the real scanner also adds one to \`line\` here).
 - \`if (j >= s.length) {\` means the loop ran off the end without finding a quote...
-- \`const msg = 'Unterminated string.';\` and \`throw new Error(msg);\` ...so report it rather than invent a closing quote (the message is in a variable only to keep the line short).
-- \`return { value: s.slice(i + 1, j), end: j + 1 };\` otherwise \`s[j]\` is the closing quote: the value is the slice between the quotes, and the next token starts just after it. (The real scanner's \`slice(start + 1, current - 1)\` is the same slice, measured after \`current\` has passed the closing quote.)
+- \`const msg = 'unterminated string';\` and \`throw new Error(msg);\` ...so report it rather than invent a closing quote (the message is in a variable only to keep the line short).
+- \`return { value: s.slice(i + 1, j), end: j + 1 };\` otherwise \`s[j]\` is the closing quote: the value is the slice between the quotes, and the next token starts just after it. (With no escapes, this slice is exactly the value the real scanner builds character by character; escapes are why it builds it instead of slicing.)
 
 **Common wrong attempts.**
 
@@ -238,7 +238,7 @@ test('no closing quote', () => {
     j++;
   }
   if (j >= s.length) {
-    const msg = 'Unterminated string.';
+    const msg = 'unterminated string';
     throw new Error(msg);
   }
   return {
@@ -277,7 +277,7 @@ export const quiz = [
       { t: 'Both are `ok`', why: 'The lexeme is the exact source text, which includes the quotes.' },
       { t: 'Lexeme `ok`, value `"ok"`', why: 'This is the wrong way round.' },
       { t: 'Both are `"ok"`', why: 'The value leaves the quotes out: they only mark where the string starts and ends.' },
-      { t: 'Lexeme `"ok"` (with quotes), value `ok` (without)', correct: true, why: 'The scanner slices from `start + 1` to `current - 1` to drop the quotes.' },
+      { t: 'Lexeme `"ok"` (with quotes), value `ok` (without)', correct: true, why: 'The value is built from the characters between the quotes; the quotes only mark where it starts and ends.' },
     ],
   },
   {
@@ -295,7 +295,7 @@ export const quiz = [
       { t: 'The scanner adds the missing quote and carries on', why: 'It never invents characters; that would hide a real mistake.' },
       { t: 'The rest of the file is printed', why: 'Nothing runs once the scanner has reported an error.' },
       { t: 'The string is silently dropped', why: 'It is reported, so the programmer knows.' },
-      { t: 'It reports `Unterminated string.` and makes no string token', correct: true, why: 'The loop stops at the end of the source, `atEnd()` is true, and the error is reported.' },
+      { t: 'It makes an error token, `unterminated string`, and no string token; nothing runs', correct: true, why: 'The loop stops at the end of the source, `atEnd()` is true, and the parser reports the error token when it reaches it.' },
     ],
   },
 ];

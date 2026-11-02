@@ -1,15 +1,15 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-const TEST = ['if (0) print 0;', '// expect: 0', 'if ("") print "e";', '// expect: e'];
+const TEST = ['if 0 { print 0; }', '# expect: 0', 'if "" { print "e"; }', '# expect: e'];
 
 /** One test program, two implementations, one verdict each. */
 export default function SpecCheck() {
   return (
     <Svg w={400} h={250} title="A test program with expect comments is run on the tree-walker and on the VM; each output is compared with the expected lines, and both match, so both pass.">
-      <T x={8} y={12} size={11} weight={700} fill={tok('muted')}>TEST PROGRAM (truth.drip, shortened)</T>
+      <T x={8} y={12} size={11} weight={700} fill={tok('muted')}>TEST PROGRAM (a truth test, shortened)</T>
       <Box x={6} y={22} w={170} h={92} r={6} fill={tok('panel')} stroke={tok('ink', 0.45)}>
         {TEST.map((l, k) => (
-          <T key={k} x={14} y={38 + k * 20} size={12} mono fill={l.startsWith('//') ? tok('brand') : undefined} weight={l.startsWith('//') ? 700 : 400}>{l}</T>
+          <T key={k} x={14} y={38 + k * 20} size={12} mono fill={l.startsWith('#') ? tok('brand') : undefined} weight={l.startsWith('#') ? 700 : 400}>{l}</T>
         ))}
       </Box>
       <Arrow x1={178} y1={50} x2={226} y2={40} width={1.5} />

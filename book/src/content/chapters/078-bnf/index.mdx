@@ -147,14 +147,14 @@ bool → "true" | "false"
 ```
 
 ```text
-call → IDENTIFIER "(" args? ")"
+call → IDENT "(" args? ")"
 args → expr ( "," expr )*
 ```
 
 ```text
-fnDecl → "fn" IDENTIFIER
+fnDecl → "fn" IDENT
          "(" params? ")" block
-params → IDENTIFIER ( "," IDENTIFIER )*
+params → IDENT ( "," IDENT )*
 ```
 
 </Examples>
@@ -193,16 +193,15 @@ the part the next chapters build a parser for; read it slowly, aloud:
 
 ```text
 program     → declaration* EOF
-declaration → letDecl | fnDecl
+declaration → fnDecl | letDecl
             | statement
-letDecl     → "let" IDENTIFIER
+letDecl     → "let" IDENT
               ( "=" expression )? ";"
 statement   → printStmt | ifStmt
             | block | exprStmt
 printStmt   → "print" expression ";"
-ifStmt      → "if" "(" expression ")"
-              statement
-              ( "else" statement )?
+ifStmt      → "if" expression block
+              ( "else" ( ifStmt | block ) )?
 block       → "{" declaration* "}"
 exprStmt    → expression ";"
 ```
@@ -215,26 +214,30 @@ name, optionally an equals sign and an expression, then a semicolon. A
 statement is a print statement, an if statement, a block or an
 expression statement. A print statement is the keyword
 print, an expression and a semicolon. An if statement is the keyword
-if, a condition in brackets, a statement, and optionally the keyword
-else and a second statement. A block is zero or more
+if, a condition (with no brackets needed round it), a block, and
+optionally the keyword else followed by either another if statement or
+a block. A block is zero or more
 declarations between curly brackets. An expression statement is an
 expression followed by a semicolon.</span>
 </Formal>
 
-(The full grammar also has `while`, `for`, `return` and classes, and its
-`expression` has rules of its own, which the chapter on recursive
-descent parsing builds.)
+(This is Drip's real grammar, from the language's specification, with
+some statements left out: the full one also has `while`, `for`,
+`return`, `break`, `continue` and classes, and its `expression` has
+rules of its own, which the chapter on recursive descent parsing
+builds.)
 
-<Figure takeaway="Two loops of rules let statements nest to any depth." caption="Which rules use which: an arrow from one rule to another means the second appears in the first one's body. The dashed arrows close two loops: a block holds declarations, which can be statements, which can be blocks; and an if statement holds statements, which can be if statements.">
+<Figure takeaway="Loops of rules let statements nest to any depth." caption="Which rules use which: an arrow from one rule to another means the second appears in the first one's body. The dashed arrows close the loops: a block holds declarations, which can be statements, which can be blocks; an if statement's branches are blocks, so they can hold anything; and after else an if statement can name itself.">
   <DripGrammarMap />
 </Figure>
 
-Those two loops are what give Drip its nesting. A `block` holds
+Those loops are what give Drip its nesting. A `block` holds
 declarations, a declaration can be a statement, and a statement can be
-a block, so `{ { print 1; } }` is a block inside a block; an `ifStmt`
-holds a `statement`, which can be another `ifStmt`, so `else if` needs
-no rule of its own (it is an `else` whose statement happens to be an
-`if`).
+a block, so `{ { print 1; } }` is a block inside a block; an `ifStmt`'s
+branches are blocks, so an `if` can hold another `if` inside its braces;
+and because the `else` may be followed by an `ifStmt` directly, the
+rule mentions itself, which is how `else if x { ... }` is written with
+no extra braces.
 
 <Prompts ids={['nest-how']} />
 
@@ -289,7 +292,7 @@ practice, adds a `?`.
   readability, not power.
 - A shorthand applies to the single piece just before it; brackets make
   a bigger piece.
-- Drip's statement grammar fits on a page, and two loops of rules let
+- Drip's statement grammar fits on a page, and loops of rules let
   blocks and `if` statements nest.
 - Shorthands alone are regular expressions over tokens; nesting needs
   rules that mention themselves.

@@ -27,7 +27,7 @@ export const prompts = {
   },
   'keep-going': {
     q: 'Drip’s scanner meets a character it does not know, such as `@`. What does it do?',
-    a: 'It reports `Unexpected character.` with the line, and carries on scanning, so one run can report every bad character.',
+    a: 'It adds an `error` token whose lexeme is the message, `unexpected character \'@\'`, and carries on scanning; the parser reports it in its place.',
   },
   'one-at-a-time': {
     q: 'How does the scanner of Drip’s VM differ from the tree-walker’s?',
@@ -204,7 +204,7 @@ export const quiz = [
   {
     q: 'What happens when Drip scans `print 1 @ 2;`?',
     options: [
-      { t: 'The scanner reports `Unexpected character.` and carries on, then the parser also complains, and nothing runs', correct: true, why: 'The `@` is reported and dropped, which leaves `print 1 2;`, a syntax error too; the pipeline stops before the interpreter.' },
+      { t: 'The `@` becomes an error token, the parser reports `unexpected character \'@\'`, and nothing runs', correct: true, why: 'The scanner carries on past the `@`; the parser reports the error token (only the first error in the statement) and the pipeline stops before the interpreter.' },
       { t: 'The scanner stops at the `@`, and the program prints `1`', why: 'Nothing runs once any error has been reported, and the scanner does not stop.' },
       { t: 'The `@` becomes an `identifier` token', why: 'An identifier must start with a letter or `_`.' },
       { t: 'It prints `1 @ 2`', why: 'There is no string here; `@` is not a Drip character at all.' },

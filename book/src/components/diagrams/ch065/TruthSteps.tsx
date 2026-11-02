@@ -5,20 +5,20 @@ type V = { src: string; drip: boolean; js: boolean };
 const VALUES: V[] = [
   { src: 'true', drip: true, js: true },
   { src: 'false', drip: false, js: false },
-  { src: 'nil', drip: false, js: false },
+  { src: 'none', drip: false, js: false },
   { src: '0', drip: true, js: false },
   { src: '""', drip: true, js: false },
   { src: '"no"', drip: true, js: true },
 ];
 
 const NOTES = [
-  'An if needs to decide: run the then-branch or not? Each step feeds one value into if (v) and asks Drip and JavaScript the same question.',
+  'An if needs to decide: run the then-branch or not? Each step feeds one value into an if and asks Drip and JavaScript the same question.',
   'true is true everywhere. Both languages run the then-branch.',
   'false is false everywhere. Both skip it.',
-  'nil is Drip’s “no value”. It counts as false, just as null does in JavaScript.',
-  'Here the languages part ways. JavaScript treats 0 as false; Drip does not. 0 is a number, and only nil and false are false in Drip.',
+  'none is Drip’s “no value”. It counts as false, just as null does in JavaScript.',
+  'Here the languages part ways. JavaScript treats 0 as false; Drip does not. 0 is a number, and only none and false are false in Drip.',
   'The empty string: false in JavaScript, true in Drip, for the same reason. It is a string, and strings are never false.',
-  'A string that says no is still a string, so both treat it as true. The rule in Drip is short: nil and false are false; everything else is true.',
+  'A string that says no is still a string, so both treat it as true. The rule in Drip is short: none and false are false; everything else is true.',
 ];
 
 export default function TruthSteps() {
@@ -37,7 +37,7 @@ export default function TruthSteps() {
             </Box>
           );
         })}
-        <T x={200} y={64} size={14} mono anchor="middle">if ({v ? v.src : 'v'}) …</T>
+        <T x={200} y={64} size={14} mono anchor="middle">if {v ? v.src : 'v'} {'{'} … {'}'}</T>
         {(['Drip', 'JavaScript'] as const).map((lang, j) => {
           const val = v ? (lang === 'Drip' ? v.drip : v.js) : null;
           const col = val === null ? 'line' : val ? 'safe' : 'danger';
@@ -49,7 +49,7 @@ export default function TruthSteps() {
             </Box>
           );
         })}
-        <T x={200} y={168} size={11} anchor="middle" fill={tok('muted')}>Drip: only nil and false are false</T>
+        <T x={200} y={168} size={11} anchor="middle" fill={tok('muted')}>Drip: only none and false are false</T>
       </Svg>
     </StepFrame>
   );

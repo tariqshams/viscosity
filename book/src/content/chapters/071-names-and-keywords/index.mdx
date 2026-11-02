@@ -123,20 +123,19 @@ same loop, and only then asks a table whether the word is special:
 
 ```ts
 const KEYWORDS = new Map([
-  ['and', 'and'], ['class', 'class'],
-  ['else', 'else'], ['false', 'false'],
-  ['fn', 'fn'], ['for', 'for'],
-  ['if', 'if'], ['nil', 'nil'],
-  ['or', 'or'], ['print', 'print'],
-  ['return', 'return'],
-  ['super', 'super'], ['this', 'this'],
-  ['true', 'true'], ['let', 'let'],
-  ['while', 'while'],
-]);
+  'break', 'class', 'continue', 'else',
+  'extends', 'false', 'fn', 'for', 'if',
+  'in', 'init', 'let', 'new', 'none',
+  'print', 'return', 'self', 'super',
+  'true', 'while',
+].map((k) => [k, k]));
 ```
 
-Each keyword maps to its own token type, named after itself (from the
-chapter on tokens). If the table has no entry for a word, `get` returns
+Those are all twenty of Drip's keywords. The `.map` turns each word `k`
+into the pair `[k, k]`, because each keyword maps to its own token
+type, named after itself (from the chapter on tokens). One of them,
+`init`, is a keyword only so that the name of the constructor method
+can never be used for anything else. If the table has no entry for a word, `get` returns
 `undefined`, and `??` (which picks its right-hand side only when the
 left is `null` or `undefined`) falls back to `'identifier'`.
 
@@ -204,22 +203,22 @@ true   →  'true'   (a keyword)
 
 ```
 let if = 3;
-// [line 1] Error at 'if':
-// Expect variable name.
-let iff = 3;  // fine
+# line 1: expected a variable name
+# after 'let', found 'if'
+let iff = 3;  # fine
 ```
 
 </Examples>
 
 The first is the table at work: `if` is found and becomes the keyword
 type `'if'`, while `iffy`, read whole, is not found and becomes a name.
-The second shows that `true`, `false` and `nil` are keywords to the
+The second shows that `true`, `false` and `none` are keywords to the
 scanner, not values; the parser, a few chapters on, turns the keyword
 `true` into the boolean value, while `"true"` in quotes is a string
 literal with four letters in it. The third is a spot the difference:
 because keywords are reserved, the scanner turns `if` into an `if`
-token, the parser needed a name after `let`, and Drip reports the error
-at `'if'`; one more letter makes it an ordinary name.
+token, the parser needed a name after `let`, and Drip says what it
+found instead, `'if'`; one more letter makes it an ordinary name.
 
 <Prompts ids={['keyword-what', 'whole-word-first', 'nullish-fallback', 'true-is-keyword', 'let-if']} />
 

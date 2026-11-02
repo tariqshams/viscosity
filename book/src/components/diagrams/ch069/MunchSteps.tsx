@@ -4,15 +4,15 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 type S = { src: string; start: number; cur: number; look?: number; toks: string[]; lookup?: string; note: string };
 
 const STATES: S[] = [
-  { src: '!===', start: 0, cur: 0, toks: [], note: 'Four characters, from one of Drip’s test programs: !===. They could be cut many ways: ! and ===, or != and ==, or four single tokens. The scanner needs a rule.' },
+  { src: '!===', start: 0, cur: 0, toks: [], note: 'Four characters: !===. They could be cut many ways: ! and ===, or != and ==, or four single tokens. The scanner needs a rule.' },
   { src: '!===', start: 0, cur: 1, look: 1, toks: [], note: 'advance() reads “!”. It could be the whole token, or the start of !=. match(\'=\') looks at index 1.' },
   { src: '!===', start: 0, cur: 2, toks: ['!='], note: 'Index 1 is “=”, so match takes it: the token is !=, two characters, the longest token that fits. The rule is maximal munch: always take the biggest bite.' },
   { src: '!===', start: 2, cur: 3, look: 3, toks: ['!='], note: 'A new round starts at index 2. advance() reads “=”, and match(\'=\') looks at index 3.' },
   { src: '!===', start: 2, cur: 4, toks: ['!=', '=='], note: 'Another “=”, so the token is ==. The result is != then ==. There is no === token in Drip, so the scanner never even considers one.' },
-  { src: 'orchid', start: 0, cur: 1, toks: [], note: 'Now a word: orchid. advance() reads “o”, a letter, so this token is a word.' },
-  { src: 'orchid', start: 0, cur: 2, toks: [], note: 'The first two letters spell or, which is a Drip keyword. A scanner that stopped here would make the keyword or and leave chid behind.' },
-  { src: 'orchid', start: 0, cur: 6, toks: [], note: 'Maximal munch says keep going while the next character is a letter or digit. The word only ends at the end of the source: six letters.' },
-  { src: 'orchid', start: 0, cur: 6, toks: ['identifier'], lookup: 'orchid', note: 'Only now is the whole word looked up. orchid is not a keyword, so it is one identifier token. The biggest bite gave the right answer.' },
+  { src: 'fortune', start: 0, cur: 1, toks: [], note: 'Now a word, from one of Drip’s test programs: fortune. advance() reads “f”, a letter, so this token is a word.' },
+  { src: 'fortune', start: 0, cur: 3, toks: [], note: 'The first three letters spell for, which is a Drip keyword. A scanner that stopped here would make the keyword for and leave tune behind.' },
+  { src: 'fortune', start: 0, cur: 7, toks: [], note: 'Maximal munch says keep going while the next character is a letter or digit. The word only ends at the end of the source: seven letters.' },
+  { src: 'fortune', start: 0, cur: 7, toks: ['identifier'], lookup: 'fortune', note: 'Only now is the whole word looked up. fortune is not a keyword, so it is one identifier token. The biggest bite gave the right answer.' },
 ];
 
 const CW = 40;

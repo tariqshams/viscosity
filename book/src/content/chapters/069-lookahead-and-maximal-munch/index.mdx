@@ -70,8 +70,8 @@ the same state:
   <HelperTable />
 </Figure>
 
-With `match`, each of `!`, `=`, `<` and `>` takes one line of the
-`switch`:
+With `match`, each of `!`, `=`, `<`, `>`, `+`, `-` and `.` takes one
+line of the `switch` (`+` may become `+=`, and `.` may become `..`):
 
 ```ts
 case '<':
@@ -84,34 +84,41 @@ two characters long; otherwise nothing moves and the token is `<`. The
 `? :` picks between the two types, and `add` slices whichever lexeme
 the pointers now surround.
 
-Comments use the same trick. A `/` followed by another `/` starts a
-comment, which runs to the end of the line:
+`&` and `|` use the same trick with a twist: Drip has `&&` and `||`
+but no lone `&` or `|`, so when `match` fails there is no short token
+to fall back on, and the scanner makes an error token instead:
 
 ```ts
-case '/':
-  if (match('/')) {
-    while (peek() !== '\n' && !atEnd()) {
-      advance();
-    }
-  } else {
-    add('/');
+case '&':
+  if (match('&')) add('&&');
+  else error(`unexpected character '&'`);
+  break;
+```
+
+Comments need only `peek`. A `#` always starts a comment (Drip chose a
+character that means nothing else, so no lookahead is needed to tell),
+and the comment runs to the end of the line:
+
+```ts
+case '#':
+  while (peek() !== '\n' && !atEnd()) {
+    advance();
   }
   break;
 ```
 
-When the second `/` is there, `match` takes it, and the `while` eats
-every character up to (not including) the newline, making no token; a
-lone `/` is the division token. Notice that the comment loop uses
-`peek`, not `advance`, to test for `'\n'`. That leaves the newline
-unread, so the next round of the main loop handles it in the `'\n'`
-case, and `line` stays correct.
+The `while` eats every character up to (not including) the newline,
+making no token. Notice that it uses `peek`, not `advance`, to test for
+`'\n'`. That leaves the newline unread, so the next round of the main
+loop handles it in the `'\n'` case, and `line` stays correct.
 
 <Callout kind="definition">
 **Lookahead** means examining characters after the current one without
 consuming them. `peek()` looks one character ahead; `match(c)` looks,
 and consumes only on a match. Drip also has `peekNext()`, which looks
 two ahead, for numbers like `1.5` (coming up in the chapter on numbers
-and strings).
+and strings); it is also what keeps `0..3` from being read as `0.`
+and `.3`.
 </Callout>
 
 <Formal title="The three helpers">
@@ -140,8 +147,8 @@ character at current and always moves on.</span>
 ```
 
 ```text
-"/ 2"        →  /  2
-"// half\n2" →  2   (on line 2)
+"&&"        →  &&     "&"  →  error
+"# half\n2"  →  2   (on line 2)
 ```
 
 <Run id="pocket-scanner" />
@@ -151,10 +158,10 @@ character at current and always moves on.</span>
 The first shows the decision itself: on its own a `<` is `<`; followed
 by `=` it becomes one token `<=`; but with a space between them,
 `match('=')` sees the space, fails, and the two come out as separate
-tokens. The second shows the same glance deciding between division and
-a comment: one slash is a token, two start a comment that makes no
-token, and because the comment loop left the newline for the `'\n'`
-case, the `2` is correctly on line 2. The third is a pocket-sized
+tokens. The second shows `match` with nothing to fall back on: two ampersands
+are one token, a lone one is an error; and a comment makes no token,
+and because the comment loop left the newline for the `'\n'` case, the
+`2` is correctly on line 2. The third is a pocket-sized
 scanner written for this page, with `peek` and `match` and the same
 habits; run it, then add inputs of your own at the bottom.
 
@@ -165,7 +172,7 @@ habits; run it, then add inputs of your own at the bottom.
 When the scanner sees `<=`, it could make two tokens, `<` and `=`. It
 does not: `match` grabs the `=` whenever it can. The same rule runs all
 through the scanner. A run of digits is one number, not several; and
-`orchid` is one identifier, not the keyword `or` followed by `chid`.
+`fortune` is one identifier, not the keyword `for` followed by `tune`.
 
 <MunchSteps client:visible />
 
@@ -208,8 +215,8 @@ takes !=.</span>
 ```
 
 ```text
-"orchid"  →  identifier orchid
-"or chid" →  or  identifier chid
+"fortune"  →  identifier fortune
+"for tune" →  for  identifier tune
 ```
 
 ```js
@@ -219,12 +226,13 @@ a+++b; // a++ + b, so 3
 
 </Examples>
 
-The first comes from one of Drip's test programs: taking the longest token each
-time gives `!=` and then `==`, never `!` followed by `===` (Drip has no
+In the first, taking the longest token each time gives `!=` and then
+`==`, never `!` followed by `===` (Drip has no
 `===`); and `<=<` is `<=` then `<`, because after `<=` the next round
 starts fresh. The second shows the same rule on words: the scanner takes
-every letter it can, so `orchid` is one name, and only a space makes the
-keyword `or` appear. The third is JavaScript, whose spec states the same
+every letter it can, so `fortune` is one name (a line from one of
+Drip's test programs), and only a space makes the keyword `for`
+appear. The third is JavaScript, whose spec states the same
 rule in its own words: source text is scanned left to right,
 "repeatedly taking the longest possible sequence of code points as the
 next input element"<Cite id="ecma262" />. So `a+++b` is cut as `a`,
@@ -257,12 +265,13 @@ the comparison operators.
 - **Lookahead** examines characters ahead without consuming them:
   `peek` looks, and `match` consumes only when the next character is
   the expected one.
-- `match` turns `<`, `>`, `=` and `!` into one- or two-character
-  tokens in one line each, and tells `/` from the start of a comment.
+- `match` turns `<`, `>`, `=`, `!`, `+`, `-` and `.` into one- or
+  two-character tokens in one line each; a lone `&` or `|` is an error.
+- A `#` comment needs no lookahead to recognise.
 - The comment loop stops *before* the newline, so the newline case can
   still count the line.
 - **Maximal munch**: always take the longest token that fits, so `<=`
-  is one token, `!===` is `!=` then `==`, and `orchid` is one
+  is one token, `!===` is `!=` then `==`, and `fortune` is one
   identifier.
 
 Next: the tokens with the most going on inside them, numbers and

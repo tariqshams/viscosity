@@ -22,7 +22,7 @@ const STATES: S[] = [
   { line: 1, a: ONE, b: TWO, out: [], note: 'b holds another number, 2, with its own tag.' },
   { line: 2, a: ONE, b: TWO, check: 'ok', out: ['3'], note: 'To run +, the interpreter first reads both tags. Number and number: add them. print shows 3.' },
   { line: 3, a: ONE, b: STR, out: ['3'], note: 'b = "2" puts a string into the same variable. Nothing objects. In Drip, a variable can hold any kind of value, and the kind can change.' },
-  { line: 4, a: ONE, b: STR, check: 'fail', out: ['3'], error: 'Operands must be two numbers or two strings.', note: 'Now + reads the tags again: number and string. Neither rule fits, so the program stops with a runtime error on line 5. Notice that line 3 already ran and printed 3: the problem was found only when this line ran.' },
+  { line: 4, a: ONE, b: STR, check: 'fail', out: ['3'], error: 'cannot add a number and a string', note: 'Now + reads the tags again: number and string. Neither rule fits, so the program stops with a runtime error on line 5. Notice that line 3 already ran and printed 3: the problem was found only when this line ran.' },
 ];
 
 function Val({ x, y, v, name }: { x: number; y: number; v?: V; name: string }) {

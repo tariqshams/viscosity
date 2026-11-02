@@ -118,8 +118,7 @@ print x;  →  print   x   ;   eof
 
 The first is the smallest case: three words make three tokens, the
 space makes none, and the scanner always adds `eof` (end of file), so
-the parser can keep asking "what is next?" and get a clear answer when
-the program has run out. The second shows lexeme and
+the parser asking "what is next?" gets a clear answer at the end. The second shows lexeme and
 literal coming apart most clearly: the lexeme of a string includes its
 quote marks, while the literal is the text inside them, which is what
 `print` will show. The third is the full card for the number in our
@@ -139,20 +138,21 @@ rewrapped to fit:
 
 ```ts
 type TokenType =
-  // single-character tokens
-  | '(' | ')' | '{' | '}' | ',' | '.'
-  | '-' | '+' | ';' | '/' | '*'
-  // one or two character tokens
-  | '!' | '!=' | '=' | '=='
-  | '>' | '>=' | '<' | '<='
+  // punctuation and operators
+  | '(' | ')' | '{' | '}' | '[' | ']'
+  | ',' | '.' | '..' | ';' | '+' | '-'
+  | '*' | '/' | '%' | '!' | '!=' | '='
+  | '==' | '<' | '<=' | '>' | '>='
+  | '&&' | '||' | '+=' | '-='
   // literals
   | 'identifier' | 'string' | 'number'
   // keywords
-  | 'and' | 'class' | 'else' | 'false'
-  | 'fn' | 'for' | 'if' | 'nil' | 'or'
-  | 'print' | 'return' | 'super'
-  | 'this' | 'true' | 'let' | 'while'
-  | 'eof';
+  | 'break' | 'class' | 'continue'
+  | 'else' | 'extends' | 'false' | 'fn'
+  | 'for' | 'if' | 'in' | 'init' | 'let'
+  | 'new' | 'none' | 'print' | 'return'
+  | 'self' | 'super' | 'true' | 'while'
+  | 'error' | 'eof';
 ```
 
 It is a union of string literal types, from *TypeScript II: unions and
@@ -169,10 +169,12 @@ const ok: TokenType = '==';
 ```
 
 <Callout kind="definition">
-A **token type** is the category of a token. Drip has 39: one for each
-punctuation mark or pair, three for literals (`identifier`, `string`,
-`number`), one for each of its 16 keywords, and `eof`. Spaces, newlines
-and comments separate tokens but never become tokens.
+A **token type** is the category of a token. Drip has 52: one for each
+of its 27 punctuation marks and operators, three for literals
+(`identifier`, `string`, `number`), one for each of its 20 keywords,
+`eof`, and `error`, for a piece of source the scanner could not use
+(the next chapter shows why that is a token too). Spaces, newlines and
+`#` comments separate tokens but never become tokens.
 </Callout>
 
 <Examples of="token-type">
@@ -187,18 +189,17 @@ speed  total  x  →  identifier
 ```
 
 ```text
-while (n <= 10)  →  'while' '('
-  identifier '<=' number ')'
+while n <= 10 {  →  'while'
+  identifier '<=' number '{'
 ```
 
 </Examples>
 
 In the first, each operator is its own type, and `<=` is one token,
-not `<` then `=` (the next chapter shows how the scanner makes sure of
-that). In the second, three names share one type: the parser only cares
-that it is a name. In the third, the start of a real loop, the keyword
-`while` has the type `'while'` and `n` and `10` get the shared types
-`identifier` and `number`.
+not `<` then `=` (the next chapter shows how). In the second, three
+names share one type: the parser only cares that it is a name. In the
+third, the start of a real loop, `while` has the type `'while'` and `n`
+and `10` get the shared types `identifier` and `number`.
 
 <Prompts ids={['why-types', 'punct-type']} />
 
@@ -211,16 +212,16 @@ that is the only way to tell you *where*:
 <Run id="error-lines" />
 
 The parser reports line 3, read from the `;` token where it expected a
-value; and `one` is never printed, because the front end checks the
-whole program before any of it runs.
+value; `one` is never printed, because the whole program is checked
+before any of it runs.
 
 <Analogy title="a grid reference on a map">
 A map is divided into squares, so "row 3, square 9" finds one spot on
 the sheet; a line and column do the same for a point in a file.
 <span slot="breaks">Every square on a map is the same size. In source
-text, a tab or some emoji take one or two places in the string but a
-different width on screen, so "column 9" can mean slightly different
-things to a program and to your eyes.</span>
+text, a tab or an emoji can take a different width on screen from its
+places in the string, so "column 9" can mean different things to a
+program and to your eyes.</span>
 </Analogy>
 
 A scanner walks the source by **offset**: the index of a character in
@@ -258,8 +259,8 @@ which is 9.</span>
 <Examples of="source-location">
 
 ```text
-[line 3] Error at ';':
-Expect expression.
+line 3: expected an expression,
+found ';'
 ```
 
 ```text
@@ -270,8 +271,8 @@ print x +;
 ```text
 print 1;
 print 2;
-bytes: CONSTANT 0 PRINT CONSTANT 1 …
-lines: 1        1 1     2        2 …
+bytes: const 0 0 print const 0 1 …
+lines: 1     1 1 1     2     2 2 …
 ```
 
 </Examples>
@@ -282,8 +283,9 @@ is what many compilers print instead, the offending line with a caret
 `^` under the exact spot, which needs the column too; the exercises
 build it. The third is how far the line number travels: when Drip's VM
 in Part IV compiles these two lines to bytecode, it keeps a line number
-beside every byte (`CONSTANT 0` is two bytes, so it has two), and an
-error deep inside the VM can still name your source line.
+beside every byte (`const` and its two-byte constant index make three
+bytes, so three line numbers), and an error deep inside the VM can
+still name your source line.
 
 <Prompts ids={['location-what', 'front-end-first']} />
 
@@ -309,9 +311,8 @@ draws a caret under an error.
 - A **token** is one meaningful word of source. Its **lexeme** is the
   exact characters, its **token type** is its category, and numbers and
   strings also carry a **literal** value.
-- Drip's `TokenType` is a union of 39 string literal types; for
-  punctuation and keywords the type is the spelling itself, and the list
-  always ends with `eof`.
+- Drip's `TokenType` is a union of 52 string literal types; for
+  punctuation and keywords the type is the spelling itself.
 - Whitespace and comments separate tokens but never become tokens.
 - A **source location** (line, and often column) lets later stages
   report errors in the right place; Drip records the line.
