@@ -1,43 +1,23 @@
-// Chapter 199 cards: recall prompts, examples, exercises and quiz.
+// Chapter 131 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 131, 131.
+// Merged from the two old testing chapters.
 
 export const prompts = {
   'test-pass': {
     q: 'When does a `#[test]` function pass, and when does it fail?',
     a: 'It passes if it returns normally and fails if it panics (an assert macro, `todo!()`, an out-of-bounds index…).',
   },
-  'test-attr': {
-    q: 'What is `#[test]`, grammatically, and what does it tell the compiler?',
-    a: 'An attribute, a note written `#[...]` above an item. It marks the function below as a test for the harness to run.',
-  },
   'test-cfg': {
     q: 'What does `#[cfg(test)]` on `mod tests` do?',
     a: 'Compiles the module only when building tests, so normal builds don’t include test code.',
   },
   'test-private': {
-    q: 'Why can a unit test in `mod tests` call a private function of the module above it?',
+    q: 'Why can a unit test in `mod tests` call a private function defined in its parent module?',
     a: '`tests` is a child module, and private items are visible to their module’s descendants. `use super::*` brings them in.',
-  },
-  'test-filter': {
-    q: 'What does `cargo test letters` run?',
-    a: 'Only the tests whose full name (module path included) contains `letters`; the rest are counted as “filtered out”.',
   },
   'integ-what': {
     q: 'How do integration tests in `tests/` differ from unit tests?',
     a: 'Each file is a separate crate that depends on yours, so it sees only your `pub` API, as a user would.',
-  },
-  'integ-common': {
-    q: 'Why do shared test helpers go in `tests/common/mod.rs` rather than `tests/common.rs`?',
-    a: 'Every `.rs` file directly in `tests/` is compiled as its own test crate. A folder with `mod.rs` is just a module the test files include.',
-  },
-  'test-zero': {
-    q: 'Your run says `running 0 tests ... test result: ok`, but you wrote a test function. What is the likely mistake?',
-    a: 'The function is missing `#[test]`, so the harness never sees it: a “pass” that checked nothing.',
-  },
-  'assert-three': {
-    q: 'Name the three assert macros and what makes each one panic.',
-    a: '`assert!(c)` panics if `c` is false; `assert_eq!(a, b)` if `a != b`; `assert_ne!(a, b)` if `a == b`.',
   },
   'assert-eq': {
     q: 'What does a failing `assert_eq!(a, b)` print that `assert!(a == b)` doesn’t?',
@@ -47,24 +27,12 @@ export const prompts = {
     q: 'Which two traits must a type implement to be used in `assert_eq!`?',
     a: '`PartialEq` (to compare) and `Debug` (to print the values when they differ). `#[derive(Debug, PartialEq)]` gives both.',
   },
-  'assert-msg': {
-    q: 'How do you add your own explanation to an assertion?',
-    a: 'Pass it after the checks, formatted like `println!`: `assert!(n > 0, "n = {n} must be positive")`.',
-  },
-  'should-panic': {
-    q: 'What does `#[should_panic]` on a test do?',
-    a: 'Flips the contract: the test passes only if its body panics, and fails if it returns normally.',
-  },
   'should-panic-expected': {
     q: 'Why add `expected = "use after free"` to `#[should_panic]`?',
     a: 'So the test passes only if the panic message contains that text; a panic for some other reason then fails it.',
   },
-  'test-result': {
-    q: 'What does it mean for a test to return `Result<(), String>`?',
-    a: '`Ok(())` passes and `Err(..)` fails, and the test body may use `?` to stop early on an error.',
-  },
   'harness-false': {
-    q: 'What does `harness = false` on a `[[test]]` target mean?',
+    q: 'In Cargo.toml, what does `harness = false` on a `[[test]]` target mean?',
     a: 'The file is not run by the standard test harness: it supplies its own `main`, and cargo judges it by its exit code.',
   },
 };
@@ -220,6 +188,7 @@ fn a_missing_or_extra_line() {
     ],
   },
   checkColumns: {
+    optional: true,
     lang: 'rust',
     title: 'Two guards that explain themselves',
     prompt: 'Write two guards with assert macros. `check_columns` must panic, using `assert_eq!` with the message `"columns differ"`, if two struct-of-arrays columns have different lengths, and do nothing otherwise. `mean` returns the average of a non-empty slice, and must panic with a message containing `"mean of nothing"` when the slice is empty. Two of the tests check the panic message, exactly as `#[should_panic(expected = ...)]` would, so the messages matter.',
@@ -356,24 +325,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why can `mod tests` inside `scanner.rs` call the private `is_alpha`?',
-    options: [
-      {
-        t: 'Because `#[cfg(test)]` turns off privacy',
-        why: '`cfg(test)` only decides whether the module is compiled.',
-      },
-      {
-        t: 'It can’t; only `pub` functions can be tested',
-        why: 'Unit tests can test private functions. Integration tests can’t.',
-      },
-      {
-        t: 'Because `tests` is a child module, and private items are visible to descendants',
-        correct: true,
-        why: 'The privacy rule, plus `use super::*`.',
-      },
-    ],
-  },
-  {
     q: 'One of five tests panics. What does the harness do?',
     options: [
       {
@@ -414,24 +365,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'You remove `use super::*;` from a `tests` module. What happens?',
-    options: [
-      {
-        t: 'The tests still compile; `super` is implied',
-        why: 'A `use` is never implied; each module has its own names.',
-      },
-      {
-        t: 'The tests run but are skipped',
-        why: 'Nothing is skipped; it does not compile.',
-      },
-      {
-        t: 'E0425: the parent’s functions are not in scope',
-        correct: true,
-        why: 'rustc suggests importing them, e.g. `use crate::is_alpha;`.',
-      },
-    ],
-  },
-  {
     q: '`assert_eq!(p, q)` on your own struct fails to compile. What is the likely fix?',
     options: [
       {
@@ -450,24 +383,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why prefer `assert_eq!(count, 3)` to `assert!(count == 3)`?',
-    options: [
-      {
-        t: 'It is faster',
-        why: 'Both do one comparison.',
-      },
-      {
-        t: 'It checks more carefully',
-        why: 'Both use `==`; they fail in exactly the same cases.',
-      },
-      {
-        t: 'On failure it prints both values, so you see what `count` actually was',
-        correct: true,
-        why: '`assert!` can only print the expression it checked.',
-      },
-    ],
-  },
-  {
     q: 'A `#[should_panic(expected = "use after free")]` test panics with `index out of bounds`. What happens?',
     options: [
       {
@@ -482,46 +397,6 @@ export const quiz = [
       {
         t: 'It is skipped',
         why: 'Nothing is skipped; it is reported as FAILED.',
-      },
-    ],
-  },
-  {
-    q: 'Why is drip-rs’s corpus suite declared with `harness = false`?',
-    options: [
-      {
-        t: 'It runs faster without a harness',
-        why: 'Speed isn’t the reason; reporting is.',
-      },
-      {
-        t: 'So its own `main` can run every corpus program and print one line per program',
-        correct: true,
-        why: 'A single `#[test]` would give one result for hundreds of programs; the exit code tells cargo whether all passed.',
-      },
-      {
-        t: 'Cargo can’t run more than 100 `#[test]` functions',
-        why: 'There is no such limit.',
-      },
-    ],
-  },
-  {
-    q: 'engine/rust’s parity test collects every mismatch in a `Vec` and asserts once at the end. Why not `assert_eq!` on each program?',
-    options: [
-      {
-        t: '`assert_eq!` can’t compare strings',
-        why: 'It can.',
-      },
-      {
-        t: 'To make the test pass more often',
-        why: 'It fails whenever any program differs.',
-      },
-      {
-        t: 'Because tests may not panic',
-        why: 'Panicking is exactly how a test fails; the single `assert!` panics too.',
-      },
-      {
-        t: 'The first failing `assert_eq!` would panic and hide every later difference',
-        correct: true,
-        why: 'Collecting first reports all of them, with the first differing line of each.',
       },
     ],
   },

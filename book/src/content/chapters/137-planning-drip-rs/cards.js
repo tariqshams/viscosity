@@ -1,14 +1,10 @@
-// Chapter 72 cards: recall prompts, examples, exercises and quiz.
+// Chapter 137 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'drip-rs-what': {
     q: 'What is **drip-rs**?',
     a: 'The Rust port of Drip’s bytecode VM (book/companion/rust): a library crate `drip` and a binary `drip-rs`, tested against the same corpus as the TypeScript VM, which it must match byte for byte.',
-  },
-  'forbid-unsafe': {
-    q: 'What does `#![forbid(unsafe_code)]` at the top of `lib.rs` do?',
-    a: 'It makes any `unsafe` block or function anywhere in the crate a compile error.',
   },
   'why-not-rc': {
     q: 'Give one reason drip-rs doesn’t link its heap objects with `Rc<RefCell<..>>`.',
@@ -177,7 +173,7 @@ fn collects_every_line_in_order() {
 
 **The solution, line by line.**
 
-- \`fn expect_output(line: &str) -> Option<&str> {\` takes a borrowed line and may return a piece of it. The result borrows from \`line\`; with only one reference coming in, Rust works that out without a lifetime annotation (the chapter *Lifetimes* explains the rule).
+- \`fn expect_output(line: &str) -> Option<&str> {\` takes a borrowed line and may return a piece of it. The result borrows from \`line\`; with only one reference coming in, Rust works that out without a lifetime annotation (*Lifetimes* explains the rule).
 - \`let m = "# expect:";\` names the marker once, so its length is never typed by hand.
 - \`let at = line.find(m)?;\` is the byte offset where the marker starts. If there is no marker, \`find\` gives \`None\`, and the \`?\` returns that \`None\` from the whole function at once.
 - \`let rest = &line[at + m.len()..];\` slices from just past the marker to the end of the line. Nothing is copied: \`rest\` points into \`line\`.

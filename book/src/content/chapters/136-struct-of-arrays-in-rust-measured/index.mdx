@@ -3,22 +3,15 @@ n: 136
 day: 23
 part: VII
 title: 'Struct of arrays in Rust, measured'
-tagline: 'In Part VIII a compiler rewrote your particles into columns. In Rust you write the columns yourself, as a struct of Vec<f64>. The win is real but smaller than in JavaScript, and the reason says a lot about what Rust already gave you.'
+tagline: 'In JavaScript a compiler rewrote your particles into columns. In Rust you write the columns yourself, as a struct of Vec<f64>, and then you have to measure them honestly: in a release build, with black_box, and with statistics that know a shared machine is noisy. The win is real but smaller than in JavaScript, and the reason says a lot about what Rust already gave you.'
 objectives:
-  - Write a struct-of-arrays type with one Vec<f64> per field, and keep its columns in step.
+  - Write a struct-of-arrays type with one Vec<f64> per field, keep its columns in step, and borrow two columns at once.
   - Explain why Vec<Particle> is already flat, and what SoA still saves.
-  - Borrow two columns at once, and read the E0502 error you get when a method call borrows them all.
-  - Time AoS and SoA loops in a release build, and report the result honestly.
-  - Explain what a release build changes, and why debug timings mislead.
-  - Say how overflow behaves in each profile, and read Cargo's profile settings.
+  - Time only release builds, and say how overflow behaves in each profile.
   - Use black_box so a benchmark measures the work you meant, and know where it stops helping.
-  - Read how drip-rs and engine/rust time themselves, noise included.
-  - Set up a criterion benchmark with harness = false, and run it with cargo bench.
-  - Read criterion's output, from the interval to the outliers and the change report.
-  - Explain the slope, the bootstrap confidence interval and Tukey's fences in plain words.
-  - Judge a reported change against the noise of a shared machine.
+  - Set up a criterion benchmark, read its interval, and judge a reported change against the noise of a shared machine.
 introduces: [rust-soa, release-build, black-box, criterion]
-uses: [rust, rust-functions, let-mut, scalar-types, struct, impl, self-receiver, vec, slice, borrow, shared-vs-mutable, borrow-checker, rust-iterator, rust-closure, visibility, size-of, padding, aos-vs-soa, column-storage, soa-container, materialization, cache-line, cache-miss, spatial-locality, bandwidth, typed-array, float64, object-header, heap-number, pointer-chasing, dead-code-elimination, median-p95, amortized-growth, cargo, codegen, crate, cargo-test, workspace, jit-warmup, benchmark-isolation, end-to-end-benchmark, compiler, virtual-machine, drip]
+uses: [rust, rust-functions, struct, impl, self-receiver, vec, borrow, borrow-checker, rust-iterator, rust-closure, visibility, size-of, aos-vs-soa, column-storage, materialization, cache-line, float64, dead-code-elimination, median-p95, cargo, crate, cargo-test, benchmark-isolation, drip]
 sources: [rust-std-vec, rust-std-black-box, cargo-profiles, rustref-int-overflow, cargo-bench-docs, criterion-analysis]
 ---
 import LineSteps from '../../../components/diagrams/ch136/LineSteps';
@@ -29,33 +22,14 @@ import Profiles from '../../../components/diagrams/ch136/Profiles';
 import CriterionSteps from '../../../components/diagrams/ch136/CriterionSteps';
 import Fences from '../../../components/diagrams/ch136/Fences';
 
-{/* ── merge: from old chapter 136, Struct of arrays in Rust by hand ── */}
-
 ## The same particles, a new language
 
-In *Generating SoA storage*, Viscosity turned `const ps = []` into a
-generated class whose fields were columns, `this.x = new
-Float64Array(cap)` and one more per field. No compiler does that for
-you in Rust; however, Rust lets you write the columns yourself in about
-twenty lines, and its type system keeps them pleasant to use. First,
-look at what you start from.
-
-```rust
-#[derive(Clone, Copy)]
-struct Particle {
-    x: f64, y: f64,
-    vx: f64, vy: f64,
-    mass: f64, health: f64,
-}
-let ps: Vec<Particle> = vec![p; n];
-```
-
-*Memory layout in Rust* measured a `Particle` at 48 bytes with no
-padding, and a `Vec<Particle>` keeps them back to back in one buffer:
-no object headers, no pointer per element, no boxed numbers. That is
-much closer to Part II's packed `Float64Array` layout than to a
-JavaScript array of objects, so in Rust the array of structs starts out
-good. What it still wastes is the fields a loop does not touch:
+In *Generating SoA storage*, Viscosity turned an array of particle
+objects into `Float64Array` columns. In Rust you write the columns
+yourself, but look first at what you start from: a six-`f64` `Particle`
+is 48 bytes, and a `Vec<Particle>` keeps them back to back, with no
+object headers, pointers or boxed numbers. The array of structs starts
+out good; what it still wastes is the fields a loop does not touch:
 
 <LineSteps client:visible />
 
@@ -69,26 +43,16 @@ structs; one drawer per question ("everyone's weight", "everyone's
 height"), each drawer in the same order of people, is a struct of
 arrays. To answer "what does everyone weigh?" you open one drawer and
 read straight down it.
-<span slot="breaks">A clerk can pull one folder out and hand it over
-whole; with drawers there is no folder to hand over, only a fresh
-summary card copied from each drawer, which is exactly what `get` will
-return.</span>
-</Analogy>
-
-<Analogy extra title="a teacher's mark book">
-A mark book keeps one column per subject, with the pupils in the same
-order down every column, so averaging the maths marks means running a
-finger down one column. If one pupil is added to the maths column and
-forgotten in the others, every name below them is now beside the wrong
-marks.
-<span slot="breaks">A teacher would spot the misaligned row at a
-glance; Rust will not, as the next section shows, and a missed
-column only fails when some index runs off its end.</span>
+<span slot="breaks">A clerk can hand over one whole folder; with drawers
+there is only a fresh card copied from each drawer, which is what a
+`get` method must return.</span>
 </Analogy>
 
 <Figure takeaway="Particle i is index i of every column; push must write all of them." caption="A Particles struct of six Vec<f64> columns. The highlighted index is one particle; the dashed cells are what one push adds.">
   <ColumnIndex />
 </Figure>
+
+<Examples of="rust-soa">
 
 ```rust
 struct Particles {
@@ -103,7 +67,6 @@ impl Particles {
         self.y.push(p.y);
         // ...and vx, vy, mass, health
     }
-
     fn step(&mut self, dt: f64) {
         for i in 0..self.x.len() {
             self.x[i] += self.vx[i] * dt;
@@ -113,252 +76,45 @@ impl Particles {
 }
 ```
 
-The struct has one `Vec<f64>` per field, and particle `i` is index
-`i` of every column. `push` takes a `Particle` apart and appends each
-field to its own column, so all six grow together. `step` is the
-`update-xy` loop of *AoS vs SoA, measured*: for each index it reads `vx[i]` and `vy[i]`, and
-moves `x[i]` and `y[i]`; it never touches `mass` or `health`, so their
-columns are never fetched.
-
-<Examples of="rust-soa">
-
-```rust
-struct Xs { x: Vec<f64>, vx: Vec<f64> }
-let mut s = Xs { x: vec![], vx: vec![] };
-s.x.push(1.0);
-s.vx.push(0.5); // both columns: len 1
-```
-
-```rust
-let total: f64 = s.mass.iter().sum();
-let xs = s.x.iter_mut().zip(&s.vx);
-for (x, vx) in xs {
-    *x += vx * dt;
-}
-```
-
-<Run id="soa-bench" />
-
 </Examples>
 
-The first is the smallest struct of arrays there is: two columns, one
-particle, pushed into both, so both have length 1. The second shows
-why columns suit iterators (from *Iterators in Rust*):
-summing every mass is one pass over one `Vec`, and `zip` walks the
-`x` column mutably and the `vx` column for reading side by side, with
-no indices, so there is nothing to bounds-check. The runnable one
-builds a million particles both ways and times `update-xy` on each;
-the section after next explains why its numbers need care.
+Particle `i` is index `i` of every column, and `push` appends each field
+to its own column, so all six grow together. `step` is the `update-xy` loop
+of *AoS vs SoA, measured*: it reads `vx[i]` and `vy[i]` and moves `x[i]`
+and `y[i]`, and never touches `mass` or `health`, so their columns are
+never fetched. `self.x[i] += self.vx[i] * dt` borrows `self.x` mutably
+and `self.vx` for reading at once, which is fine, because they are
+different fields; a `&self` method such as `self.vx_at(i)` called inside
+a loop over `self.x.iter_mut()` is not, since it borrows the *whole* of
+`self` (rustc 1.97 reports E0502).
+
+<More title="What Rust does not check, and get">
+
+Nothing makes `push` write *every* column: forget one and it compiles,
+then the first `step` panics with an index out of bounds, so make the
+fields private to their module and test `push`. And `get(i)` must build
+and return a `Particle` by value, the materialisation of *Identity and
+materialization*, since there is no `Particle` in memory to lend.
+
+</More>
 
 <Callout kind="definition">
-A **struct of arrays** in Rust is a struct with one `Vec` per field,
-such as `x: Vec<f64>`, where element `i` is made of index `i` of every
-column. Its methods must keep one **invariant** (a fact that must stay
-true between calls): every column has the same length. Each `Vec`
-grows by itself, with amortised constant-time `push`<Cite id="rust-std-vec" />.
+A **struct of arrays** in Rust is a struct with one `Vec` per field, such
+as `x: Vec<f64>`, where element `i` is made of index `i` of every column.
+Its methods must keep one **invariant** (a fact that must stay true
+between calls): every column has the same length. Each `Vec` grows by
+itself, with amortised constant-time `push`<Cite id="rust-std-vec" />.
 </Callout>
 
-<Formal title="One particle, many columns">
-
-```text
-pᵢ = (xᵢ, yᵢ, vxᵢ, vyᵢ, massᵢ, healthᵢ)
-len(x) = len(y) = … = len(health) = n
-```
-
-<span slot="read">Particle i is the tuple of the i-th entries of the
-six columns. And all six columns have the same length n, the number of
-particles; every method must keep that equation true.</span>
-</Formal>
-
-<OtherLanguages title="Two columns, one step">
-
-```rust
-for i in 0..s.x.len() {
-    s.x[i] += s.vx[i] * dt;
-}
-```
-
-```ts
-// what Viscosity generates, simplified
-for (let i = 0; i < ps.n; i++)
-  ps.x[i] += ps.vx[i] * dt;
-```
-
-```c
-for (size_t i = 0; i < s.n; i++)
-    s.x[i] += s.vx[i] * dt;
-```
-
-```python
-for i in range(len(s.x)):
-    s.x[i] += s.vx[i] * dt
-```
-
-</OtherLanguages>
-
-All four loops have the same shape, and that is the point of the
-layout: the code reads like the array-of-structs version with the
-index moved. The differences are in the columns themselves. Rust's
-`Vec<f64>` and C's `double *` hold raw doubles; the TypeScript one is a
-`Float64Array`, which Viscosity must grow by hand; and in Python the
-columns are plain lists unless, as in *Emitting Python with column
-storage*, you use `array('d')`.
-
-<Prompts ids={['soa-what', 'soa-invariant']} />
-
-## What Rust checks, and what it doesn't
-
-Two things work in your favour. First, `self.x[i] += self.vx[i] * dt`
-borrows `self.x` mutably and `self.vx` for reading in one statement,
-and that is fine: they are different fields, so the borrow checker sees
-two separate borrows. Calling a method instead is not:
-
-```rust
-for (i, x) in self.x.iter_mut()
-    .enumerate() {
-    *x += self.vx_at(i) * dt;
-}
-// error[E0502]: cannot borrow `*self` as
-//   immutable because it is also
-//   borrowed as mutable
-*x += self.vx[i] * dt; // fine
-```
-
-`self.vx_at(i)` borrows the *whole* of `self`, including the `x` column
-the loop is already changing, so rustc 1.97 refuses it with the error
-above (trimmed); naming the field directly borrows only `vx`. Second,
-if the fields are private to their module (*Privacy, pub and
-workspaces*), nobody outside can push to only one column.
-
-One thing Rust does not check: nothing makes `push` write *every*
-column. Forget `self.vx.push(p.vx)` and it compiles; then the first
-`step` panics with an index out of bounds, because `vx` is empty. In Part
-VIII, Viscosity generated `push` itself; here, tests do that job.
-And getting a particle back is materialisation (*Identity and
-materialization*): `get(i)` builds a `Particle` from the columns and
-returns it by value, since there is no `Particle` in memory to lend a
-`&Particle` to, so changing the copy changes nothing in the columns.
-
-<Prompts ids={['soa-borrow', 'soa-private', 'soa-get']} />
-
-## Measuring it
-
-Read the runnable example's output with suspicion. In the page it runs
-on the Rust Playground as a *debug* build, with no optimisation. On
-this book's machine (a shared cloud VM, rustc 1.97) the debug build
-made SoA *slower*, about 20 ns per particle against 4 to 9 for AoS in
-three runs, because every `s.x[i]` paid for an unoptimised bounds
-check; built with `-O`, the same program printed about 1.3 ns for SoA
-against 2.4 for AoS, three times out of three. The program wraps the
-data in `std::hint::black_box`, which stops the optimiser from
-deleting work whose result it can see is unused<Cite id="rust-std-black-box" />;
-*Measuring Rust performance* explains both pitfalls properly.
-
-For this chapter I also ran a fuller harness: release build, three
-loops, each warmed up and then timed in 31 samples of about 20 million
-particle updates, keeping the median; the whole run three times, in
-nanoseconds per particle (ranges across the runs):
-
-```text
-n = 1,000          AoS        SoA
-  update-xy        0.38–0.41  0.41–0.54
-  sum-one-field    0.65–0.71  0.65–0.66
-  read-all         1.10–1.11  1.08–1.12
-n = 1,000,000
-  update-xy        2.35–2.37  1.28–1.33
-  sum-one-field    2.00–2.03  0.72–0.76
-  read-all         2.51–2.67  1.77–1.85
-```
-
-With a thousand particles (48 KB, which stays in cache) there was no
-win, and `update-xy` was if anything a little slower as columns. With
-a million, SoA was about 1.8 times faster for `update-xy` and 2.7 for
-summing one field, and it came out ahead even reading all six fields,
-which this chapter cannot fully explain, so do not lean on that row.
-Now the same loop in JavaScript, from this book's Node run:
-
-<BenchBars suite="update-xy" n={1000000} title="update-xy in JavaScript: 1,000,000 particles"
-  highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']}
-  caption="In JavaScript the array of objects is far slower than flat storage. Rust’s Vec<Particle> already is flat storage, so its gap is smaller." />
-
-Most of what Viscosity wins in JavaScript is getting away from
-objects, and a Rust struct was never an object in that sense; what
-remains, in both languages, is not fetching the fields you do not use.
-
-<Prompts ids={['debug-soa', 'soa-small']} />
-
-<Callout kind="engine" label="Under the hood">
-engine/rust, the Rust port of Viscosity, generates the same JavaScript
-as the TypeScript compiler, byte for byte (its parity test checks every
-test program), so the container class with its `Float64Array` columns
-comes out identical. A column in that class and a `Vec<f64>` here are
-the same idea: contiguous doubles, one per element. The generated
-class keeps `cap` and its own `grow()`, because a `Float64Array` has a
-fixed length; a `Vec` tracks its capacity and reallocates by itself.
-</Callout>
-
-## Your turn
-
-<Exercise id="particles" />
-
-<Exercise id="convert" />
-
-## What you learned
-
-- A **`Vec<Particle>`** is already flat: structs back to back, no
-  headers or pointers. Its waste is the fields a loop skips.
-- A Rust **struct of arrays** has one `Vec<f64>` per field; keep the
-  columns the same length, and the fields private.
-- Borrowing two different fields at once is fine; a method call
-  borrows all of `self` (E0502). `get` returns a rebuilt copy.
-- In this chapter's release runs SoA was 1.8 to 2.7 times faster at a
-  million particles and no faster at a thousand.
-
-
-{/* ── merge: from old chapter 136, Measuring Rust performance ── */}
+<Prompts ids={['soa-invariant', 'soa-borrow']} />
 
 ## A number from the wrong build
 
-You port a hot loop to Rust, time it with `cargo run`, and it is slower
-than your JavaScript. Before you blame Rust, look at the line Cargo
-printed just before your program started:
-
-```text
-Finished `dev` profile [unoptimized +
-  debuginfo] target(s) in 0.09s
-```
-
-You measured the build made for debugging. *Benchmarking honestly*
-warned that a JIT needs warming up before its numbers mean anything;
-Rust has no JIT, but it has an equally large trap of its own, and a
-second one that runs the other way.
-
-<Analogy title="a car on the test track">
-A debug build is a car on the test track with a sensor on every bolt
-and a speed limiter fitted: perfect for finding faults, useless for lap
-times. A release build takes the sensors off.
-<span slot="breaks">Taking sensors off a car does not change where it
-goes; a release build can also behave differently, since integer
-overflow, for example, panics in one and wraps in the other.</span>
-</Analogy>
-
-<Analogy extra title="a dance rehearsal">
-In rehearsal the teacher stops the music at every slip and the steps
-are taken at half speed, so each mistake is easy to see; on the night
-the piece runs at full speed with no stops. Nobody times the
-rehearsal and calls it the length of the show.
-<span slot="breaks">A rehearsal is slower in a steady way; a debug
-build is slower by different factors in different code (about 5
-times for this chapter's sum, 10 for drip-rs's `fib`, 15 for the
-columns in *Struct of arrays in Rust by hand*), so you cannot divide by a constant to correct it.</span>
-</Analogy>
-
-## Debug and release
-
-Cargo builds with a **profile**, a named set of compiler settings.
-`cargo build`, `cargo run` and `cargo test` use `dev`; adding
-`--release` uses `release`; and `cargo bench` uses `bench`, which
-inherits from `release`<Cite id="cargo-profiles" />:
+Time the loop with `cargo run` and the columns are *slower*; however,
+Cargo printed ``Finished `dev` profile [unoptimized + debuginfo]``. It
+builds with a **profile**, a named set of compiler settings: `dev` by
+default, `release` with `--release`, and `bench` (which inherits from
+`release`) for `cargo bench`<Cite id="cargo-profiles" />:
 
 <Figure takeaway="Only the release and bench profiles optimise; the dev default does no optimisation at all." caption="The main settings of Cargo's three built-in profiles, from the Cargo book. opt-level 0 means no optimisation, 3 means all of it.">
   <Profiles />
@@ -367,245 +123,129 @@ inherits from `release`<Cite id="cargo-profiles" />:
 <Examples of="release-build">
 
 ```text
-$ cargo build
-Finished `dev` profile [unoptimized +
-  debuginfo]
-$ cargo build --release
-Finished `release` profile [optimized]
+# soa-bench, rustc 1.97, three runs each
+debug:  aos 5.45–7.23  soa 18.85–20.05
+-O:     aos 2.46–3.07  soa 1.29–1.48
+        (ns per particle, 1,000,000)
 ```
-
-```toml
-# drip-rs's Cargo.toml
-[profile.release]
-codegen-units = 1
-lto = true
-```
-
-<Run id="overflow-play" />
 
 </Examples>
 
-The first shows the two commands and the line each prints, which is
-the quickest way to know which build you are timing. How much it
-matters: for this chapter I built drip-rs both ways (rustc 1.97, the
-book's shared cloud VM) and ran `fib.drip` three times each; the debug
-build took 4.3 to 4.7 seconds and the release build 0.45 to 0.64, ten
-times faster. The second is how drip-rs asks for even more: `lto =
-true` (link-time optimisation) and `codegen-units = 1` let the
-optimiser see the whole program at once, at the price of slower
-builds. The third, the runnable one, shows that the two builds also
-*behave* differently: integer overflow panics in a debug build and
-wraps around in a release build<Cite id="rustref-int-overflow" />.
-In the page it runs as a debug build and stops with `attempt to add
-with overflow`; built with `-O` on the same machine it printed
-`255 + 1 = 0`.
+That is one program timing `update-xy` on a million particles both ways,
+without and with optimisation, on the shared VM: in the debug build SoA
+lost by a factor of three (every `s.x[i]` paid for an unoptimised bounds
+check), and optimised it won by two. Debug builds also *behave* differently: integer
+overflow panics in one and wraps around in a release
+build<Cite id="rustref-int-overflow" />.
+
+<More title="Run them (in debug mode), and overflow in both builds">
+
+The page's Run button sends Rust to the Rust Playground in debug mode, so
+any time it prints is a debug time. The first program is the one above.
+The second adds 1 to a `u8` holding 255: the debug build stops with
+`attempt to add with overflow`, and built with `-O` it printed `255 + 1 =
+0`. The third is the `black_box` experiment below.
+
+<Run id="soa-bench" />
+
+<Run id="overflow-play" />
+
+<Run id="bb-play" />
+
+</More>
 
 <Callout kind="definition">
-A **release build** (`cargo build --release`) compiles with the
-`release` profile: `opt-level = 3`, with debug assertions and overflow
-checks off. Only release builds (or `cargo bench`, which inherits from
-release) give timings that say anything about speed; the default `dev`
-profile does no optimisation, for fast builds and easy debugging<Cite id="cargo-profiles" />.
+A **release build** (`cargo build --release`) compiles with the `release`
+profile: `opt-level = 3`, with debug assertions and overflow checks off.
+Only release builds (or `cargo bench`) give timings that say anything
+about speed; the default `dev` profile does no optimisation, for fast
+builds and easy debugging<Cite id="cargo-profiles" />.
 </Callout>
 
-A note on this book: the Run button sends Rust to the official Rust
-Playground in **debug** mode, so any time it prints is a debug time,
-on a server you do not control. The "Open in Rust Playground" link
-lets you switch the mode to Release there.
-
-<Prompts ids={['debug-default', 'release-what', 'overflow-modes', 'runner-mode']} />
+<Prompts ids={['release-what']} />
 
 ## The loop that vanished
 
-Now build for release and time a sum of a million `f64`s, done 100
-times, once plainly and once with every input and output wrapped in
-`black_box`. Step through what four builds of it printed:
+Now build for release and time a sum of a million `f64`s, done 100 times,
+once plainly and once with its input and output wrapped in `black_box`.
+Step through what four builds of it printed:
 
 <OptSteps client:visible />
 
-A hundred million additions in under 200 ns is about half a million
-additions per nanosecond; they did not happen. `sum` has no side
-effects and its result was dropped, so the optimiser deleted the calls:
-the dead code elimination *Benchmarking honestly* caught a JIT doing,
-here in a compiler with all the time it likes to look for it.
-**`std::hint::black_box`** is the fix: it returns its argument
-unchanged, but the compiler must assume the value could be used in any
-way at all. Wrapping the input stops the compiler reasoning about `xs`;
-wrapping the result stops it throwing the sum away<Cite id="rust-std-black-box" />.
+A hundred million additions in under 210 ns did not happen: the result
+was dropped, so the optimiser deleted the calls (the dead code
+elimination of *Benchmarking honestly*). **`std::hint::black_box`** is
+the fix.
 
 <Examples of="black-box">
 
 ```rust
 use std::hint::black_box;
-let n = black_box(1_000_000);
-// the compiler may not assume n's value
-```
-
-```rust
 for _ in 0..100 {
     black_box(sum(black_box(&xs)));
 }
 ```
 
-<Run id="bb-play" />
-
 </Examples>
 
-The first hides a constant: without `black_box`, the compiler could
-work out anything that depends on `n` before the program runs. The
-second is the benchmark loop from the diagram, with both ends hidden.
-The runnable one is the whole program; run in the page (a debug build)
-the two lines come out within a few tens of percent of each other,
-which is exactly the misleading part, and in a release build the
-`plain` line drops to nanoseconds.
+`black_box` returns its argument unchanged, but the compiler must assume
+the value could be used in any way at all: wrapping the input stops it
+reasoning about `xs`, and wrapping the result stops it throwing the sum
+away<Cite id="rust-std-black-box" />. With both, the release build took
+74 to 75 ms, the real cost of the work.
 
 <Callout kind="definition">
-**`black_box(x)`** (in `std::hint`) is an identity function the
-compiler must treat as opaque, so work feeding into it cannot be
-removed and values coming out of it cannot be predicted. It is
-**best-effort**: the documentation says it can generally be relied on
-for benchmarking, but never for correctness<Cite id="rust-std-black-box" />.
+**`black_box(x)`** (in `std::hint`) is an identity function the compiler
+must treat as opaque, so work feeding into it cannot be removed and
+values coming out of it cannot be predicted. It is **best-effort**: the
+documentation says it can generally be relied on for benchmarking, but
+never for correctness<Cite id="rust-std-black-box" />.
 </Callout>
 
-<Formal title="An identity the optimiser cannot see through">
+<Prompts ids={['bb-why', 'bb-what']} />
+
+## The measured result
+
+A fuller harness (release build, three loops, each warmed up and timed in
+31 samples of about 20 million particle updates, keeping the median; the
+whole run three times on the shared VM) found no win at a thousand
+particles (48 KB, which stays in cache), and at a million SoA about 1.7
+times faster for `update-xy` and 2.6 for summing one field. Most of what
+Viscosity wins in JavaScript is getting away from objects, and a Rust
+struct was never an object in that sense; what remains, in both
+languages, is not fetching the fields you do not use.
+
+<More title="The full table, and the same loop in JavaScript">
+
+In nanoseconds per particle, ranges across the three runs:
 
 ```text
-black_box : T → T
-black_box(x) = x
+n = 1,000          AoS        SoA
+  update-xy        0.38–0.40  0.39–0.42
+  sum-one-field    0.66–0.68  0.65–0.68
+  read-all         1.09–1.12  1.08–1.10
+n = 1,000,000
+  update-xy        2.21–2.23  1.28–1.34
+  sum-one-field    1.96–1.99  0.74–0.75
+  read-all         2.19–2.43  1.76–1.81
 ```
 
-<span slot="read">black_box takes a value of any type T and gives back
-a value of the same type; in fact it gives back x itself. As a function
-it does nothing; what it changes is what the compiler is allowed to
-assume about x, before and after.</span>
-</Formal>
+SoA also won reading all six fields, which I cannot fully explain, so do
+not lean on that row. The same loop in JavaScript shows why Rust's gap
+is smaller:
 
-`black_box` hides values; it does not stop the compiler being clever
-with the code between them. A loop adding up `i * i` for every `i`
-below a black-boxed million still took 1 to 2 ns per call in a
-release build here, so the loop must have been replaced by a formula
-(about a million multiplications cannot fit in 2 ns). Benchmark work
-shaped like the real thing.
+<BenchBars suite="update-xy" n={1000000} title="update-xy in JavaScript: 1,000,000 particles"
+  highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']}
+  caption="In JavaScript the array of objects is far slower than flat storage. Rust’s Vec<Particle> already is flat storage, so its gap is smaller." />
 
-<OtherLanguages title="Keep the result alive">
+</More>
 
-```rust
-let t = Instant::now();
-black_box(sum(black_box(&xs)));
-let d = t.elapsed();
-```
+## Is that difference real? Criterion
 
-```ts
-// A JIT may also delete unused work;
-// keep the result and use it.
-const t = performance.now();
-const r = sum(xs);
-const d = performance.now() - t;
-console.log(r);
-```
-
-```c
-/* gcc -O2 may delete an unused loop */
-volatile double sink;
-sink = sum(xs, n);
-```
-
-```python
-t = time.perf_counter()
-r = sum(xs)  # CPython runs it all
-d = time.perf_counter() - t
-```
-
-</OtherLanguages>
-
-The problem is not Rust's alone. An optimising JIT can remove work
-whose result nobody uses, so a JavaScript benchmark keeps and prints
-its result; C programmers write to a `volatile` variable, which the
-compiler must treat as watched from outside; CPython does no such
-optimisation, so a plain timing runs everything (slowly). Rust's
-`black_box` is the standard, named way to say "assume this matters".
-
-<Prompts ids={['bb-why', 'bb-what', 'bb-limit']} />
-
-<Callout kind="engine" label="Under the hood">
-The book's two Rust projects time themselves differently. drip-rs's
-`scripts/bench.sh` builds with `--release`, runs each
-`benchmark/*.drip` program in a fresh process three times, and keeps
-the best wall-clock time, compile time included, so no `black_box` is
-needed: the output is printed, and printing is a side effect the
-optimiser must keep. engine/rust measures in process instead: its
-`compile_speed` example compiles each program 100 times to warm up,
-then times 500 calls with `Instant`, passing each result to
-`black_box(r)`, and reports the median and minimum. Even then its
-committed results show the noise of a shared VM: `ledger`'s fastest
-compile was 74, 73, then 109 µs in three rounds. The next chapter adds
-statistics to judge such differences.
-</Callout>
-
-<Prompts ids={['whole-program']} />
-
-## Your turn
-
-<Exercise id="summary" />
-
-<Exercise id="measure" />
-
-## What you learned
-
-- Time only a **release build**: `opt-level = 3`, no overflow checks.
-  drip-rs's `fib` was ten times slower in the `dev` default.
-- Debug panics on integer overflow; release wraps.
-- An unused result invites the optimiser to delete the work.
-  **`black_box`** hides inputs and keeps results, on a best-effort
-  basis, and cannot stop a loop being replaced by a formula.
-- drip-rs times whole processes, best of three; engine/rust times warm
-  calls in process, with `black_box`, and reports median and minimum.
-
-
-{/* ── merge: from old chapter 136, Benchmarking with criterion ── */}
-
-## Is that difference real?
-
-*Measuring Rust performance* got the build and the optimiser out of
-the way, and its exercise collected one time per run. Now suppose you
-change a function and the median goes from 665 ns to 690. Did you make
-it slower, or did another program on the machine wake up?
-*Noisy numbers: the median, p95 and a fresh process* answered with a
-median and a careful eye; the Rust world's usual answer is a crate
-that does the statistics for you.
-
-<Analogy title="an opinion poll">
-A poll does not ask every voter; it asks a thousand, and reports
-"42 percent, give or take 3". The "give or take" is the honest part: a
-second poll might say 44, and that alone would not mean anyone changed
-their mind. Criterion reports a benchmark the same way: an estimate and
-a margin.
-<span slot="breaks">A poll's margin comes from asking different
-people; criterion asks the same code again and again, and its spread
-comes from the machine (other programs, caches, the CPU's clock), so
-the "true value" itself drifts from hour to hour.</span>
-</Analogy>
-
-<Analogy extra title="weighing yourself a hundred times">
-Step on a bathroom scale a hundred times and the readings wobble by a
-few hundred grams; once or twice you forgot to take off your coat.
-You would report the typical reading, flag the coat readings, and not
-believe a 200-gram "loss" between two mornings.
-<span slot="breaks">A coat is easy to spot; a benchmark's "coat" (a
-background task) is invisible, and it can make a whole run slower, not
-just one reading, which is how a quiet hour can look like an
-improvement.</span>
-</Analogy>
-
-## Setting it up
-
-Stable Rust's `cargo bench` runs whatever is in a crate's `benches/`
-folder, but the built-in `#[bench]` attribute is nightly-only, so the
-Cargo book points to crates such as **criterion** for stable
-Rust<Cite id="cargo-bench-docs" />. The book's Run button cannot run
-it (it compiles single files with no crates, in debug mode), so for
-this chapter I ran it with cargo 1.97, which fetched criterion 0.5.1
-from crates.io.
+The ranges above came from repeating everything and eyeballing the
+spread. The Rust world's usual tool for doing that with statistics is the
+crate **criterion**, run by `cargo bench` on stable Rust (the built-in
+`#[bench]` attribute is nightly-only<Cite id="cargo-bench-docs" />).
 
 <Examples of="criterion">
 
@@ -619,70 +259,34 @@ name = "sum"
 harness = false
 ```
 
-```rust
-// benches/sum.rs
-use criterion::{criterion_group,
-    criterion_main, Criterion};
-use crit::sum;
-use std::hint::black_box;
-
-fn bench(c: &mut Criterion) {
-    let xs: Vec<f64> = (0..1000)
-        .map(|i| i as f64)
-        .collect();
-    c.bench_function("sum 1000", |b| {
-        b.iter(|| sum(black_box(&xs)))
-    });
-}
-criterion_group!(benches, bench);
-criterion_main!(benches);
-```
-
 ```text
-$ cargo bench
-Finished `bench` profile [optimized]
-sum 1000   time: [658.64 ns 665.74 ns
-                  672.99 ns]
+sum 1000  time: [665.89 ns 672.29 ns
+                 679.35 ns]
 ```
 
 </Examples>
 
-The first adds criterion as a **dev-dependency** (used only by tests
-and benchmarks, never shipped) and declares one benchmark, `sum`, with
-`harness = false`, which tells Cargo that the file brings its own
-`main` instead of using the built-in test harness. The second is that
-file. `sum` comes from the crate being measured (here called `crit`);
-`bench` builds a thousand numbers once, then `bench_function` names the
-benchmark, and `b.iter` runs the closure as many times as criterion
-asks, passing each result through `black_box` itself, so only the
-input needs hiding. The last two lines generate that `main`. The third
-is what `cargo bench` printed on this book's VM: it built with the
-`bench` profile, which inherits from `release`<Cite id="cargo-profiles" />,
-and reported the time per call as three numbers.
-
-<Prompts ids={['crit-what', 'crit-harness', 'crit-nightly']} />
-
-## What criterion does
-
-Step through one benchmark as criterion measures it:
+Criterion is a **dev-dependency** (never shipped), and `harness = false`
+tells Cargo that `benches/sum.rs` brings its own `main` (criterion's
+macros write it). The output is what `cargo bench` (cargo 1.97,
+criterion 0.5.1) printed for a sum of 1,000 `f64`s: the time per call as
+an interval, low, estimate and high. Step through how criterion gets
+there:
 
 <CriterionSteps client:visible />
 
-The key move is the slope. One call to `sum` takes well under a
-microsecond, too short for the clock to time on its own, so criterion
-never times one call: sample *k* runs *k* × *d* calls, and the time per
-call is the slope of the line through all the samples. To put a margin
-on that slope it uses the **bootstrap**: pick 100 samples at random
-from the 100 it has (some twice, some not at all), fit a line, and
-repeat a hundred thousand times; the middle 95 percent of those slopes
-is the interval it prints<Cite id="criterion-analysis" />. The
-runnable example does a bootstrap by hand, on the mean of twelve
-timings:
-
-<Run id="bootstrap" />
-
-It prints a mean of 676.2 ns and a 95 percent interval of 665.8 to
-689.4, wider on the high side because of the two slow samples.
+One call is too short for the clock, so sample *k* runs *k* × *d* calls,
+and the time per call is the **slope** of the line through the samples;
+resampling them a hundred thousand times (a **bootstrap**) gives the
+interval. Run again, criterion reports a change only if a test says it is
+unlikely to be chance (p below 0.05) *and* it exceeds a 1 percent noise
+threshold<Cite id="criterion-analysis" />.
+I ran it on unchanged code eight times in a row on the shared VM: six
+runs found no change or one within the noise, run 7 said `Performance has
+regressed` (+4.7 percent) and run 8 `Performance has improved` (−3.2
+percent). The cause was the VM's other tenants, not the code; on such a
+machine a 5 percent difference is a rumour until the whole comparison has
+been repeated.
 
 <Callout kind="definition">
 **Criterion** is a statistical benchmarking crate for stable Rust. It
@@ -692,89 +296,77 @@ time per iteration as the slope of a fitted line, gives a bootstrap
 compares each run with the last one saved<Cite id="criterion-analysis" />.
 </Callout>
 
-<Formal title="Slope and fences">
+<More title="The bench file, Tukey's fences, a bootstrap by hand, and how the book's Rust projects time themselves">
 
-```text
-tₖ ≈ β × (k × d),   k = 1 … 100
-IQR = Q3 − Q1
-mild:   x outside [Q1 − 1.5·IQR,
-                   Q3 + 1.5·IQR]
-severe: x outside [Q1 − 3·IQR,
-                   Q3 + 3·IQR]
+```rust
+// benches/sum.rs
+fn bench(c: &mut Criterion) {
+    let xs: Vec<f64> = (0..1000)
+        .map(|i| i as f64).collect();
+    c.bench_function("sum 1000", |b| {
+        b.iter(|| sum(black_box(&xs)))
+    });
+}
+criterion_group!(benches, bench);
+criterion_main!(benches);
 ```
 
-<span slot="read">The total time of sample k is about β times its
-number of calls, k times d; β, the slope, is the time per call. A
-sample is a mild outlier if it lies more than one and a half
-interquartile ranges below the first quartile or above the third, and
-a severe one beyond three. The interquartile range is the distance
-between the first and third quartiles, the middle half of the
-data.</span>
-</Formal>
+`bench_function` names the benchmark, and `b.iter` runs the closure as
+many times as criterion asks, passing each result through `black_box`
+itself, so only the input needs hiding.
+
+Criterion counts outliers with Tukey's fences: a sample more than 1.5
+interquartile ranges (the width of the middle half of the data) outside
+the middle half is a mild outlier, beyond 3 a severe one, and both are
+reported, not dropped.
 
 <Figure takeaway="Outliers are judged against the middle half of the data, and reported rather than thrown away." caption="Tukey's fences on some illustrative timings: one sample beyond the 1.5 IQR fence (mild), one beyond 3 IQR (severe).">
   <Fences />
 </Figure>
 
-<Prompts ids={['crit-slope', 'crit-ci', 'tukey']} />
+The program below does a bootstrap by hand, on the mean of twelve
+timings; it prints a mean of 676.2 ns and a 95 percent interval of 665.8
+to 689.4, wider on the high side because of the two slow samples.
 
-## The run that improved nothing
+<Run id="bootstrap" />
 
-Criterion saves each run's samples and compares the next run with
-them, using a statistical test; it reports a change only if the test
-says it is unlikely to be chance (p below 0.05) *and* the change is
-bigger than its noise threshold, 1 percent by default<Cite id="criterion-analysis" />.
-I ran the same benchmark, on the same code, eight times in a row. Six
-runs said `No change in performance detected` or `Change within noise
-threshold`. Two did not:
+Neither of the book's Rust projects uses criterion. drip-rs's
+`scripts/bench.sh` builds with `--release`, runs each benchmark program
+in a fresh process and keeps the best wall-clock time; the output is
+printed, a side effect the optimiser must keep, so no `black_box` is
+needed (its committed results put `fib` at 406 ms against the TypeScript
+VM's 1906). engine/rust's `compile_speed` example times 500 warm calls
+with `Instant`, passing each result to `black_box`, and reports median
+and minimum; even so, its committed file shows `ledger`'s fastest compile
+at 74, 73, then 109 µs in three rounds on the shared VM.
 
-```text
-run 6  change: [-4.93% -3.24% -1.49%]
-       (p = 0.00 < 0.05)
-       Performance has improved.
-run 8  change: [+2.15% +4.25% +6.68%]
-       (p = 0.00 < 0.05)
-       Performance has regressed.
-```
+</More>
 
-Neither was false, in a narrow sense: the timings really did differ
-between those runs. However, the cause was the shared VM's other
-tenants, not the code, which had not changed at all. Criterion's own
-guide warns that small, deterministic benchmarks are this sensitive,
-and that the noise threshold exists for exactly this<Cite id="criterion-analysis" />;
-on a machine like this one, 1 percent is too small. The lesson
-survives any tool: alternate the two versions you compare, repeat the
-whole comparison, and treat a single 5 percent difference on a shared
-machine as a rumour.
-
-<Prompts ids={['crit-change', 'crit-noise']} />
-
-<Callout kind="engine" label="Under the hood">
-Neither of the book's Rust projects uses criterion. drip-rs depends on
-nothing but the standard library, and its benchmarks are whole
-programs (83 to 406 ms each in drip-rs), compared with the
-TypeScript VMs timed the same way, so `scripts/bench.sh` takes the best
-of three fresh processes; its committed results, for instance, put
-`fib` at 406 ms against the TypeScript VM's 1906. engine/rust's
-`compile_speed` example times 500 warm calls and reports the median and
-minimum. Both say how they measured and on what machine, and both say
-to allow for noise, which is the part that matters more than the tool.
-</Callout>
+<Prompts ids={['crit-slope']} />
 
 ## Your turn
+
+<Exercise id="particles" />
+
+<Exercise id="convert" />
+
+<Exercise id="summary" />
+
+<Exercise id="measure" />
 
 <Exercise id="tukey" />
 
 ## What you learned
 
-- **Criterion** runs on stable Rust through `cargo bench`: a
-  dev-dependency, and a `[[bench]]` with `harness = false`.
-- It fits a line through samples of growing size; the **slope** is
-  the time per call, and a **bootstrap** gives its interval.
-- Outliers are counted with **Tukey's fences** (1.5 and 3 IQR), and
-  reported, not dropped.
-- It compares runs with a test and a 1 percent noise threshold; on a
-  shared VM, unchanged code was reported as 3 percent faster, then 4
-  percent slower.
+- A **`Vec<Particle>`** is already flat; a Rust **struct of arrays**
+  (one `Vec<f64>` per field, all the same length) saves the fields a loop
+  skips: 1.7 to 2.6 times faster at a million particles, no faster at a
+  thousand.
+- Time only **release builds**, and wrap inputs and results in
+  **`black_box`** so the work is not deleted.
+- **Criterion** gives an interval and a change test; on a shared machine,
+  repeat before believing a few percent.
+
+Next: *Planning drip-rs*, the first step of porting the Drip VM to Rust.
 
 <Quiz />

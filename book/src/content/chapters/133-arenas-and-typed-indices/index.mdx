@@ -3,51 +3,43 @@ n: 133
 day: 22
 part: VII
 title: 'Arenas and typed indices'
-tagline: 'drip-rs never lets one object own another. Every object lives in a big Vec owned by the heap, and a reference from one object to another is a slot number. Cycles stop mattering, borrows get simple, and the garbage collector is yours again.'
+tagline: 'drip-rs never lets one object own another. Every object lives in a big Vec owned by the heap, a reference from one object to another is a slot number, and the number is wrapped in a type of its own so it can only open the right Vec. Cycles stop mattering, borrows get simple, and the garbage collector is yours again.'
 objectives:
   - Build an arena, a Vec of slots with a free list, and say what insert and remove do.
-  - Explain why objects that refer to each other by index can form cycles without leaking.
+  - Explain why objects that refer to each other by index can form cycles without leaking, and what a stale index reads.
   - Work with the borrow checker in an arena by copying numbers out before writing.
-  - Compare drip-rs's heap of arenas, its mark bitmap and its sweep with the TypeScript VM's objects.
   - Write a newtype index such as struct NodeId(u32), and say what it costs at run time.
-  - Read engine/rust's ValueId, BlockId, FuncId and BindingId, and the macro that makes them.
   - Explain drip-rs's generic handle Gc<T>, its PhantomData field and its hand-written Copy.
-  - Let a type be indexed by your own ids, as arena[handle] is.
 introduces: [arena, typed-index]
-uses: [rust, rust-functions, let-mut, scalar-types, ownership, borrow, shared-vs-mutable, borrow-checker, struct, impl, self-receiver, enum, match, option, vec, trait, rust-generics, trait-bound, box, rc, refcell, heap-object, object-list, garbage-collection, roots, mark-sweep, tricolor, upvalue, instance, closure, pointer, index, pointer-chasing, vir, chunk, monomorphization, handle, typescript, type-annotation]
-sources: [rust-std-vec, rust-std-option, oxc-allocator, klabnik2026, rust-std-phantomdata, rust-std-ops-index]
+uses: [rust, rust-functions, ownership, borrow, shared-vs-mutable, borrow-checker, struct, impl, option, vec, trait, derive, operator-traits, rust-generics, box, rc, refcell, heap-object, garbage-collection, mark-sweep, instance, pointer, index, vir, handle, typescript]
+sources: [rust-std-vec, oxc-allocator, klabnik2026, rust-std-phantomdata, rust-std-ops-index]
 ---
 import ArenaSteps from '../../../components/diagrams/ch133/ArenaSteps';
 import GraphVsArena from '../../../components/diagrams/ch133/GraphVsArena';
 import HandleSteps from '../../../components/diagrams/ch133/HandleSteps';
 import IdBox from '../../../components/diagrams/ch133/IdBox';
 
-{/* ── merge: from old chapter 133, Arenas and typed indices ── */}
-
 ## Pointers become numbers
 
-*RefCell and reference cycles* ended with three problems for a VM
-built from `Rc<RefCell<..>>`: it leaks every cycle a program makes, it
-panics when a program aliases the wrong objects, and it hands the
-question "when does this object die?" to reference counting instead of
-to the collector you wrote in *Reclaiming memory: mark and sweep*.
-
-drip-rs's answer is the first of its design notes: no object owns
-another. One owner, the **heap**, holds every object, in one big `Vec`
-per kind of object; and a reference from one object to another stops
-being a pointer and becomes a number, the object's position in that
-`Vec`.
+*Box, Rc and RefCell* ended with three problems for a VM built from
+`Rc<RefCell<..>>`: it leaks every cycle a program makes, it panics when a
+program aliases the wrong objects, and it hands "when does this object
+die?" to reference counting instead of to the collector of *Reclaiming
+memory: mark and sweep*. drip-rs's answer is the first of its design
+notes: no object owns another. One owner, the **heap**, holds every
+object, in one `Vec` per kind of object, and a reference from one object
+to another stops being a pointer and becomes a number, the object's
+position in that `Vec`.
 
 <Analogy title="a car park with numbered bays">
-A multi-storey car park owns every bay; your ticket just says "bay
-17". You can photocopy the ticket as often as you like without
-creating a second car, and two drivers can leave notes on each other's
-windscreens saying "I'm the blue car in bay 9". When a car leaves, its
-bay is free for the next one.
+A multi-storey car park owns every bay; your ticket only says "bay 17".
+You can photocopy the ticket as often as you like without creating a
+second car, and two drivers can leave notes on each other's windscreens
+saying "I'm the blue car in bay 9". When a car leaves, its bay is free
+for the next one.
 <span slot="breaks">A real car park would notice if your old ticket
 pointed at someone else's car; a slot number does not, so keeping a
-number after its object is freed reads whatever moved in, as you will
-see below.</span>
+number after its object is freed reads whatever moved in.</span>
 </Analogy>
 
 <Figure takeaway="In an arena the heap owns everything, and a reference is just a slot number." caption="Two Drip instances that point at each other, and their class. In the TypeScript VM the fields hold references. In drip-rs each kind of object lives in its own arena, and a field holds a slot number.">
@@ -56,9 +48,10 @@ see below.</span>
 
 ## An arena is a Vec of slots
 
-Here is the arena from drip-rs's `object.rs`, slightly shortened:
+<Examples of="arena">
 
 ```rust
+// adapted from drip-rs, src/object.rs
 pub struct Arena<T> {
     slots: Vec<Option<T>>,
     free: Vec<u32>,
@@ -78,112 +71,63 @@ impl<T> Arena<T> {
 }
 ```
 
-Each slot is an `Option<T>`: `Some(object)` while it is live, `None`
-once the collector frees it. `free` lists the empty slots, so `insert`
-first pops the free list and refills a hole (`if let` runs its block
-only if the pattern matches), and only when nothing is free does it
-push a new slot onto the end. `Gc<T>` is the handle it returns: for
-this chapter, read it as "slot number `i`" (the next chapter explains
-the `<T>`). `remove(index, reuse)` calls `take()` on the slot, which
-leaves `None` behind and hands back the object, and puts the index on
-the free list only if `reuse` is true. Step through it:
+</Examples>
+
+Each slot is an `Option<T>`: `Some(object)` while it is live, `None` once
+the collector frees it. `free` lists the empty slots, so `insert` first
+pops the free list and refills a hole, and only when nothing is free does
+it push a new slot onto the end. `Gc<T>` is the handle it returns; for
+now, read it as "slot number `i`". `remove(index, reuse)` calls `take()`
+on the slot, which leaves `None` behind and hands back the object, and
+puts the index on the free list only if `reuse` is true (drip-rs's debug
+and stress modes never reuse, so a stale handle panics with "use after
+free" instead of reading a stranger). drip-rs's `Heap` has nine of these,
+`strings`, `lists`, `functions` and so on up to `bound_methods`, and the
+collector sweeps by walking each arena's slots, with no linked list of
+objects needed.
 
 <ArenaSteps client:visible />
 
-<Analogy extra title="a hotel register">
-A hotel does not chase guests around the building; it keeps one
-register, and everyone refers to everyone else by room number ("send
-the bill to room 12"). When a guest checks out, the room is cleaned
-and given to the next arrival.
-<span slot="breaks">A hotel clerk would never give room 12's bill to the
-next person in room 12; an arena with reuse on will, if some object
-still holds the old number, which is why drip-rs's test modes never
-reuse a slot.</span>
-</Analogy>
-
 <Callout kind="definition">
 An **arena** is one collection, here a `Vec`, that owns many objects of
-one type. Objects are added and removed through the arena, and
-everything else refers to them by **index** instead of by pointer, so
-no object owns another and cycles are only numbers. A **free list** of
-empty slots lets new objects reuse old space. A **stale** index, kept
-after its object was freed, reads whatever moved in: wrong, but never
-undefined behaviour<Cite id="rust-std-vec" />.
+one type. Objects are added and removed through the arena, and everything
+else refers to them by **index** instead of by pointer, so no object owns
+another and cycles are only numbers. A **free list** of empty slots lets
+new objects reuse old space; a **stale** index, kept after its object
+was freed, reads whatever moved in: wrong, but never undefined
+behaviour<Cite id="rust-std-vec" />.
 </Callout>
 
-<Formal title="Arena operations">
+<More title="A runnable cycle, the TypeScript comparison, and oxc's arena">
 
-```text
-arena : index → Option<T>
-insert(o) = i, where arena[i] = None
-              (or i is new); then
-            arena[i] ← Some(o)
-remove(i):  arena[i] ← None
-```
-
-<span slot="read">Think of an arena as a function from slot numbers to
-"maybe an object". Inserting picks a slot that is empty (or a new one
-at the end) and puts the object there, returning the slot number.
-Removing sets a slot back to empty.</span>
-</Formal>
-
-<Examples of="arena">
-
-```rust
-let mut nodes = vec!["a", "b"];
-let link = [1, 0]; // a→b, b→a
-println!("{}", nodes[link[0]]); // b
-```
+The program below is a whole tiny arena: two nodes that point at each
+other, followed by number, then both freed (no counts, so no leak), and a
+new node that reuses a freed slot. It prints `a -> b` and `slot 1: c`.
 
 <Run id="arena-cycle" />
 
-```rust
-// drip-rs's gc.rs: one arena per kind
-pub struct Heap {
-    pub strings: Arena<ObjString>,
-    pub functions: Arena<ObjFunction>,
-    pub upvalues: Arena<ObjUpvalue>,
-    pub closures: Arena<ObjClosure>,
-    pub instances: Arena<ObjInstance>,
-    // ...four more, and the GC state
-}
-```
+In TypeScript, `a.other = b; b.other = a` links two objects directly, and
+the tracing collector frees them when nothing can reach them. The arena
+version links them by number; neither owns the other, and deciding when
+they die is up to whoever owns the arena, which in drip-rs is the
+collector. engine/rust is built on arenas too: VIR's `Module` keeps every
+instruction in one `Vec`, and oxc builds the JavaScript syntax tree in its
+`Allocator`, "a bump-based memory arena for faster AST
+allocations"<Cite id="oxc-allocator" />.
 
-</Examples>
+</More>
 
-The first is the idea with nothing else: two names in a `Vec`, and a
-cycle (`a` points at `b`, `b` at `a`) written as two numbers, so
-following `a`'s link reads slot 1, `b`. The runnable one is a whole
-tiny arena: two nodes that point at each other, followed by number,
-then both freed (no counts, so no leak), and a new node that reuses a
-freed slot; it prints `a -> b` and `slot 1: c`. The third is real:
-drip-rs's heap has nine arenas, one per kind of object (strings,
-lists, functions, natives, upvalues, closures, classes, instances and
-bound methods), so asking the `instances` arena for slot 7 gives you an
-`ObjInstance`, or a panic if slot 7 is empty.
-
-<Prompts ids={['arena-what', 'arena-free', 'arena-cycle', 'stale', 'poison-mode']} />
+<Prompts ids={['arena-what', 'arena-cycle', 'stale']} />
 
 ## Borrowing one arena
 
-The borrow checker still applies. `insts[i]` borrows the whole `Vec`,
-so this is rejected even though the two elements differ:
-
-```rust
-let src = &insts[1];
-let dst = &mut insts[0];
-dst.hp += src.hp / 2.0;
-```
-
-```text
-error[E0502]: cannot borrow `insts` as
-  mutable because it is also borrowed as
-  immutable
-```
-
-But compare it with the `RefCell` panic of the last chapter: this is a
-*compile* error, and the fix is always the same: copy what you need out
-first, let that borrow end, then write.
+The borrow checker still applies. `insts[i]` borrows the whole `Vec`, so
+`let src = &insts[1]; let dst = &mut insts[0];` is rejected by rustc 1.97
+with E0502, `cannot borrow insts as mutable because it is also borrowed
+as immutable`, even though the two elements differ. Compare it with the
+`RefCell` panic of *Box, Rc and RefCell*: this is a *compile* error, and
+the fix is always the same, copy what you need out first, let that
+borrow end, then write:
 
 ```rust
 let hp = insts[1].hp; // copy a number
@@ -194,173 +138,55 @@ Handles and drip-rs's `Value`s are `Copy`, so copying is cheap, and
 `a.heal(a)` now simply works. drip-rs's property lookup does exactly
 this, reading `let class = self.heap[instance].class;` (a copy of a
 handle, so the borrow ends at the semicolon) before calling a method
-that needs `&mut self`. The collector uses the same idea at a larger
-scale: its mark bits do not live inside the objects but in a separate
-`Marks` bitmap, one `Vec<bool>` per arena, so tracing can read the heap
-through a shared borrow while marking writes the bits through a mutable
-borrow of the bitmap.
+that needs `&mut self`.
 
-<OtherLanguages title="Two objects that point at each other">
-
-```rust
-// slot numbers, owned by the arena
-let a = insts.insert(Inst {
-    other: None });
-let b = insts.insert(Inst {
-    other: Some(a) });
-insts[a].other = Some(b);
-```
-
-```ts
-// references, kept alive by the GC
-const a = { other: null };
-const b = { other: a };
-a.other = b;
-```
-
-</OtherLanguages>
-
-TypeScript links the two objects directly, and its tracing collector
-frees them when nothing can reach them. The arena version links them by
-number: `insert` returns a slot number, and setting `a`'s `other`
-afterwards is an ordinary write into the arena. Neither object owns the
-other, so the cycle costs nothing and leaks nothing; deciding when they
-die is up to whoever owns the arena, which in drip-rs is the collector.
-
-<Prompts ids={['copy-out', 'ts-vs-rs', 'arena-sweep']} />
-
-<Callout kind="engine" label="Under the hood">
-Sweeping needs no list of every object (the `next` pointers of
-*Objects that live on the heap*): an arena already holds every object
-of its kind, so drip-rs's sweep walks each arena's slots and frees the
-live, unmarked ones. The `Option` around each slot is often free: on
-this machine `size_of::<ObjInstance>()` and
-`size_of::<Option<ObjInstance>>()` are both 88 bytes, because Rust uses
-a spare bit pattern inside the instance to mean `None`<Cite id="rust-std-option" />.
-engine/rust is built on arenas too. VIR's `Module` keeps every
-instruction in one `Vec`, and oxc builds the JavaScript syntax tree in
-its `Allocator`, which its own documentation calls "a bump-based memory
-arena for faster AST allocations"<Cite id="oxc-allocator" />.
-</Callout>
-
-## Your turn
-
-<Exercise id="arena" />
-
-<Exercise id="arenaList" />
-
-## What you learned
-
-- An **arena** is a `Vec` of slots that owns every object of one kind;
-  objects refer to each other by index, so a cycle is only numbers and
-  nothing leaks.
-- A **free list** lets new objects reuse freed slots; a stale index then
-  reads the wrong object, which is why drip-rs's test modes turn reuse
-  off and panic instead.
-- In an arena the borrow checker still applies, at compile time: copy
-  numbers and handles out, then write.
-- drip-rs keeps mark bits in a separate bitmap and sweeps by walking its
-  arenas, where the TypeScript VM uses object headers and a linked list.
-
-Next: typed indices, so that a slot number for one arena can never be
-used to read another.
-
-
-{/* ── merge: from old chapter 133, Typed indices ── */}
+<Prompts ids={['copy-out']} />
 
 ## Two numbers that look alike
 
-*Arenas and typed indices* left one hole open. drip-rs's heap has nine
-arenas, and a slot number for one of them looks exactly like a slot
-number for another. With bare numbers, this compiles and runs:
+One hole is left. With nine arenas, a slot number for one looks exactly
+like a slot number for another, and with bare `usize`s nothing stops a
+class's slot being used to read the instances arena, which quietly
+returns some unrelated object. The fix is to wrap each kind of number in
+a type of its own, a **newtype**: a struct with one unnamed field, as
+engine/rust's VIR does for its instructions.
 
-```rust
-let classes = vec!["Ship", "Rock"];
-let hps = vec![10.0, 4.0, 7.0];
-let ship: usize = 1; // a class slot
-println!("{}", hps[ship]); // 4
-```
-
-`ship` is a slot in `classes`, but nothing stops it being used to read
-`hps`, and the program quietly prints the hit points of some unrelated
-object. In a VM with nine arenas and thousands of handles flying
-about, that bug is easy to write and miserable to find.
-
-<Analogy title="colour-coded tickets">
-A venue gives out green tickets for the cloakroom and blue tickets for
-the car park, both numbered from 1. Hand a green 17 to the car park
-attendant and they refuse it at a glance, before anyone goes looking
-for car 17; the colour says which counter the number belongs to.
-<span slot="breaks">An attendant checks the colour every time; Rust
-checks the "colour" once, while compiling, and the running program
-carries no colour at all, only the number.</span>
-</Analogy>
-
-## A number in its own type
-
-The fix is to wrap each kind of number in a type of its own, a
-**newtype**: a struct with one unnamed field.
+<Examples of="typed-index">
 
 ```rust
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ValueId(pub u32);
+
+let id = ValueId(7);
+let i = id.0 as usize; // 7
 ```
 
-That is real: engine/rust's VIR (*VIR: Viscosity’s IR*) keeps its
-instructions, blocks, functions and bindings in `Vec`s, and names them
-with `ValueId`, `BlockId`, `FuncId` and `BindingId`, each a `u32` in its
-own newtype. `ValueId(7)` builds one, and `.0` reads the number back
-out. A function that wants a `ValueId` will not take a `BlockId`, even
-though both hold a `u32`: they are different types, so mixing them up
-is a type error, found while compiling.
+</Examples>
+
+`ValueId(7)` builds one, and `.0` reads the number back out. VIR names
+everything this way, with `ValueId`, `BlockId`, `FuncId` and `BindingId`,
+each a `u32` in its own newtype; a function that wants a `ValueId` will
+not take a `BlockId` holding the same number (rustc reports E0308,
+mismatched types), so mixing them up is found while compiling. At run
+time the wrapper is gone: it has exactly the size and layout of the
+number inside.
+
+<Analogy extra title="colour-coded tickets">
+A venue gives out green tickets for the cloakroom and blue tickets for
+the car park, both numbered from 1. Hand a green 17 to the car park
+attendant and they refuse it at a glance; the colour says which counter
+the number belongs to.
+<span slot="breaks">An attendant checks the colour every time; Rust
+checks it once, while compiling, and the running program carries no
+colour at all, only the number.</span>
+</Analogy>
 
 <Figure takeaway="A newtype index is the same 4 bytes as the number inside; only the type is new." caption="size_of on rustc 1.97: a bare u32, engine/rust's ValueId and drip-rs's Gc handle are all 4 bytes.">
   <IdBox />
 </Figure>
 
-<Analogy extra title="postcodes and phone numbers">
-A postcode and a phone number are both short strings of digits and
-letters, and a careless form could swap them. A well-designed form has
-a separate box for each, labelled, so a phone number can never be
-posted to.
-<span slot="breaks">A form's boxes take up room on the page; a newtype
-takes up no room at all in memory, since only the compiler ever sees
-the label.</span>
-</Analogy>
-
-<Callout kind="definition">
-A **typed index** is a number wrapped in its own type, a newtype such
-as `struct NodeId(u32)`. It costs nothing at run time (it has exactly
-the size and layout of the number), but the compiler treats each
-wrapper as a different type, so indices into different collections
-cannot be mixed up. A generic handle like drip-rs's `Gc<T>` gives every
-element type its own index type from one definition.
-</Callout>
-
-<Prompts ids={['typed-index', 'newtype-cost', 'vir-ids']} />
-
-<Formal title="When arena[h] type-checks">
-
-```text
-impl<T> Index<Gc<T>> for Arena<T>
-
-arena : Arena<T>    h : Gc<U>
-──────────────────────────────  (T = U)
-        arena[h] : T
-```
-
-<span slot="read">An arena of T's can be indexed by a handle for T's.
-Read the rule as: if arena is an Arena of T, and h is a handle of U,
-then arena of h is a T, provided T and U are the same type. If they
-differ, the rule does not apply, and the program is rejected.</span>
-</Formal>
-
-## One wrapper for every kind of object
-
-engine/rust has four id types, so it writes them with a small macro
-(code that writes code, like `println!`), `id_type!`, which expands to
-the struct, its derives, an `index()` method and printing. drip-rs has
-nine kinds of object, so it writes the wrapper *once*, as a generic:
+drip-rs has nine kinds of object, so it writes the wrapper *once*, as a
+generic:
 
 ```rust
 pub struct Gc<T> {
@@ -369,120 +195,72 @@ pub struct Gc<T> {
 }
 ```
 
-A struct must use every type parameter it declares, or rustc refuses
-with E0392, "type parameter `T` is never used", and suggests "a marker
-such as `PhantomData`". **`PhantomData`** is that marker: a standard
-type that takes no space at all and tells the compiler to act as
-though the struct held a `T`<Cite id="rust-std-phantomdata" />. (The
-`fn() -> T` form, rather than a plain `T`, is drip-rs's choice: its
-comment says it keeps the handle `Copy`, `Send` and `Sync` whatever
-`T` is.) So a `Gc<ObjClass>` is 4 bytes, just a `u32`, yet a
-different type from a `Gc<ObjClosure>`.
-
-The arena then implements the standard `Index` trait, which is what
-`x[i]` calls (a later chapter covers these operator traits), for
-handles of its own element type only:
-
-```rust
-impl<T> Index<Gc<T>> for Arena<T> {
-    type Output = T;
-    fn index(&self, h: Gc<T>) -> &T {
-        match &self.slots[h.index()] {
-            Some(object) => object,
-            None => use_after_free::<T>(),
-        }
-    }
-}
-```
-
-Step through two arenas and two handles that hold the same number:
+A struct must use every type parameter it declares, or rustc 1.97 refuses
+with E0392, `type parameter T is never used`, and suggests "a marker such
+as `PhantomData`". **`PhantomData`** is that marker: a standard type that
+takes no space and tells the compiler to act as though the struct held a
+`T`<Cite id="rust-std-phantomdata" /> (the `fn() -> T` form, drip-rs's
+comment says, keeps the handle `Copy`, `Send` and `Sync` whatever `T`
+is). So a `Gc<ObjClass>` is 4 bytes yet a different type from a
+`Gc<ObjClosure>`, and the arena implements `Index` (the trait behind
+`x[i]`, from *Traits, trait objects and derive*) only for handles of its
+own element type, `impl<T> Index<Gc<T>> for Arena<T>`. Step through two
+arenas and two handles that hold the same number:
 
 <HandleSteps client:visible />
 
 One wrinkle: drip-rs writes `impl<T> Copy for Gc<T> {}` by hand rather
-than `#[derive(Clone, Copy)]`. A derive adds the bound `T: Clone` (and
-`T: Copy`) to its impl, and an `ObjClass` is neither, so a derived
-handle to a class would not be `Copy`. rustc 1.97 even says so, in a
-note: "derived `Clone` adds implicit bounds on type parameters". The
-handle is a number and should copy whatever it points at.
+than deriving it, because `#[derive(Clone, Copy)]` adds the bounds `T:
+Clone` and `T: Copy` to its impls, and an `ObjClass` is neither, so a
+derived handle to a class would not be `Copy`.
 
-<Examples of="typed-index">
+<Callout kind="definition">
+A **typed index** is a number wrapped in its own type, a newtype such as
+`struct NodeId(u32)`. It costs nothing at run time (the same size and
+layout as the number), but the compiler treats each wrapper as a
+different type, so indices into different collections cannot be mixed
+up. A generic handle like drip-rs's `Gc<T>` gives every element type its
+own index type from one definition.
+</Callout>
 
-```rust
-#[derive(Clone, Copy, PartialEq)]
-struct NodeId(u32);
-let n = NodeId(3);
-let i = n.0 as usize; // 3, for a Vec
-```
+<More title="drip-rs's design in miniature, and TypeScript's branded types">
+
+The program below has a generic `Gc<T>`, an `Arena<T>` that `Index`es
+only with its own handles, a class and two instances, and the copy-out
+pattern; it prints `Ship instance, hp 18` and `handle size: 4 bytes`, and
+uncommenting its last line gives the E0308 from the diagram.
 
 <Run id="typed-handles" />
 
-```rust
-// engine/rust's builder.rs, trimmed:
-let id = ValueId(m.values.len() as u32);
-m.values.push(Inst { id, op, args, ... });
-```
+TypeScript's types are structural, so two `number` aliases are
+interchangeable; *Branded types: same shape, different meaning* gets the
+effect by intersecting `number` with a made-up property. Rust's structs
+are nominal (a type is its name), so a one-field struct is already a
+distinct type, and, as with a brand, the wrapper disappears when the
+program is compiled.
 
-</Examples>
+</More>
 
-The first is the smallest typed index: `NodeId(3)` wraps a 3, and
-`n.0 as usize` unwraps it to index a `Vec`. The runnable one is drip-rs's
-design in miniature: a generic `Gc<T>`, an `Arena<T>` that `Index`es
-only with its own handles, a class and two instances, and the
-copy-out pattern of the last chapter; it prints `Ship instance, hp 18`
-and `handle size: 4 bytes`, and uncommenting its last line gives the
-E0308 from the diagram. The third is real: when VIR's builder emits an
-instruction, the new instruction's id is simply the current length of
-the module's `values` arena, wrapped in `ValueId`, and the instruction
-is pushed at exactly that position.
-
-<OtherLanguages title="An id that is not just a number">
-
-```rust
-#[derive(Clone, Copy)]
-struct NodeId(u32);
-fn name(id: NodeId) -> &'static str
-    { "..." }
-name(NodeId(1)); // ok
-// name(1);  error: expected NodeId
-```
-
-```ts
-type NodeId = number & {
-  readonly __brand: 'NodeId';
-};
-const id = 1 as NodeId;
-function name(id: NodeId) { /* ... */ }
-name(id); // ok
-// name(1); error: not a NodeId
-```
-
-</OtherLanguages>
-
-TypeScript's types are structural (a type is its shape), so two
-`number` aliases are interchangeable; the usual trick, a **branded
-type**, intersects `number` with a made-up property that no plain number
-has, and `as` stamps the brand on. Rust's structs are nominal (a type
-is its name), so a one-field struct is already a distinct type, and,
-as in TypeScript, the wrapper disappears when the program is compiled.
-
-<Prompts ids={['phantom', 'gc-size', 'derive-bound', 'index-trait', 'ts-brand']} />
+<Prompts ids={['typed-index', 'newtype-cost', 'phantom', 'derive-bound']} />
 
 ## Your turn
+
+<Exercise id="arena" />
+
+<Exercise id="arenaList" />
 
 <Exercise id="graphIds" />
 
 ## What you learned
 
-- A **typed index** wraps a number in its own type, a newtype such as
-  `struct NodeId(u32)`: the same bytes at run time, a different type
-  while compiling, so ids for different collections cannot be mixed.
-- engine/rust's VIR names everything with `ValueId`, `BlockId`, `FuncId`
-  and `BindingId`; drip-rs writes one generic handle, `Gc<T>`, whose
-  `PhantomData` field makes each `Gc<T>` a different type at no cost.
-- Implementing `Index` for your own id type lets you write `arena[id]`,
-  and only with the right kind of id.
+- An **arena** is a `Vec` of slots that owns every object of one kind;
+  objects refer to each other by index, so a cycle is only numbers. Copy
+  numbers out of it before writing back.
+- A **typed index** such as `struct NodeId(u32)` is the same bytes as the
+  number but a different type; drip-rs's `Gc<T>` makes one per kind of
+  object with `PhantomData`.
 
-Next: how Rust lays these values out in memory, byte by byte.
+Next: *Memory layout in Rust*, how Rust lays these values out, byte by
+byte.
 
 <Quiz />

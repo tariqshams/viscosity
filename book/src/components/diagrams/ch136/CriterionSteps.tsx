@@ -7,8 +7,9 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 // bootstrap resamples, 1% noise threshold, 0.05 significance). The dots
 // are illustrative; the printed lines are from real runs of `cargo bench`
 // on the book's shared VM (cargo 1.97, criterion 0.5.1, 2026-11-02): the
-// interval and outliers from the 7th run, the change from the 6th, both
-// on unchanged code.
+// interval and outliers are run 1's, the change is run 8's (-3.25%,
+// p = 0.00, "Performance has improved") of eight runs in a row on
+// unchanged code.
 type Phase = 'warm' | 'samples' | 'slope' | 'ci' | 'outliers' | 'compare';
 type S = { phase: Phase; note: string };
 
@@ -70,16 +71,16 @@ export default function CriterionSteps() {
           </g>
         )}
         {p === 'slope' && <T x={10} y={210} size={11}>slope = time per iteration</T>}
-        {p === 'ci' && <T x={10} y={210} size={11} mono>sum 1000  time: [685.77 ns 697.58 ns 708.85 ns]</T>}
+        {p === 'ci' && <T x={10} y={210} size={11} mono>sum 1000  time: [665.89 ns 672.29 ns 679.35 ns]</T>}
         {p === 'outliers' && (
           <g>
-            <T x={10} y={204} size={11} mono>Found 10 outliers among 100 measurements</T>
-            <T x={10} y={222} size={11} mono>  8 high mild, 2 high severe</T>
+            <T x={10} y={204} size={11} mono>Found 6 outliers among 100 measurements</T>
+            <T x={10} y={222} size={11} mono>  2 high mild, 4 high severe</T>
           </g>
         )}
         {p === 'compare' && (
           <g>
-            <T x={10} y={204} size={11} mono>change: [-4.93% -3.24% -1.49%] (p = 0.00)</T>
+            <T x={10} y={204} size={11} mono>change: [-4.44% -3.25% -2.02%] (p = 0.00)</T>
             <T x={10} y={222} size={11} mono fill={tok('danger')}>Performance has improved. (same code!)</T>
           </g>
         )}

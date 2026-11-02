@@ -10,7 +10,7 @@ objectives:
   - Explain why the collector’s roots are passed in, and why Rc<Chunk> is the crate’s only Rc.
   - Say what “byte for byte” means for the port, and write part of the corpus checker yourself.
 introduces: [drip-rs]
-uses: [rust, cargo, crate, ownership, borrow, shared-vs-mutable, borrow-checker, struct, impl, enum, option, question-mark, vec, slice, string-vs-str, trait, trait-object, rc, refcell, arena, typed-index, unsafe, rust-module, cargo-test, assert-macros, test-corpus, differential-testing, drip, virtual-machine, bytecode, chunk, scanner, compiler, disassembler, heap-object, object-list, garbage-collection, roots, mark-sweep, runtime-error]
+uses: [rust, cargo, crate, borrow, borrow-checker, struct, option, vec, trait-object, rc, refcell, arena, typed-index, unsafe, rust-module, cargo-test, test-corpus, differential-testing, drip, virtual-machine, bytecode, chunk, scanner, compiler, disassembler, heap-object, garbage-collection, roots, mark-sweep, runtime-error]
 sources: [klabnik2026]
 ---
 import PortSteps from '../../../components/diagrams/ch137/PortSteps';
@@ -18,76 +18,53 @@ import ArenaMap from '../../../components/diagrams/ch137/ArenaMap';
 
 ## A working VM, and a blank file
 
-In Part IV you built a bytecode VM for Drip in TypeScript; it lives in
-`companion/ts/src/vm`, about 2,000 lines across nine files, and it runs
-every program in the book's test corpus. This part rebuilds it in Rust.
-The result already exists (it is called **drip-rs**, and it lives in
-`companion/rust`), so rather than invent it from nothing, these chapters
-walk through it file by file, next to the TypeScript you already know.
+You built a bytecode VM for Drip in TypeScript (*A stack machine and its
+dispatch loop* onwards); it lives in `companion/ts/src/vm`, about 2,000
+lines across nine files, and it runs every program in the book's test
+corpus. This part rebuilds it in Rust. The result already exists (it is
+called **drip-rs**, and it lives in `companion/rust`), so rather than
+invent it from nothing, these chapters walk through it file by file, next
+to the TypeScript you already know.
 
 The goal is easiest to state as a test: for every corpus program, drip-rs
 must print the same output, the same error messages, the same stack
 traces and the same exit code as the TypeScript VM. Not "close"; the same
-bytes. Most of the port is translation, however one part is not, and it
-shapes everything else, so this chapter is about that part.
+bytes. Most of the port is translation; one part is not, and it shapes
+everything else.
 
 <Analogy title="moving house to another country">
 Most of your things go straight into boxes and come out the same at the
 other end; a few need a plug adapter; and one thing, the wiring you ran
 through every wall yourself, has to be redone to the new country's rules.
-For drip-rs, the boxes are the scanner and the compiler, and the wiring
-is the web of references between heap objects.
+For drip-rs, the boxes are the scanner and the compiler, and the wiring is
+the web of references between heap objects.
 <span slot="breaks">A house move is done once and then forgotten; here
 the old house keeps standing next door, and every program must behave
 identically in both, for as long as the book exists.</span>
 </Analogy>
 
-<Analogy extra title="a band covering a song note for note">
-A tribute band may play different guitars through different amplifiers,
-but the audience should not be able to tell the recording from the cover.
-drip-rs is free to arrange its insides however Rust likes, as long as
-what comes out of the speakers is identical.
-<span slot="breaks">A cover that is a little off is still a fine night
-out; a VM that prints `1e21` where the other prints `1e+21` simply fails
-its tests.</span>
-</Analogy>
-
 ## The map
 
 The port keeps the TypeScript VM's shape: one Rust module per TypeScript
-file, in pipeline order (source text in at the top, output out of the
-VM at the bottom). Step through the pairs, and what changed in each:
+file, in pipeline order (source text in at the top, output out of the VM
+at the bottom). Step through the pairs, and what changed in each:
 
 <PortSteps client:visible />
 
-`lib.rs` declares the modules, under `#![forbid(unsafe_code)]`, which
-makes any `unsafe` block in the crate a compile error; `Cargo.toml` lists
-no dependencies, so drip-rs is the standard library and nothing else.
-
-<Callout kind="definition">
-**drip-rs** is the Rust implementation of Drip's bytecode VM, in
-`book/companion/rust`. It is a library crate, `drip`, plus a binary,
-`drip-rs`. It ports the TypeScript VM module by module, uses only `std`
-and no `unsafe` code, and is tested against the same corpus, which it
-must match byte for byte.
-</Callout>
+`lib.rs` declares the modules under `#![forbid(unsafe_code)]`, and
+`Cargo.toml` lists no dependencies, so drip-rs is the standard library
+and nothing else.
 
 <Examples of="drip-rs">
 
 ```text
-$ cargo run --release -- hello.drip
+$ drip-rs hello.drip
 hello, drip
-```
-
-```text
 $ drip-rs broken.drip
 line 3: expected '}' to close the block,
   found end of file
 $ echo $?
 65
-```
-
-```text
 $ drip-rs --disassemble hello.drip
 == <script> ==
 0000    1 const               0 'hello, '
@@ -100,86 +77,64 @@ $ drip-rs --disassemble hello.drip
 
 </Examples>
 
-The first runs `hello.drip`, which holds `print "hello, " + "drip";`,
-and its one line comes out on stdout. The second runs a file whose `if` block never
-closes; the message (wrapped here to fit) goes to stderr, nothing runs,
-and the exit code is 65, the code both VMs use for a compile error (70
-is a runtime error). The third compiles without running and prints the
-bytecode, and it is, character for character, the listing the
-TypeScript disassembler prints for the same program.
+These are real runs of the release binary (rustc 1.97). `hello.drip`
+holds `print "hello, " + "drip";`, and its one line comes out on stdout.
+`broken.drip` opens an `if` block that never closes; the message (wrapped
+here to fit) goes to stderr, nothing runs, and the exit code is 65, the
+code both VMs use for a compile error (70 is a runtime error). The last
+command compiles without running and prints the bytecode, and it is,
+character for character, the listing the TypeScript disassembler prints
+for the same program.
 
-<Prompts ids={['drip-rs-what', 'forbid-unsafe']} />
+<Callout kind="definition">
+**drip-rs** is the Rust implementation of Drip's bytecode VM, in
+`book/companion/rust`. It is a library crate, `drip`, plus a binary,
+`drip-rs`. It ports the TypeScript VM module by module, uses only `std`
+and no `unsafe` code, and is tested against the same corpus, which it
+must match byte for byte.
+</Callout>
+
+<Prompts ids={['drip-rs-what']} />
 
 ## Objects that point at each other
 
-In TypeScript, a closure object holds its function, an instance holds its
-class, and a class holds a table of closures; any object can point at any
-other, cycles are normal, and JavaScript's own collector sorts it out.
-Rust's first offer for shared, changeable objects is the one from the
-chapter *Box, Rc and RefCell*, `Rc<RefCell<T>>`, and for a VM it is wrong
-in three ways: reference counting would decide when objects die, leaving
-the mark-and-sweep collector of *Reclaiming memory: mark and sweep* with
-nothing to do; a cycle of `Rc`s never reaches a count of zero, so it
-leaks<Cite id="klabnik2026" />; and every `borrow_mut()` is a check made
-at run time, on the hottest paths of the interpreter.
-
-So drip-rs does what the chapter *Arenas and typed indices* showed. Each
-kind of object lives in its own `Arena<T>`, a `Vec` of slots owned by the
-`Heap` (nine arenas, one per kind), and a reference to an object is a
-`Gc<T>`. From `object.rs` (comment rewrapped):
-
-```rust
-pub struct Gc<T> {
-    index: u32,
-    // `fn() -> T` makes the handle Copy,
-    // Send and Sync whatever `T` is.
-    marker: PhantomData<fn() -> T>,
-}
-```
-
-A `Gc<T>` is a slot number and nothing more (the `PhantomData` takes no
-space; it only records `T`, so a closure handle cannot look up a class),
-and `heap[handle]` reads the object.
+In TypeScript, a closure holds its function, an instance its class, and a
+class a table of closures; cycles are normal, and JavaScript's collector
+sorts it out. *Box, Rc and RefCell* showed why `Rc<RefCell<T>>` is wrong
+for a VM: reference counting would decide when objects die, leaving the
+collector of *Reclaiming memory: mark and sweep* nothing to do; a cycle
+of `Rc`s leaks<Cite id="klabnik2026" />; and every `borrow_mut()` is a
+run-time check on the interpreter's hottest paths. So drip-rs uses the
+design of *Arenas and typed indices*: each kind of object lives in its
+own `Arena<T>` owned by the `Heap` (nine arenas), a reference is a
+`Gc<T>`, a typed `u32` slot number, and `heap[handle]` reads the object.
 
 <Figure takeaway="Values and objects hold slot numbers; only the heap holds objects." caption="A closure and an instance on the stack are handles into the closures and instances arenas; the closure names its function, the instance its class, and the class's method table holds a closure, all by slot number.">
   <ArenaMap />
 </Figure>
 
-Here is the idea in miniature, with a class and an instance that point
-at each other, a cycle with no `Rc` in sight:
+<More title="A class and an instance that point at each other, runnable">
+
+A cycle with no `Rc` in sight: the program links a class and an instance
+by handle. Pass the wrong kind of handle, `h.inst(c)` with a `ClassRef`,
+and rustc 1.97 refuses with `error[E0308]: mismatched types`.
 
 <Run id="arena-cycle" />
 
-Pass the wrong kind of handle, `h.inst(c)` with a `ClassRef`, and rustc
-1.97 refuses with `error[E0308]: mismatched types`.
-
-<Callout kind="definition">
-In drip-rs every heap object lives in an **arena** owned by the `Heap`. A
-**`Gc<T>`** is a typed `u32` index into the arena for `T`: `Copy`, 4
-bytes, and unusable for any other kind of object. Only the heap owns
-objects, and the garbage collector, not reference counting, decides when
-they die.
-</Callout>
+</More>
 
 <Prompts ids={['why-not-rc', 'gc-handle']} />
 
 ## Roots are passed in
 
 The TypeScript heap starts a collection by itself, inside `allocate`, and
-to find the roots it calls back into the VM, which registered itself with
+finds the roots by calling back into the VM, which registered itself with
 `this.heap.vm = this`. In Rust the VM owns the heap, so a heap method that
-also borrowed the whole VM would need `&mut` to part of something already
-lent out, which the chapter *Borrowing* forbids:
-
-```text
-error[E0502]: cannot borrow `self.heap`
-  as mutable because it is also
-  borrowed as immutable
-```
-
-So drip-rs turns it round: allocating never collects. The VM asks
-`heap.should_collect()`, and if the answer is yes, it borrows the fields
-that hold roots one by one and hands them over (from `vm.rs`):
+also reached the whole VM would need the VM borrowed while the heap
+inside it is already borrowed mutably, which *Borrowing and the borrowing
+rules* forbids. So drip-rs turns it round: allocating never collects. The
+VM asks `heap.should_collect()`, and if the answer is yes, it borrows the
+fields that hold roots one by one and hands them over (from `vm.rs`):
 
 ```rust
 pub fn collect_garbage(&mut self) {
@@ -194,54 +149,55 @@ pub fn collect_garbage(&mut self) {
 }
 ```
 
-Borrowing `self.stack` and `self.heap` at once is fine, because they are
-different fields and the borrow checker tracks each separately.
-`collect` takes `&[&dyn Trace]`, a list of things that can mark what they
-reach, so the compiler can pass in its half-built functions the same way.
+Borrowing `self.stack` for reading and `self.heap` mutably at once is
+fine, because they are different fields and the borrow checker tracks
+each separately. `collect` takes `&[&dyn Trace]`, a list of things that
+can mark what they reach, so the compiler can pass in its half-built
+functions the same way.
 
 <Prompts ids={['roots-in']} />
 
 ## The one Rc
 
-drip-rs puts exactly one kind of thing in an `Rc`, the chunk, in the
-field `pub chunk: Rc<Chunk>` of `ObjFunction`. When the compiler finishes a
-function it freezes the chunk with `Rc::new`, and nothing changes it
+drip-rs puts exactly one kind of thing in an `Rc`: the chunk, in the
+field `pub chunk: Rc<Chunk>` of `ObjFunction`. When the compiler finishes
+a function it freezes the chunk with `Rc::new`, and nothing changes it
 again. The VM keeps the running function's chunk in a field of its own
 (the README calls such fields **registers**) and reads bytes with
 `self.chunk.code[self.ip]`. A plain `&Chunk` would point into the heap
 and keep the heap borrowed while the VM pushes values and allocates; an
 `Rc` clone is the VM's own pointer to the same chunk, so the heap stays
-free, and because the chunk never changes it needs no `RefCell`. The
-chapter *The VM loop in Rust* looks at why this matters, and
-*Optimizing the Rust VM* measures what the registers are worth.
+free, and because the chunk never changes it needs no `RefCell`.
 
 <Prompts ids={['one-rc']} />
 
 ## The same bytes
 
-How do you know the port is right? The answer from *Differential testing
-at scale* is to run one corpus through both and compare. drip-rs's
-`tests/corpus.rs` runs the 334 corpus programs that are not benchmarks
-and checks each against the expectations written in its comments, with a
-Rust port of `check()` from the TypeScript runner. Two real lines:
+How do you know the port is right? The answer from *End to end:
+benchmarks and differential testing at scale* is to run one corpus
+through both and compare. drip-rs's `tests/corpus.rs` runs the 334 corpus
+programs that are not benchmarks and checks each against the expectations
+written in its comments, with a Rust port of `check()` from the
+TypeScript runner. Two real lines:
 
 ```drip
 print (1 + 2) * (3 + 4); # expect: 21
-let count = 3;
 print "count: " + count;
 ```
 
-The first is from `operators/grouping.drip`; the third line of the
-second program, from `strings/add_a_number.drip`, carries the comment
-`# expect runtime error: cannot add a string and a number`, so the
-checker wants that message, a trace pointing at that line, and exit
-code 70. `cargo test` also runs 165 of the programs with a collection
-before every allocation (`tests/stress_gc.rs`), which makes a forgotten
-root fail at once, and `scripts/compare_with_ts.mjs` runs both VMs on all
-344 programs, benchmarks included, and on thousands of randomly broken
-ones, comparing stdout, stderr and exit codes; when I ran it, 343 were
-compared (one reads the clock, so its output differs on every run) and
-none differed.
+The first, from `operators/grouping.drip`, wants `21` on stdout; the
+second, from `strings/add_a_number.drip`, carries the comment `# expect
+runtime error: cannot add a string and a number`, so the checker wants
+that message, a stack
+trace pointing at its line, and exit code 70. `cargo test` also runs 165
+of the programs with a collection before every allocation
+(`tests/stress_gc.rs`), which makes a forgotten root fail at once, and
+`scripts/compare_with_ts.mjs` runs both VMs on every corpus program,
+benchmarks included, and on thousands of randomly broken ones, comparing
+stdout, stderr and exit codes. When I ran it (2026-11-02) it printed
+`corpus: 343 programs compared, 0 differ` (one program reads the clock,
+so it is skipped) and `mangled: 2000 programs, 0 skipped (slow), 0
+differ`.
 
 <Formal title="What “the same bytes” means">
 
@@ -257,14 +213,6 @@ result is three things together: everything printed to standard output,
 everything printed to standard error, and the exit code.</span>
 </Formal>
 
-<Callout kind="engine" label="Under the hood">
-"The same bytes" reaches into odd corners: numbers must print as the
-TypeScript VM prints them (`1e+21`, `-0`, `nan`), so `value.rs`
-reimplements that layout; and where the TypeScript heap poisons freed
-objects, drip-rs never reuses a freed arena slot in its debug and stress
-modes, so a stale handle panics rather than reading some other object.
-</Callout>
-
 <Prompts ids={['corpus-check', 'stress-gc']} />
 
 ## Your turn
@@ -277,14 +225,12 @@ modes, so a stale handle panics rather than reading some other object.
 
 - **drip-rs** is a module-by-module port of the TypeScript VM: `std`
   only, `#![forbid(unsafe_code)]`, tested against the same corpus.
-- Heap objects live in **arenas** owned by the heap; references are
-  **`Gc<T>`** handles, typed `u32` indices, so cycles cost nothing and
-  the collector decides when objects die.
-- The heap cannot reach the VM that owns it, so **roots are passed in**:
-  the VM borrows its root fields and calls `collect(&[&roots])`.
-- Compiled chunks never change, so they are frozen in **`Rc<Chunk>`**,
-  the crate's only `Rc`.
-- "Correct" means the same stdout, stderr and exit code as the
-  TypeScript VM, on every corpus program.
+- Heap objects live in arenas owned by the heap, referred to by `Gc<T>`
+  handles; the collector decides when they die, and **roots are passed
+  in** because the heap cannot reach the VM that owns it.
+- Frozen chunks are the crate's only `Rc`; "correct" means the same
+  stdout, stderr and exit code as the TypeScript VM.
+
+Next: *Tokens and the scanner in Rust*, the first module of the port.
 
 <Quiz />

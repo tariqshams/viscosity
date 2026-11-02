@@ -1,9 +1,9 @@
 // Chapter 136: what the build profile and black_box do to one benchmark
 // loop: 100 sums of a million f64s. Times are what the chapter's bb-play
 // example printed on the book's shared cloud VM with rustc 1.97.0, three
-// runs each: debug build 317-513 ms (plain) and 336-374 ms (boxed);
-// release (-O) build 129-204 ns (plain, loop deleted) and 75-78 ms
-// (boxed). The descriptions of what the optimizer did are inferred from
+// runs each (2026-11-02): debug build 313-360 ms (plain) and 320-334 ms
+// (boxed); release (-O) build 131-205 ns (plain, loop deleted) and 74-75
+// ms (boxed). The descriptions of what the optimizer did are inferred from
 // those times, as the chapter says.
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
@@ -18,10 +18,10 @@ const BOXED = `for _ in 0..100 {
 type S = { code: string; build: string; time: string; bar: number; verdict: string; tone: 'ok' | 'bad' | 'slow'; note: string };
 
 const STATES: S[] = [
-  { code: PLAIN, build: 'cargo run (dev profile)', time: '317–513 ms', bar: 1, verdict: 'every addition happens, slowly', tone: 'slow', note: 'The dev profile does no optimisation: each step of sum runs as written, with values going to and from memory. The work is real, but the time tells you about the debug build, not about your code.' },
-  { code: BOXED, build: 'cargo run (dev profile)', time: '336–374 ms', bar: 0.75, verdict: 'about the same', tone: 'slow', note: 'black_box changes little here, because a debug build was never going to delete anything. Debug times are the wrong numbers either way.' },
-  { code: PLAIN, build: 'cargo run --release', time: '129–204 ns', bar: 0.004, verdict: 'the loop was deleted', tone: 'bad', note: 'A hundred million additions in under a microsecond did not happen. sum has no side effects and its result is dropped, so the optimiser removed the calls: dead code elimination.' },
-  { code: BOXED, build: 'cargo run --release', time: '75–78 ms', bar: 0.18, verdict: 'the real cost of the work', tone: 'ok', note: 'With the input and the result passed through black_box, the compiler must assume both matter, so the sums run, now optimised: about four to six times faster than debug. This is the number to report.' },
+  { code: PLAIN, build: 'cargo run (dev profile)', time: '313–360 ms', bar: 1, verdict: 'every addition happens, slowly', tone: 'slow', note: 'The dev profile does no optimisation: each step of sum runs as written, with values going to and from memory. The work is real, but the time tells you about the debug build, not about your code.' },
+  { code: BOXED, build: 'cargo run (dev profile)', time: '320–334 ms', bar: 0.93, verdict: 'about the same', tone: 'slow', note: 'black_box changes little here, because a debug build was never going to delete anything. Debug times are the wrong numbers either way.' },
+  { code: PLAIN, build: 'cargo run --release', time: '131–205 ns', bar: 0.004, verdict: 'the loop was deleted', tone: 'bad', note: 'A hundred million additions in under a microsecond did not happen. sum has no side effects and its result is dropped, so the optimiser removed the calls: dead code elimination.' },
+  { code: BOXED, build: 'cargo run --release', time: '74–75 ms', bar: 0.21, verdict: 'the real cost of the work', tone: 'ok', note: 'With the input and the result passed through black_box, the compiler must assume both matter, so the sums run, now optimised: about four times faster than debug. This is the number to report.' },
 ];
 
 export default function OptSteps() {

@@ -1,15 +1,11 @@
-// Chapter 201 cards: recall prompts, examples, exercises and quiz.
+// Chapter 133 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 133, 133.
+// Merged from the two old arena chapters.
 
 export const prompts = {
   'arena-what': {
     q: 'What is an **arena**, as drip-rs uses the word?',
     a: 'One `Vec` of slots that owns every object of one kind. Objects refer to each other by slot number, not by pointer.',
-  },
-  'arena-free': {
-    q: 'What does drip-rs’s `Arena::insert` do before pushing a new slot?',
-    a: 'It pops the free list, and if a freed slot is there, puts the object in it and returns that slot’s handle.',
   },
   'arena-cycle': {
     q: 'Why can two arena objects point at each other without leaking?',
@@ -19,21 +15,9 @@ export const prompts = {
     q: 'An object is freed, its slot is reused, and an old handle to it is used. What happens?',
     a: 'It reads the new object in that slot: the wrong object, but no crash and no undefined behaviour.',
   },
-  'poison-mode': {
-    q: 'Why do drip-rs’s debug and stress modes never reuse a freed slot?',
-    a: 'Then a stale handle finds `None` and panics with “use after free”, so a missing GC root fails loudly at the exact use.',
-  },
   'copy-out': {
     q: 'You need data from one arena object to change another. What is the usual pattern?',
     a: 'Copy what you need (a handle, a `Value`, a number) out of the first object, let that borrow end, then borrow mutably.',
-  },
-  'ts-vs-rs': {
-    q: 'Where does the TypeScript VM keep each object’s mark bit, and where does drip-rs?',
-    a: 'TypeScript: an `isMarked` field in every object. drip-rs: a separate bitmap, one `Vec<bool>` per arena, built fresh each collection.',
-  },
-  'arena-sweep': {
-    q: 'How does drip-rs’s sweep find every object, without a linked list of them?',
-    a: 'It walks each arena’s slots, since an arena already holds every object of its kind, and frees the live ones that are not marked.',
   },
   'typed-index': {
     q: 'Why wrap a slot number in a type such as `struct NodeId(u32)` instead of using a bare `usize`?',
@@ -43,29 +27,13 @@ export const prompts = {
     q: 'How much memory does `struct ValueId(u32)` take, compared with a `u32`?',
     a: 'Exactly the same, 4 bytes: the wrapper exists only for the type checker.',
   },
-  'vir-ids': {
-    q: 'Name engine/rust’s four VIR id types.',
-    a: '`ValueId`, `BlockId`, `FuncId` and `BindingId`, each a `u32` in its own newtype, made by the `id_type!` macro.',
-  },
   phantom: {
     q: 'What does the `PhantomData<fn() -> T>` field in drip-rs’s `Gc<T>` do?',
     a: 'It takes no space but makes the handle’s type mention `T` (E0392 otherwise), so a `Gc<ObjClass>` and a `Gc<ObjClosure>` are different types.',
   },
-  'gc-size': {
-    q: 'How big is a drip-rs `Gc<T>`, and is it `Copy`?',
-    a: '4 bytes (a `u32`), and yes: copying a handle copies a number and creates no owner.',
-  },
   'derive-bound': {
     q: 'Why does drip-rs write `impl<T> Copy for Gc<T>` by hand instead of `#[derive(Clone, Copy)]`?',
     a: 'The derive would require `T: Clone` and `T: Copy`, but the handle is copyable whatever `T` is.',
-  },
-  'index-trait': {
-    q: 'What makes `arena[handle]` call drip-rs’s own code?',
-    a: 'The arena implements the standard `Index` trait for `Gc<T>`, and `x[i]` is a call to `Index::index`.',
-  },
-  'ts-brand': {
-    q: 'How does TypeScript get the effect of a newtype index?',
-    a: 'With a branded type such as `number & { readonly __brand: \'NodeId\' }`, since its types are structural and plain aliases would mix.',
   },
 };
 
@@ -591,6 +559,7 @@ fn sum(nodes: &[Node],
     ],
   },
   graphIds: {
+    optional: true,
     lang: 'rust',
     title: 'Typed ids for a graph',
     prompt: 'A graph keeps node names in one `Vec` and edges (pairs of nodes) in another, and hands out typed ids, `NodeId` and `EdgeId`, so the two can never be confused. Write `add_node` and `add_edge`, which store a value and return its id (counting from 0 in each `Vec`), and the two `Index` impls, so that `g[node]` gives a node’s name and `g[edge]` gives an edge’s two ends.',
@@ -905,28 +874,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'An old handle points at a slot that was freed and then reused. In a release run with reuse on, what does reading it give?',
-    options: [
-      {
-        t: 'A crash',
-        why: 'The slot holds a valid object, just not the one you meant.',
-      },
-      {
-        t: 'Undefined behaviour, as with a dangling pointer in C',
-        why: 'Safe Rust: the Vec index is checked, the memory is valid.',
-      },
-      {
-        t: 'A compile error',
-        why: 'Handles are numbers; the compiler can’t know one is stale.',
-      },
-      {
-        t: 'The new object that moved into the slot',
-        correct: true,
-        why: 'Wrong but safe, which is why test modes turn reuse off.',
-      },
-    ],
-  },
-  {
     q: '`let src = &insts[1]; let dst = &mut insts[0]; dst.hp += src.hp;` fails with E0502. What is the usual fix?',
     options: [
       {
@@ -941,42 +888,6 @@ export const quiz = [
       {
         t: 'Use `unsafe` to borrow both',
         why: 'Not needed, and drip-rs forbids it.',
-      },
-    ],
-  },
-  {
-    q: 'How does drip-rs’s sweep visit every object?',
-    options: [
-      {
-        t: 'By walking each arena’s slots',
-        correct: true,
-        why: 'An arena already holds every object of its kind, so no `next` list is needed.',
-      },
-      {
-        t: 'By following a `next` pointer stored in every object',
-        why: 'That is the TypeScript VM’s object list.',
-      },
-      {
-        t: 'By asking each `Rc` for its count',
-        why: 'There are no counts; the objects are not reference counted.',
-      },
-    ],
-  },
-  {
-    q: 'What does `struct BlockId(u32)` cost at run time compared with a bare `u32`?',
-    options: [
-      {
-        t: 'Nothing: same size, same layout; only the type checker sees the difference',
-        correct: true,
-        why: '`size_of` gives 4 bytes for both.',
-      },
-      {
-        t: 'An extra word for the type tag',
-        why: 'Rust stores no type tags in plain structs.',
-      },
-      {
-        t: 'A heap allocation',
-        why: 'A newtype is stored inline, like the number inside it.',
       },
     ],
   },
@@ -999,28 +910,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `struct Gc<T> { index: u32 }` fail to compile?',
-    options: [
-      {
-        t: '`u32` cannot be an index',
-        why: 'It can; drip-rs uses one.',
-      },
-      {
-        t: 'Generic structs need `#[derive]`',
-        why: 'No derive is required.',
-      },
-      {
-        t: 'Structs cannot be generic',
-        why: 'They can, as `Vec<T>` shows.',
-      },
-      {
-        t: 'E0392: `T` is never used; a `PhantomData` field fixes it',
-        correct: true,
-        why: 'The marker mentions `T` without taking any space.',
-      },
-    ],
-  },
-  {
     q: 'With `#[derive(Clone, Copy)]` on `Gc<T>`, why does `let a = h; let b = h;` fail for `h: Gc<ObjClass>`?',
     options: [
       {
@@ -1035,28 +924,6 @@ export const quiz = [
       {
         t: '`PhantomData` is not `Copy`',
         why: '`PhantomData` is `Copy` whatever it marks.',
-      },
-    ],
-  },
-  {
-    q: 'How does TypeScript usually stop a `NodeId` and a plain `number` being mixed?',
-    options: [
-      {
-        t: 'It can’t; every number is interchangeable',
-        why: 'A branded type does it.',
-      },
-      {
-        t: 'A branded type: `number & { readonly __brand: \'NodeId\' }`',
-        correct: true,
-        why: 'Structural types need a made-up property to tell aliases apart.',
-      },
-      {
-        t: 'A class with a private constructor is the only way',
-        why: 'That works too, but costs an object per id; brands cost nothing.',
-      },
-      {
-        t: 'By declaring `type NodeId = number`',
-        why: 'A plain alias is the same type as `number`.',
       },
     ],
   },

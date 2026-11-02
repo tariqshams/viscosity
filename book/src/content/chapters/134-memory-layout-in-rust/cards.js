@@ -1,6 +1,6 @@
-// Chapter 202 cards: recall prompts, examples, exercises and quiz.
+// Chapter 134 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 134, 134.
+// Merged from the two old layout chapters.
 
 export const prompts = {
   'size-what': {
@@ -19,37 +19,13 @@ export const prompts = {
     q: 'An `f64` has alignment 8. What does that mean?',
     a: 'It may only be stored at an address that is a multiple of 8.',
   },
-  'align-compound': {
-    q: 'What is the alignment of a struct or tuple?',
-    a: 'At least the largest alignment of its fields: `(u8, u32)` is aligned to 4, `Particle` (six `f64`s) to 8.',
-  },
-  'align-target': {
-    q: 'Compiled for `wasm32-unknown-unknown`, what are `size_of::<&f64>()` and `align_of::<f64>()`?',
-    a: '4 and 8: WebAssembly uses 32-bit addresses, but an `f64` is still aligned to 8. Sizes belong to the target.',
-  },
-  'value-line': {
-    q: 'drip-rs’s `Value` is 16 bytes. How many fit in one 64-byte cache line?',
-    a: 'Four (a NaN-boxed 8-byte value would fit eight).',
-  },
-  'per-line': {
-    q: 'A `Particle` is 48 bytes. How many cache lines does a loop over 1,000 particles in a `Vec<Particle>` pull in?',
-    a: '48,000 bytes / 64 = 750 lines, whichever fields the loop reads.',
-  },
   'pad-what': {
     q: 'What is padding?',
     a: 'Unused bytes the compiler puts before a field (so it starts aligned) or at the end of a type (so the size is a multiple of the alignment).',
   },
-  'tail-pad': {
-    q: 'Why does `#[repr(C)] struct C3 { a: u8, b: f64, c: u8 }` end with 7 bytes of padding?',
-    a: 'Its size must be a multiple of its alignment, 8, so that in an array the next element’s `b` is aligned too: 17 rounds up to 24.',
-  },
   reorder: {
-    q: 'The same three fields without `#[repr(C)]` took 16 bytes. Why, and can you rely on it?',
+    q: 'Under rustc 1.97, `struct R3 { a: u8, b: f64, c: u8 }` with no `repr` attribute is 16 bytes, while its `#[repr(C)]` twin is 24. Why, and can you rely on the 16?',
     a: 'The default representation may reorder fields (rustc 1.97 put `b` first, then `a` and `c`). No order or size is promised.',
-  },
-  'pad-value': {
-    q: 'Where does a `Number`’s `f64` sit inside drip-rs’s 16-byte `Value`, and why there?',
-    a: 'At offset 8, after the 1-byte tag and 7 bytes of padding, because an `f64` must start at a multiple of 8.',
   },
   'repr-c': {
     q: 'What does `#[repr(C)]` promise?',
@@ -58,14 +34,6 @@ export const prompts = {
   'repr-u8': {
     q: 'Why is drip-rs’s `OpCode` enum marked `#[repr(u8)]`?',
     a: 'So each opcode is exactly the one byte that encodes it, and `op as u8` costs nothing.',
-  },
-  'packed-ref': {
-    q: 'Why does rustc refuse `&k.b` when `k` is a `#[repr(C, packed)]` struct with an `f64` at offset 1?',
-    a: 'A reference promises an aligned value, and creating a misaligned one is undefined behaviour (error E0793). Copying the field out, `let b = k.b;`, is allowed.',
-  },
-  'table-soa': {
-    q: 'drip-rs’s table stores keys (12 bytes) and values (16 bytes) in two `Vec`s. What would one `Vec` of `(key, value)` pairs cost per slot?',
-    a: '32 bytes: 28 rounded up to the pair’s alignment of 8. The two columns cost 28, and probing reads only the keys.',
   },
 };
 
@@ -108,6 +76,7 @@ fn main() {
 
 export const exercises = {
   alignUp: {
+    optional: true,
     lang: 'rust',
     title: 'Aligned addresses',
     prompt: 'Write two helpers that every memory allocator needs. `is_aligned(addr, align)` says whether `addr` is a multiple of `align`. `align_up(addr, align)` returns the first address at or after `addr` that is a multiple of `align`: `align_up(9, 8)` is `16`, and `align_up(16, 8)` is `16`. You may assume `align` is a power of two.',
@@ -313,7 +282,7 @@ fn bytes_for<T>(n: usize) -> usize {
   cLayout: {
     lang: 'rust',
     title: 'Lay out a repr(C) struct',
-    prompt: 'Write `c_layout`, which takes the fields of a `#[repr(C)]` struct as `(size, align)` pairs in declaration order and returns the struct’s `(size, align)`, using the rule in this chapter’s formal box. Write the helper `round_up` too. The tests compare your answers with what `size_of` and `align_of` say about real structs.',
+    prompt: 'Write `c_layout`, which takes the fields of a `#[repr(C)]` struct as `(size, align)` pairs in declaration order and returns the struct’s `(size, align)`, using C’s rule: each field at the first multiple of its alignment after the previous field ends, the struct aligned like its most aligned field, and the size rounded up to a multiple of that alignment. Write the helper `round_up` too. The tests compare your answers with what `size_of` and `align_of` say about real structs.',
     starter: `// Each field is (size, align), in
 // declaration order. Return the
 // repr(C) struct's (size, align).
@@ -396,7 +365,7 @@ fn empty_struct() {
 }`,
     hints: [
       'Do `C3` on paper first, with the diagram: keep a running offset, starting at 0, and place one field at a time.',
-      'Before placing each field, round the offset up to that field’s alignment (the gap is padding), then add the field’s size. `round_up` is the last chapter’s `align_up`.',
+      'Before placing each field, round the offset up to that field’s alignment (the gap is padding), then add the field’s size. `round_up(n, a)` is the first multiple of `a` that is at least `n`.',
       'Keep the largest alignment you have seen, starting from 1. That is the struct’s alignment.',
       'At the end, round the offset up once more, to the struct’s alignment: that is the size. Return `(size, align)`.',
     ],
@@ -668,43 +637,7 @@ export const quiz = [
       {
         t: 'A reference is never 0, so 0 can mean `None`; every `f64` bit pattern is a number, so `None` needs its own tag',
         correct: true,
-        why: 'This is the niche of *Sum types in memory*: a spare pattern holds the tag for free.',
-      },
-    ],
-  },
-  {
-    q: 'A loop reads only the `x` field of 1,000 particles in a `Vec<Particle>` (48 bytes each). About how many 64-byte cache lines does it pull in?',
-    options: [
-      {
-        t: '125: only the x values, eight per line',
-        why: 'That would be true for a column of `x`s alone; here each `x` sits inside its 48-byte particle.',
-      },
-      {
-        t: '750: all 48,000 bytes, because lines carry whole neighbourhoods',
-        correct: true,
-        why: 'The `x`s are 48 bytes apart, so every line holds one or two of them and the loop fetches every line. *Struct of arrays in Rust by hand* changes that.',
-      },
-      {
-        t: '1,000: one line per particle',
-        why: 'Lines are 64 bytes and particles 48, so some lines hold parts of two particles; the total is 48,000 / 64.',
-      },
-    ],
-  },
-  {
-    q: 'Compiled for `wasm32-unknown-unknown`, what does `size_of::<&f64>()` return?',
-    options: [
-      {
-        t: '8, as on x86-64',
-        why: 'The size of a reference follows the target’s address size, and WebAssembly’s linear memory uses 32-bit addresses.',
-      },
-      {
-        t: '4',
-        correct: true,
-        why: 'Measured with rustc 1.97 for that target: references and `usize` are 4 bytes there, though `f64` is still aligned to 8.',
-      },
-      {
-        t: 'It does not compile: references do not exist in WebAssembly',
-        why: 'They compile to plain 32-bit addresses into linear memory.',
+        why: 'This is the niche the deep dive *Sum types in memory* covers: a spare pattern holds the tag for free.',
       },
     ],
   },
@@ -745,60 +678,6 @@ export const quiz = [
         t: 'So its layout is fixed and matches C, for sharing memory with C, WebAssembly hosts or files',
         correct: true,
         why: 'Only a fixed representation promises the field order and offsets.',
-      },
-    ],
-  },
-  {
-    q: 'drip-rs’s `Value` is 16 bytes. What does `size_of::<Option<Value>>()` give?',
-    options: [
-      {
-        t: '24: a tag for the `Option`, padded',
-        why: 'Measured: 16. The enum’s tag byte has values no variant uses.',
-      },
-      {
-        t: '17',
-        why: 'Sizes are multiples of the alignment, 8.',
-      },
-      {
-        t: '16: `None` is stored as an unused tag value',
-        correct: true,
-        why: 'A niche, the same idea that makes `Option<&T>` as small as `&T`.',
-      },
-    ],
-  },
-  {
-    q: 'What does `#[repr(C, packed)]` do to `struct K3 { a: u8, b: f64, c: u8 }`?',
-    options: [
-      {
-        t: 'Makes it 10 bytes with alignment 1, so `b` is misaligned and `&k.b` is refused',
-        correct: true,
-        why: 'Measured with rustc 1.97; the refusal is error E0793.',
-      },
-      {
-        t: 'Makes it 16 bytes by reordering the fields',
-        why: 'That is what the default representation did; `packed` removes padding instead.',
-      },
-      {
-        t: 'Compresses the `f64` into fewer bytes',
-        why: 'Fields keep their sizes; only the gaps between them go.',
-      },
-    ],
-  },
-  {
-    q: 'drip-rs’s table keeps keys (`Option<StrRef>`, 12 bytes) and values (`Value`, 16 bytes) in two `Vec`s. How many bytes per slot would one `Vec<(Option<StrRef>, Value)>` use?',
-    options: [
-      {
-        t: '28',
-        why: '28 is not a multiple of 8, the pair’s alignment. Measured: 32.',
-      },
-      {
-        t: '24',
-        why: 'The two parts alone are 28 bytes.',
-      },
-      {
-        t: '32, of which 4 are padding',
-        correct: true,
-        why: 'Measured with rustc 1.97. Two columns use 28 per slot, and a probe past occupied slots reads only the keys.',
       },
     ],
   },

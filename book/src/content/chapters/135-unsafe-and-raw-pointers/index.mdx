@@ -3,18 +3,14 @@ n: 135
 day: 22
 part: VII
 title: 'unsafe and raw pointers'
-tagline: 'drip-rs checks every byte it reads, and forbids itself the one keyword that would let it stop. This chapter is about that keyword: what it unlocks, what it leaves switched on, what breaking its promise does, and what giving it up cost.'
+tagline: 'drip-rs checks every byte it reads, and forbids itself the one keyword that would let it stop. This is about that keyword: what it unlocks, what it leaves switched on, what breaking its promise does, what giving it up cost, and the raw pointers it lets you read through.'
 objectives:
   - Call an unsafe function inside an unsafe block, and write the SAFETY comment that goes with it.
-  - Say what unsafe allows, and which checks it leaves on.
-  - Explain undefined behaviour, and use Miri and debug builds to catch it.
+  - Say what unsafe allows, which checks it leaves on, and what undefined behaviour is.
   - Wrap an unchecked operation in a safe function, and explain what forbid(unsafe_code) cost drip-rs.
-  - Create raw pointers with &raw const, &raw mut and as_ptr, and dereference them inside unsafe.
-  - List the promises a reference keeps and a raw pointer does not.
-  - Step through a buffer with add, and say when the arithmetic stays in bounds.
-  - Read Miri's reports for out-of-bounds, null, misaligned and dangling reads.
+  - Create raw pointers with &raw const, &raw mut and as_ptr, dereference them inside unsafe, and step through a buffer with add.
 introduces: [unsafe, raw-pointer]
-uses: [rust, crate, scalar-types, rust-functions, ownership, borrow, shared-vs-mutable, borrow-checker, slice, option, vec, arena, typed-index, size-of, pointer, address, memory, garbage-collection, roots, mark-sweep, virtual-machine, instruction-pointer, dispatch-loop, branch-prediction, benchmark-isolation, median-p95]
+uses: [rust, crate, rust-functions, borrow, shared-vs-mutable, borrow-checker, slice, option, vec, arena, typed-index, size-of, alignment, pointer, address, memory, garbage-collection, roots, virtual-machine, instruction-pointer, branch-prediction]
 sources: [klabnik2026, rustref-unsafety, rustref-ub, rust-std-slice-get-unchecked, nomicon-working-with-unsafe, miri-readme, rustref-raw-pointer]
 ---
 import UncheckedSteps from '../../../components/diagrams/ch135/UncheckedSteps';
@@ -22,12 +18,10 @@ import SafeShell from '../../../components/diagrams/ch135/SafeShell';
 import PointerSteps from '../../../components/diagrams/ch135/PointerSteps';
 import RefVsRaw from '../../../components/diagrams/ch135/RefVsRaw';
 
-{/* ── merge: from old chapter 135, Unsafe Rust ── */}
-
 ## One byte, two ways
 
-Every instruction the Drip VM runs starts by reading a byte, and
-drip-rs does it like this (from `vm.rs`):
+Every instruction the Drip VM runs starts by reading a byte, and drip-rs
+does it like this (from `vm.rs`):
 
 ```rust
 fn read_byte(&mut self) -> u8 {
@@ -38,50 +32,29 @@ fn read_byte(&mut self) -> u8 {
 ```
 
 `code[self.ip]` compares `ip` with the length of `code` first, every
-time, and panics if it is past the end. A VM written in C reads the
-same byte through a pointer and checks nothing, trusting the compiler
-that wrote the bytecode. Could Rust read the C way? Yes: slices have a
-method, `get_unchecked`, that skips the check; however, drip-rs chose
-not to use it, and one line at the top of its `lib.rs` makes that
-permanent: `#![forbid(unsafe_code)]`.
+time, and panics if it is past the end; a VM written in C reads through a
+pointer and checks nothing. Rust can read the C way too: slices have a method,
+`get_unchecked`, that skips the check. drip-rs chose not to use it, and
+one line at the top of its `lib.rs` makes that permanent:
+`#![forbid(unsafe_code)]`.
 
 <Analogy title="a staff-only door">
-Safe Rust is a building where every door checks your badge. `unsafe`
-is a staff-only door: behind it a few extra rooms open, and in those
-rooms nobody checks badges for you. You sign the logbook on the way in
-(a `SAFETY` comment), and whatever happens in there is on you.
+Safe Rust is a building where every door checks your badge. `unsafe` is
+a staff-only door: behind it a few extra rooms open, and in those rooms
+nobody checks badges for you. You sign the logbook on the way in (a
+`SAFETY` comment), and whatever happens in there is on you.
 <span slot="breaks">Behind a real staff door the ordinary rules may be
 relaxed too; behind `unsafe`, every other check (types, borrows) still
 runs exactly as before. Only the few extra rooms are new.</span>
 </Analogy>
 
-<Analogy extra title="the waiver at a climbing wall">
-At a climbing wall, staff check every harness. Sign the experienced
-climbers' waiver and they stop checking yours: you promise you know
-how, and if you are wrong, nobody's alarm goes off before the fall.
-<span slot="breaks">A fall hurts only the climber; broken promises in
-unsafe code can corrupt memory that the rest of the program, written
-in perfectly safe code, then reads.</span>
-</Analogy>
-
 ## Calling an unsafe function
 
-`get_unchecked` is an **`unsafe fn`**: a function whose callers must
-keep a promise the compiler cannot check, here that the index is less
-than the length<Cite id="rust-std-slice-get-unchecked" />. Calling one
-outside an `unsafe` block is an error:
-
-```rust
-let v = xs.get_unchecked(1);
-// error[E0133]: call to unsafe function
-//   `get_unchecked` is unsafe and
-//   requires unsafe function or block
-let v = unsafe { *xs.get_unchecked(1) };
-```
-
-That is rustc 1.97's message, trimmed. Wrapped in `unsafe { ... }`,
-the call compiles; the `*` copies the value out of the reference
-`get_unchecked` returns. Step through four
+`get_unchecked` is an **`unsafe fn`**: a function whose callers must keep
+a promise the compiler cannot check, here that the index is less than
+the length<Cite id="rust-std-slice-get-unchecked" />. Called outside an
+`unsafe` block it is rustc 1.97's error E0133, `call to unsafe function
+... is unsafe and requires unsafe function or block`. Step through four
 ways to read one element, and what each costs:
 
 <UncheckedSteps client:visible />
@@ -92,110 +65,60 @@ ways to read one element, and what each costs:
 let xs = [10, 20, 30];
 // SAFETY: 1 < xs.len() == 3.
 let v = unsafe { *xs.get_unchecked(1) };
-// v == 20
-```
 
-```rust
 /// # Safety
 /// The caller must make sure that
 /// `i < xs.len()`.
-unsafe fn at_unchecked(
-    xs: &[f64],
-    i: usize,
-) -> f64 {
+unsafe fn at_unchecked(xs: &[f64],
+    i: usize) -> f64 {
     // SAFETY: the caller promised it.
     unsafe { *xs.get_unchecked(i) }
 }
 ```
 
-<Run id="safe-get" />
-
 </Examples>
 
-The first is the smallest use: one unsafe call, with a `SAFETY`
-comment saying why the promise holds (1 is less than 3). The second is
-an `unsafe fn` of your own: a `# Safety` doc section says what callers
-must promise, and the body's own `unsafe` block has its own `SAFETY`
-comment, the habit the Rust book recommends<Cite id="klabnik2026" />.
-The runnable one calls it from a safe `at`, which checks the index
-first, and prints `Some(4.0)`, `None` and `None`.
+The first part is the smallest use: one unsafe call, the `*` copying the
+value out of the reference `get_unchecked` returns, and a `SAFETY`
+comment saying why the promise holds, so `v` is 20. The second is an
+`unsafe fn` of your own: a `# Safety` doc section says what callers must
+promise, and the body's `unsafe` block has its own `SAFETY` comment, the
+habit the Rust book recommends<Cite id="klabnik2026" />.
 
 <Callout kind="definition">
 An **`unsafe` block** marks code in which you may use a few extra
 operations whose rules the compiler cannot check; everything else in it
-is checked as usual. An **`unsafe fn`** is one whose callers must keep
-a promise, so calling it needs `unsafe` too. A **`// SAFETY:`**
-comment says what the promise is and why it holds<Cite id="klabnik2026" />.
+is checked as usual. An **`unsafe fn`** is one whose callers must keep a
+promise, so calling it needs `unsafe` too. A **`// SAFETY:`** comment
+says what the promise is and why it holds<Cite id="klabnik2026" />.
 </Callout>
-
-<Formal title="A safety contract">
-
-```text
-{ i < len(xs) } get_unchecked(xs, i)
-                { r = xs[i] }
-{ true }        get(xs, i)
-                { r = Some(xs[i]) or None }
-```
-
-<span slot="read">Read each line as: if the condition in the first
-braces is true before the call, the one in the last braces is true
-after it. get_unchecked only promises the right element when i is less
-than the length; get promises a sensible answer for any i at all. The
-first condition is the caller's job, and nothing checks it.</span>
-</Formal>
 
 <Prompts ids={['safety-comment']} />
 
 ## What unsafe unlocks, and what it does not
 
-The Rust book lists five things you may do only inside `unsafe`:
-dereference a raw pointer (the next chapter), call an `unsafe`
-function or method, read or write a mutable `static` variable,
-implement an `unsafe` trait, and read the fields of a
-`union`<Cite id="klabnik2026" />. The Reference's list adds a few rarer
-ones, such as unsafe attributes and (since the 2024 edition) blocks
-that declare C functions<Cite id="rustref-unsafety" />.
+The Rust book lists five things only `unsafe` allows: dereference a raw
+pointer, call an `unsafe` function or method, read or write a mutable
+`static`, implement an `unsafe` trait, and read the fields of a
+`union`<Cite id="klabnik2026" /> (the Reference adds a few rarer
+ones<Cite id="rustref-unsafety" />). What `unsafe` does **not** do is
+switch anything off: take `&v[0]`, then `v.push(4)`, then use the
+reference, all inside `unsafe { }`, and rustc 1.97 warns `unnecessary
+unsafe block` and then rejects the program with the ordinary E0502
+borrow error.
 
-What `unsafe` does **not** do is switch anything off. Types are still
-checked, and so are borrows:
+The promise is narrow, but real: break it, and the result is **undefined
+behaviour**. That is not a panic; the compiler optimises on the
+assumption that it never happens, so anything at all may follow,
+including nothing visible<Cite id="rustref-ub" />. Reading index 3 of a
+three-element array with `get_unchecked`, a rustc 1.97 debug build
+stopped with `unsafe precondition(s) violated`; that check is optional
+and gone from release builds. The tool for finding such bugs is **Miri**, an
+interpreter for Rust that runs your program or tests slowly and checks
+every memory access<Cite id="miri-readme" />; it only checks the runs you
+give it, so a clean run proves nothing<Cite id="klabnik2026" />.
 
-```rust
-unsafe {
-    let first = &v[0];
-    v.push(4);
-    println!("{first}");
-}
-// warning: unnecessary `unsafe` block
-// error[E0502]: cannot borrow `v` as
-//   mutable because it is also
-//   borrowed as immutable
-```
-
-Nothing there needed `unsafe`, so rustc 1.97 warns about the block,
-then rejects the program with the ordinary borrow error.
-
-The promise is narrow, but real: break it, and the result is
-**undefined behaviour**. That is not a panic; the compiler optimises
-on the assumption that it never happens, so anything at all may follow,
-including nothing visible<Cite id="rustref-ub" />. On this book's
-machine, reading past the end of a three-element array with
-`get_unchecked` did three different things. A debug build stopped with
-`unsafe precondition(s) violated`, adding that "this Undefined
-Behavior check is optional, and cannot be relied on for safety". A
-release build with the index hidden behind `black_box` printed
-`-186027976`, then `817451064`: whatever lay past the array. And a
-release build with a constant index died with `Illegal instruction`,
-because the optimiser, seeing a certain broken promise, replaced the
-read with a trap.
-
-The tool for finding these is **Miri**, an interpreter for Rust that
-runs your program (or its tests) slowly and checks every memory access,
-reporting undefined behaviour where it happens<Cite id="miri-readme" />.
-It needs the nightly toolchain (`cargo +nightly miri run`), and it only
-checks the runs you give it: if Miri finds a bug, you have one, but a
-clean run proves nothing<Cite id="klabnik2026" />.
-
-<Prompts ids={['unsafe-five', 'unsafe-not', 'ub-what', 'miri-what']} />
+<Prompts ids={['unsafe-not', 'ub-what']} />
 
 ## Safe on the outside
 
@@ -203,147 +126,64 @@ clean run proves nothing<Cite id="klabnik2026" />.
   <SafeShell />
 </Figure>
 
-You rarely want `unsafe` spread through a program. The usual shape is
-the one in the figure: a small, safe function whose own check makes the
-promise true, around one unchecked step, so no caller can make it
-misbehave whatever they pass. Such a function is called **sound**.
-The catch, which the Rustonomicon points out with exactly this kind of
-function, is that soundness depends on *safe* code too: change the
+The usual shape is the figure's: a small, safe function whose own check
+makes the promise true, so no caller can make it misbehave. Such a function is
+called **sound**. Soundness depends on *safe* code too, as the
+Rustonomicon points out with exactly this kind of function: change the
 check from `i >= xs.len()` to `i > xs.len()`, a change in no `unsafe`
 block at all, and `at(&xs, 3)` reads past the end<Cite id="nomicon-working-with-unsafe" />.
 That is how `Vec`, slices and `String` are built: safe methods over a
-little audited `unsafe` code inside the standard library<Cite id="klabnik2026" />.
+little audited `unsafe` code inside the standard library.
 
-<OtherLanguages title="Read one past the end">
+`#![forbid(unsafe_code)]` turns the `unsafe_code` lint to its strictest
+level for the whole crate: any `unsafe` block is an error (`usage of an
+unsafe block`), and unlike `deny`, a later `#[allow(unsafe_code)]`
+cannot undo it (rustc 1.97 answers E0453, `allow(unsafe_code)
+incompatible with previous forbid`). It cost drip-rs no pointers between
+heap objects, since the arenas and `Gc<T>` handles of *Arenas and typed
+indices* replaced them; the cost is the checks, in `read_byte` and in
+every `heap[handle]`. To put a number on it, I copied drip-rs into
+a scratch folder, removed the `forbid`, replaced five checked reads with
+`get_unchecked` (in `read_byte`, `read_constant`, `peek` and the arena's
+two index methods), and timed both release builds (rustc 1.97) on five
+corpus benchmarks, seven alternating runs each, twice, on a shared cloud
+VM: the unchecked build's fastest run was 4 to 18 percent quicker, and
+its median was quicker on every program. What drip-rs bought is just as
+concrete: with its `debug_gc` option on, a freed slot is never
+reused, so a collector that missed a root panics on use instead of
+quietly reading whatever moved in.
 
-```rust
-let xs = [1.5, 2.5, 4.0];
-xs[3];                 // panics
-xs.get(3);             // None
-unsafe { *xs.get_unchecked(3) } // UB
-```
+<More title="The measurement, run by run">
 
-```ts
-const xs = new Float64Array([1.5, 2.5, 4]);
-xs[3]; // undefined: checked, never UB
-```
-
-```c
-double xs[] = {1.5, 2.5, 4.0};
-xs[3]; /* compiles; undefined behaviour */
-```
-
-```python
-xs = [1.5, 2.5, 4.0]
-xs[3]  # IndexError: list index out of range
-```
-
-</OtherLanguages>
-
-TypeScript and Python always check, and differ only in what you get
-back. C never checks, and reading past the end is undefined behaviour
-there, the very thing Rust confines to `unsafe` blocks. Rust offers a
-panic, an `Option`, or, when you ask in writing, no check at all.
-
-<Prompts ids={['safe-wrapper', 'sound-nonlocal']} />
-
-## Forbidding it: drip-rs
-
-`#![forbid(unsafe_code)]` turns the `unsafe_code` lint up to its
-strictest level for the whole crate. Any `unsafe` block is then an
-error (``error: usage of an `unsafe` block``), and unlike `deny`, a
-`#[allow(unsafe_code)]` further down cannot undo it: rustc 1.97 answers
-`error[E0453]: allow(unsafe_code) incompatible with previous forbid`.
-
-What did that cost? Not pointers between heap objects, since the
-arenas and `Gc<T>` handles of *Arenas and typed indices* replaced
-them. The cost is the checks: `read_byte` checks `ip`, and every
-`heap[handle]` checks the index *and* that the slot is still `Some`,
-because freed slots become `None`. To put a number on it, for this
-chapter I copied drip-rs, removed the `forbid`, and replaced five
-checked reads with `get_unchecked` (in `read_byte`, `read_constant`,
-`peek`, and the arena's two index methods), checked that both builds
-printed the same output, and timed them alternately, seven runs each,
-twice, on the book's shared cloud VM (release builds, rustc 1.97).
-Fastest times, checked / unchecked, in milliseconds:
+Checks that never fail are cheap, because the branch predictor learns
+that the index is always in bounds, but they are not free. Fastest of
+seven runs, checked / unchecked, in milliseconds; both builds
+printed the same output for every program.
 
 ```text
 program        round 1     round 2
-fib            414 / 400   407 / 393
-method_calls   169 / 157   178 / 161
-fields         187 / 163   190 / 165
-instantiation  142 / 137   145 / 136
-trees          161 / 143   149 / 145
+fib            402 / 380   403 / 373
+method_calls   164 / 157   168 / 152
+fields         186 / 167   186 / 162
+instantiation  146 / 130   140 / 129
+trees          171 / 141   163 / 141
 ```
 
-The unchecked build was 3 to 13 percent faster on these minimums, and
-the medians mostly agreed (one, `fib` in round 2, went the other way).
-Checks that never fail are cheap, because the CPU's branch predictor
-learns that the index is always in bounds, as *Pipelines and branch
-prediction* explained.
+The shared VM is noisy (`fib`'s slowest checked run was 530 ms), which is
+why the fastest and the middle runs are the ones to compare, and why two
+rounds were run.
 
-<Prompts ids={['forbid']} />
+</More>
 
-<Callout kind="engine" label="Under the hood">
-What the checks saved is easy to point at. The collector of *Reclaiming memory: mark and sweep* frees objects, so a
-missed root leaves a handle to a freed slot. In C that is a
-use-after-free that reads whatever moved in. drip-rs has a
-`debug_gc` option ("never reuse freed heap slots, so a missed root
-panics on use"), which its corpus tests turn on, and a `stress_gc`
-option that collects before every allocation; together they turn a
-missed root into a panic with a message rather than a quiet misread. The `forbid` covers only drip-rs's own source: `Vec` and `HashMap` use
-`unsafe` inside the standard library.
-</Callout>
-
-## Your turn
-
-<Exercise id="at" />
-
-## What you learned
-
-- An **`unsafe` block** unlocks five extra operations, such as calling
-  an **`unsafe fn`** like `get_unchecked`; it switches no checks off.
-- Breaking an unsafe promise is **undefined behaviour**: not a panic,
-  but anything at all. Debug builds and **Miri** catch some of it.
-- Keep `unsafe` small, inside a safe function whose own check makes
-  the promise true, with a `// SAFETY:` comment; soundness can still
-  depend on the safe code around it.
-- drip-rs's **`#![forbid(unsafe_code)]`** cost it 3 to 13 percent here,
-  and turned collector bugs into panics instead of corrupted memory.
-
-
-{/* ── merge: from old chapter 135, Raw pointers ── */}
+<Prompts ids={['safe-wrapper', 'forbid']} />
 
 ## An address without promises
 
-*Pointers, the stack and the heap* drew a pointer as an arrow: a number
-that says where in memory something lives. A Rust reference, `&T`, is
-such a number, plus a set of promises the compiler checks for you: it
-is never null, it points at a live, correctly aligned `T`, and the
-borrowing rules hold for as long as it lives. *Unsafe Rust* listed
-"dereference a raw pointer" first among the things that need `unsafe`;
-a **raw pointer** is the same number with every one of those promises
+A Rust reference, `&T`, is an address plus a set of promises the
+compiler checks: it is never null, it points at a live, correctly
+aligned `T`, and the borrowing rules hold for as long as it lives. A
+**raw pointer** is the same address with every one of those promises
 taken off.
-
-<Analogy title="an address on a scrap of paper">
-A reference is the key to a flat you are renting right now: the flat
-exists, it is yours to enter, and the landlord has checked nobody else
-holds a key for writing. A raw pointer is the address written on a
-scrap of paper: the house may have been knocked down, it may be the
-wrong street, or someone else may live there now.
-<span slot="breaks">Walking to a wrong address only wastes your
-afternoon; reading through a wrong pointer is undefined behaviour,
-which can quietly corrupt the rest of the program.</span>
-</Analogy>
-
-<Analogy extra title="a page number in your notes">
-Your notes say a quote is "on page 42". Open the same edition and it
-is there; open a new edition, or a different book, and page 42 holds
-something else entirely, and nothing on the page tells you so.
-<span slot="breaks">A wrong page still holds words you can read
-harmlessly; a dangling pointer may point at memory that no longer
-belongs to your program at all.</span>
-</Analogy>
 
 <Figure takeaway="A reference is an address the compiler vouches for; a raw pointer is an address nobody vouches for." caption="What each kind of pointer promises. Making a raw pointer is safe; everything after that is your job.">
   <RefVsRaw />
@@ -357,167 +197,91 @@ let r: *const i32 = &raw const n;
 let w: *mut i32 = &raw mut n;
 let z: *const i32 = std::ptr::null();
 let p = [1.5, 2.5, 4.0].as_ptr();
-```
-
-```rust
-println!("{}", *r);
-// error[E0133]: dereference of raw
-//   pointer is unsafe and requires
-//   unsafe function or block
 println!("{}", unsafe { *r }); // 41
 ```
 
-<Run id="raw-play" />
-
 </Examples>
 
-The first block makes five raw pointers, all in safe code: `&raw
-const n` and `&raw mut n` take the address of `n` without making a
-reference (the types `*const i32` and `*mut i32` are read "pointer to
-const `i32`" and "pointer to mut `i32`"), `std::ptr::null()` is the
-address 0, and `as_ptr` gives the address of a slice's first element.
-Notice that a `*const` and a `*mut` to the same variable exist side by
-side, which two references could never do. The second block reads
-through one: without `unsafe` it is error E0133 (rustc 1.97's words,
-trimmed, followed by the note that "raw pointers may be null, dangling
-or unaligned; they can violate aliasing rules and cause data races"),
-and inside `unsafe` it prints `41`. The runnable one does all of this,
-writes through the `*mut`, checks a pointer with `is_null()`, measures
-a raw pointer with `size_of` (8 bytes, like a reference) and reads an
-array element with `add`.
+The first five lines make raw pointers, all in safe code: `&raw const n`
+and `&raw mut n` take `n`'s address without making a reference,
+`std::ptr::null()` is address 0, and `as_ptr` gives a slice's first
+element's address. A
+`*const` and a `*mut` to the same variable exist side by side, which
+`&n` and `&mut n` never could. Reading through one is the unsafe part:
+without the block it is E0133 again, `dereference of raw pointer is
+unsafe`, with rustc 1.97's note that "raw pointers may be null, dangling
+or unaligned"; inside it the last line prints `41`.
 
 <Callout kind="definition">
 A **raw pointer** is `*const T` (read through it) or `*mut T` (read and
-write through it): an address with no safety or liveness guarantees.
-It may be null, dangling or misaligned; copying or dropping one does
-nothing to the value it points at. You make one with `&raw const` or
-`&raw mut`; making, copying and comparing them is safe, and
-**dereferencing** one is an unsafe operation<Cite id="rustref-raw-pointer" />.
+write through it): an address with no safety or liveness guarantees. It
+may be null, dangling or misaligned. You make one with `&raw const` or
+`&raw mut` (or `as_ptr`); making, copying and comparing them is safe,
+and **dereferencing** one is an unsafe operation<Cite id="rustref-raw-pointer" />.
 </Callout>
 
-<Prompts ids={['raw-make', 'raw-types', 'raw-vs-ref']} />
+<Prompts ids={['raw-make', 'raw-vs-ref']} />
 
 ## Walking a buffer
 
 `p.add(i)` moves a pointer on by `i` *elements*, not bytes, so on a
-pointer to `f64` it adds `8 × i` to the address. Step through reading
-an array, first safely and then through a pointer:
+pointer to `f64` it adds `8 × i` to the address. For a pointer to the
+start of `len` elements, `add` may go as far as one past the end (a
+pointer you may compare but not read), and a read must stay strictly
+inside, which is why `for i in 0..len { *p.add(i) }` is fine and
+`0..=len` is not. Step through reading an array, first safely and then
+through a pointer:
 
 <PointerSteps client:visible />
 
-<Formal title="Pointer arithmetic">
+<More title="What Miri says, and the runnable examples">
+
+Run four broken reads under Miri (`cargo +nightly miri run`, nightly of
+2026-11-01), and it stops at the offending line with `Undefined
+Behavior:` and the mistake<Cite id="miri-readme" />:
 
 ```text
-addr(p.add(i)) = addr(p) + i × size(T)
-p.add(i) is allowed  when  0 ≤ i ≤ len
-*p.add(i) is allowed when  0 ≤ i < len
-```
-
-<span slot="read">Adding i to a pointer to T moves the address on by i
-times the size of a T (its size_of). For a pointer to the start of n elements, add
-may go as far as one past the end (i equal to len, a pointer you may
-compare but not read), and a read is only allowed strictly inside the
-elements.</span>
-</Formal>
-
-That last rule is why a loop like `for i in 0..len { *p.add(i) }` is
-fine and `0..=len` is not. Raw pointers matter most where Rust meets
-other code: a C library hands you a `*const u8` and a length, and
-*FFI and unsafe boundaries*, later in this part, is about making such
-a pointer safe to use. The exercise uses the same reasoning to walk a
-*column* of an array of structs, one stride at a time.
-
-<OtherLanguages title="Read element 2 through a pointer">
-
-```rust
-let xs = [1.5, 2.5, 4.0];
-let p = xs.as_ptr();
-// SAFETY: 2 < 3
-let x = unsafe { *p.add(2) }; // 4
-```
-
-```c
-double xs[] = {1.5, 2.5, 4.0};
-double *p = xs;
-double x = *(p + 2); /* 4, no unsafe */
-```
-
-```ts
-// No pointers: an offset into a buffer
-const v = new DataView(buf);
-const x = v.getFloat64(2 * 8, true);
-```
-
-</OtherLanguages>
-
-C's `*(p + 2)` is Rust's `*p.add(2)`, and in C every line of a program
-may do it; Rust allows it only inside `unsafe`, so a reviewer knows
-which lines to check. TypeScript has no pointers at all; the nearest
-thing is a byte offset into an `ArrayBuffer`, which is always bounds
-checked.
-
-<Prompts ids={['add-units', 'one-past']} />
-
-## When it goes wrong: Miri
-
-Run four broken reads under Miri (`cargo +nightly miri run`, nightly
-of 2026-11-01), and it names each mistake at the line where it
-happens<Cite id="miri-readme" />:
-
-```text
-*p.add(3), on a 3-element [i32; 3]:
+*p.add(3) on a [i32; 3]:
   attempting to access 4 bytes, but got
-  alloc149+0xc which is at or beyond
-  the end of the allocation of size 12
-
-*std::ptr::null::<i32>():
+  alloc775+0xc which is at or beyond
+  the end of the allocation of size
+  12 bytes
+*p where p is null:
   attempting to access 4 bytes, but got
   null pointer
-
 an f64 read at an odd address:
   accessing memory based on pointer
-  with alignment 1, but alignment 8
+  with alignment 4, but alignment 8
   is required
-
 *p after drop(v):
-  alloc165 has been freed, so this
+  alloc799 has been freed, so this
   pointer is dangling
 ```
 
-Each report starts with `error: Undefined Behavior:`, points at the
-offending line, and for the last one also shows where the memory was
-allocated and where it was freed. Without Miri the same four programs
-behaved very differently in an ordinary debug build: the out-of-bounds
-read quietly printed whatever lay past the array; the null and misaligned reads were caught by
-the debug build's own checks (`null pointer dereference occurred`,
-`misaligned pointer dereference`); and the use-after-free printed a
-tiny number with about three hundred zeros after the decimal point,
-read from freed memory. Undefined behaviour does not announce itself,
-which is why Miri exists<Cite id="rustref-ub" />.
+An ordinary rustc 1.97 debug build of the same program caught the null
+and misaligned reads with its own checks (`null pointer dereference
+occurred`, `misaligned pointer dereference`), but quietly printed
+`21965` for the out-of-bounds read and a tiny number with about three
+hundred zeros after the point for the use after free: undefined
+behaviour does not announce itself<Cite id="rustref-ub" />.
 
-<Prompts ids={['miri-dangling', 'debug-quiet']} />
+The first runnable program calls `at_unchecked` from a safe `at`, which
+checks the index first, and prints `Some(4.0)`, `None` and `None`. The
+second makes raw pointers, writes through the `*mut`, checks one with
+`is_null()`, measures it with `size_of` (8 bytes, like a reference) and
+reads an array element with `add`.
 
-<Callout kind="engine" label="Under the hood">
-Raw pointers are how the standard library builds safe types: a `Vec`
-is a pointer to its buffer, a capacity and a length (the 24 bytes
-*Memory layout in Rust* measured), and its safe methods keep every
-read inside the first `len` elements. drip-rs has no raw pointers at
-all, since `#![forbid(unsafe_code)]` rules out reading through one,
-and its objects refer to each other by typed indices instead, as
-*Arenas and typed indices* showed. engine/rust's own crates have no
-`unsafe` blocks either, but its parser's arena allocator, the
-`oxc_allocator` crate (version 0.156.0), has 383 source lines that
-mention `unsafe`; the safety of the whole program rests on those
-lines being right, which is exactly why they are kept in one crate.
-</Callout>
+<Run id="safe-get" />
 
-<Prompts ids={['vec-raw']} />
+<Run id="raw-play" />
+
+</More>
+
+<Prompts ids={['one-past']} />
 
 ## Your turn
 
-The core exercise reads one field out of an array of structs by
-stepping a raw pointer one record at a time; the second is a bounds
-checked read.
+<Exercise id="at" />
 
 <Exercise id="columnSum" />
 
@@ -525,13 +289,16 @@ checked read.
 
 ## What you learned
 
-- A **raw pointer**, `*const T` or `*mut T`, is an address without a
-  reference's promises: it may be null, dangling or misaligned.
-- Making one (`&raw const`, `&raw mut`, `as_ptr`) is safe;
-  dereferencing it needs `unsafe` (E0133 otherwise).
-- `p.add(i)` moves by `i` elements; it may reach one past the end, but
-  a read must stay strictly inside.
-- **Miri** reports out-of-bounds, null, misaligned and dangling reads
-  at the line where they happen; ordinary builds often say nothing.
+- An **`unsafe` block** unlocks five extra operations, such as calling an
+  **`unsafe fn`**; it switches no checks off. Breaking its promise is
+  **undefined behaviour**, which Miri and debug builds catch only
+  sometimes.
+- Keep `unsafe` inside a small safe function whose own check makes the
+  promise true; drip-rs's `#![forbid(unsafe_code)]` rules it out.
+- A **raw pointer** is an address without a reference's promises; making
+  one is safe, reading through it needs `unsafe`.
+
+Next: *Struct of arrays in Rust, measured*, where safe Rust columns are
+timed against an array of structs.
 
 <Quiz />

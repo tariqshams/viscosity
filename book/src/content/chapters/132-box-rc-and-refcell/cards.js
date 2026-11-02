@@ -1,6 +1,6 @@
-// Chapter 200 cards: recall prompts, examples, exercises and quiz.
+// Chapter 132 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 132, 132.
+// Merged from the two old smart-pointer chapters.
 
 export const prompts = {
   'box-what': {
@@ -11,18 +11,6 @@ export const prompts = {
     q: 'Why does `enum Expr { Num(f64), Add(Expr, Expr) }` fail to compile, and how does `Box` fix it?',
     a: 'An `Expr` would contain two `Expr`s, so its size would be infinite (E0072). `Box<Expr>` is one pointer of fixed size.',
   },
-  'box-cost': {
-    q: 'What does a `Box` cost while the program runs?',
-    a: 'One heap allocation (and freeing it later). There is no count and no check when you use it.',
-  },
-  'box-move': {
-    q: '`let b = Box::new(5); let c = b;` Can you still use `b`?',
-    a: 'No: moving the box moved ownership of the value to `c` (E0382 if you use `b`). A box follows the ordinary ownership rules.',
-  },
-  'rc-what': {
-    q: 'What does `Rc::clone(&r)` copy?',
-    a: 'Only the pointer. It adds 1 to the strong count; the value is not copied, and is dropped when the count falls to 0.',
-  },
   'rc-count': {
     q: '`let a = Rc::new(5); let b = Rc::clone(&a); let c = a.clone(); drop(b);` What is the strong count now?',
     a: '2: it went 1, 2, 3, then back to 2 when `b` was dropped.',
@@ -31,37 +19,17 @@ export const prompts = {
     q: 'Why can’t you assign to a field through an `Rc<T>`?',
     a: 'An `Rc` hands out only shared access (`&T`): other owners may be reading (E0594). Mutating needs a `RefCell` inside.',
   },
-  'drip-rc': {
-    q: 'Where does drip-rs use `Rc`, and why does read-only access suffice there?',
-    a: 'For each compiled `Chunk`, shared by the function object, the call frames running it and the VM’s current-chunk register. A chunk is frozen once compiled.',
-  },
   'refcell-what': {
     q: 'What does `RefCell<T>` check, and when?',
     a: 'The borrowing rules (many readers or one writer), at run time, each time you call `borrow` or `borrow_mut`.',
-  },
-  'refcell-guard': {
-    q: 'What do `borrow()` and `borrow_mut()` return, and when is the borrow given back?',
-    a: 'A guard (`Ref` or `RefMut`) that acts like a reference; the borrow ends when the guard is dropped.',
-  },
-  'refcell-interior': {
-    q: 'What is **interior mutability**?',
-    a: 'Changing a value through a shared `&` reference, because a type like `RefCell` checks the rules itself at run time.',
   },
   'refcell-panic': {
     q: 'What happens if you call `borrow()` on a `RefCell` while a `borrow_mut()` of it is still alive?',
     a: 'The program panics: “RefCell already mutably borrowed”.',
   },
-  'refcell-vm': {
-    q: 'Why is a `RefCell` double borrow a real risk in a VM built from `Rc<RefCell<..>>`?',
-    a: 'The program decides which objects alias. Drip code like `a.heal(a)` makes one object both sides of an operation, so a held borrow meets another at run time.',
-  },
   'cycle-leak': {
     q: 'Two objects behind `Rc` point at each other, and nothing else points at them. What happens?',
     a: 'Each strong count stays at 1, so neither is ever dropped: the memory leaks (safely: nothing dangles).',
-  },
-  'weak-what': {
-    q: 'What is `Weak<T>`, and how do you use the value behind it?',
-    a: 'A pointer that does not own, made with `Rc::downgrade`; `upgrade()` gives `Some(Rc)` while the value exists and `None` after.',
   },
   'cycle-vm': {
     q: 'Why can’t a VM fix `Rc` cycles with `Weak`?',
@@ -144,6 +112,7 @@ fn main() {
 
 export const exercises = {
   boxExpr: {
+    optional: true,
     lang: 'rust',
     title: 'A boxed expression tree',
     prompt: 'A syntax tree is the shape `Box` was made for: each node has exactly one parent. Write `add` and `mul`, which build a node from two subtrees, and `eval`, which computes the value of a tree.',
@@ -214,7 +183,7 @@ fn nested() {
       '`add` is one line: `Expr::Add(Box::new(a), Box::new(b))`, and `mul` the same with `Mul`. For `eval`, `match e` with one arm per variant.',
       'The `Num` arm gets `n: &f64`, so return `*n`. In `Expr::Add(a, b)` the bindings are `&Box<Expr>`, and you can pass them straight to `eval`: `eval(a) + eval(b)`.',
     ],
-    walkthrough: `**How to think about it.** There are two jobs: *building* a tree, which is about ownership, and *walking* it, which is about recursion. To build a node, the node must own its two children, and since an \`Expr\` cannot hold an \`Expr\` directly, it holds a \`Box<Expr>\` for each. To walk it, ask "what kind of node is this?": a number is its own value, and an operator node is its two children's values combined. Each child is a smaller tree, so the same function works on it (the recursion of *Syntax trees*).
+    walkthrough: `**How to think about it.** There are two jobs: *building* a tree, which is about ownership, and *walking* it, which is about recursion. To build a node, the node must own its two children, and since an \`Expr\` cannot hold an \`Expr\` directly, it holds a \`Box<Expr>\` for each. To walk it, ask "what kind of node is this?": a number is its own value, and an operator node is its two children's values combined. Each child is a smaller tree, so the same function works on it (the recursion of *Syntax trees and a tree printer*).
 
 **The solution, line by line.**
 
@@ -225,7 +194,7 @@ fn nested() {
 - \`match e {\` looks at which variant \`e\` is. Because \`e\` is a reference, the bindings in each arm are references too.
 - \`Expr::Num(n) => *n,\`: \`n\` is a \`&f64\`, and \`*n\` reads the number.
 - \`Expr::Add(a, b) => eval(a) + eval(b),\`: here \`a\` and \`b\` are \`&Box<Expr>\`. Passing them to \`eval\`, which wants \`&Expr\`, works because Rust follows the box for you (a \`Box\` implements \`Deref\`, so a reference to a box can be used as a reference to what is inside).
-- \`Expr::Mul(a, b) => eval(a) * eval(b),\` is the same with \`*\`. The \`match\` has an arm for every variant, so it is exhaustive, as *Enums and match* requires.
+- \`Expr::Mul(a, b) => eval(a) * eval(b),\` is the same with \`*\`. The \`match\` has an arm for every variant, so it is exhaustive, as *Enums, match and patterns* requires.
 
 **Common wrong attempts.**
 
@@ -290,7 +259,7 @@ fn eval(e: &Expr) -> f64 {
   sharedUpvalue: {
     lang: 'rust',
     title: 'Capture, don’t copy',
-    prompt: 'A closure captures a variable by sharing it (*Capturing variables: upvalues*): two closures that capture the same variable see each other’s changes. Write `capture`, which makes a `Closure` that shares `up`, and the methods `bump` (add 1 to the variable) and `read`.',
+    prompt: 'A closure captures a variable by sharing it (*Upvalues: capturing and closing*): two closures that capture the same variable see each other’s changes. Write `capture`, which makes a `Closure` that shares `up`, and the methods `bump` (add 1 to the variable) and `read`.',
     starter: `use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -454,24 +423,6 @@ impl Closure {
 
 export const quiz = [
   {
-    q: 'Which of these is a good fit for plain `Box<T>`?',
-    options: [
-      {
-        t: 'Bytecode shared by several call frames',
-        why: 'Several owners need `Rc`; a `Box` has exactly one.',
-      },
-      {
-        t: 'The children of a syntax-tree node',
-        correct: true,
-        why: 'Each child has exactly one parent, which owns it. Dropping the root drops the tree.',
-      },
-      {
-        t: 'A value two closures both need to keep alive',
-        why: 'Neither can be the single owner; that is `Rc`’s job.',
-      },
-    ],
-  },
-  {
     q: 'After `let a = Rc::new(5); let b = Rc::clone(&a); drop(a);`, what is `Rc::strong_count(&b)`?',
     options: [
       {
@@ -486,28 +437,6 @@ export const quiz = [
         t: '1',
         correct: true,
         why: 'The clone made it 2; dropping `a` brought it back to 1. The 5 lives until `b` is dropped.',
-      },
-    ],
-  },
-  {
-    q: 'What does `Rc::clone(&chunk)` do to the `Chunk` itself?',
-    options: [
-      {
-        t: 'Nothing: it copies the pointer and adds 1 to the count',
-        correct: true,
-        why: 'That is why sharing bytecode with `Rc` costs no copying.',
-      },
-      {
-        t: 'Makes a deep copy, like cloning a `Vec`',
-        why: '`Rc::clone` never copies the value.',
-      },
-      {
-        t: 'Moves it to a new place on the heap',
-        why: 'The value stays where `Rc::new` put it.',
-      },
-      {
-        t: 'Locks it so only the new owner can read it',
-        why: 'All owners can read it, at any time.',
       },
     ],
   },
@@ -530,28 +459,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'You hold two `Rc<Upvalue>` to one upvalue and write `a.value += 1.0`. What happens?',
-    options: [
-      {
-        t: 'Both owners see the new value',
-        why: 'It does not compile.',
-      },
-      {
-        t: 'Only `a`’s copy changes',
-        why: 'There is only one value; `Rc::clone` made no copy.',
-      },
-      {
-        t: 'It panics at run time',
-        why: 'The compiler stops it first.',
-      },
-      {
-        t: 'E0594: cannot assign to data in an `Rc`',
-        correct: true,
-        why: 'An `Rc` gives only shared access; mutation needs a `RefCell` inside.',
-      },
-    ],
-  },
-  {
     q: 'You write `a.borrow_mut()` and, while that guard is alive, call `a.borrow()`. When do you find out?',
     options: [
       {
@@ -570,24 +477,6 @@ export const quiz = [
       {
         t: 'Only in release builds',
         why: 'The check runs in every build.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `*c.borrow_mut() += 1; println!("{}", c.borrow());` not panic?',
-    options: [
-      {
-        t: 'The writer guard is a temporary, dropped at the end of its statement',
-        correct: true,
-        why: 'By the time `borrow()` runs, no writer is alive.',
-      },
-      {
-        t: '`borrow` and `borrow_mut` never conflict',
-        why: 'They do, while both guards are alive.',
-      },
-      {
-        t: 'The compiler removes the check',
-        why: 'The check always runs.',
       },
     ],
   },
@@ -628,24 +517,6 @@ export const quiz = [
       {
         t: 'The program panics',
         why: 'A leak is memory safe; nothing panics.',
-      },
-    ],
-  },
-  {
-    q: 'What does `back.upgrade()` return after the last `Rc` to the value is dropped?',
-    options: [
-      {
-        t: 'The value, kept alive by the `Weak`',
-        why: 'A `Weak` does not own, so it cannot keep the value alive.',
-      },
-      {
-        t: 'A dangling pointer',
-        why: 'Rust never hands out a dangling pointer here.',
-      },
-      {
-        t: '`None`',
-        correct: true,
-        why: '`upgrade` returns `Some(Rc)` only while the value still exists.',
       },
     ],
   },

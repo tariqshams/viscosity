@@ -1,103 +1,35 @@
-// Chapter 72 cards: recall prompts, examples, exercises and quiz.
+// Chapter 136 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 136, 136, 136.
+// Merged from the three old SoA and benchmarking chapters.
 
 export const prompts = {
   'rust-aos-flat': {
     q: 'How does a Rust `Vec<Particle>` differ in memory from a JavaScript array of particle objects?',
     a: 'The structs sit back to back inside the `Vec`’s buffer, with no object headers and no pointer per element.',
   },
-  'soa-what': {
-    q: 'What does a struct-of-arrays `Particles` look like in Rust?',
-    a: 'A struct with one `Vec<f64>` per field: `x: Vec<f64>`, `vx: Vec<f64>`, …, where particle `i` is index `i` of each.',
-  },
   'soa-invariant': {
     q: 'What must every method of a hand-written SoA struct keep true?',
     a: 'All the columns have the same length, so index `i` means the same particle in each.',
-  },
-  'soa-private': {
-    q: 'How can you stop other modules from pushing to only one column?',
-    a: 'Keep the column fields private (no `pub`) and expose methods like `push` that write every column.',
   },
   'soa-borrow': {
     q: 'Inside `step(&mut self)`, while iterating `self.x.iter_mut()`, why does `self.vx[i]` compile but `self.vx_at(i)` (a `&self` method) fail with E0502?',
     a: '`self.vx[i]` borrows only the `vx` field, separate from `x`. A method call borrows all of `self`, including the `x` column already borrowed mutably.',
   },
-  'soa-get': {
-    q: 'Why does a SoA `get(i)` return a `Particle` and not a `&Particle`?',
-    a: 'No `Particle` exists in memory to point at; `get` builds one from the columns. Changing that copy doesn’t change the storage.',
-  },
-  'debug-soa': {
-    q: 'In a debug build the SoA loop was several times slower than the AoS loop. Why not trust that?',
-    a: 'Debug builds skip optimisation, so every `s.x[i]` pays an unoptimised bounds check (about 20 ns per particle here, against 1.3 with `-O`). Layout comparisons need a release build.',
-  },
-  'soa-small': {
-    q: 'With 1,000 particles, SoA and AoS measured the same in Rust. Why?',
-    a: '1,000 particles are 48 KB; after the first pass they stay in cache, so fetching wasted bytes from memory never happens.',
-  },
-  'debug-default': {
-    q: 'Which profile does a plain `cargo build` or `cargo run` use, and at what `opt-level`?',
-    a: 'The `dev` profile, with `opt-level = 0`: no optimisation.',
-  },
   'release-what': {
     q: 'What does `--release` change, by default?',
     a: '`opt-level = 3`, and debug assertions and integer overflow checks turned off.',
   },
-  'overflow-modes': {
-    q: 'What does adding 1 to a `u8` holding 255 do in a debug build, and in a release build?',
-    a: 'Debug: panics with “attempt to add with overflow”. Release: wraps around to 0.',
-  },
-  'runner-mode': {
-    q: 'Which build mode does this book’s Run button use for Rust?',
-    a: 'Debug, on the Rust Playground. Open the code in the Playground to switch to Release.',
-  },
   'bb-why': {
-    q: 'Why did a release-mode loop summing a million numbers 100 times “take” under 200 ns?',
+    q: 'Why did a release-mode loop summing a million numbers 100 times “take” only a few hundred nanoseconds?',
     a: 'Its result was never used, so the optimiser deleted the work. Nothing was measured.',
   },
   'bb-what': {
     q: 'What does `std::hint::black_box(x)` do?',
     a: 'Returns `x` unchanged, while the compiler must assume the value is used in unknown ways, so it cannot delete or precompute the work around it.',
   },
-  'bb-limit': {
-    q: 'Name two limits of `black_box`.',
-    a: 'It is best-effort (never rely on it for correctness), and it does not stop the optimiser rewriting the code between the hidden values, e.g. a loop into a formula.',
-  },
-  'whole-program': {
-    q: 'Why does drip-rs’s `bench.sh` not need `black_box`?',
-    a: 'It times whole programs in fresh processes, and each program prints its results: printing is a side effect the optimiser must keep.',
-  },
-  'crit-what': {
-    q: 'What is criterion, and why do stable-Rust projects use it?',
-    a: 'A statistical benchmarking crate run by `cargo bench`. The built-in `#[bench]` attribute is nightly-only, so the Cargo book points to crates like it.',
-  },
-  'crit-harness': {
-    q: 'Why does a criterion benchmark need `harness = false` in `Cargo.toml`?',
-    a: 'It tells Cargo the bench file brings its own `main` (written by `criterion_main!`) instead of using the built-in test harness.',
-  },
-  'crit-nightly': {
-    q: 'Which profile does `cargo bench` build with?',
-    a: '`bench`, which inherits from `release`: optimised, with overflow checks off.',
-  },
   'crit-slope': {
     q: 'Criterion runs samples of d, 2d, 3d … iterations. What does it take as the time per iteration, and why not time one call?',
     a: 'The slope of the line fitted through (iterations, total time). One short call is below what the clock can measure well.',
-  },
-  'crit-ci': {
-    q: 'How does criterion get the interval it prints, such as `[658.64 ns 665.74 ns 672.99 ns]`?',
-    a: 'By bootstrapping: resample the samples with repeats many times, fit a line to each, and keep the middle 95 percent of the slopes. The middle number is the estimate.',
-  },
-  tukey: {
-    q: 'When does criterion call a sample a severe outlier?',
-    a: 'When it lies more than 3 interquartile ranges below the first quartile or above the third (1.5 makes it mild). It is reported, not dropped.',
-  },
-  'crit-change': {
-    q: 'Criterion says “Performance has improved” (p = 0.00) but you changed nothing. Why?',
-    a: 'The machine was quieter on that run. The test detects any real difference in the timings, including one caused by other programs.',
-  },
-  'crit-noise': {
-    q: 'What two conditions must hold before criterion reports a change, by default?',
-    a: 'The test must say the difference is unlikely to be chance (p < 0.05), and it must be bigger than the noise threshold, 1 percent.',
   },
 };
 
@@ -537,7 +469,7 @@ impl Particles {
     lang: 'rust',
     optional: true,
     title: 'AoS to SoA and back',
-    prompt: 'Write `from_aos`, which turns a slice of `Particle`s into columns, and `to_aos`, which rebuilds a `Vec<Particle>` from the columns. Iterators (from *Iterators in Rust*) make each one short.',
+    prompt: 'Write `from_aos`, which turns a slice of `Particle`s into columns, and `to_aos`, which rebuilds a `Vec<Particle>` from the columns. Iterators (from *Closures, iterators and associated types*) make each one short.',
     starter: `#[derive(Clone, Copy, Debug, PartialEq)]
 struct Particle {
     x: f64,
@@ -618,7 +550,7 @@ fn empty() {
       'For `to_aos`, `s.x.iter().zip(&s.vx)` walks both columns in step and gives you pairs of references.',
       'The closure `|(&x, &vx)| Particle { x, vx }` takes each pair apart and builds a particle.',
     ],
-    walkthrough: `**How to think about it.** Converting AoS to SoA means building each column from one field of every particle; converting back means walking all the columns in step and gluing index \`i\` of each into a particle. Both are jobs for iterator chains from *Iterators in Rust*: \`map\` to pick a field, \`zip\` to walk two columns together, \`collect\` to build a \`Vec\`.
+    walkthrough: `**How to think about it.** Converting AoS to SoA means building each column from one field of every particle; converting back means walking all the columns in step and gluing index \`i\` of each into a particle. Both are jobs for iterator chains from *Closures, iterators and associated types*: \`map\` to pick a field, \`zip\` to walk two columns together, \`collect\` to build a \`Vec\`.
 
 **The solution, line by line.**
 
@@ -670,6 +602,7 @@ fn to_aos(s: &Particles)
     ],
   },
   summary: {
+    optional: true,
     lang: 'rust',
     title: 'Summarise the samples',
     prompt: 'A timing harness collects one time per run, in any order. Write `summary(xs)`, which returns `(min, median, p95)`, taking the minimum and median the way engine/rust’s `compile_speed` does and adding a p95: sort a copy of the samples, then take the value at index `0`, at index `n / 2`, and at index `n * 95 / 100`. Do not change the caller’s slice. You may assume `xs` is not empty.',
@@ -723,7 +656,7 @@ fn one_slow_run_moves_only_the_tail() {
       '`f64` has no ordinary `sort()`, because NaN breaks ordering. Use `s.sort_by(f64::total_cmp)`, as `compile_speed` does.',
       'Then return `(s[0], s[n / 2], s[n * 95 / 100])`, where `n = s.len()`. Integer division rounds down, which keeps every index below `n`.',
     ],
-    walkthrough: `**How to think about it.** *Noisy numbers: the median, p95 and a fresh process* explained why one timing is not enough and why the median and p95 describe a noisy set of samples better than the mean. Every one of those statistics is "the value at some position once the samples are sorted", so the work is: sort a copy, then index it three times. The only questions are which positions, and how to sort floating-point numbers in Rust.
+    walkthrough: `**How to think about it.** *Benchmarking honestly* explained why one timing is not enough and why the median and p95 describe a noisy set of samples better than the mean. Every one of those statistics is "the value at some position once the samples are sorted", so the work is: sort a copy, then index it three times. The only questions are which positions, and how to sort floating-point numbers in Rust.
 
 **The solution, line by line.**
 
@@ -866,6 +799,7 @@ fn measure<T>(
     ],
   },
   tukey: {
+    optional: true,
     lang: 'rust',
     title: 'Outliers the way criterion counts them',
     prompt: '`quartiles` is given. Write `fences(xs, k)`, which returns `(q1 - k·iqr, q3 + k·iqr)` where `iqr = q3 - q1`. Then write `outliers(xs)`, which returns `(mild, severe)`: a sample is **severe** if it lies outside the `k = 3.0` fences, and **mild** if it lies outside the `k = 1.5` fences but not outside the `3.0` ones. Count both low and high samples.',
@@ -1051,7 +985,7 @@ fn outliers(xs: &[f64])
 
 export const quiz = [
   {
-    q: 'Why is SoA’s advantage smaller in Rust than in the book’s JavaScript runs?',
+    q: 'Why is a struct of arrays’ speed-up over an array of structs usually smaller in Rust (`Vec<Particle>`) than in JavaScript (an array of particle objects)?',
     options: [
       {
         t: 'Rust doesn’t have cache lines',
@@ -1065,28 +999,6 @@ export const quiz = [
       {
         t: 'Rust automatically turns `Vec<Particle>` into SoA',
         why: 'It doesn’t. A `Vec<Particle>` stays an array of structs.',
-      },
-    ],
-  },
-  {
-    q: 'A loop sums only `mass` over a million `Particle`s (six `f64` fields). Roughly what fraction of the bytes it fetches does it use, in AoS?',
-    options: [
-      {
-        t: 'About a sixth',
-        correct: true,
-        why: '8 useful bytes of every 48. In SoA the mass column is all useful.',
-      },
-      {
-        t: 'All of them',
-        why: 'Lines bring in the other five fields too.',
-      },
-      {
-        t: 'Half',
-        why: 'That would be 24 of 48 bytes; the loop needs only 8.',
-      },
-      {
-        t: 'None: the prefetcher skips the other fields',
-        why: 'The prefetcher fetches whole lines; it can’t pick fields out of them.',
       },
     ],
   },
@@ -1105,60 +1017,6 @@ export const quiz = [
         t: 'Probably nothing: it is a debug build, with unoptimised indexing. Measure with `--release`',
         correct: true,
         why: 'On this book’s machine the debug build made SoA two to five times slower than AoS; the `-O` build made it almost twice as fast.',
-      },
-    ],
-  },
-  {
-    q: 'In a SoA `Particles`, which of these is rejected by the borrow checker?',
-    options: [
-      {
-        t: '`let xs = &mut s.x; let vs = &s.vx;` used together',
-        why: 'Different fields are separate borrows: allowed.',
-      },
-      {
-        t: 'Calling a `&self` method inside a loop over `self.x.iter_mut()`',
-        correct: true,
-        why: 'The method borrows all of `self`, including the `x` column the loop already borrows mutably: E0502.',
-      },
-      {
-        t: '`s.x[i] += s.vx[i] * dt;`',
-        why: 'This is the hot loop; it compiles.',
-      },
-    ],
-  },
-  {
-    q: 'What does Viscosity give you that a hand-written Rust SoA doesn’t?',
-    options: [
-      {
-        t: 'Faster columns: a `Float64Array` beats a `Vec<f64>`',
-        why: 'Both are contiguous doubles; that isn’t the difference.',
-      },
-      {
-        t: 'A guarantee that `Vec` never reallocates',
-        why: 'Neither promises that; both grow.',
-      },
-      {
-        t: 'The rewrite done for you, with a safety analysis that every access was rewritten and the columns stay in step',
-        correct: true,
-        why: 'By hand, keeping every column in sync is your job, and tests are your check.',
-      },
-    ],
-  },
-  {
-    q: 'You time a function with `cargo run` and get 300 ms. What should you do before believing it?',
-    options: [
-      {
-        t: 'Nothing: Rust is compiled, so it is already fast',
-        why: 'A plain `cargo run` builds the `dev` profile, `opt-level = 0`.',
-      },
-      {
-        t: 'Rebuild with `--release`, and make sure the result is used',
-        correct: true,
-        why: 'In this chapter, the same loop took 317–513 ms in debug, 75–78 ms in release, and almost nothing in release when its result was unused.',
-      },
-      {
-        t: 'Run it twice more and take the average',
-        why: 'More runs do not fix an unoptimised build.',
       },
     ],
   },
@@ -1185,110 +1043,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `black_box(sum(black_box(&xs)))` achieve?',
+    q: 'On a shared cloud VM, criterion reports “Performance has regressed” by about 5 percent (p = 0.00), then “has improved” by about 3 percent on the next run, and the code never changed. What is the right reading?',
     options: [
       {
-        t: 'It turns off all optimisation inside `sum`',
-        why: '`sum` is still optimised. Only what flows in and out is hidden.',
+        t: 'The compiler made different code each time',
+        why: 'The same source built with the same compiler gives the same code; nothing was rebuilt differently.',
       },
       {
-        t: 'The inner call hides `xs` from the optimiser, and the outer one keeps the result “used”',
+        t: 'Criterion is broken',
+        why: 'The timings really did differ between the runs; criterion reported that correctly.',
+      },
+      {
+        t: 'The machine’s load changed between runs; differences of a few percent need repeated, alternating comparisons before you believe them',
         correct: true,
-        why: 'So the compiler can neither precompute the sum nor throw it away.',
-      },
-      {
-        t: 'It guarantees the benchmark measures exactly what production does',
-        why: 'It is best-effort, and production code may be optimised differently anyway.',
-      },
-    ],
-  },
-  {
-    q: 'A `u8` holding 255 has 1 added to it. What happens?',
-    options: [
-      {
-        t: 'It becomes 256 in both builds',
-        why: 'A `u8` cannot hold 256.',
-      },
-      {
-        t: 'Debug build: a panic, “attempt to add with overflow”; release build: it wraps to 0',
-        correct: true,
-        why: 'overflow-checks is on in `dev` and off in `release`; both outcomes were observed with rustc 1.97.',
-      },
-      {
-        t: 'A compile error in both builds',
-        why: 'With the 255 hidden behind `black_box`, the compiler cannot see the overflow coming.',
-      },
-    ],
-  },
-  {
-    q: 'engine/rust’s compile-speed file gives each figure as “median / min” over three rounds. Why report both?',
-    options: [
-      {
-        t: 'The median is always the true time',
-        why: 'On a noisy machine the median moves with the other tenants’ load.',
-      },
-      {
-        t: 'The minimum includes JIT warm-up',
-        why: 'Rust has no JIT. The TypeScript engine was warmed up before timing.',
-      },
-      {
-        t: 'The minimum is the most stable on a shared VM; the median shows how much the runs spread',
-        correct: true,
-        why: 'That is what its notes say; even so, one round can shift: `ledger`’s Rust minimum was 74, 73, then 109 µs.',
-      },
-    ],
-  },
-  {
-    q: 'Criterion reported `time: [658.64 ns 665.74 ns 672.99 ns]`. What are the three numbers?',
-    options: [
-      {
-        t: 'Fastest, median and slowest sample',
-        why: 'They come from bootstrapping the fitted slope, not from single samples.',
-      },
-      {
-        t: 'The low end, the estimate and the high end of a confidence interval for the time per iteration',
-        correct: true,
-        why: 'Criterion fits a line to the samples, then resamples them many times to see how much the slope could vary.',
-      },
-      {
-        t: 'Three separate runs',
-        why: 'It is one run of 100 samples.',
-      },
-    ],
-  },
-  {
-    q: 'Can the book’s Run button run a criterion benchmark?',
-    options: [
-      {
-        t: 'No: examples are single files built in debug mode, with no crates, so you need `cargo bench` on your own machine',
-        correct: true,
-        why: 'This chapter’s criterion runs used cargo 1.97, which fetched criterion 0.5.1.',
-      },
-      {
-        t: 'Yes, any crate works',
-        why: 'Criterion needs Cargo to fetch it and `cargo bench` to build it.',
-      },
-      {
-        t: 'Only in release mode',
-        why: 'The runner always builds in debug mode, and has no crates either way.',
-      },
-    ],
-  },
-  {
-    q: 'Why does criterion time samples of many iterations instead of single calls?',
-    options: [
-      {
-        t: 'To warm up the JIT',
-        why: 'Rust has no JIT; warm-up is a separate phase, for caches and the CPU.',
-      },
-      {
-        t: 'Because one call is too short to time accurately; the slope through many samples gives the time per call',
-        correct: true,
-        why: 'A sum of a thousand numbers took well under a microsecond here.',
-      },
-      {
-        t: 'To make the benchmark take exactly 5 seconds',
-        why: 'The 5 seconds is a budget for collecting samples, not the goal.',
+        why: 'Other tenants on a shared VM change how fast the same code runs, and a 1 percent noise threshold is too small there.',
       },
     ],
   },
@@ -1307,24 +1075,6 @@ export const quiz = [
         t: 'Reported them; they stay in the analysis',
         correct: true,
         why: 'They are a warning that the run was noisy, nearly always from other programs slowing yours.',
-      },
-    ],
-  },
-  {
-    q: 'Run 6 said “Performance has improved” by about 3 percent, run 8 “has regressed” by about 4, and the code never changed. What is the right reading?',
-    options: [
-      {
-        t: 'The compiler made different code each time',
-        why: 'The same build was reused; nothing was recompiled between runs.',
-      },
-      {
-        t: 'Criterion is broken',
-        why: 'Its test correctly found that the timings differed; the cause was outside the code.',
-      },
-      {
-        t: 'The machine’s load changed between runs; on a shared VM, differences of a few percent need repeated, alternating comparisons before you believe them',
-        correct: true,
-        why: 'The default 1 percent noise threshold is too small for this machine.',
       },
     ],
   },

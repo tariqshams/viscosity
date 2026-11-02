@@ -1,15 +1,11 @@
-// Chapter 203 cards: recall prompts, examples, exercises and quiz.
+// Chapter 135 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 135, 135.
+// Merged from the two old unsafe chapters.
 
 export const prompts = {
   'safety-comment': {
     q: 'What goes in a `// SAFETY:` comment?',
     a: 'The promise the unsafe operation needs, and why it holds at this spot (for example: “i < xs.len(), checked above”).',
-  },
-  'unsafe-five': {
-    q: 'Name the five operations that need `unsafe`, according to the Rust book.',
-    a: 'Dereference a raw pointer; call an unsafe function or method; access or modify a mutable static; implement an unsafe trait; access fields of a union.',
   },
   'unsafe-not': {
     q: 'Does an `unsafe` block turn off the borrow checker?',
@@ -19,17 +15,9 @@ export const prompts = {
     q: 'What happens when unsafe code breaks its promise, say by reading past the end of an array?',
     a: 'Undefined behaviour: not a panic. The compiler assumes it never happens, so anything may follow: garbage values, a crash, or a missing read.',
   },
-  'miri-what': {
-    q: 'What is Miri, and what is its limit?',
-    a: 'An interpreter (on nightly Rust) that runs your program or tests and reports undefined behaviour where it happens. It only checks the runs you give it, so a clean run proves nothing.',
-  },
   'safe-wrapper': {
     q: 'What is the usual shape of code that needs `unsafe`?',
     a: 'A small safe function whose own checks make the unsafe operation’s promise true, around a short `unsafe` block, so no caller can misuse it.',
-  },
-  'sound-nonlocal': {
-    q: 'A safe `at(xs, i)` checks `if i >= xs.len() { return None; }` before `get_unchecked(i)`. What happens if someone changes `>=` to `>`?',
-    a: 'At `i == len` it reads past the end: undefined behaviour. Only safe code changed, which is why soundness is non-local.',
   },
   forbid: {
     q: 'What does `#![forbid(unsafe_code)]` do, and how is it stronger than `deny`?',
@@ -39,33 +27,13 @@ export const prompts = {
     q: 'Write two ways to make a raw pointer to a local variable `n`.',
     a: '`&raw const n` gives a `*const` pointer; `&raw mut n` gives a `*mut` pointer. (`xs.as_ptr()` makes one from a slice.)',
   },
-  'raw-types': {
-    q: 'What is the difference between `*const T` and `*mut T`?',
-    a: 'Through `*const T` you may only read; through `*mut T` you may also write. Both need `unsafe` to dereference.',
-  },
   'raw-vs-ref': {
     q: 'Name three promises a reference `&T` keeps that a raw pointer does not.',
     a: 'Never null; points at a live, correctly aligned `T`; obeys the borrowing rules (and has a checked lifetime).',
   },
-  'add-units': {
-    q: 'On a `*const f64`, how far does `p.add(3)` move the address?',
-    a: '24 bytes: `add` counts elements, so it moves 3 × `size_of::<f64>()`.',
-  },
   'one-past': {
     q: 'For a pointer to the start of `len` elements, may you compute `p.add(len)`? May you read `*p.add(len)`?',
     a: 'You may compute it (one past the end is allowed, e.g. to compare), but reading through it is undefined behaviour.',
-  },
-  'miri-dangling': {
-    q: 'What did Miri say about reading `*p` after `drop(v)`, where `p = v.as_ptr()`?',
-    a: '“Undefined Behavior: memory access failed: … has been freed, so this pointer is dangling”, with where it was allocated and where freed.',
-  },
-  'debug-quiet': {
-    q: 'In an ordinary debug build, what did reading one element past a 3-element array through `p.add(3)` do?',
-    a: 'It quietly printed whatever lay past the array: no panic, no message. Only Miri reported it.',
-  },
-  'vec-raw': {
-    q: 'Why does drip-rs have no raw pointers, and what does it use instead?',
-    a: '`#![forbid(unsafe_code)]` rules out reading through them; its objects refer to each other with typed indices into arenas.',
   },
 };
 
@@ -236,6 +204,7 @@ The last test checks \`at\` against the safe \`get\` for every index from 0 to 1
     ],
   },
   columnSum: {
+    optional: true,
     lang: 'rust',
     title: 'One field, by stride',
     prompt: '`data` holds records of `width` numbers each, back to back (an array of structs, flattened: particle 0’s six fields, then particle 1’s, and so on). Write `column_sum(data, width, col)`, which adds up field `col` of every whole record, by walking a raw pointer from `data.as_ptr()` with `add`. Ignore a partial record at the end. If `col >= width` (which includes `width == 0`), return `0.0`. Put a `// SAFETY:` comment on the read.',
@@ -311,7 +280,7 @@ fn bad_columns_give_zero() {
       'Element number `r * width + col`. There are `data.len() / width` whole records (integer division drops the partial one), so loop `r` over `0..rows`.',
       'Check `col >= width` first and return `0.0` (that also avoids dividing by zero). Then `let p = data.as_ptr();` and add `unsafe { *p.add(r * width + col) }` to a running total.',
     ],
-    walkthrough: `**How to think about it.** This is the loop *Struct of arrays in Rust by hand* complained about: summing one field of an array of structs means jumping \`width\` elements at a time, a **stride**. Before touching \`unsafe\`, decide which indices you will read and prove each one is in bounds; the code then only has to read exactly those. Record \`r\` starts at element \`r * width\`, and its field \`col\` is \`r * width + col\`. The largest \`r\` is \`rows - 1\`, where \`rows = len / width\`, so the largest index is \`(rows - 1) * width + col\`, which is less than \`rows * width\` as long as \`col < width\`, and \`rows * width\` is at most \`len\`. That inequality is the SAFETY comment.
+    walkthrough: `**How to think about it.** This is the slow loop of an array of structs: summing one field of an array of structs means jumping \`width\` elements at a time, a **stride**. Before touching \`unsafe\`, decide which indices you will read and prove each one is in bounds; the code then only has to read exactly those. Record \`r\` starts at element \`r * width\`, and its field \`col\` is \`r * width + col\`. The largest \`r\` is \`rows - 1\`, where \`rows = len / width\`, so the largest index is \`(rows - 1) * width + col\`, which is less than \`rows * width\` as long as \`col < width\`, and \`rows * width\` is at most \`len\`. That inequality is the SAFETY comment.
 
 **The solution, line by line.**
 
@@ -418,7 +387,7 @@ fn none_far_out_and_when_empty() {
       'Return `None` first when `i >= xs.len()`.',
       'Then `let p = xs.as_ptr();` and read `unsafe { *p.add(i) }`.',
     ],
-    walkthrough: `**How to think about it.** The same shape as *Unsafe Rust*'s \`at\`, with a raw pointer instead of \`get_unchecked\`: prove \`i < xs.len()\` in safe code, then read.
+    walkthrough: `**How to think about it.** The same shape as the sound \`at\` of *unsafe and raw pointers*, with a raw pointer instead of \`get_unchecked\`: prove \`i < xs.len()\` in safe code, then read.
 
 **The solution, line by line.**
 
@@ -448,24 +417,6 @@ fn none_far_out_and_when_empty() {
 };
 
 export const quiz = [
-  {
-    q: 'Which of these needs an `unsafe` block?',
-    options: [
-      {
-        t: 'Calling `xs.get(i)`',
-        why: '`get` checks the index and returns an `Option`: safe.',
-      },
-      {
-        t: 'Calling `xs.get_unchecked(i)`',
-        correct: true,
-        why: 'It is an `unsafe fn`: the caller must promise `i < xs.len()`, so the call needs `unsafe` (E0133 otherwise).',
-      },
-      {
-        t: 'Indexing `xs[i]`',
-        why: 'Indexing checks and panics on a bad index: safe.',
-      },
-    ],
-  },
   {
     q: 'Inside an `unsafe` block, you take `&v[0]`, then `v.push(4)`, then use the reference. What happens?',
     options: [
@@ -525,46 +476,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'drip-rs has `#![forbid(unsafe_code)]`. What did that cost it, by this chapter’s measurement?',
-    options: [
-      {
-        t: 'Nothing: the checks are free',
-        why: 'The unchecked copy was 3 to 13 percent faster on the fastest runs.',
-      },
-      {
-        t: 'About half its speed',
-        why: 'Far less: checks that never fail are cheap because the branch predictor learns them.',
-      },
-      {
-        t: 'A few percent of run time, in exchange for collector bugs that panic instead of corrupting memory',
-        correct: true,
-        why: 'Five checked reads, made unchecked, saved 3 to 13 percent; the checks turn a stale handle into a panic.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these lines needs `unsafe`?',
-    options: [
-      {
-        t: '`let p = &raw const n;`',
-        why: 'Making a raw pointer is safe; it promises nothing.',
-      },
-      {
-        t: '`let v = *p;`',
-        correct: true,
-        why: 'Dereferencing a raw pointer is an unsafe operation (E0133 without `unsafe`).',
-      },
-      {
-        t: '`let q = std::ptr::null::<i32>();`',
-        why: 'Making a null pointer is safe; reading through it would not be.',
-      },
-      {
-        t: '`p == q`',
-        why: 'Comparing raw pointers compares addresses: safe.',
-      },
-    ],
-  },
-  {
     q: 'Why can you have a `*const i32` and a `*mut i32` to the same variable at once, when you could not have `&n` and `&mut n`?',
     options: [
       {
@@ -597,42 +508,6 @@ export const quiz = [
       {
         t: 'Computing `p.add(5)`',
         why: 'Beyond one past the end, even computing it is undefined behaviour for `add`.',
-      },
-    ],
-  },
-  {
-    q: 'You read through a pointer after the `Vec` it came from was dropped. In this chapter’s run, what did a normal debug build print?',
-    options: [
-      {
-        t: 'A panic saying the pointer was dangling',
-        why: 'That message came from Miri, not from the program.',
-      },
-      {
-        t: 'A tiny number with about three hundred zeros after the point: whatever was in freed memory',
-        correct: true,
-        why: 'Undefined behaviour gave no warning at all; Miri reported “this pointer is dangling”.',
-      },
-      {
-        t: 'A compile error',
-        why: 'rustc cannot see through raw pointers; it compiles.',
-      },
-    ],
-  },
-  {
-    q: 'What does `p.add(3)` do to a `*const f64`?',
-    options: [
-      {
-        t: 'Adds 3 to the address',
-        why: '`add` counts elements, not bytes.',
-      },
-      {
-        t: 'Reads the value 3 elements on',
-        why: '`add` only computes a pointer; reading needs `*`.',
-      },
-      {
-        t: 'Moves the address on by 3 × 8 = 24 bytes',
-        correct: true,
-        why: '3 elements of `size_of::<f64>()` = 8 bytes each.',
       },
     ],
   },
