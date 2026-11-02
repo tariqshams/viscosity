@@ -3,59 +3,46 @@ n: 128
 day: 21
 part: VII
 title: 'Closures, iterators and associated types'
-tagline: 'Rust has arrow functions too, written with bars. Each one is a small value that carries exactly the variables it uses, borrowed or moved in, and that is why Rust sorts closures into three kinds.'
+tagline: 'Rust has arrow functions too, written with bars, and array chains like map and filter that build no arrays at all. Both rest on traits: three for the kinds of closure, one with a single method for iterators, and an associated type that lets each iterator say what it yields.'
 objectives:
-  - Write closures with and without type annotations, and pass them to functions.
-  - Say how a closure captures each variable (shared borrow, mutable borrow or move), and when to write move.
+  - Write closures, say how a closure captures each variable, and when to write move.
   - Tell Fn, FnMut and FnOnce apart, and pick the right one as a parameter bound.
-  - Read and fix E0596, E0373 and E0382 when they come from a closure.
-  - Say what the Iterator trait asks for, and call next by hand.
-  - Choose between for x in &v, &mut v and v, and explain what each one does to v.
-  - Translate a JavaScript array chain into iterator adapters and a consumer.
-  - Explain laziness, and read the iterators in drip-rs's hash table.
-  - Declare a trait with an associated type and implement it, and read Self::Item and <T as Iterator>::Item.
-  - Explain why Iterator uses an associated type rather than a generic parameter.
-  - Implement Display, Default, From and Iterator for your own types, and say what each one unlocks.
-  - Recognise the rustc errors that mean a standard trait is missing.
+  - Translate a JavaScript array chain into lazy iterator adapters and a consumer, and say what next does.
+  - Implement a trait with an associated type, and explain why Iterator uses one rather than a generic parameter.
+  - Say what Display, Debug, Default, Clone, PartialEq, From and Iterator each unlock for a type.
 introduces: [rust-closure, rust-iterator, associated-type, std-traits]
-uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, string-vs-str, struct, impl, option, vec, trait, trait-bound, rust-generics, monomorphization, lifetime, lifetime-annotation, closure, arrow-function, map-filter-reduce, higher-order-function, callback, captured-environment, upvalue, closed-upvalue, closure-conversion, inlining, hash-table, garbage-collection, test-corpus, slice, self-receiver, for-of, iterator-protocol, lazy-sequence, open-addressing, aos-vs-soa, enum, match, result, question-mark, trait-object, error-enum, from-trait, generic, typescript, interface, language-plugin, token, scanner]
-sources: [klabnik2026, rustref-closure-types, rust-book-closures, rust-book-iterators, rust-std-iter, rustref-loop-expr, rust-reference-destructors, rust-book-advanced-traits, rust-std-from, rust-std-fmt, rust-std-default]
+uses: [rust, rust-functions, let-mut, ownership, move, borrow, struct, impl, option, vec, slice, trait, trait-bound, rust-generics, monomorphization, lifetime, derive, closure, arrow-function, map-filter-reduce, captured-environment, garbage-collection, iterator-protocol, typescript, aos-vs-soa]
+sources: [rustref-closure-types, rust-book-closures, rust-book-iterators, rust-std-iter, rust-book-advanced-traits, rust-std-fmt, klabnik2026]
 ---
 import CaptureSteps from '../../../components/diagrams/ch128/CaptureSteps';
 import FnLadder from '../../../components/diagrams/ch128/FnLadder';
 import LazySteps from '../../../components/diagrams/ch128/LazySteps';
-import ChainShapes from '../../../components/diagrams/ch128/ChainShapes';
 import ItemSteps from '../../../components/diagrams/ch128/ItemSteps';
 import StdTraitMap from '../../../components/diagrams/ch128/StdTraitMap';
 
-{/* ── merge: from old chapter 128, Iterators and closures in Rust ── */}
-
 ## Arrow functions, with bars
 
-In *Other ways to loop: map, filter, reduce and while* you passed small
-functions to array methods, `xs.filter((p) => p.alive)`, and in
-*Closures: functions that remember* you saw that such a function can
-use variables from the place it was written. Rust has the same tool,
-with a different spelling:
+Summing the positions of the live particles, in TypeScript and in Rust:
 
-```rust
-let limit = 2.0;
-let fast = |vx: f64| vx > limit;
-println!("{}", fast(3.5)); // true
+```ts
+ps.filter((p) => p.alive)
+  .map((p) => p.x)
+  .reduce((a, b) => a + b, 0);
 ```
 
-`|vx: f64| vx > limit` is a **closure**: the parameters go between two
-bars instead of brackets, and the body follows, here a single
-expression (for several statements, use a `{ }` block whose last line
-is the value). It *uses* `limit`, a variable from outside. Calling it
-looks like calling any function.
+```rust
+ps.iter()
+    .filter(|p| p.alive)
+    .map(|p| p.x)
+    .sum::<f64>()
+```
 
-How does a closure hold on to `limit`? In TypeScript the engine keeps
-the whole surrounding environment alive for the closure (the
-*captured environment* of *Closures in Drip*), and the garbage
-collector sorts out the rest. Rust has no collector, so a closure must
-follow the ownership rules like everything else: for each variable it
-uses, it either **borrows** it or **moves** it in.
+They read almost the same, but the TypeScript chain builds two whole
+arrays on the way and the Rust one builds none. And `|p| p.alive` is a
+**closure**, Rust's arrow function,
+with its parameters between bars, which has to follow the ownership
+rules like everything else, because there is no collector to keep a
+captured variable alive.
 
 <Analogy title="packing a lunchbox">
 A TypeScript closure is like being allowed back into the kitchen
@@ -64,279 +51,75 @@ closure packs a lunchbox instead. It takes exactly the things its body
 needs, and for each one it packs either a note saying where to find it
 (a borrow) or the thing itself (a move), then leaves with the box.
 <span slot="breaks">A lunchbox is packed when you leave; a closure's
-"box" is filled when the closure is created, but a borrowed item is
-still the original, so changes to it show up on both sides.</span>
+box is filled when the closure is created, but a borrowed item is still
+the original, so changes to it show up on both sides.</span>
 </Analogy>
 
-That lunchbox is real. The Rust Reference describes a closure as a
-value of a unique, unnamed type, "approximately equivalent to a struct
-which contains the captured values"<Cite id="rustref-closure-types" />.
-So `fast` is roughly `struct Fast<'a> { limit: &'a f64 }` with a call
-method, which is exactly the *closure conversion* of *Closure conversion
-and lambda lifting*, done for you by the compiler.
-
-## Borrow, mutably borrow, or move
-
-A closure borrows each variable only as strongly as its body needs: a
-shared borrow if it only reads, a mutable borrow if it changes the
-variable, and a move if it gives the value away<Cite id="rust-book-closures" />.
-Step through a counter, first borrowing and then with `move`:
+The Rust Reference says it plainly: a closure is a value of a unique,
+unnamed type, "approximately equivalent to a struct which contains the
+captured values"<Cite id="rustref-closure-types" />. For each variable
+it uses, it takes a shared borrow if it only reads, a mutable borrow if
+it changes it, and a move if it gives the value
+away<Cite id="rust-book-closures" />:
 
 <CaptureSteps client:visible />
 
-<Analogy extra title="a library book, a shared notebook, a gift">
-Lending someone a library book to read is a shared borrow: you both
-know where it is and nobody writes in it. Lending them the shared
-notebook to write in is a mutable borrow: nobody else may touch it
-until they hand it back. Giving them the book to keep is a move.
-<span slot="breaks">With `move` on a number, the closure gets a copy and
-you keep the original, which no gift does; that is because small
-values like `i32` are `Copy`, as *Ownership* explained.</span>
-</Analogy>
-
-<Callout kind="definition">
-A **closure** in Rust is an anonymous function written
-`|params| body` that can **capture** variables from where it is
-written. Each closure has its own unique type, roughly a struct of its
-captures. By default each capture is a shared borrow, a mutable borrow
-or a move, whichever the body needs; writing **`move`** before the bars
-makes every capture a move<Cite id="rust-book-closures" />.
-</Callout>
-
 <Examples of="rust-closure">
-
-```rust
-let add = |a, b| a + b;
-println!("{}", add(2, 3)); // 5
-```
 
 ```rust
 let mut count = 0;
 let mut tick = || count += 1;
 tick();
 tick(); // count is now 2
-```
-
-```rust
-// drip-rs's collector (gc.rs):
-self.interned.retain_keys(|s| {
-    marks.strings[s.handle.index()]
-});
+let mut c = make_counter();
+c(); c(); // 1, then 2
 ```
 
 </Examples>
 
-The first captures nothing: the types of `a` and `b` are inferred from
-the call, so `add(2, 3)` is `5`. The second changes `count`, so the
-closure holds a mutable borrow, and the binding needs `let mut`
-(calling it changes something). The third is real: after marking, the
-collector of *Reclaiming memory: mark and sweep* removes every interned
-string nobody marked. `retain_keys` calls the closure once per key,
-`s`, and keeps the key when it returns `true`; the closure only *reads*
-`marks`, a variable of the function around it, so it borrows it shared.
-
-Forget the second `mut`, or try to return a borrowing closure, and the
-errors say what to add (rustc 1.97, trimmed):
-
-```text
-error[E0596]: cannot borrow `tick` as
-  mutable, as it is not declared as
-  mutable
-  calling `tick` requires mutable
-  binding due to mutable borrow of `count`
-help: consider changing this to be
-  mutable: let mut tick
-```
-
-```rust
-fn make_counter() -> impl FnMut() -> u32 {
-    let mut count = 0;
-    || { count += 1; count } // E0373
-}
-```
-
-```text
-error[E0373]: closure may outlive the
-  current function, but it borrows
-  `count`, which is owned by the current
-  function
-help: to force the closure to take
-  ownership of `count` ..., use the
-  `move` keyword
-```
-
-`impl FnMut() -> u32` means "some closure type that can be called like
-this", since a closure's own type has no name you can write. The
-closure borrows `count`, a local that dies when `make_counter` returns,
-which is *Lifetimes*' dangling reference again; `move || { ... }`
-fixes it by putting `count` inside the closure, the compile-time twin
-of *Closing upvalues: a fresh variable every pass*.
-
-<Prompts ids={['clo-syntax', 'clo-capture', 'clo-mut', 'clo-move', 'clo-struct']} />
-
-## Fn, FnMut and FnOnce
-
-What a closure does with its captures decides how often it may be
-called, and three standard traits (from *Traits*) name the answer:
+`tick` changes `count`, so it holds a mutable borrow of it; and calling
+it changes the closure, so the binding needs `let mut` (without it,
+rustc 1.97 says E0596, "calling `tick` requires mutable binding due to
+mutable borrow of `count`"). `make_counter` is the counter of *Closures: functions
+that remember*: it ends with `move || { n += 1; n }`, where `move` puts
+`n` inside the closure value. Without `move` the closure would borrow a
+local that dies when `make_counter` returns, and rustc says E0373,
+"closure may outlive the current function". Its return type is
+`impl FnMut() -> u32`, "some closure type callable like this", because
+a closure's own type has no name you can write.
 
 <Figure takeaway="Every Fn is an FnMut, and every FnMut is an FnOnce." caption="The traits nest. A closure that only reads can be used where any of the three is wanted; one that moves a capture out can only be called once.">
   <FnLadder />
 </Figure>
 
-- **`FnOnce`**: can be called at least once. A closure that moves a
-  captured value *out* (returns it, or drops it) is only this, because
-  after one call there is nothing left to give.
-- **`FnMut`**: can be called many times, and may change its captures.
-- **`Fn`**: can be called many times, and only reads its captures.
-
-Call a closure that gives its capture away twice, and rustc explains
-exactly why not:
-
-```rust
-let name = String::from("drip");
-let take = move || name;
-let a = take();
-let b = take(); // E0382
-```
-
-```text
-error[E0382]: use of moved value: `take`
-note: closure cannot be invoked more
-  than once because it moves the
-  variable `name` out of its environment
-```
-
-A function that *takes* a closure picks the weakest bound it can live
-with. drip-rs's corpus runner takes `select: impl Fn(&str) -> bool` and
-only asks it questions; the hash table's `retain_keys` takes
-`impl FnMut(StrRef) -> bool`, so callers may pass a closure that counts
-as it goes; engine/rust's resolver has
-`with_block_scope(..., f: impl FnOnce(...))`, which calls `f` exactly
-once, between entering a scope and leaving it. Because each closure has
-its own type, such a parameter is generic in disguise, so
-monomorphization (from *One copy per type: monomorphization*) makes one copy per
-closure and the call can be inlined.
-
 <Callout kind="definition">
-The **Fn traits** say how a closure may be called. **`FnOnce`** takes
-the closure by value and may be called once; **`FnMut`** needs mutable
-access and may be called repeatedly; **`Fn`** needs only shared access.
-The compiler implements each one the body allows; ordinary functions
-implement all three, so a function's name can be passed wherever a
-closure is wanted<Cite id="klabnik2026" />.
+A **closure** is an anonymous function written `|params| body` that
+can capture variables from where it is written, each by shared borrow,
+mutable borrow or move, whichever the body needs (**`move`** forces
+moves). Each closure has its own type, and implements the **Fn traits**
+its body allows: **`Fn`** if it only reads its captures, **`FnMut`** if
+it changes them, and **`FnOnce`** always (one that moves a capture out
+is only `FnOnce`). Ordinary functions implement all
+three<Cite id="klabnik2026" />.
 </Callout>
 
-<Formal title="The traits nest">
+<Prompts ids={['clo-capture', 'clo-move', 'fn-traits']} />
 
-```text
-Fn ⊂ FnMut ⊂ FnOnce
-c : Fn     ⟹  c : FnMut  ⟹  c : FnOnce
-```
+<More title="Closures as parameters, in drip-rs">
+A function that takes a closure picks the weakest bound it can live
+with. drip-rs's hash table has `retain_keys(&mut self, mut keep: impl
+FnMut(StrRef) -> bool)`, which calls `keep` once per key, and its
+collector passes `|s| marks.strings[s.handle.index()]`, which only
+reads `marks`. Because each closure has its own type, such a parameter
+is generic in disguise, so monomorphization makes a copy per closure
+and the call can be inlined.
+</More>
 
-<span slot="read">The set of Fn closures is inside the set of FnMut
-closures, which is inside the set of FnOnce closures. Read the second
-line as: if closure c is Fn, then it is also FnMut, and therefore also
-FnOnce. So a parameter bounded by FnOnce accepts any closure at all,
-and one bounded by Fn accepts the fewest.</span>
-</Formal>
+## Iterators: one method, pulled lazily
 
-<OtherLanguages title="A counter that remembers">
-
-```rust
-fn make_counter()
-    -> impl FnMut() -> u32 {
-    let mut n = 0;
-    move || { n += 1; n }
-}
-let mut c = make_counter();
-c(); c(); // 1, then 2
-```
-
-```ts
-function makeCounter(): () => number {
-  let n = 0;
-  return () => ++n;
-}
-const c = makeCounter();
-c(); c(); // 1, then 2
-```
-
-</OtherLanguages>
-
-They behave the same, but the machinery differs. TypeScript keeps `n`
-alive in a captured environment for as long as `c` exists, and any
-function may change it; Rust makes you say `move` (so `n` lives inside
-the closure value), `let mut c` (calling it changes it) and `FnMut`
-(the caller may call it many times).
-
-<Run id="closure-kinds" />
-
-<Prompts ids={['fn-traits', 'fn-once', 'fn-bound']} />
-
-## Your turn
-
-<Exercise id="counters" />
-
-## What you learned
-
-- A **closure** is `|params| body`. It captures each variable it uses
-  by shared borrow, mutable borrow or move, as weakly as the body
-  allows; `move` forces moves, which a returned closure needs.
-- Each closure is a value of its own unnamed type, roughly a struct of
-  its captures: closure conversion, done by the compiler.
-- **`Fn`** only reads, **`FnMut`** changes its captures, **`FnOnce`**
-  may be called once, and they nest. Functions pick one as a bound.
-
-Next: iterators, the chains of `map` and `filter` that closures plug
-into, and why they build no arrays.
-
-
-{/* ── merge: from old chapter 128, Iterators in Rust ── */}
-
-## The same chain, a different machine
-
-With the array methods of *Other ways to loop: map, filter, reduce and
-while*, summing the positions of the live particles looks like this:
-
-```js
-const total = ps
-  .filter((p) => p.alive)
-  .map((p) => p.x)
-  .reduce((a, b) => a + b, 0);
-```
-
-`filter` builds a whole new array, `map` builds another, and `reduce`
-walks the second one. Here is the same thing in Rust, with the closures
-of the last chapter:
-
-```rust
-let total: f64 = ps
-    .iter()
-    .filter(|p| p.alive)
-    .map(|p| p.x)
-    .sum();
-```
-
-It reads almost the same, but it builds no arrays at all. That is the
-work of **iterators**, and this chapter is about how they do it.
-
-<Analogy title="a ticket dispenser">
-At a deli counter you pull a numbered ticket from a dispenser: one per
-pull, in order, until the roll runs out. Nobody prints the whole roll
-in advance and hands it to you; each pull produces one ticket. An
-iterator is the dispenser, `next` is the pull, and an empty roll is
-`None`.
-<span slot="breaks">A dispenser's roll exists before anyone pulls; an
-iterator over `0..1_000_000` makes each number only when asked, and an
-adapter like `map` does not even look at the roll until someone pulls
-from it.</span>
-</Analogy>
-
-## One method: next
-
-An iterator is any value with a `next` method that hands out items one
-at a time until it runs out. Its trait is tiny (trimmed from the
-standard library):
+An **iterator** is any value with a `next` method that hands out items
+one at a time, the iterator protocol of *Iterators and generators* with
+`Option` standing in for `{ value, done }`:
 
 ```rust
 trait Iterator {
@@ -346,255 +129,59 @@ trait Iterator {
 }
 ```
 
-`Item` is the type it yields (an *associated type*: each iterator
-picks it, as you will see in more depth later), and `next` returns
-`Some(item)` or, at the end, `None`. It takes `&mut self` because
-handing out an item moves the iterator on. Every other iterator method,
-dozens of them, is built on `next`<Cite id="rust-std-iter" />. This is
-the iterator protocol of *Iterators and generators*, with `Option`
-standing in for `{ value, done }`.
+`next` returns `Some(item)` or, at the end, `None`, and takes
+`&mut self` because handing out an item moves the iterator on. Every
+other iterator method is built on it<Cite id="rust-std-iter" />, and a
+`for` loop calls `into_iter` on what you give it and then `next` until
+`None`.
 
-```rust
-let v = vec![10, 20, 30];
-let mut it = v.iter();
-it.next(); // Some(&10)
-it.next(); // Some(&20)
-it.next(); // Some(&30)
-it.next(); // None
-```
-
-`v.iter()` makes an iterator that *borrows* `v` and hands out
-references, `&10` and so on; it must be `let mut it`, because each
-`next` changes where it is. Run it and the four lines print exactly as
-the comments say (`Some(10)` shows without the `&`, since printing a
-reference prints what it points at).
-
-<Prompts ids={['it-trait', 'it-next-mut']} />
-
-## What for really does
-
-You have used `for` since *Vec and HashMap* without seeing inside it.
-It is a shorthand for this trait, and the Rust Reference spells out the expansion<Cite id="rustref-loop-expr" />:
-
-<Formal title="A for loop, unfolded">
-
-```text
-for p in e { body }
-  ≡
-let mut it = IntoIterator::into_iter(e);
-loop {
-    match it.next() {
-        Some(p) => { body }
-        None => break,
-    }
-}
-```
-
-<span slot="read">A for loop over e is the same as: turn e into an
-iterator with into_iter, then loop forever asking it for the next item;
-if there is one, bind it to the pattern p and run the body; if there is
-none, stop. (The symbol ≡ reads "means exactly the same as".)</span>
-</Formal>
-
-`into_iter` is where the three forms of `for` differ, because each
-type decides what it hands out:
-
-```rust
-for x in &v { }     // x: &T, like v.iter()
-for x in &mut v { } // x: &mut T
-for x in v { }      // x: T, and v is gone
-```
-
-The last one *consumes* `v`: its `into_iter` takes `v` by value, which
-is *Ownership*'s move, applied to a loop. Use `v` afterwards and rustc
-1.97 says so, and suggests the fix:
-
-```text
-error[E0382]: borrow of moved value: `v`
-3 | for x in v {
-  |          - `v` moved due to this
-  |            implicit call to
-  |            `.into_iter()`
-help: consider iterating over a slice
-  of the `Vec<i32>`'s content to avoid
-  moving into the `for` loop: &v
-```
-
-<Prompts ids={['it-for', 'it-for-move']} />
-
-## Adapters, and laziness
-
-Methods that take an iterator and return a new one are **adapters**.
-Most of JavaScript's array methods have one, called on `xs.iter()`:
-
-```text
-JavaScript          Rust, on xs.iter()
-xs.map(f)           .map(f)
-xs.filter(f)        .filter(f)
-xs.reduce(f, a)     .fold(a, f)
-xs.find(f)          .find(f)
-xs.some(f)          .any(f)
-xs.every(f)         .all(f)
-xs.entries()        .enumerate()
-```
-
-Rust adds some that JavaScript lacks, such as `.zip(ys)`, which walks
-two sequences side by side, and `.take(n)`. Methods that pull items
-until the end are **consumers**: `sum`, `count`, `fold`, `for_each`,
-and `collect`, which builds a `Vec` (or a `HashMap`) from whatever comes
-out, with the type written on the `let`.
-
-The big difference is **laziness**. An adapter does nothing when you
-call it; it only wraps the iterator in a new struct (a `Filter`, a
-`Map`). Work starts when a consumer at the end calls `next`, and then
-each item travels the whole chain before the next one
-starts<Cite id="rust-book-iterators" />:
-
-<Figure takeaway="JavaScript fills an array per stage; Rust nests small iterator structs and pulls one item at a time." caption="The same chain in both languages. Rust's Map holds a Filter, which holds the slice iterator; sum pulls items through all three.">
-  <ChainShapes />
-</Figure>
+Methods that wrap one iterator in another, such as `map`, `filter`,
+`zip`, `enumerate` and `take`, are **adapters**; methods that pull
+until the end, such as `sum`, `count`, `fold` and `collect` (which
+builds a `Vec` or a `HashMap`), are **consumers**. The difference from
+JavaScript is that adapters are **lazy**: calling one only builds a
+small struct around the iterator, and work starts when a consumer calls
+`next`, after which each item travels the whole chain before the next
+one starts<Cite id="rust-book-iterators" />:
 
 <LazySteps client:visible />
 
-<Analogy extra title="an assembly line versus batch cooking">
-Batch cooking is JavaScript's chain: chop *all* the onions into one
-bowl, then fry the whole bowl, then plate everything. An assembly line
-is Rust's: one item goes from station to station to the end before the
-next one enters, so no bowl of half-done items ever exists.
-<span slot="breaks">A real line keeps every station busy at once; an
-iterator chain runs on one thread, one station at a time, and the
-"line" only moves when the last station asks.</span>
-</Analogy>
-
-Forget the consumer and nothing happens at all. rustc warns
-`unused Map that must be used`, with the note "iterators are lazy and
-do nothing unless consumed"; and if you write `let ys: Vec<f64> =
-xs.iter().map(...)`, the E0308 type error's help line says "consider
-using `.collect()`".
-
-<Callout kind="definition">
-An **iterator** is a value whose type implements the `Iterator` trait:
-an `Item` type and `fn next(&mut self) -> Option<Self::Item>`.
-**Adapters** (`map`, `filter`, `zip`, `take`, ...) wrap an iterator in
-another, lazily; **consumers** (`sum`, `count`, `collect`, `for`) call
-`next` until `None`. Because each adapter is a small struct and its
-closure is known, the chain compiles to about the same code as a
-hand-written loop<Cite id="klabnik2026" />.
-</Callout>
-
 <Examples of="rust-iterator">
-
-```rust
-let n = (1..=10).filter(|x| x % 3 == 0)
-    .count(); // 3: 3, 6 and 9
-```
-
-```rust
-let names = ["a", "b"];
-for (i, s) in names.iter().enumerate() {
-    println!("{i}: {s}"); // 0: a, 1: b
-}
-```
-
-```rust
-// drip-rs's hash table (table.rs)
-pub fn iter(&self) -> impl Iterator<
-    Item = (StrRef, Value)> + '_ {
-    self.keys.iter()
-        .zip(&self.values)
-        .filter_map(|(key, value)| {
-            key.map(|k| (k, *value))
-        })
-}
-```
-
-</Examples>
-
-The first counts the multiples of 3 from 1 to 10 (`1..=10` is itself
-an iterator, including 10) without storing any of them. The second is
-JavaScript's `entries()`: `enumerate` pairs each item with its index,
-and the `for` pattern `(i, s)` unpacks the pair. The third is real. The
-table of *Finding things fast: hash tables* stores its keys and values
-as two columns, struct-of-arrays style; `zip` walks slot *i* of both
-columns together, and `filter_map` (a filter and a map in one) skips
-empty slots, whose key is `None`, while unpacking the full ones. The
-`+ '_` says the returned iterator borrows the table (*Lifetime
-annotations*). The collector traces a table with
-`for (key, value) in self.iter()`, and `grow` re-inserts every entry
-the same way.
-
-<Run id="lazy-trace" />
-
-<OtherLanguages title="Sum the doubled even numbers">
 
 ```rust
 let xs = [1, 2, 3, 4];
 let total: i32 = xs.iter()
     .filter(|x| *x % 2 == 0)
-    .map(|x| x * 2)
-    .sum(); // 12
+    .map(|x| x * 10)
+    .sum(); // 60
 ```
 
-```ts
-const xs = [1, 2, 3, 4];
-const total = xs
-  .filter((x) => x % 2 === 0)
-  .map((x) => x * 2)
-  .reduce((a, b) => a + b, 0); // 12
-```
+</Examples>
 
-</OtherLanguages>
+`xs.iter()` hands out `&i32`s. `filter` keeps the even ones (its
+closure gets a `&&i32`, and `*x` peels off one layer); `map` multiplies
+by ten; `sum` pulls each item through and adds 20 and 40, so `total` is
+`60`, and no array of `[2, 4]` or `[20, 40]` ever exists. Forget the
+consumer and nothing happens at all: rustc warns "unused `Map` that
+must be used", because "iterators are lazy and do nothing unless
+consumed". Since each adapter is a small struct with a known closure,
+the chain compiles to about the same code as a hand-written loop.
 
-Same answer, different work: TypeScript's version builds `[2, 4]` and
-then `[4, 8]` before adding, while Rust's builds nothing and pulls each
-number through. TypeScript does have lazy iterators (generators, from
-*Iterators and generators*), but its array methods are eager; in Rust,
-lazy is the default. Notice also `*x` in the filter: `iter()` hands out
-`&i32`, and `filter` passes its closure a reference to *that*, a
-`&&i32`; `*x` peels off one layer, and Rust's arithmetic accepts the
-`&i32` that is left.
+<More title="Run it: closures of three kinds; who runs when">
+<Run id="closure-kinds" />
 
-<Prompts ids={['it-lazy', 'it-js', 'it-collect', 'it-zip']} />
+<Run id="lazy-trace" />
+</More>
 
-## Your turn
-
-<Exercise id="aliveCounter" />
-
-<Exercise id="wordsIter" />
-
-## What you learned
-
-- An **iterator** has one required method,
-  `next(&mut self) -> Option<Item>`; everything else is built on it.
-- `for` calls `into_iter` and then `next` until `None`: `&v`, `&mut v`
-  and `v` give `&T`, `&mut T` and `T`, and the last one moves `v`.
-- **Adapters** such as `map`, `filter` and `zip` are **lazy** structs
-  wrapped around each other; a **consumer** such as `sum` or `collect`
-  pulls, and each item goes through every stage with no arrays in
-  between.
-
-Next: how Rust splits a program into modules, and what `pub` really
-opens up.
-
-
-{/* ── merge: from old chapter 128, Associated types and the standard traits ── */}
+<Prompts ids={['it-trait', 'it-lazy']} />
 
 ## A blank each type fills in once
 
-*Iterators and closures in Rust* wrote them; here is the trait they implement, as the
-standard library declares it (minus its many provided methods):
+`type Item;` in that trait is a blank. The trait does not know what a
+particular iterator yields, so it names the answer `Self::Item` and
+lets each impl fill it in:
 
-```rust
-trait Iterator {
-    type Item;
-    fn next(&mut self)
-        -> Option<Self::Item>;
-}
-```
-
-`type Item;` is a blank. The trait does not know what a particular
-iterator yields, so it names the answer `Self::Item` and lets each impl
-fill it in:
+<Examples of="associated-type">
 
 ```rust
 struct Countdown(u32);
@@ -608,230 +195,54 @@ impl Iterator for Countdown {
 }
 ```
 
-`type Item = u32;` fills the blank for this one type, and `next` can
-then say `Option<u32>` (writing `Option<Self::Item>` would mean the
-same). The body ends the countdown with `None` at zero; otherwise it
-steps down by one and hands out the number it was holding, so a
-`Countdown(3)` yields 3, 2, 1. From then on rustc knows that a
-`Countdown` yields `u32`s: `for x in Countdown(3)` makes `x` a `u32`,
-and `Countdown(3).sum::<u32>()` is 6, with no annotation anywhere else.
+</Examples>
 
-<Analogy title="a franchise agreement">
-A coffee chain's agreement says every shop must serve "a house blend",
-without saying which; each shop picks its own and prints it on the menu.
-The agreement names the blank; the shop fills it once.
-<span slot="breaks">A shop can change its blend next year. An `impl`
-chooses its `Item` once, when the program is compiled, and every use of
-that type sees the same answer.</span>
-</Analogy>
-
-<Analogy extra title="a country's power sockets">
-Know the country and you know its voltage: 230 volts in France, 120 in
-Canada. Nobody asks "which voltage of France?". An associated type works
-the same way: know the type, and you know its `Item`.
-<span slot="breaks">Some countries have two voltages in different
-buildings; a type can implement a trait only once, so it has exactly
-one `Item` for it.</span>
-</Analogy>
-
-Why not write `trait Iterator<T>` instead, the way TypeScript writes
-`Iterator<T>`? Step through the difference:
+`type Item = u32;` fills the blank for this one type, so `next` may
+say `Option<u32>`. The body ends at zero with `None`; otherwise it
+steps down and hands out the number it was holding, so `Countdown(3)`
+yields 3, 2, 1. From then on rustc knows that a `Countdown` yields
+`u32`s, and every adapter works on it with no annotation:
+`Countdown(3).sum::<u32>()` is `6`. Why not `trait Iterator<T>`, the
+way TypeScript writes `Iterator<T>`? Step through the difference:
 
 <ItemSteps client:visible />
-
-With a generic parameter a type may implement the trait many times
-(`Iterator<u32>` *and* `Iterator<String>` for `Countdown`), and every
-call to `next` would have to say which; with an associated type there is
-one impl per type, so the item type follows from the type
-alone<Cite id="rust-book-advanced-traits" />. Ask for the generic form
-and rustc says so:
-
-```text
-error[E0107]: trait takes 0 generic
-  arguments but 1 generic argument was
-  supplied
-2 | impl Iterator<u32> for Countdown {
-  |      ^^^^^^^^ expected 0 generic
-  |               arguments
-```
-
-Forget the blank, and the message names it:
-
-```text
-error[E0046]: not all trait items
-  implemented, missing: `Item`
-  = help: implement the missing item:
-    `type Item = /* Type */;`
-```
 
 <Callout kind="definition">
 An **associated type** is a type declared inside a trait (`type Item;`)
 that each implementation sets (`type Item = u32;`). Inside the trait it
-is written `Self::Item`; from outside, `<T as Iterator>::Item`, or
-`T::Item` when it is unambiguous. A bound can pin it:
-`I: Iterator<Item = u32>`. Because a type implements a trait at most
-once, it has exactly one value for each associated type.
+is `Self::Item`; from outside, `<T as Iterator>::Item`, or `T::Item`;
+and a bound can pin it: `I: Iterator<Item = u32>`. Because a type
+implements a trait at most once, it has exactly one value for each
+associated type, so the type follows from the implementing type
+alone<Cite id="rust-book-advanced-traits" />.
 </Callout>
 
-<Formal title="Projecting an associated type">
+The `type Output` of an `Add` impl is one too, and so is the
+`type Extra` of engine/rust's `LanguagePlugin`, each plugin's private
+data.
 
-```text
-impl Iterator for C { type Item = U; … }
-────────────────────────────────────────
-      <C as Iterator>::Item = U
-```
-
-<span slot="read">If there is an impl of Iterator for C that sets Item
-to U, then the projection "C's Item, as an Iterator" equals U.
-Since at most one such impl exists, the projection behaves
-like a function from types to types: one C in, one U out.</span>
-</Formal>
-
-<Examples of="associated-type">
-
-```rust
-fn total<I: Iterator<Item = u32>>(
-    it: I,
-) -> u32 {
-    it.sum()
-}
-```
-
-```rust
-// companion/rust/src/gc.rs
-impl<T: HeapObject> Index<Gc<T>> for Heap {
-    type Output = T;
-    fn index(&self, h: Gc<T>) -> &T { … }
-}
-```
-
-```rust
-// engine/rust/crates/core/src/plugin.rs
-pub trait LanguagePlugin {
-    type Extra;
-    fn lower(&self, source: &str) -> Result<
-        LoweredModule<Self::Extra>,
-        CompileError>;
-}
-```
-
-</Examples>
-
-The first takes any iterator whose items are `u32`s, by pinning the
-associated type in the bound. The second is drip-rs's heap: `heap[h]`
-calls `Index::index`, and `type Output = T` says what you get back,
-here an object of whichever type the handle `Gc<T>` names. The third is
-Viscosity's plugin trait, trimmed: each language front-end keeps its own
-private data from `lower` to `emit`, and `type Extra` lets each plugin
-choose that type. (It is also why, as *One copy per type: monomorphization* showed, `dyn
-LanguagePlugin` needs the extra spelled out: `dyn LanguagePlugin<Extra
-= X>`.)
-
-<Prompts ids={['assoc-what', 'assoc-why', 'assoc-bound']} />
+<Prompts ids={['assoc-what', 'assoc-why']} />
 
 ## The standard traits
 
-Some traits are so common that the whole language leans on them. Each
-one, implemented for your type, unlocks something:
+`Iterator` is one of a handful of traits that the language and its
+library are built around. Implement one for your type, and a feature
+starts working:
 
-<Figure takeaway="Implement the trait, and the language feature starts working for your type." caption="The standard traits used most, what each one unlocks, and whether #[derive] can write it (the next chapter covers derive).">
+<Figure takeaway="Implement the trait, and the language feature starts working for your type." caption="The standard traits used most, what each one unlocks, and whether #[derive] can write it.">
   <StdTraitMap />
 </Figure>
 
 <Callout kind="definition">
 The **standard traits** are the traits in `std` that the language and
-library are built around: `Display` (`{}` and `to_string`), `Debug`
-(`{:?}`, and the messages of `assert_eq!`)<Cite id="rust-std-fmt" />,
-`Default` (a sensible starting value)<Cite id="rust-std-default" />,
+library lean on: `Display` (`{}` and `to_string`) and `Debug`
+(`{:?}`)<Cite id="rust-std-fmt" />, `Default` (a starting value),
 `Clone` and `Copy`, `PartialEq` and `PartialOrd` (`==`, `<`), `Hash`
-(keys of a `HashMap`), `From`/`Into` (conversions, used by
-`?`)<Cite id="rust-std-from" /> and `Iterator`/`IntoIterator` (`for`
-loops and adapters)<Cite id="rust-std-iter" />.
+(keys of a `HashMap`), `From` and `Into` (conversions, which `?` uses)
+and `Iterator` and `IntoIterator` (`for` loops and adapters).
 </Callout>
 
 <Examples of="std-traits">
-
-```rust
-// engine/rust/crates/core/src/plugin.rs
-impl fmt::Display for CompileError {
-    fn fmt(&self,
-        f: &mut fmt::Formatter<'_>)
-        -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-```
-
-```rust
-// engine/rust/crates/core/src/lib.rs
-impl Default for CompileOptions {
-    fn default() -> Self {
-        let d = PlanOptions::default();
-        CompileOptions { mode: d.mode, … }
-    }
-}
-```
-
-```rust
-// engine/rust/crates/cli/src/main.rs
-impl From<String> for CliError {
-    fn from(e: String) -> Self {
-        CliError::Other(e)
-    }
-}
-```
-
-</Examples>
-
-All three are Viscosity's Rust engine. `Display` is what makes
-`println!("{e}")` print a compile error as plain text; it gets one
-method, `fmt`, which writes into a `Formatter`. `Default` gives
-`CompileOptions::default()`, so callers can write
-`CompileOptions { mode: Mode::OptIn, ..Default::default() }` and keep
-every other option as it was. And `From<String>` lets `?`
-turn a `String` error into a `CliError` as it returns, and gives you
-`.into()` for free, because `std` implements `Into` for every `From`.
-
-Leave one out and the error tells you which:
-
-```text
-error[E0277]: `Pt` doesn't implement
-  `std::fmt::Display`
-  = note: in format strings you may be able
-    to use `{:?}` (or {:#?} for
-    pretty-print) instead
-```
-
-*Ownership*'s `Noisy` example printed a line as each value was
-dropped; that line came from an impl of **`Drop`**, whose one method, `drop(&mut
-self)`, Rust calls for you at that moment, just before the memory is
-freed<Cite id="rust-reference-destructors" />. You never call it
-yourself: `b.drop()` is error E0040, "explicit use of destructor
-method", because Rust would then drop `b` a second time at the end of
-the scope. To drop a value early, pass it to `std::mem::drop` (in the
-prelude, so plain `drop(b)`), which takes ownership and lets the value
-go<Cite id="klabnik2026" />:
-
-```rust
-struct Guard(&'static str);
-impl Drop for Guard {
-    fn drop(&mut self) {
-        println!("drop {}", self.0);
-    }
-}
-let _a = Guard("a");
-let b = Guard("b");
-drop(b);
-println!("end of main");
-```
-
-Inside `main` it printed `drop b`, `end of main`, then `drop a` (rustc
-1.97): `b` went when it was passed to `drop`, and `_a` at the closing
-brace.
-
-<Prompts ids={['std-drop']} />
-
-<OtherLanguages title="A point that prints itself">
 
 ```rust
 impl fmt::Display for Pt {
@@ -843,45 +254,50 @@ impl fmt::Display for Pt {
 }
 ```
 
-```ts
-class Pt {
-  constructor(
-    public x: number,
-    public y: number) {}
-  toString() {
-    return `(${this.x}, ${this.y})`;
-  }
-}
-```
+</Examples>
 
-</OtherLanguages>
+`Display` has one method, `fmt`, which writes into a `Formatter` (the
+`write!` macro works like `format!`, into `f`); with it,
+`println!("{p}")` prints `(1, 2)` and `p.to_string()` works. Where
+every TypeScript object has a `toString`, Rust gives a type nothing for
+free: without the impl, rustc says E0277, "`Pt` doesn't implement
+`std::fmt::Display`", and suggests the `{:?}` of a derived `Debug`. The deep dive
+*Operator traits, Drop and derive* goes through the rest,
+including `Drop`, the trait whose method Rust calls when a value is
+dropped; *Errors at scale* puts `From` to work.
 
-In TypeScript every object already has a `toString`, and `console.log` shows any
-object's fields. Rust gives a type nothing for free: no `Display`, no
-`{}`; no `Debug`, no `{:?}`; and the mistake is a compile error, not an
-unhelpful line in the output.
-
+<More title="Run it: one type, five standard traits">
 <Run id="std-traits" />
+</More>
 
-<Prompts ids={['std-display', 'std-default', 'std-from', 'std-iter', 'std-free']} />
+<Prompts ids={['std-display']} />
 
 ## Your turn
+
+<Exercise id="aliveCounter" />
+
+<Exercise id="counters" />
+
+<Exercise id="wordsIter" />
 
 <Exercise id="countdown" />
 
 ## What you learned
 
-- An **associated type** is a blank in a trait (`type Item;`) that each
-  impl fills once; it is reached as `Self::Item` or
-  `<T as Iterator>::Item`, and pinned in bounds as `Iterator<Item = u32>`.
-- A generic parameter allows many impls per type; an associated type
-  allows one, which is why `Iterator` uses it.
-- The **standard traits** (`Display`, `Debug`, `Default`, `Clone`,
-  `PartialEq`, `From`, `Iterator`, ...) are how a type joins in with
-  `println!`, `?`, `for` and `==`; **`Drop`** runs your code when a
-  value is dropped, and `drop(x)` drops it early.
+- A **closure** is `|params| body`, a value of its own type that
+  captures each variable it uses by shared borrow, mutable borrow or
+  move; `move` forces moves, which a returned closure needs. **`Fn`**
+  reads, **`FnMut`** changes, **`FnOnce`** may be called once.
+- An **iterator** has one required method, `next(&mut self) ->
+  Option<Item>`; adapters such as `map` and `filter` are lazy, and a
+  consumer such as `sum` or `collect` pulls each item through every
+  stage, with no arrays in between.
+- An **associated type** is a blank in a trait that each impl fills
+  once, which is why `Iterator` uses one.
+- The **standard traits** are how a type joins in with `println!`,
+  `==`, `for` and `?`.
 
-Next: the traits behind `+`, `[]` and `==`, and how `#[derive]` writes
-the boring impls for you.
+Next: *Modules, visibility and workspaces*, how Rust splits a program
+into modules, and what `pub` really opens up.
 
 <Quiz />

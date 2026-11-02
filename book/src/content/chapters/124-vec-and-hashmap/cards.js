@@ -1,19 +1,10 @@
-// Chapter 192 cards: recall prompts, examples, exercises and quiz.
+// Chapter 124 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 124, 124.
 
 export const prompts = {
   'vec-three': {
     q: 'What three things does a `Vec` value itself (on the stack) hold?',
     a: 'A pointer to its heap buffer, its length and its capacity.',
-  },
-  'vec-cap': {
-    q: 'What is the difference between a `Vec`’s length and its capacity?',
-    a: 'Length is how many elements are in use; capacity is how many fit in the buffer before it must grow.',
-  },
-  'vec-same-type': {
-    q: 'Why can a `Vec<f64>` store its numbers side by side with no boxes?',
-    a: 'Every element has the same type and size, so element i sits at a fixed offset, i × 8 bytes.',
   },
   'vec-get': {
     q: 'What is the difference between `v[5]` and `v.get(5)` on a two-element `Vec`?',
@@ -23,21 +14,9 @@ export const prompts = {
     q: 'Why does Rust reject a `push` while a reference into the `Vec` is still in use?',
     a: 'The push may move the elements to a new buffer, leaving the reference pointing at freed memory (E0502).',
   },
-  'vec-oob': {
-    q: 'What happens when a Rust program reads `v[i]` with `i` past the end?',
-    a: 'It panics with “index out of bounds”, instead of reading whatever memory is there.',
-  },
   'vec-loops': {
     q: 'What do `for x in &v`, `for x in &mut v` and `for x in v` each give you?',
     a: 'A shared reference to each element; a mutable reference to each; the elements themselves, using `v` up.',
-  },
-  'vec-slice-param': {
-    q: 'Why should a function that only reads numbers take `&[f64]` rather than `&Vec<f64>`?',
-    a: 'A `&Vec<f64>` turns into a slice automatically, and the function then also works on arrays and parts of a `Vec`.',
-  },
-  'map-import': {
-    q: 'What must a Rust file write before it can use `HashMap`?',
-    a: '`use std::collections::HashMap;` (unlike `Vec`, it is not imported automatically).',
   },
   'map-get': {
     q: 'What does `m.get(k)` return, and why not just the value?',
@@ -47,25 +26,13 @@ export const prompts = {
     q: 'What does `m.entry(k).or_insert(0)` return?',
     a: 'A mutable reference to the value for `k`, after inserting `0` if `k` was not there yet.',
   },
-  'map-insert': {
-    q: 'What does `insert` do when the key is already in the map?',
-    a: 'It replaces the value and returns the old one, `Some(old)`; the key still appears once.',
-  },
   'map-own': {
     q: 'After `m.insert(k, 1)` with `k: String`, can you still use `k`?',
     a: 'No: the key moved into the map (E0382). Insert `k.clone()` if you need to keep it.',
   },
-  'map-index': {
-    q: 'What does `m["mass"]` do when `"mass"` is not a key?',
-    a: 'It panics with “no entry found for key”; `get` returns `None` instead.',
-  },
   'map-order': {
     q: 'Can you rely on the order in which a `HashMap` gives back its entries?',
     a: 'No. It is arbitrary, and with the randomly seeded default hasher it changes from run to run.',
-  },
-  'map-indexmap': {
-    q: 'Why does the Rust port of Viscosity use `IndexMap` in places?',
-    a: 'It keeps insertion order, so its decisions and output match the TypeScript reference exactly.',
   },
 };
 
@@ -122,6 +89,7 @@ fn main() {
 export const exercises = {
   constants: {
     lang: 'rust',
+    optional: true,
     title: 'A constant pool without repeats',
     prompt: 'Drip’s compiler keeps each function’s constants in a `Vec`, and the bytecode names a constant by its index. Write `add_constant(cs, v)`: if a constant equal to `v` is already in `cs`, return its index and add nothing; otherwise push `v` and return the index it now has. (The companion’s `Chunk::add_constant` always pushes; reusing equal constants keeps the pool small, which matters because an instruction can only name 65,536 of them.)',
     starter: `fn add_constant(cs: &mut Vec<f64>,
@@ -413,24 +381,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the standard library promise about how much a `Vec` grows?',
-    options: [
-      {
-        t: 'It always doubles',
-        why: 'Doubling is what this machine showed, but the docs guarantee no particular strategy.',
-      },
-      {
-        t: 'No particular strategy, but `push` is amortised constant time',
-        correct: true,
-        why: 'Also promised: `with_capacity(n)` has room for at least n, and a Vec never shrinks by itself.',
-      },
-      {
-        t: 'It grows by one element each time',
-        why: 'That would make n pushes cost n² work; the docs promise amortised constant time.',
-      },
-    ],
-  },
-  {
     q: 'Which code does the borrow checker reject?',
     options: [
       {
@@ -449,64 +399,6 @@ export const quiz = [
         t: '`let a = &v[0]; v.push(1.0); println!("{}", a);`',
         correct: true,
         why: 'The shared borrow `a` is still used after the mutable borrow for `push`: E0502.',
-      },
-    ],
-  },
-  {
-    q: 'What does `xs.pop()` return when `xs` is `vec![1.5, 2.5]`, and when it is empty?',
-    options: [
-      {
-        t: '`2.5`, and `0.0` when empty',
-        why: 'There is no sensible default, so `pop` returns an `Option`.',
-      },
-      {
-        t: '`Some(2.5)`, and `None` when empty',
-        correct: true,
-        why: 'It removes the last element and wraps it; an empty `Vec` has nothing to give.',
-      },
-      {
-        t: '`Some(1.5)`, and `None` when empty',
-        why: '`pop` takes from the end, like a stack.',
-      },
-    ],
-  },
-  {
-    q: 'After `for x in v { ... }`, can you call `v.len()`?',
-    options: [
-      {
-        t: 'No: the loop moved the elements out and used `v` up (E0382)',
-        correct: true,
-        why: 'rustc’s help suggests `for x in &v` to borrow instead.',
-      },
-      {
-        t: 'Yes: loops always borrow',
-        why: 'Only `&v` and `&mut v` borrow; plain `v` is moved into the loop.',
-      },
-      {
-        t: 'Yes, and it returns 0',
-        why: 'It doesn’t compile at all.',
-      },
-    ],
-  },
-  {
-    q: 'What is `m.get("x")` for a `HashMap<String, usize>` that holds `"x"` with count 2?',
-    options: [
-      {
-        t: '`2`',
-        why: '`get` can fail, so it doesn’t return a bare value.',
-      },
-      {
-        t: '`Some(&2)`',
-        correct: true,
-        why: 'An `Option` holding a reference: the map keeps owning the value.',
-      },
-      {
-        t: '`Some(2)`',
-        why: 'It lends the value instead of copying or moving it out.',
-      },
-      {
-        t: '`Ok(2)`',
-        why: 'A missing key isn’t an error with a reason; it’s an absence, so `Option`.',
       },
     ],
   },
@@ -543,42 +435,6 @@ export const quiz = [
         t: 'The default hasher is randomly seeded, so keys land in different slots each run',
         correct: true,
         why: 'The random seed resists attacks that choose colliding keys. Sort, or use an insertion-ordered map, when order matters.',
-      },
-    ],
-  },
-  {
-    q: '`let k = String::from("x"); m.insert(k, 1); println!("{}", k);` What happens?',
-    options: [
-      {
-        t: 'E0382: `k` moved into the map',
-        correct: true,
-        why: 'The map owns its keys. Insert `k.clone()` to keep a copy.',
-      },
-      {
-        t: 'It prints `x`',
-        why: 'Inserting moves the `String`; nothing is copied for you.',
-      },
-      {
-        t: 'The map stores a reference to `k`',
-        why: 'The key type is `String`, so the map stores the `String` itself.',
-      },
-    ],
-  },
-  {
-    q: 'How does drip-rs’s `Table` differ from std’s `HashMap`?',
-    options: [
-      {
-        t: 'It is a wrapper around `HashMap`',
-        why: 'It is its own open-addressing table over two `Vec`s.',
-      },
-      {
-        t: 'It uses SipHash to resist attacks',
-        why: 'It never hashes during lookups; the hash was computed when the string was interned.',
-      },
-      {
-        t: 'It is a struct of arrays with linear probing and tombstones, and its interned keys carry their hash',
-        correct: true,
-        why: 'It is the hash table of Part IV, ported. std’s map is a SwissTable port with quadratic probing and SipHash 1-3.',
       },
     ],
   },

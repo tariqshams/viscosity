@@ -1,75 +1,26 @@
-// Chapter 196 cards: recall prompts, examples, exercises and quiz.
+// Chapter 128 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 128, 128, 128.
 
 export const prompts = {
-  'clo-syntax': {
-    q: 'Write a Rust closure that takes `a` and `b` and returns their sum.',
-    a: '`|a, b| a + b` (with types: `|a: f64, b: f64| -> f64 { a + b }`).',
-  },
   'clo-capture': {
-    q: 'A closure uses an outside variable `x`. What are the three ways it can capture `x`, and which does it pick?',
+    q: 'A Rust closure uses an outside variable `x`. What are the three ways it can capture `x`, and which does it pick?',
     a: 'Shared borrow, mutable borrow or move. It picks the weakest one its body needs: read → shared, change → mutable, give away → move.',
   },
-  'clo-mut': {
-    q: 'Why must `let tick = || count += 1;` be `let mut tick` before it can be called?',
-    a: 'The closure holds a mutable borrow of `count`, so calling it changes something; Rust asks for `mut` on the binding (E0596 otherwise).',
-  },
   'clo-move': {
-    q: 'Why does a closure returned from `make_counter` need `move`?',
+    q: 'A Rust function returns a closure that increments `count`, a local variable of that function. Why does the closure need `move`?',
     a: 'Without it the closure borrows `count`, a local that dies when the function returns (E0373). `move` puts `count` inside the closure.',
-  },
-  'clo-struct': {
-    q: 'What is a Rust closure value, roughly, according to the Rust Reference?',
-    a: 'A value of its own unnamed type, roughly a struct holding the captured variables (or borrows of them), plus a call method.',
   },
   'fn-traits': {
     q: 'What is the difference between `Fn`, `FnMut` and `FnOnce`?',
     a: '`Fn` only reads its captures; `FnMut` may change them; `FnOnce` may move them out, so it can be called only once. Each one includes the previous.',
   },
-  'fn-once': {
-    q: 'Why can `let take = move || name;` (with `name: String`) be called only once?',
-    a: 'The call moves `name` out of the closure. After that there is nothing left to return, so it is only `FnOnce` (E0382 on a second call).',
-  },
-  'fn-bound': {
-    q: 'drip-rs’s `retain_keys` takes `impl FnMut(StrRef) -> bool`. Why not `FnOnce`?',
-    a: 'It calls the closure once per key, so it must be callable many times. `FnMut` also lets the caller’s closure update its own state.',
-  },
   'it-trait': {
     q: 'What is the one required method of `Iterator`, and what does it return?',
     a: '`fn next(&mut self) -> Option<Self::Item>`: `Some(item)`, or `None` when it is finished.',
   },
-  'it-next-mut': {
-    q: 'Why does `next` take `&mut self`, so that `let it = v.iter(); it.next();` fails without `mut`?',
-    a: 'Handing out an item moves the iterator on to the next one, which changes the iterator.',
-  },
-  'it-for': {
-    q: 'What do `for x in &v`, `for x in &mut v` and `for x in v` give you?',
-    a: '`&T` (like `v.iter()`), `&mut T` (like `v.iter_mut()`), and owned `T`, which moves `v` into the loop.',
-  },
-  'it-for-move': {
-    q: 'What does a `for` loop call on the value you give it, before calling `next`?',
-    a: '`IntoIterator::into_iter`. For a `Vec` by value that takes ownership, which is why `v` is unusable after `for x in v`.',
-  },
   'it-lazy': {
     q: 'What does `xs.iter().map(f)` do on its own, with nothing after it?',
     a: 'Nothing: it builds a `Map` struct and never calls `f`. Adapters are lazy; a consumer like `sum` or `collect` has to pull (rustc warns otherwise).',
-  },
-  'it-js': {
-    q: 'How many intermediate arrays does `xs.iter().filter(f).map(g).sum()` build? And `xs.filter(f).map(g).reduce(h, 0)` in JavaScript?',
-    a: 'Rust: none; each item goes through every stage in turn. JavaScript: two, one from `filter` and one from `map`.',
-  },
-  'it-collect': {
-    q: 'How do you turn an iterator chain back into a `Vec`?',
-    a: 'Finish it with `.collect()`, and say the type you want, e.g. `let ys: Vec<f64> = ... .collect();`.',
-  },
-  'it-zip': {
-    q: 'What does `a.iter().zip(&b)` yield?',
-    a: 'Pairs `(&a[i], &b[i])`, walking both side by side and stopping at the end of the shorter one.',
-  },
-  'std-drop': {
-    q: 'When does `Drop::drop` run, and how do you drop a value early?',
-    a: 'Rust calls it when the value’s owner goes out of scope (you may not call it yourself: E0040). To drop early, pass the value to `std::mem::drop`, as `drop(x)`.',
   },
   'assoc-what': {
     q: 'In `trait Iterator { type Item; ... }`, what is `Item`?',
@@ -79,29 +30,9 @@ export const prompts = {
     q: 'Why is `Iterator` written with an associated type instead of `trait Iterator<T>`?',
     a: 'With a generic parameter a type could implement it many times (`Iterator<u32>`, `Iterator<String>`) and every `next` call would need annotating; an associated type allows one impl, so the item type follows from the type.',
   },
-  'assoc-bound': {
-    q: 'How do you write “any iterator that yields `u32`s” as a bound?',
-    a: '`I: Iterator<Item = u32>`.',
-  },
   'std-display': {
     q: 'What does implementing `Display` for a type give you?',
     a: 'Printing with `{}` (in `println!`, `format!`) and a `to_string()` method.',
-  },
-  'std-default': {
-    q: 'What does `..Default::default()` do at the end of a struct literal?',
-    a: 'Fills every field you did not write with the value from the type’s `Default` impl.',
-  },
-  'std-from': {
-    q: 'You implement `From<String> for CliError`. Name two things you get.',
-    a: '`CliError::from(s)` and `s.into()` (std implements `Into` for every `From`), and `?` converting a `String` error into a `CliError`.',
-  },
-  'std-iter': {
-    q: 'What must a type implement for `for x in value` to work?',
-    a: '`IntoIterator` (which every `Iterator` implements); the `for` loop calls `into_iter` and then `next` until `None`.',
-  },
-  'std-free': {
-    q: 'Which standard trait does a TypeScript object effectively have for free, that a Rust type does not?',
-    a: 'A way to print itself: every JS object has `toString` and `console.log` shows its fields; a Rust type needs `Display` or `Debug`.',
   },
 };
 
@@ -166,8 +97,8 @@ fn main() {
     title: 'One type, five standard traits',
     code: `use std::fmt;
 
-// Debug and Clone written by derive
-// (the next chapter); the rest by hand.
+// Debug and Clone written by derive;
+// the rest by hand.
 #[derive(Debug, Clone)]
 struct Span {
     lo: usize,
@@ -244,6 +175,7 @@ fn main() {
 export const exercises = {
   counters: {
     lang: 'rust',
+    optional: true,
     title: 'A counter, and calling n times',
     prompt: 'Two small jobs. `make_counter` returns a closure that gives 1, 2, 3, … on successive calls, like *Closures: functions that remember*’s `makeCounter`; each counter must have its own count. `call_n(n, f)` calls the closure `f` exactly `n` times. Choose the bound on `f` so the tests can pass closures that change their captures.',
     starter: `fn make_counter()
@@ -464,7 +396,7 @@ fn all_alive_keeps_order() {
     lang: 'rust',
     optional: true,
     title: 'Make the word splitter an Iterator',
-    prompt: '*Lifetime annotations*’ `Words` had its own `next_word`. Implement the standard `Iterator` trait for it instead, so it works with `for`, `collect`, `count` and every adapter. `next` returns the next space-separated word, borrowed from the source, or `None`.',
+    prompt: 'The `Words` splitter of *Lifetimes* had its own `next_word`. Implement the standard `Iterator` trait for it instead, so it works with `for`, `collect`, `count` and every adapter. `next` returns the next space-separated word, borrowed from the source, or `None`.',
     starter: `struct Words<'src> {
     src: &'src str,
     pos: usize,
@@ -541,7 +473,7 @@ fn works_in_a_for_loop() {
     assert_eq!(total, 5);
 }`,
     hints: [
-      'The body is the same scan as the `next_word` of *Lifetime annotations*: skip spaces, remember the start, advance to a space or the end.',
+      'The body is the same scan as the `next_word` of *Lifetimes*: skip spaces, remember the start, advance to a space or the end.',
       'Return `None` when no character was read, and `Some(&self.src[at..self.pos])` otherwise.',
     ],
     walkthrough: `**How to think about it.** The \`Iterator\` trait asks for exactly one thing, \`next\`; once you write it, \`collect\`, \`filter\`, \`count\`, \`take\` and \`for\` all work, because each of them just calls \`next\` until \`None\`. So the job is: say what an item is, and write the scan that produces the next one.
@@ -603,6 +535,7 @@ impl<'src> Iterator for Words<'src> {
   },
   countdown: {
     lang: 'rust',
+    optional: true,
     title: 'A countdown that is an iterator',
     prompt: 'Make `Countdown` fit in with the standard traits. `Countdown::from(3)` (and `3.into()`) should make a countdown starting at 3, using `From<u32>`. As an `Iterator` with `Item = u32`, it yields `3, 2, 1` and then `None`. And with `Display` it prints as `T-` followed by the number it would yield next, so `Countdown::from(5)` prints `T-5` (and an exhausted one prints `T-0`). Add `use std::fmt;` at the top.',
     starter: `struct Countdown {
@@ -773,140 +706,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'A function returns `|| { count += 1; count }`, where `count` is its own local. What happens?',
-    options: [
-      {
-        t: 'It works like JavaScript’s makeCounter',
-        why: 'Rust doesn’t keep `count` alive for a borrowing closure.',
-      },
-      {
-        t: 'E0373: the closure may outlive `count`; add `move`',
-        correct: true,
-        why: 'With `move`, `count` lives inside the closure, like a closed upvalue.',
-      },
-      {
-        t: 'It compiles, but crashes when the closure is called',
-        why: 'It never compiles.',
-      },
-    ],
-  },
-  {
-    q: 'Which closure is only `FnOnce`?',
-    options: [
-      {
-        t: '`|p| p.alive`',
-        why: 'It only reads, so it is `Fn`.',
-      },
-      {
-        t: '`|| { n += 1; n }`',
-        why: 'It changes `n` but can be called again: `FnMut`.',
-      },
-      {
-        t: '`|a, b| a + b`',
-        why: 'It captures nothing: `Fn`.',
-      },
-      {
-        t: '`move || name`, where `name` is a `String`',
-        correct: true,
-        why: 'Calling it moves `name` out, so it can’t be called twice.',
-      },
-    ],
-  },
-  {
-    q: 'A function parameter is `f: impl Fn()`. What happens if you pass `|| hits += 1`?',
-    options: [
-      {
-        t: 'It compiles; `Fn` accepts any closure',
-        why: 'That is `FnOnce`, the widest bound. `Fn` is the narrowest.',
-      },
-      {
-        t: 'A compile error: the closure changes `hits`, so it is only `FnMut`',
-        correct: true,
-        why: 'rustc says it cannot assign to a captured variable in a `Fn` closure, and suggests `FnMut`.',
-      },
-      {
-        t: 'It runs, but `hits` is not changed',
-        why: 'Rust never silently ignores a write; it refuses to compile.',
-      },
-    ],
-  },
-  {
-    q: '`let mut count = 0; let mut tick = move || { count += 1; count }; tick(); tick();` What is the outer `count` afterwards?',
-    options: [
-      {
-        t: '0, because the closure changed its own copy',
-        correct: true,
-        why: '`move` copied the `i32` into the closure, and only that copy changed.',
-      },
-      {
-        t: '2, because the closure changed it twice',
-        why: 'That would be true without `move`, when the closure borrows `count`.',
-      },
-      {
-        t: 'It does not compile, because `count` was moved',
-        why: 'An `i32` is `Copy`, so moving it copies it and the outer one stays usable.',
-      },
-    ],
-  },
-  {
-    q: '`let v = vec![1, 2]; for x in v { } println!("{:?}", v);` What happens?',
-    options: [
-      {
-        t: 'It prints `[1, 2]`',
-        why: '`for x in v` calls `v.into_iter()`, which moves `v`.',
-      },
-      {
-        t: 'It prints `[]`',
-        why: 'Rust doesn’t empty and keep `v`; it is gone.',
-      },
-      {
-        t: 'A compile error: `v` was moved into the loop',
-        correct: true,
-        why: 'E0382. Loop over `&v` to borrow it instead.',
-      },
-    ],
-  },
-  {
-    q: 'In the lazy-trace example, what is printed first?',
-    options: [
-      {
-        t: '`nothing yet`',
-        correct: true,
-        why: 'Building the chain runs no closures; only `sum` starts pulling.',
-      },
-      {
-        t: '`filter 1`, `filter 2`, `filter 3`, `filter 4`',
-        why: 'That is JavaScript’s order. Rust interleaves filter and map per element.',
-      },
-      {
-        t: '`total 60`',
-        why: 'The sum is printed last, after every element has been pulled.',
-      },
-    ],
-  },
-  {
-    q: 'Which Rust adapter matches JavaScript’s `xs.some(f)`?',
-    options: [
-      {
-        t: '`.find(f)`',
-        why: '`find` returns the item (an `Option`), not a boolean.',
-      },
-      {
-        t: '`.all(f)`',
-        why: 'That is `every`.',
-      },
-      {
-        t: '`.any(f)`',
-        correct: true,
-        why: 'It returns `true` as soon as one item passes, and stops pulling.',
-      },
-      {
-        t: '`.filter(f)`',
-        why: 'That keeps matching items, lazily.',
-      },
-    ],
-  },
-  {
     q: 'What is `xs.iter().filter(f).map(g)`, before anything consumes it?',
     options: [
       {
@@ -921,28 +720,6 @@ export const quiz = [
       {
         t: 'A JavaScript-style array',
         why: 'Rust’s adapters build no arrays.',
-      },
-    ],
-  },
-  {
-    q: 'How does a `for` loop know when to stop?',
-    options: [
-      {
-        t: 'It counts up to the collection’s length',
-        why: 'Iterators need not have a length; `for` does not ask for one.',
-      },
-      {
-        t: 'It catches a special exception at the end',
-        why: 'That is how Python ends a loop, not Rust.',
-      },
-      {
-        t: 'The iterator’s `next` returns `None`',
-        correct: true,
-        why: 'The loop is `match it.next()`: `Some(p)` runs the body, `None` breaks.',
-      },
-      {
-        t: 'It stops when the body returns `false`',
-        why: 'The body’s value is ignored; only `break` or `None` ends it.',
       },
     ],
   },
@@ -965,24 +742,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why can a type have only one `Item` for `Iterator`?',
-    options: [
-      {
-        t: 'Because a type can implement a given trait at most once, and that one impl sets `Item`.',
-        correct: true,
-        why: 'So `<C as Iterator>::Item` has exactly one answer.',
-      },
-      {
-        t: 'Because `Item` must always be `u32`.',
-        why: 'Each impl picks its own `Item`.',
-      },
-      {
-        t: 'Because associated types are erased at run time.',
-        why: 'Erasure has nothing to do with it; the rule is one impl per type and trait.',
-      },
-    ],
-  },
-  {
     q: 'You write `println!("{p}")` for a struct `Pt` that implements only `Debug`. What happens?',
     options: [
       {
@@ -997,42 +756,6 @@ export const quiz = [
         t: 'A compile error: E0277, `Pt` doesn’t implement `std::fmt::Display`.',
         correct: true,
         why: 'rustc even suggests `{:?}`, which would use the `Debug` impl.',
-      },
-    ],
-  },
-  {
-    q: 'Viscosity’s CLI has `impl From<String> for CliError`. What does that let `?` do?',
-    options: [
-      {
-        t: 'Ignore the error and continue.',
-        why: '`?` still returns early on an error.',
-      },
-      {
-        t: 'Return early with a `String` error converted into a `CliError` by `From::from`.',
-        correct: true,
-        why: '`?` calls `From::from` on the error before returning it.',
-      },
-      {
-        t: 'Print the error with `Display`.',
-        why: '`?` converts and returns; printing is up to the caller.',
-      },
-    ],
-  },
-  {
-    q: 'What does `I: Iterator<Item = u32>` say about `I`?',
-    options: [
-      {
-        t: '`I` iterates and its associated type `Item` is `u32`.',
-        correct: true,
-        why: 'It pins the associated type in the bound.',
-      },
-      {
-        t: '`I` holds exactly one `u32`.',
-        why: 'It can yield any number of them.',
-      },
-      {
-        t: '`I` implements `Iterator` many times, once for `u32`.',
-        why: 'A type implements `Iterator` at most once.',
       },
     ],
   },

@@ -1,91 +1,30 @@
-// Chapter 193 cards: recall prompts, examples, exercises and quiz.
+// Chapter 125 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 125, 125, 125.
 
 export const prompts = {
-  'trait-what': {
-    q: 'What is a Rust trait?',
-    a: 'A named set of methods that types can implement, each type with an `impl Trait for Type` block.',
-  },
   'trait-default': {
     q: 'What is a default method in a trait?',
     a: 'A method with a body in the trait itself. Implementing types get it for free and may override it.',
   },
-  'trait-impl': {
-    q: 'What must an `impl Trait for Type` block contain?',
-    a: 'A definition of every required method of the trait (default methods are optional).',
-  },
-  'trait-missing': {
-    q: 'An impl block leaves out one required method. What does rustc say?',
-    a: 'E0046: not all trait items implemented, missing: `name`.',
-  },
   nominal: {
-    q: 'A struct has methods `id` and `exts` but no `impl Plugin` block. Is it a `Plugin`?',
+    q: 'A Rust struct has inherent methods with the same names and signatures as every method of a trait `Plugin`, but there is no `impl Plugin for` block. Does it implement `Plugin`?',
     a: 'No. Traits are nominal: only an impl block makes a type implement a trait (E0277 otherwise).',
   },
   orphan: {
     q: 'Can you write `impl Display for Vec<i32>` in your own crate?',
     a: 'No. The orphan rule: you must have defined the trait or the type yourself.',
   },
-  derive: {
-    q: 'What does `#[derive(Debug, PartialEq)]` above a struct do?',
-    a: 'The compiler writes the `Debug` and `PartialEq` impls for you, so `{:?}` and `==` work.',
-  },
-  'copy-trait': {
-    q: 'What changes when a struct of `f64` fields derives `Clone, Copy`?',
-    a: 'Assignment and passing copy the value instead of moving it, so the old variable stays usable.',
-  },
-  'dyn-what': {
-    q: 'What does the type `&dyn Plugin` mean?',
-    a: 'A reference to some value whose type implements `Plugin`, without saying which type.',
-  },
-  'dyn-needed': {
-    q: 'Why is `vec![&Js, &Py]` rejected, and what fixes it?',
-    a: 'A `Vec` has one element type, and `&Js` and `&Py` differ (E0308). Ask for `Vec<&dyn Plugin>`.',
-  },
-  'dyn-e0782': {
-    q: 'What does rustc say about `Vec<&Plugin>`, without `dyn`?',
-    a: 'E0782: expected a type, found a trait; it suggests adding `dyn`.',
-  },
   fat: {
     q: 'What two pointers make up a `&dyn Trait`?',
     a: 'One to the value (the data) and one to the vtable for that value’s type.',
-  },
-  'dyn-box': {
-    q: 'When would you use `Box<dyn Plugin>` rather than `&dyn Plugin`?',
-    a: 'When the collection should own its plugins (on the heap) instead of borrowing values that live elsewhere.',
   },
   'dyn-cost': {
     q: 'What does a call through `&dyn Trait` cost compared with a direct call?',
     a: 'An indirect call through a function pointer loaded from the vtable, which also stops the compiler inlining it.',
   },
-  'vtable-vs-ic': {
-    q: 'How does a `dyn` call differ from a JavaScript method call that V8 speeds up with an inline cache?',
-    a: 'It never looks a name up: methods are numbered at compile time, so the call reads a fixed vtable slot.',
-  },
-  trace: {
-    q: 'Why does drip-rs’s collector take its roots as `&[&dyn Trace]`?',
-    a: 'The roots have different types (the VM’s stack and globals, the compiler’s functions), and `dyn` lets one slice hold them all.',
-  },
   'op-desugar': {
     q: 'What does rustc turn `a + b` into?',
     a: '`Add::add(a, b)`: a call to the `add` method of the `Add` trait for `a`’s type.',
-  },
-  'op-rhs': {
-    q: 'What does the `f64` in `impl Mul<f64> for V2` choose?',
-    a: 'The type on the right of `*` (the `Rhs` parameter), so `v * 2.0` is allowed. The result type is the associated `Output`.',
-  },
-  'op-byvalue': {
-    q: 'Why does a vector type with `Add` usually also derive `Copy`?',
-    a: '`add` takes both sides by value, so without `Copy` the expression `a + b` would move `a` and `b`.',
-  },
-  'op-index': {
-    q: 'What is `heap[h]` compiled as?',
-    a: '`*Index::index(&heap, h)`: `index` returns a reference and rustc dereferences it (`IndexMut` when the place is assigned to).',
-  },
-  'derive-what': {
-    q: 'What does `#[derive(PartialEq)]` write for a struct?',
-    a: 'An `eq` that is true when every field is equal, using each field’s own `PartialEq`.',
   },
   'derive-fields': {
     q: 'Why does `#[derive(Copy)]` fail on `struct Tok { text: String, line: u32 }`?',
@@ -94,10 +33,6 @@ export const prompts = {
   'derive-display': {
     q: 'Why can’t `Display` be derived?',
     a: 'It is for users, and only you know how a value should look to them; no field-by-field rule would be right.',
-  },
-  'derive-bound': {
-    q: 'Why does drip-rs write `Clone` for `Gc<T>` by hand instead of deriving it?',
-    a: 'Derive would add a `T: Clone` bound, but a handle is just an index and can always be copied, whatever `T` is.',
   },
 };
 
@@ -366,7 +301,7 @@ fn both_read_the_same_particle() {
 - \`impl Layout for Soa {\` signs up the second type.
 - \`f * self.n + i\`: the buffer is \`nf\` columns of \`n\` slots each; field \`f\`'s column starts at \`f * n\`, and element \`i\` is \`i\` slots into it. For \`n = 5\`, element 3's field 1 is \`1 * 5 + 3 = 8\`.
 
-Notice what each struct stores: \`Aos\` needs the number of fields, \`Soa\` the number of elements. The trait hides that difference from whoever calls \`slot\`, which is the whole point, and the next chapter calls it through a single \`&dyn Layout\` that could be either.
+Notice what each struct stores: \`Aos\` needs the number of fields, \`Soa\` the number of elements. The trait hides that difference from whoever calls \`slot\`, which is the whole point; a single \`&dyn Layout\` could then be either.
 
 **Common wrong attempts.**
 
@@ -435,8 +370,9 @@ impl Layout for Soa {
   },
   readDyn: {
     lang: 'rust',
+    optional: true,
     title: 'Reading through any layout',
-    prompt: 'The `Layout` trait and its `Aos` and `Soa` impls from the last chapter are given. Write `read(l, buf, i, f)`, which returns element `i`’s field `f` from the flat buffer `buf`, for whichever layout `l` turns out to be. `l` is a `&dyn Layout`, so `read` is compiled once and works for both.',
+    prompt: 'The `Layout` trait and its `Aos` and `Soa` impls (from *Two layouts, one trait*) are given. Write `read(l, buf, i, f)`, which returns element `i`’s field `f` from the flat buffer `buf`, for whichever layout `l` turns out to be. `l` is a `&dyn Layout`, so `read` is compiled once and works for both.',
     starter: `trait Layout {
     fn slot(&self, i: usize, f: usize)
         -> usize;
@@ -585,7 +521,7 @@ fn read(l: &dyn Layout, buf: &[f64],
     lang: 'rust',
     optional: true,
     title: 'A third layout: AoSoA',
-    prompt: 'Implement `Layout` for `Aosoa`: elements in blocks of `b`, and inside each block one run of `b` values per field (the AoSoA layout of *When SoA loses: materialization and AoSoA*). So block `i / b` starts at `(i / b) * b * nf`, field `f`’s run starts `f * b` into the block, and the element is `i % b` into the run.',
+    prompt: 'Implement `Layout` for `Aosoa`: elements in blocks of `b`, and inside each block one run of `b` values per field (the AoSoA layout of *AoSoA and hot-cold splitting*). So block `i / b` starts at `(i / b) * b * nf`, field `f`’s run starts `f * b` into the block, and the element is `i % b` into the run.',
     starter: `trait Layout {
     fn slot(&self, i: usize, f: usize)
         -> usize;
@@ -682,6 +618,7 @@ impl Layout for Aosoa {
   },
   vec2: {
     lang: 'rust',
+    optional: true,
     title: 'A vector type with operators',
     prompt: 'Give `V2` what a physics loop needs. Derive `Debug`, `Clone`, `Copy`, `PartialEq` and `Default` (so tests can compare with `assert_eq!` and print `V2 { x: 1.0, y: 2.0 }`, and `V2::default()` is the zero vector). Then implement `+` between two `V2`s, `* f64` (scale both parts), unary `-`, and `+=`. The `use` line is given.',
     starter: `use std::ops::{Add, AddAssign};
@@ -896,24 +833,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'In a trait, what is the difference between `fn id(&self) -> &str;` and a method with a `{ ... }` body?',
-    options: [
-      {
-        t: 'The first is required: every impl must write it. The second is a default every impl gets',
-        correct: true,
-        why: 'Impls may still override a default method.',
-      },
-      {
-        t: 'The first is private, the second public',
-        why: 'Both are part of the trait; the semicolon only means “no body here”.',
-      },
-      {
-        t: 'The first can only be called on the type, the second on a value',
-        why: 'Both take `&self`, so both are methods called on a value.',
-      },
-    ],
-  },
-  {
     q: 'Which impl can your crate write, if it defines a trait `Describe` but not `Vec` or `Display`?',
     options: [
       {
@@ -932,60 +851,6 @@ export const quiz = [
     ],
   },
   {
-    q: '`#[derive(Clone, Copy)]` is on `struct P { x: f64, y: f64 }`. After `let b = a;`, what is true?',
-    options: [
-      {
-        t: '`a` has moved into `b` and can’t be used',
-        why: 'That is what happens without `Copy`.',
-      },
-      {
-        t: '`b` is a reference to `a`',
-        why: '`let b = a;` makes a whole new value; a reference would be `&a`.',
-      },
-      {
-        t: '`b` is a copy, and `a` is still usable',
-        correct: true,
-        why: '`Copy` makes assignment copy the bits instead of moving.',
-      },
-    ],
-  },
-  {
-    q: 'How does a TypeScript interface differ from a Rust trait?',
-    options: [
-      {
-        t: 'An interface is matched by shape and erased at run time; a trait is matched by name, through an impl block',
-        correct: true,
-        why: 'Structural versus nominal: in Rust, having the right methods is not enough.',
-      },
-      {
-        t: 'They are the same: both are checked by shape',
-        why: 'Only TypeScript checks shapes.',
-      },
-      {
-        t: 'A trait cannot have methods with bodies',
-        why: 'Traits can have default methods with bodies.',
-      },
-    ],
-  },
-  {
-    q: 'On this machine `&Js` is 8 bytes. How big is `&dyn Plugin`, and why?',
-    options: [
-      {
-        t: '8 bytes: a reference is a reference',
-        why: 'A trait-object reference carries a second pointer.',
-      },
-      {
-        t: '16 bytes: a data pointer plus a vtable pointer',
-        correct: true,
-        why: 'A fat pointer: the value’s address and its type’s vtable.',
-      },
-      {
-        t: 'It depends on whether it points at a `Js` or a `Py`',
-        why: 'Every `&dyn Plugin` is the same size; that is what lets one `Vec` hold both.',
-      },
-    ],
-  },
-  {
     q: 'What happens at run time when you call `p.id()` on `p: &dyn Plugin`?',
     options: [
       {
@@ -1000,132 +865,6 @@ export const quiz = [
       {
         t: 'The compiler inlines `Js::id`',
         why: 'It cannot: it does not know which type `p` points at.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `vec![&Js, &Py]` fail to compile?',
-    options: [
-      {
-        t: 'A `Vec` cannot hold references',
-        why: 'It can; `Vec<&dyn Plugin>` holds references.',
-      },
-      {
-        t: '`Js` and `Py` are unit structs, which cannot be borrowed',
-        why: 'Unit structs can be borrowed like any value.',
-      },
-      {
-        t: 'The elements have different types, `&Js` and `&Py` (E0308)',
-        correct: true,
-        why: 'Annotate it as `Vec<&dyn Plugin>` so both turn into trait objects.',
-      },
-    ],
-  },
-  {
-    q: 'What is the difference between `Vec<&dyn Plugin>` and `Vec<Box<dyn Plugin>>`?',
-    options: [
-      {
-        t: 'The first borrows plugins that live elsewhere; the second owns them, on the heap',
-        correct: true,
-        why: 'Both hold fat pointers and dispatch the same way.',
-      },
-      {
-        t: 'Only the second uses a vtable',
-        why: 'Both are trait objects, so both use a vtable.',
-      },
-      {
-        t: 'Only the first can hold different types',
-        why: 'Both can.',
-      },
-    ],
-  },
-  {
-    q: 'drip-rs’s collector takes `roots: &[&dyn Trace]`. What does that let the VM and the compiler do?',
-    options: [
-      {
-        t: 'Avoid tracing roots at all',
-        why: 'Every root is traced; `dyn` only hides its type.',
-      },
-      {
-        t: 'Run the collector on another thread',
-        why: 'Nothing here is about threads.',
-      },
-      {
-        t: 'Each pass roots of their own different types to one function',
-        correct: true,
-        why: 'The VM passes its `VmRoots`, the compiler its half-built functions; the collector calls `trace` through each vtable.',
-      },
-    ],
-  },
-  {
-    q: 'What is `a == b` compiled as?',
-    options: [
-      {
-        t: '`PartialEq::eq(a, b)`, moving both values',
-        why: 'Comparison borrows; it never moves.',
-      },
-      {
-        t: '`PartialEq::eq(&a, &b)`',
-        correct: true,
-        why: 'Both sides are borrowed, so `a` and `b` are still usable afterwards.',
-      },
-      {
-        t: 'A comparison of the two addresses, as `===` does on JavaScript objects',
-        why: 'Rust’s `==` calls the type’s `PartialEq` impl.',
-      },
-    ],
-  },
-  {
-    q: 'You have `impl Mul<f64> for V2`. Which of these compiles?',
-    options: [
-      {
-        t: '`2.0 * v`',
-        why: 'That needs `impl Mul<V2> for f64`; the left side picks the impl.',
-      },
-      {
-        t: '`v * v`',
-        why: 'That needs `impl Mul<V2> for V2`.',
-      },
-      {
-        t: '`v * 2.0`',
-        correct: true,
-        why: 'Left side `V2`, right side `f64`: exactly the impl given.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `AddAssign` have no `Output` type?',
-    options: [
-      {
-        t: 'Because `+=` changes its left side in place through `&mut self` and produces no new value.',
-        correct: true,
-        why: '`add_assign(&mut self, rhs)` returns `()`.',
-      },
-      {
-        t: 'Because it always produces `Self`.',
-        why: 'It produces nothing; the left side is updated.',
-      },
-      {
-        t: 'Because `+=` is only defined for numbers.',
-        why: 'You can implement it for any type you own.',
-      },
-    ],
-  },
-  {
-    q: '`#[derive(Clone)] struct Gc<T> { index: u32, marker: PhantomData<T> }`. What does derive write?',
-    options: [
-      {
-        t: '`impl<T> Clone for Gc<T>`, for every `T`',
-        why: 'Derive adds a bound on each type parameter.',
-      },
-      {
-        t: '`impl<T: Clone> Clone for Gc<T>`, so a handle to a non-cloneable `T` has no `clone`',
-        correct: true,
-        why: 'That is why drip-rs writes these impls by hand.',
-      },
-      {
-        t: 'Nothing: derive does not work on generic types.',
-        why: 'It does, with the extra bounds.',
       },
     ],
   },

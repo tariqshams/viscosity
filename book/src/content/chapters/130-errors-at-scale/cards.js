@@ -1,6 +1,5 @@
-// Chapter 198 cards: recall prompts, examples, exercises and quiz.
+// Chapter 130 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 130, 130.
 
 export const prompts = {
   'enum-what': {
@@ -15,25 +14,9 @@ export const prompts = {
     q: 'You add a `Timeout` variant to your error enum. What happens to a `match` that lists the old variants?',
     a: 'It stops compiling: error E0004, non-exhaustive patterns, `Timeout` not covered. (Unless it has a `_` arm, which hides the new case.)',
   },
-  'map-err': {
-    q: 'How do you turn a `ParseIntError` into your own `NotNum` variant before `?`?',
-    a: 'With `map_err`: `v.parse().map_err(|_| NotNum(v.to_string()))?`. It converts the error inside a `Result` and leaves `Ok` alone.',
-  },
-  'display-msg': {
-    q: 'What two traits does an error enum usually implement besides `Debug`?',
-    a: '`Display`, for a message a person can read, and `std::error::Error`, the standard marker for error types.',
-  },
   'drip-unit': {
     q: 'drip-rs’s `RuntimeError` is a struct with no fields. Why is that enough?',
     a: 'The message and stack trace are already in the VM’s stderr lines when it is made; it only has to stop the run loop, through `?`.',
-  },
-  'drip-codes': {
-    q: 'What exit codes does `drip-rs` use?',
-    a: '0 for success, 64 for bad usage, 66 if the file cannot be read, 65 for a compile error, 70 for a runtime error.',
-  },
-  'compile-error-newtype': {
-    q: 'What is engine/rust’s `CompileError`, and why is that enough for it?',
-    a: 'A newtype, `CompileError(pub String)`, with `Display` and `std::error::Error` impls. Every caller prints the message and stops, so one string loses nothing.',
   },
   'q-from': {
     q: 'What does `?` do with an `Err(e)` whose type differs from the function’s error type?',
@@ -47,25 +30,9 @@ export const prompts = {
     q: 'You wrote `impl From<Trap> for DripError`. What do you get for free?',
     a: '`Into<DripError>` for `Trap`, so `t.into()` works wherever a `DripError` is expected.',
   },
-  e0277: {
-    q: 'What does rustc’s E0277 message say when a `?` cannot convert an error?',
-    a: '“`?` couldn’t convert the error to `CliError`”: the trait `From<ParseIntError>` is not implemented for `CliError`. It names the missing impl.',
-  },
   'str-string': {
     q: 'Why does `.ok_or("not an object")?` compile in a function returning `Result<_, String>`?',
     a: 'The standard library has `impl From<&str> for String`, so `?` converts the message.',
-  },
-  'impl-into': {
-    q: 'drip-rs’s `runtime_error` takes `message: impl Into<String>`. What can callers pass, and why?',
-    a: 'A `&str` literal or a `String` (from `format!`): both implement `Into<String>`, thanks to the standard library’s `From` impls.',
-  },
-  'cli-from-string': {
-    q: 'engine/rust’s CLI has `impl From<String> for CliError`. What does it let `?` do?',
-    a: 'Lift the plain `String` errors of its helper functions into `CliError::Other` with a bare `?`.',
-  },
-  'map-err-once': {
-    q: 'engine/rust’s CLI writes `let io = |e: std::io::Error| CliError::Other(e.to_string());`. What for?',
-    a: 'To convert `io::Error`s by hand with `.map_err(io)?` where it has no `From<io::Error>` impl, writing the conversion once and reusing it.',
   },
 };
 
@@ -198,6 +165,7 @@ fn main() {
 export const exercises = {
   report: {
     lang: 'rust',
+    optional: true,
     title: 'Exit codes and messages',
     prompt: '`DripError` is a design for one error type covering a whole Drip run. Write `exit_code`, which gives drip-rs’s exit code for each variant (64 for `Usage`, 66 for `Io`, 65 for `Compile`, 70 for `Runtime`), and `report`, which gives the text to print: `USAGE` for `Usage`, `"cannot read "` followed by the message for `Io`, every compile error on its own line (joined with `\\n`) for `Compile`, and `"runtime error: "` followed by the message for `Runtime`. Do not use a `_` arm.',
     starter: `const USAGE: &str = "usage: \\
@@ -803,64 +771,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `"lots".parse::<u32>().map_err(|_| NotNum("lots".into()))` give?',
-    options: [
-      {
-        t: '`Ok(0)`',
-        why: 'A failed parse is not turned into a number.',
-      },
-      {
-        t: '`Err(NotNum("lots"))`: the `ParseIntError` replaced by your own variant',
-        correct: true,
-        why: '`map_err` converts the error inside a `Result` and leaves an `Ok` untouched.',
-      },
-      {
-        t: 'A panic',
-        why: 'Nothing panics; `parse` returns an `Err`, and `map_err` changes its type.',
-      },
-    ],
-  },
-  {
-    q: 'What exit code does `drip-rs` use when the file cannot be read?',
-    options: [
-      {
-        t: '65',
-        why: '65 is a compile error.',
-      },
-      {
-        t: '70',
-        why: '70 is a runtime error.',
-      },
-      {
-        t: '74',
-        why: 'Some tools use 74 for I/O errors; drip-rs’s `main.rs` returns 66 when `read_to_string` fails.',
-      },
-      {
-        t: '66',
-        correct: true,
-        why: 'From `main.rs`: `cannot read {path}: {e}` on stderr, then `ExitCode::from(66)`.',
-      },
-    ],
-  },
-  {
-    q: 'engine/rust’s `compile` returns `Result<_, CompileError>`, where `CompileError` is one `String`. Why is that a reasonable design?',
-    options: [
-      {
-        t: 'Every caller prints the message and stops, so a kind would never be used',
-        correct: true,
-        why: 'Choose the error type by what callers need to tell apart; here they need nothing but the text.',
-      },
-      {
-        t: 'Error enums do not work across crates',
-        why: 'They work fine across crates; many libraries export one.',
-      },
-      {
-        t: 'oxc requires it',
-        why: 'The parser’s errors are converted to strings by engine/rust itself.',
-      },
-    ],
-  },
-  {
     q: 'In a function returning `Result<u32, CliError>`, what does `s.parse::<u32>()?` do when the parse fails?',
     options: [
       {
@@ -893,60 +803,6 @@ export const quiz = [
       {
         t: '`?` on an `Option` in that function',
         why: '`?` on an `Option` needs the function to return an `Option`; `From` is about error types.',
-      },
-    ],
-  },
-  {
-    q: 'The second `?` in `min_size` fails with E0277. What is the quickest correct fix?',
-    options: [
-      {
-        t: 'Change the function to return `Result<u32, ParseIntError>`',
-        why: 'Then the first `?`, on an `io::Error`, would fail instead.',
-      },
-      {
-        t: 'Add `.unwrap()` before the `?`',
-        why: 'That turns a bad file into a panic, and `unwrap` returns a `u32`, not a `Result`, so `?` no longer applies.',
-      },
-      {
-        t: 'Add `impl From<ParseIntError> for CliError`, or convert that one call with `map_err`',
-        correct: true,
-        why: 'Either gives `?` an error of the right type; the impl helps every future `?` too.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `.ok_or("not an object")?` work in a function returning `Result<_, String>`?',
-    options: [
-      {
-        t: '`?` turns any error into a `String`',
-        why: 'Only types with a `From` impl into `String` convert.',
-      },
-      {
-        t: '`ok_or` returns a `String` error',
-        why: 'It returns `Err(&str)` here; the conversion happens in `?`.',
-      },
-      {
-        t: 'The standard library implements `From<&str> for String`, and `?` uses it',
-        correct: true,
-        why: 'engine/rust’s `read_profile` relies on exactly this.',
-      },
-    ],
-  },
-  {
-    q: 'drip-rs declares `fn runtime_error(&mut self, message: impl Into<String>)`. Which calls compile?',
-    options: [
-      {
-        t: 'Only `self.runtime_error("stack overflow".to_string())`',
-        why: 'A `&str` works too: `&str` implements `Into<String>`.',
-      },
-      {
-        t: 'Only `self.runtime_error("stack overflow")`',
-        why: 'A `String` works too: every type converts into itself.',
-      },
-      {
-        t: 'Both, and so does a `format!(...)` result',
-        correct: true,
-        why: 'Anything with `Into<String>` is accepted, and the body calls `message.into()` once.',
       },
     ],
   },

@@ -1,47 +1,22 @@
-// Chapter 195 cards: recall prompts, examples, exercises and quiz.
+// Chapter 127 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 127, 127.
 
 export const prompts = {
   'lt-what': {
     q: 'What is a **lifetime** in Rust?',
     a: 'The stretch of code during which a reference must stay valid: from where it is made to its last use. It must fit inside the life of the value it points at.',
   },
-  'lt-dangle': {
-    q: 'What is a **dangling** reference?',
-    a: 'A reference that points at a value which has already been dropped (freed). Rust refuses to compile any program that could use one.',
-  },
   'lt-e0597': {
     q: 'Error E0597 says “`text` does not live long enough”. Which three places does it point at?',
     a: 'Where the borrow was made, where the owner `text` was dropped, and where the borrow was still used after that.',
-  },
-  'lt-return-local': {
-    q: 'A function makes a `String` in a local variable and tries to return a reference to it. What is the usual fix?',
-    a: 'Return the owned `String` itself (`-> String`), moving it out to the caller, instead of a reference to a local that is about to be dropped.',
   },
   'lt-last-use': {
     q: 'Does a borrow last until the closing brace of its scope?',
     a: 'No. It lasts until the reference’s last use, so after that point the value may be borrowed mutably again.',
   },
-  'lt-ts': {
-    q: 'Why does TypeScript never need lifetimes?',
-    a: 'Its garbage collector keeps any object alive for as long as some reference can reach it, so a reference can never outlive its object.',
-  },
-  'lt-c': {
-    q: 'What does C do with a function that returns a pointer to its own local array?',
-    a: 'It compiles (usually with a warning), and the pointer dangles: the stack frame it points into is gone after the return.',
-  },
-  'lt-cost': {
-    q: 'What do lifetimes cost when the program runs?',
-    a: 'Nothing: they are checked while compiling and then thrown away. A `&str` is still only an address and a length.',
-  },
   'ann-what': {
     q: 'What does the `\'src` in `struct Token<\'src> { lexeme: &\'src str }` say?',
     a: 'A token holds a borrow with some lifetime `\'src`, so a `Token<\'src>` can’t outlive the text its lexeme points into.',
-  },
-  'ann-struct': {
-    q: 'Why does `struct Token { lexeme: &str }` fail with E0106?',
-    a: 'A struct that holds a reference must name the reference’s lifetime as a parameter, so the compiler can stop a token outliving the text it borrows.',
   },
   'ann-longer': {
     q: 'Why does `fn longer(a: &str, b: &str) -> &str` fail with E0106?',
@@ -55,17 +30,9 @@ export const prompts = {
     q: 'Name the three lifetime elision rules.',
     a: '1: each reference parameter gets its own lifetime. 2: one input lifetime goes to every output. 3: in a method with `&self` or `&mut self`, outputs get self’s lifetime.',
   },
-  'elide-rule3': {
-    q: 'Why does drip-rs write `fn scan_token(&mut self) -> Token<\'src>` instead of letting elision fill in the lifetime?',
-    a: 'Elision (rule 3) would tie the token to the borrow of the scanner, so the scanner couldn’t be called again while a token is alive.',
-  },
   'static-what': {
     q: 'What does `\'static` mean, and what has it?',
     a: 'Valid for the whole run of the program. String literals have it, because their text is stored in the program itself.',
-  },
-  'engine-two': {
-    q: 'Why does drip-rs’s `Compiler<\'src, \'a>` have two lifetime parameters?',
-    a: 'It holds two different loans: the source text (`\'src`, for tokens and local names) and the heap and GC roots it borrows from its caller (`\'a`).',
   },
 };
 
@@ -151,6 +118,7 @@ fn main() {
 export const exercises = {
   longestLine: {
     lang: 'rust',
+    optional: true,
     title: 'The longest line, without copying',
     prompt: 'Write `longest_line`, which returns the longest line of `src` (the first one, if several tie, and `""` for an empty source). Return a **slice of `src`**, not a new `String`: the tests check that the answer points into the original text, and that it can be used for as long as the source is alive. `src.lines()` hands out each line in turn as a `&str` that borrows from `src`.',
     starter: `fn longest_line(src: &str) -> &str {
@@ -206,7 +174,7 @@ fn lives_as_long_as_the_source() {
     ],
     walkthrough: `**How to think about it.** On paper you would read the lines one by one, keeping your finger on the longest so far, and move your finger only when you find a strictly longer one. That is the whole algorithm. The lifetime part is about *what* you keep your finger on: not a copy of the line, but a slice that points into \`src\`, so the function allocates nothing.
 
-**Why no lifetime annotations are needed.** The signature \`fn longest_line(src: &str) -> &str\` has exactly one reference going in and one coming out, so Rust assumes the answer borrows from \`src\` (the next chapter names this as an elision rule). That assumption is true here: every \`line\` is a slice of \`src\`, and so is \`""\`, which is a string literal that lives for the whole program and can stand in for any shorter borrow.
+**Why no lifetime annotations are needed.** The signature \`fn longest_line(src: &str) -> &str\` has exactly one reference going in and one coming out, so Rust assumes the answer borrows from \`src\` (the second elision rule). That assumption is true here: every \`line\` is a slice of \`src\`, and so is \`""\`, which is a string literal that lives for the whole program and can stand in for any shorter borrow.
 
 **The solution, line by line.**
 
@@ -253,6 +221,7 @@ The last test shows the lifetime at work: \`view\` is a borrow made inside a blo
   },
   words: {
     lang: 'rust',
+    optional: true,
     title: 'A word splitter that never copies',
     prompt: 'Write `next_word`, which returns the next space-separated word of the source, or `None` at the end. It must return a slice of the source, not a new `String`. The starter’s signature uses the elided form; the tests hold two words at once and keep a word after the `Words` value is gone, so you’ll need to fix the signature too.',
     starter: `struct Words<'src> {
@@ -438,7 +407,6 @@ impl<'src> Words<'src> {
   },
   spanText: {
     lang: 'rust',
-    optional: true,
     title: 'Which input does it borrow?',
     prompt: 'Fix both signatures and write both bodies. `Span::text` returns the part of `src` between `start` and `end`; the result must stay usable after the `Span` is gone. `longer` returns whichever of two strings is longer (the first if they tie).',
     starter: `struct Span {
@@ -573,28 +541,6 @@ fn longer<'a>(a: &'a str, b: &'a str)
 
 export const quiz = [
   {
-    q: 'A slice of `text` is stored in `r`, `text` is dropped at the end of a block, and `r` is printed after the block. What happens?',
-    options: [
-      {
-        t: 'It prints whatever is left in the freed memory',
-        why: 'That is what happens in C. Rust never runs the program.',
-      },
-      {
-        t: 'It panics at run time',
-        why: 'There is no run-time check: the error is found while compiling.',
-      },
-      {
-        t: 'It does not compile: E0597, `text` does not live long enough',
-        correct: true,
-        why: 'The borrow is still used after its owner is dropped, so its lifetime does not fit inside the owner’s.',
-      },
-      {
-        t: 'It works, because Rust keeps `text` alive while `r` exists',
-        why: 'Rust has no garbage collector; it never stretches a value’s life to suit a reference.',
-      },
-    ],
-  },
-  {
     q: 'Which is the best fix for `fn make() -> &String { let s = String::from("hi"); &s }`?',
     options: [
       {
@@ -635,68 +581,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is left of a lifetime in the compiled program?',
-    options: [
-      {
-        t: 'A counter next to each value',
-        why: 'That is reference counting (`Rc`), a different tool.',
-      },
-      {
-        t: 'A check before each use of a reference',
-        why: 'There is no run-time check.',
-      },
-      {
-        t: 'A hidden field in every reference',
-        why: 'A `&str` is still only an address and a length.',
-      },
-      {
-        t: 'Nothing: lifetimes are checked while compiling and then discarded',
-        correct: true,
-        why: 'They cost nothing at run time.',
-      },
-    ],
-  },
-  {
-    q: 'Why can drip-rs’s scanner hand out tokens without allocating?',
-    options: [
-      {
-        t: 'Each token’s lexeme is a slice of the source, and the compiler proves no token outlives the source',
-        correct: true,
-        why: 'Lifetimes make pointing into the source safe, so nothing has to be copied.',
-      },
-      {
-        t: 'It stores every token in a global array',
-        why: 'It hands out tokens one at a time; an array would allocate.',
-      },
-      {
-        t: 'Rust strings never allocate',
-        why: 'A `String` allocates on the heap; a borrowed `&str` does not.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `struct Token { lexeme: &str }` fail to compile?',
-    options: [
-      {
-        t: 'Structs can’t hold references in Rust',
-        why: 'They can, as drip-rs’s `Token<\'src>` does; they need a lifetime parameter.',
-      },
-      {
-        t: 'A struct holding a reference needs a lifetime parameter, so a token can’t outlive the text it borrows',
-        correct: true,
-        why: 'E0106: the field’s borrow needs a named lifetime, declared on the struct.',
-      },
-      {
-        t: '`&str` is not a real type',
-        why: 'It is: a borrowed string slice (*Slices and strings*).',
-      },
-      {
-        t: 'Rust can only store text as `String`',
-        why: '`String` would work, but it copies. A `&\'src str` points into the source without allocating.',
-      },
-    ],
-  },
-  {
     q: 'What does adding `<\'a>` and `&\'a` to `fn longer` change at run time?',
     options: [
       {
@@ -715,28 +599,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which elision rule gives `fn get(&self, k: &str) -> &str` its output lifetime?',
-    options: [
-      {
-        t: 'Rule 1: each parameter gets its own lifetime',
-        why: 'Rule 1 only names the inputs; it doesn’t decide the output.',
-      },
-      {
-        t: 'Rule 2: the single input lifetime goes to the output',
-        why: 'There are two input lifetimes here, `self`’s and `k`’s.',
-      },
-      {
-        t: 'None: this is E0106',
-        why: 'Rule 3 resolves it, because one input is `&self`.',
-      },
-      {
-        t: 'Rule 3: in a method, outputs get the lifetime of `&self`',
-        correct: true,
-        why: 'So the result borrows from `self`, not from `k`.',
-      },
-    ],
-  },
-  {
     q: 'A word splitter has `fn next_word(&mut self) -> Option<&str>`. Why does `let a = w.next_word(); let b = w.next_word();` fail when `a` is used later?',
     options: [
       {
@@ -751,28 +613,6 @@ export const quiz = [
       {
         t: 'A `&mut self` method can only be called once',
         why: 'It can be called many times, just not while an earlier borrow is still in use.',
-      },
-    ],
-  },
-  {
-    q: 'How can drip-rs’s compiler put the text `"self"` into a `Token<\'src>` when `self` is not in the source?',
-    options: [
-      {
-        t: 'It copies `"self"` into the source string first',
-        why: 'The source is borrowed and never changed.',
-      },
-      {
-        t: 'It uses `unsafe` code',
-        why: 'drip-rs forbids `unsafe` code entirely.',
-      },
-      {
-        t: 'A string literal is a `&\'static str`, which outlives any `\'src`, so it fits',
-        correct: true,
-        why: '`\'static` can be used wherever a shorter lifetime is wanted.',
-      },
-      {
-        t: 'Tokens made by the compiler have no lifetime',
-        why: 'Every `Token` has one; this one’s lexeme just happens to live forever.',
       },
     ],
   },

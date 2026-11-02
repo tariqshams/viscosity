@@ -5,21 +5,13 @@ part: VII
 title: 'Traits, trait objects and derive'
 tagline: 'A trait is Rust’s answer to a TypeScript interface, with one big difference: a type has to say, in an impl block, that it keeps the promise. Having the right methods is not enough.'
 objectives:
-  - Define a trait with required and default methods, and implement it for several types.
-  - Explain why Rust traits are nominal, unlike TypeScript's structural interfaces, and read E0046 and E0277.
-  - Use derive for Debug, Clone, Copy and PartialEq, and say what each one gives a type.
-  - State the orphan rule, and read the traits in drip-rs and in the Rust port of Viscosity.
-  - Use &dyn Trait and Box<dyn Trait> to hold values of different types that share a trait.
-  - Draw the data pointer and vtable pointer behind a trait object, and say why it is 16 bytes here.
-  - Compare a dyn call with a JavaScript property lookup and an inline cache.
-  - Read the &[&dyn Trace] roots of drip-rs's garbage collector.
-  - Implement Add, Mul, Neg, AddAssign and Index for your own types, choosing the right Rhs and Output.
-  - Rewrite an expression with operators into the trait method calls rustc turns it into.
-  - Use #[derive] for Debug, Clone, Copy, PartialEq, Default and friends, and say what each derived impl does.
-  - Explain when derive cannot be used, or adds bounds you do not want.
+  - Define a trait with required and default methods, implement it for several types, and say why Rust traits are nominal where TypeScript interfaces are structural.
+  - Use &dyn Trait and Box<dyn Trait> to hold values of different types that share a trait, and draw the two pointers behind them.
+  - Explain that an operator is a call to a trait method, and implement Add for your own type.
+  - Use #[derive] for Debug, Clone, Copy and PartialEq, and say when it cannot be used.
 introduces: [trait, trait-object, operator-traits, derive]
-uses: [rust, rust-functions, let-mut, scalar-types, borrow, slice, string-vs-str, struct, impl, self-receiver, enum, match, option, result, vec, hashmap, interface, type-checking, language-plugin, method, garbage-collection, roots, mark-sweep, aos-vs-soa, compiler, typescript, dictionary-passing, inline-cache, vtable, dynamic-dispatch, fat-pointer, ownership, move, rust-generics, trait-bound, associated-type, std-traits, arena, typed-index, operator-overloading, hash-table]
-sources: [klabnik2026, rust-book-traits, rustref-traits, rust-reference-trait-object, rust-book-trait-objects, rust-book-advanced-traits, rust-std-ops-add, rust-std-ops-index, rust-book-derivable-traits, rust-std-clone, rust-std-fmt]
+uses: [rust, rust-functions, borrow, slice, string-vs-str, struct, impl, self-receiver, enum, vec, interface, language-plugin, method, roots, mark-sweep, inline-cache, typescript, ownership, move]
+sources: [rust-book-traits, rust-reference-trait-object, rust-book-trait-objects, rust-std-ops-add, rust-book-derivable-traits, rust-std-fmt]
 ---
 import DefaultSteps from '../../../components/diagrams/ch125/DefaultSteps';
 import TraitGrid from '../../../components/diagrams/ch125/TraitGrid';
@@ -28,25 +20,14 @@ import FatPointer from '../../../components/diagrams/ch125/FatPointer';
 import DesugarSteps from '../../../components/diagrams/ch125/DesugarSteps';
 import DeriveExpand from '../../../components/diagrams/ch125/DeriveExpand';
 
-{/* ── merge: from old chapter 125, Traits ── */}
-
 ## The plug, again
 
-In *The plugin API* you met Viscosity's plugin interface in TypeScript:
-
-```ts
-interface LanguagePlugin {
-  id: string;
-  extensions: string[];
-  lower(source: string): LoweredModule;
-}
-```
-
-Any object with those members *is* a `LanguagePlugin`; nobody has to say
-so, because TypeScript compares shapes. That is **structural** typing,
-and it is why a plain object literal can be passed as a plugin. Rust
-needs the same idea, a set of methods that many types can provide, and
-calls it a **trait**; it differs in one way that you will feel at once.
+In *The architecture of Viscosity and its plugin API* you met the
+plugin interface in TypeScript: anything with an `id`, a list of
+`extensions` and a `lower` method *is* a `LanguagePlugin`, and nobody
+has to say so, because TypeScript compares shapes. Rust needs the same
+idea, a set of methods that many types can provide, and calls it a
+**trait**; it differs in one way you will feel at once.
 
 <Analogy title="a membership card">
 A TypeScript interface is a dress code: anyone wearing a jacket gets in.
@@ -58,26 +39,14 @@ belongs to exactly one type, and the compiler checks every card before
 the program runs, so there is no doorman to fool.</span>
 </Analogy>
 
-<Analogy extra title="a driving licence">
-Knowing how to drive does not make you a licensed driver; passing the
-test and holding the licence does. Two people may drive equally well,
-and only the one with the licence may drive a hire car.
-<span slot="breaks">A licence can expire or be taken away; an `impl`
-is part of the program's source, fixed when it is compiled, and it
-promises the exact methods of the trait rather than a general
-skill.</span>
-</Analogy>
-
 ## Declaring and implementing
 
-Here is a cut-down plugin trait, adapted from the real one in
-`engine/rust/crates/core/src/plugin.rs`:
+<Examples of="trait">
 
 ```rust
 trait Plugin {
     fn id(&self) -> &str;
     fn exts(&self) -> &[&str];
-
     fn handles(&self, f: &str) -> bool {
         for e in self.exts() {
             if f.ends_with(e) {
@@ -87,14 +56,6 @@ trait Plugin {
         false
     }
 }
-```
-
-`id` and `exts` end with `;`: they are **required**, and each type writes
-its own. `handles` has a body: it is a **default method**, which every
-implementing type gets for free (though a type may override it). Now a
-plugin, a unit struct with nothing inside but its methods:
-
-```rust
 struct Py;
 impl Plugin for Py {
     fn id(&self) -> &str { "python" }
@@ -102,272 +63,57 @@ impl Plugin for Py {
 }
 ```
 
-With that, `Py.id()` is `"python"` and `Py.handles("b.py")` is `true`.
-Step through a default method running for two different types:
+</Examples>
+
+A cut-down version of the trait in `engine/rust`. `id` and `exts` end with `;`:
+they are **required**, and each type writes its own. `handles` has a
+body, so it is a **default method**, which every implementing type gets
+for free and may override. `Py`, a unit struct with no fields, writes the two required methods, so
+`Py.id()` is `"python"` and `Py.handles("b.py")` is `true`. Leave out `exts` and rustc says
+E0046, "not all trait items implemented, missing: `exts`". Step
+through one default body running for two types:
 
 <DefaultSteps client:visible />
 
 <Callout kind="definition">
-A **trait** names a set of methods (and sometimes associated
-functions and types) that types can provide. A type implements it with an **`impl Trait for Type`** block,
-which must define every **required** method and may override the
-**default** ones<Cite id="rust-book-traits" />. Once a type implements a
-trait, its values can be used wherever that trait is asked for.
+A **trait** names a set of methods that types can provide. A type
+implements it with an **`impl Trait for Type`** block, which must define
+every **required** method and may override the **default**
+ones<Cite id="rust-book-traits" />. Only such a block makes a type
+implement the trait: traits are **nominal** (matched by name), where
+TypeScript's interfaces are structural (matched by shape).
 </Callout>
 
-<Examples of="trait">
-
-```rust
-trait Area { fn area(&self) -> f64; }
-struct Sq(f64);
-impl Area for Sq {
-    fn area(&self) -> f64 {
-        self.0 * self.0
-    }
-}
-```
-
-```rust
-impl fmt::Display for CompileError {
-    fn fmt(&self, f: &mut fmt::Formatter)
-        -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-```
-
-```rust
-// from companion/rust/src/gc.rs
-pub trait Trace {
-    fn trace(&self, marks: &mut Marks);
-}
-```
-
-</Examples>
-
-The first is the smallest trait there is: one required method, and a
-tuple struct that implements it, so `Sq(3.0).area()` is `9`. The second
-is real: the Rust port of Viscosity makes its error type printable by
-implementing the standard library's `Display` trait (`fmt` is
-`std::fmt`), after which `println!("{}", e)` prints the message; the
-library, written long ago, calls *your* `fmt`, which is the other half
-of what traits are for. The third is drip-rs's garbage collector asking
-very different things one question, "which heap objects do you point
-at?": a `Value`, a hash table, a `Vec` of traceable things and the
-VM's roots (its stack, frames and globals) all implement `Trace`, each
-in its own way.
-
-Forget a required method, and rustc names it:
-
-```text
-error[E0046]: not all trait items
-  implemented, missing: `exts`
- 3 |     fn exts(&self) -> &[&str];
-   |     -------------------------- `exts`
-   |                           from trait
-16 | impl Plugin for Js {
-   | ^^^^^^^^^^^^^^^^^^ missing `exts` in
-   |                    implementation
-```
-
-<Prompts ids={['trait-what', 'trait-default', 'trait-impl', 'trait-missing']} />
-
-## Membership is declared
-
-Give a type methods called `id` and `exts` of its own, *without* the
-impl, and ask for a `Plugin`. Spot the difference from TypeScript:
-
-```rust
-struct Rb;
-impl Rb {
-    fn id(&self) -> &str { "ruby" }
-    fn exts(&self) -> &[&str] { &[".rb"] }
-}
-Plugin::handles(&Rb, "a.rb");  // ✗
-```
-
-```text
-error[E0277]: the trait bound `Rb: Plugin`
-  is not satisfied
-help: the trait `Plugin` is not
-  implemented for `Rb`
-help: the following other types
-  implement trait `Plugin`
-  ... `Py`
-  ... `Js`
-```
+Give a type `Rb` methods called `id` and `exts` in a plain `impl Rb`
+block, ask for a `Plugin`, and rustc 1.97 refuses with E0277, "the
+trait bound `Rb: Plugin` is not satisfied", listing `Py` and `Js` as
+the types that do implement it:
 
 <Figure takeaway="Only an impl block makes a type a Plugin." caption="Js and Py wrote id and exts in impl Plugin blocks and inherit handles. Rb has methods with the same names in a plain impl block, so as far as Rust is concerned it has nothing to do with Plugin.">
   <TraitGrid />
 </Figure>
 
-Having a method called `id` means nothing by itself: two traits can both
-have an `id` with different meanings, and the impl block is where a type
-says which promise it is keeping. That is **nominal** typing (by name,
-rather than by shape).
+Two traits may both have an `id` with different meanings, so the impl
+block is where a type says which promise it keeps. The **orphan rule**
+goes with it: you may write `impl Trait for Type` only if your own
+crate defined the trait or the type, so you can make your types
+`Display` but you cannot make `Vec` `Display`<Cite id="rust-book-traits" />.
 
-<Formal title="Implementing a trait">
-
-```text
-impl Tr for T { …every required method… }
-──────────────────────────────────────────
-                 T : Tr
-
-T : Tr    m is a method of Tr    t : T
-──────────────────────────────────────
-           t.m(…) is allowed
-```
-
-<span slot="read">Read the line as "if what is above holds, then what
-is below holds". First rule: if there is an impl of trait Tr for type T
-that defines every required method, then T implements Tr (written T :
-Tr). Second: if T implements Tr, m is one of Tr's methods and t is a
-value of type T, then t.m(…) may be called. Nothing else makes T : Tr
-true, which is what "nominal" means.</span>
-</Formal>
-
-There is a fairness rule too: you may write `impl Trait for Type` only
-if your own crate defined the trait or the type (or both). You can make
-your types `Display`, or give `Vec` a trait of your own, but you cannot
-make `Vec` `Display`, because that would be two outsiders deciding for
-both; the Rust book calls this the orphan rule<Cite id="rust-book-traits" />.
-
-<OtherLanguages title="A shape with an area">
-
-```rust
-trait Area { fn area(&self) -> f64; }
-struct Sq { side: f64 }
-impl Area for Sq {
-    fn area(&self) -> f64 {
-        self.side * self.side
-    }
-}
-```
-
-```ts
-interface Area { area(): number }
-class Sq {
-  constructor(public side: number) {}
-  area() { return this.side ** 2; }
-}
-const a: Area = new Sq(3); // fine
-```
-
-</OtherLanguages>
-
-In TypeScript `Sq` never mentions `Area`, and is an `Area` anyway,
-because its shape fits. In Rust the `impl Area for Sq` line is the only
-thing that makes it one, and it may live away from the struct, even in
-a different file. The interface also vanishes before the program runs
-(*Interfaces, erasure and typeof*), while a trait decides at compile
-time which function each call reaches, the dictionary of *Interfaces
-and traits: dictionary passing* worked out by the compiler.
-
-<Prompts ids={['nominal', 'orphan']} />
-
-## Traits you already used
-
-`{:?}` works on `Option` and `Vec` because they implement the standard
-`Debug` trait, and `{}` works on numbers and strings because they
-implement `Display`. Write `#[derive(...)]` above a struct or enum and
-the compiler writes the impls for you:
-
-```rust
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct P { x: f64, y: f64 }
-let a = P { x: 1.0, y: 2.0 };
-let b = a;  // a copy: a still usable
-println!("{:?} {}", a, a == b);
-```
-
-`Debug` gives `{:?}`; `Clone` gives a `.clone()` method; `Copy` makes
-assignment copy the value instead of moving it (allowed only when every
-field is `Copy` too, like these `f64`s), which is why `a` is still
-usable after `let b = a;`; and `PartialEq` gives `==`. This prints
-`P { x: 1.0, y: 2.0 } true`. The drip-rs `Value` enum derives all four.
-
-<Run id="trait-play" />
-
-<Prompts ids={['derive', 'copy-trait']} />
-
-<Callout kind="engine" label="Under the hood">
-The real `LanguagePlugin` trait in the Rust port of Viscosity has `id`,
-`extensions`, `lower` and `emit`, like the TypeScript interface, and
-`lower` returns a `Result<LoweredModule<Self::Extra>, CompileError>`.
-`Extra` is an **associated type**: each plugin names, in its impl, the
-private data it carries from `lower` to `emit`. Two plugins implement it
-today, `JsPlugin` and `PyPlugin`. How a call through a trait reaches the
-right function, and what it costs, is the next chapter.
-</Callout>
-
-## Your turn
-
-<Exercise id="layouts" />
-
-## What you learned
-
-- A **trait** is a named set of methods. Types sign up with
-  `impl Trait for Type`, writing the required methods and inheriting the
-  default ones.
-- Traits are nominal: matching methods are not enough (E0277), and a
-  missing method is E0046. The orphan rule says you must own the trait
-  or the type.
-- `Debug`, `Display`, `Clone`, `Copy` and `PartialEq` are traits;
-  `derive` writes their impls.
-
-Next: one list holding a `Js` and a `Py` at once, through `dyn`.
-
-
-{/* ── merge: from old chapter 125, Trait objects and dyn ── */}
+<Prompts ids={['trait-default', 'nominal', 'orphan']} />
 
 ## One list, many types
 
-Viscosity's command-line tool wants a list of plugins and the question
-"which of you handles `b.py`?". In TypeScript that is an array of
-`LanguagePlugin`s and a loop. In Rust a `Js` and a `Py` are different
-types, of possibly different sizes, and a `Vec` holds one element type,
-so the obvious line is refused:
+Viscosity's command line wants a list of plugins, and asks each "do you
+handle `b.py`?". In Rust a `Js` and a `Py` are different types, and a
+`Vec` holds one element type, so `vec![&Js, &Py]` is refused (E0308,
+"expected `&Js`, found `&Py`"). We want "a reference to *some* type
+that implements `Plugin`", and that type is written `&dyn Plugin`:
+
+<Examples of="trait-object">
 
 ```rust
-let ps = vec![&Js, &Py];  // ✗
-```
-
-```text
-error[E0308]: mismatched types
-13 |     let ps = vec![&Js, &Py];
-   |                        ^^^ expected
-   |                 `&Js`, found `&Py`
-```
-
-What we want to say is "a reference to *some* type that implements
-`Plugin`; I won't say which". That type exists, and it is written
-`&dyn Plugin`.
-
-<Analogy title="a universal remote">
-A universal remote has one set of buttons, "power" and "volume up",
-and works with a television, an amplifier or a projector. Behind the
-buttons it keeps, for the device it is paired with, a table saying
-which signal each button sends.
-<span slot="breaks">A remote is paired once and stays that way; each
-trait object carries its own table pointer, so the same `Vec` can hold
-a value paired with the `Js` table next to one paired with the `Py`
-table.</span>
-</Analogy>
-
-<Analogy extra title="a parcel with a care label">
-A courier depot handles parcels of every shape. It does not need to
-know what is inside; each parcel carries a label saying how to handle
-it ("fragile: this way up"), and the staff follow the label.
-<span slot="breaks">A label is read by a person who may ignore it;
-a vtable is followed exactly, and it can only list the methods of the
-one trait the object was made for.</span>
-</Analogy>
-
-## dyn Trait
-
-```rust
-let ps: Vec<&dyn Plugin> =
-    vec![&Js, &Py];
+let ps: Vec<Box<dyn Plugin>> =
+    vec![Box::new(Js), Box::new(Py)];
 for p in &ps {
     if p.handles("b.py") {
         println!("{}", p.id()); // python
@@ -375,187 +121,53 @@ for p in &ps {
 }
 ```
 
-Each element is a `&dyn Plugin`, so one `Vec` can hold both. Leave out
-the `dyn` and rustc tells you that a trait is not a type on its own:
+</Examples>
 
-```text
-error[E0782]: expected a type, found a trait
-13 |     let ps: Vec<&Plugin> =
-   |                  ^^^^^^
-help: you can add the `dyn` keyword if
-  you want a trait object
-```
-
-How does `p.id()` know which `id` to run, when `p` could be either? The
-reference carries a second pointer. Step through it:
+`Box::new(Js)` moves the value onto the heap and `Box<dyn Plugin>` owns
+it (*Box, Rc and RefCell* is about `Box`); `&dyn Plugin` would borrow
+instead. The loop is compiled once, yet `p.id()` reaches `Js`'s `id`
+and then `Py`'s, because the pointer carries a second pointer:
 
 <VtableSteps client:visible />
 
-<Callout kind="definition">
-A **trait object** is a value of type `dyn Trait`, always used behind a
-pointer such as `&dyn Trait` or `Box<dyn Trait>`. The pointer is
-**fat**: one pointer to the value, and one to a **vtable**, a table
-holding, for each method of the trait, a pointer to that type's
-implementation<Cite id="rust-reference-trait-object" />. Calling a
-method loads the function pointer from the vtable and calls it, which is
-**dynamic dispatch**.
-</Callout>
-
-<Figure takeaway="A trait-object reference is two pointers: the value and its type's vtable." caption="On this machine &Js is 8 bytes, and &dyn Plugin and Box<dyn Plugin> are 16. The vtable is built once per type by the compiler; rustc also keeps the value's size, alignment and drop function there.">
+<Figure takeaway="A trait-object reference is two pointers: the value and its type's vtable." caption="On this machine (rustc 1.97) &Js is 8 bytes, and &dyn Plugin and Box<dyn Plugin> are 16. The vtable is built once per type by the compiler, which also keeps the value's size, alignment and drop function there.">
   <FatPointer />
 </Figure>
 
-<Examples of="trait-object">
+<Callout kind="definition">
+A **trait object** is a value of type `dyn Trait`, always used behind a
+pointer such as `&dyn Trait` or `Box<dyn Trait>`. The pointer is two
+words: one to the value, and one to a **vtable**, a table holding, for
+each method of the trait, a pointer to that type's
+implementation<Cite id="rust-reference-trait-object" />. A call loads
+the function pointer from the table and calls it (dynamic dispatch).
+</Callout>
 
-```rust
-fn show(p: &dyn Plugin) {
-    println!("{}", p.id());
-}
-show(&Js);
-show(&Py);
-```
+Unlike a JavaScript method call, which V8 looks up by name and speeds
+up with an inline cache, a `dyn` call reads a fixed slot that the
+compiler numbered ahead of time; however, it cannot know *which* table
+it will get, so the call is indirect and cannot be
+inlined<Cite id="rust-book-trait-objects" />. drip-rs's collector takes
+`roots: &[&dyn Trace]` for exactly this reason: the VM's stack and the
+compiler's half-built functions are different types, marked by one
+function. (The deep dive *Trait objects and dispatch* measures the
+cost.)
 
-```rust
-let ps: Vec<Box<dyn Plugin>> =
-    vec![Box::new(Js), Box::new(Py)];
-```
+<Prompts ids={['fat', 'dyn-cost']} />
 
-```rust
-// from companion/rust/src/gc.rs
-pub fn collect(&mut self,
-    roots: &[&dyn Trace]) { /* ... */ }
-```
+## Operators are trait calls
 
-</Examples>
-
-The first is the smallest use: one function, compiled once, that takes
-any plugin. The second owns its plugins instead of borrowing them:
-`Box::new(Js)` moves the value onto the heap and `Box<dyn Plugin>` owns
-it, so the `Vec` can outlive the variables it was built from (the
-chapter *Box, Rc and RefCell* is about `Box`). The third is drip-rs's
-garbage collector: `collect` takes its roots as a slice of trait
-objects, so the VM can pass its stack, frames and globals (as one
-`VmRoots` struct) and the compiler can pass its half-built functions,
-and the collector marks them all without knowing either type.
-
-<Prompts ids={['dyn-what', 'dyn-needed', 'dyn-e0782', 'fat', 'dyn-box']} />
-
-## What a dyn call costs
-
-You have seen this table before, from the compiler's side: it is the
-vtable of *Objects, vtables and dynamic dispatch*, travelling beside the
-pointer as in *Interfaces and traits: dictionary passing*. Compare it
-with JavaScript. `plugin.lower(src)` in the TypeScript engine is a
-property lookup by name, which V8 speeds up with an inline cache that
-remembers the shapes it has seen (*Inline caches*). A `dyn` call never
-looks anything up by name: the compiler knew every method of the
-trait, numbered them and built each vtable ahead of time, so at run time
-the call reads a fixed slot. What it cannot know is *which* vtable it
-will get, so the call is indirect, and the Rust book notes that this
-keeps the compiler from inlining the method<Cite id="rust-book-trait-objects" />.
-
-<Formal title="Calling through a trait object">
-
-```text
-p : &dyn Tr  =  (data, vt)
-p.m(a)  ⟶  (vt.m)(data, a)
-```
-
-<span slot="read">A reference p to a trait object of trait Tr is a pair:
-the address of the value, data, and the address of its vtable, vt.
-Calling method m on p means reading m's entry from vt and calling that
-function with data as self and the other arguments after it.</span>
-</Formal>
-
-<OtherLanguages title="A list of plugins">
-
-```rust
-let ps: Vec<Box<dyn Plugin>> =
-    vec![Box::new(Js), Box::new(Py)];
-for p in &ps {
-    println!("{}", p.id());
-}
-```
-
-```ts
-const ps: LanguagePlugin[] =
-  [jsPlugin, pyPlugin];
-for (const p of ps) {
-  console.log(p.id);
-}
-```
-
-</OtherLanguages>
-
-In TypeScript every object reference can already point at anything, so
-an array of plugins needs no special type; each `p.id` is found at run
-time by the engine. In Rust a value's type is normally known exactly, so
-"some plugin, I won't say which" has to be asked for with `dyn`, and
-then the price, one extra pointer per reference and one indirect call
-per method, is paid only where you asked for it. The next chapter shows
-the other way to call a trait method, with no table at all.
-
-<Run id="dyn-play" />
-
-<Prompts ids={['dyn-cost', 'vtable-vs-ic', 'trace']} />
-
-## Your turn
-
-<Exercise id="readDyn" />
-
-<Exercise id="aosoaLayout" />
-
-## What you learned
-
-- A **trait object**, `&dyn Trait` or `Box<dyn Trait>`, lets one
-  variable or one `Vec` hold values of different types that share a
-  trait.
-- Its pointer is fat: data plus a **vtable** of function pointers, 16
-  bytes here. Calls through it are dynamic dispatch: a fixed slot, an
-  indirect call, no lookup by name, and no inlining.
-- drip-rs collects roots of many types through `&[&dyn Trace]`.
-
-Next: generics, where Rust makes a separate copy of a function for each
-type instead of passing a table.
-
-
-{/* ── merge: from old chapter 125, Operator traits and derive ── */}
-
-## Particles that add
-
-Viscosity's whole subject is particles: a position and a velocity,
-moved a little every frame. With a small vector type we would like to
-write the physics the way it is written on paper:
-
-```rust
-p.pos += p.vel * dt;
-```
-
-TypeScript cannot do this: JavaScript gives you no way to say what `+`
-means for your own objects, so a TypeScript game writes
-`add(pos, scale(vel, dt))`. Rust can, because to rustc an operator is
-only a short way of writing a call to a trait method
-(*Operators, sugar and desugaring* showed this in its MIR). Step
-through how rustc reads the line:
+TypeScript gives you no way to say what `+` means for your own objects,
+so a TypeScript game writes `add(pos, scale(vel, dt))`. Rust lets you
+write `pos + vel * dt`, because to rustc an operator is a short way of
+writing a call to a trait method:
 
 <DesugarSteps client:visible />
 
-<Analogy title="a keyboard shortcut">
-Ctrl+C means "copy" in every program, but each program decides what
-copying a thing means: text in an editor, a file in a file manager. `+`
-means "call `Add::add`" for every type, and each type decides what
-adding means by implementing `Add`.
-<span slot="breaks">Programs can invent new shortcuts; Rust has a fixed
-list of operators, each tied to one trait, and you cannot add a new
-operator or redefine `+` for `i32`.</span>
-</Analogy>
-
-Here is `Add` for a two-number vector, the simplest impl there is:
+<Examples of="operator-traits">
 
 ```rust
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct V2 { x: f64, y: f64 }
-
+use std::ops::Add;
 impl Add for V2 {
     type Output = V2;
     fn add(self, o: V2) -> V2 {
@@ -565,104 +177,54 @@ impl Add for V2 {
 }
 ```
 
-`impl Add for V2` is short for `impl Add<V2> for V2`: the trait has a
-generic parameter `Rhs` (the type on the right of `+`) that defaults to
-`Self`<Cite id="rust-book-advanced-traits" />. `type Output = V2;` is an
-associated type (last chapter) saying what `a + b` produces. `add`
-takes both sides *by value*, which is why `V2` derives `Copy`: without
-it, `a + b` would move `a` and `b` away.
+</Examples>
+
+`V2` is a struct of two `f64`s, `x` and `y`. `type Output = V2;` names
+the type the sum produces (a type the impl chooses, which *Closures,
+iterators and associated types* returns to), and `add` takes both sides
+*by value* and builds a new `V2`. From then on `a + b` is
+`Add::add(a, b)`<Cite id="rust-std-ops-add" />. Without the impl, rustc
+says E0369, "cannot add `V2` to `V2`", and notes that an implementation
+of `Add` might be missing.
 
 <Callout kind="definition">
-The **operator traits** are the traits rustc calls for operators:
-`Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg`, `Not` and the bitwise ones in
-`std::ops`, their assigning forms `AddAssign` and so on, `Index` and
-`IndexMut` for `a[i]`<Cite id="rust-std-ops-index" />, and `PartialEq`
-and `PartialOrd` in `std::cmp` for `==` and `<`. The arithmetic traits
-take a generic `Rhs` (default `Self`) and an associated `Output`; `a +
-b` means `Add::add(a, b)`<Cite id="rust-std-ops-add" />.
+The **operator traits** are the traits rustc calls for operators: `Add`,
+`Sub`, `Mul`, `Div`, `Neg` and the rest of `std::ops` (with `AddAssign`
+and friends for `+=`, and `Index` for `a[i]`), and `PartialEq` and
+`PartialOrd` for `==` and `<`. You cannot invent new operators, or
+change `+` for `i32`.
 </Callout>
 
-<Formal title="What rustc writes for each operator">
+The deep dive *Operator traits, Drop and derive* covers the rest, from
+`v * 2.0` and `+=` to drip-rs's `heap[handle]`.
 
-```text
-a + b   ⇝ Add::add(a, b)
-a += b  ⇝ AddAssign::add_assign(&mut a, b)
--a      ⇝ Neg::neg(a)
-a[i]    ⇝ *Index::index(&a, i)
-a == b  ⇝ PartialEq::eq(&a, &b)
-a < b   ⇝ PartialOrd::lt(&a, &b)
-```
+<Prompts ids={['op-desugar']} />
 
-<span slot="read">Read ⇝ as "is compiled as". Plus passes both sides
-by value; plus-equals borrows the left side mutably; indexing borrows
-the container and then follows the reference it gets back (or uses
-IndexMut when the place is assigned to); equality and ordering borrow
-both sides, so comparing never moves anything.</span>
-</Formal>
+## derive: the routine impls, written for you
 
-<Examples of="operator-traits">
+Since `add` takes its operands by value, `a + b` would *move* `a` and
+`b` away, so a small number-like type should be `Copy` (and printable,
+and comparable). Those impls all say the obvious thing, field by field,
+so the compiler writes them when asked:
+
+<Examples of="derive">
 
 ```rust
-impl Mul<f64> for V2 {      // v * 2.0
-    type Output = V2;
-    fn mul(self, k: f64) -> V2 {
-        V2 { x: self.x * k,
-             y: self.y * k }
-    }
-}
-```
-
-```rust
-impl AddAssign for V2 {     // a += b
-    fn add_assign(&mut self, o: V2) {
-        self.x += o.x;
-        self.y += o.y;
-    }
-}
-```
-
-```rust
-// companion/rust/src/gc.rs: heap[h]
-impl<T: HeapObject> Index<Gc<T>> for Heap {
-    type Output = T;
-    fn index(&self, h: Gc<T>) -> &T {
-        &T::arena(self)[h]
-    }
-}
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct V2 { x: f64, y: f64 }
+let a = V2 { x: 1.0, y: 2.0 };
+let b = a;  // a copy: a still usable
+println!("{:?} {}", a, a == b);
+// V2 { x: 1.0, y: 2.0 } true
 ```
 
 </Examples>
 
-The first picks a different right-hand side: `Mul<f64>` makes `v * 2.0`
-legal (but not `2.0 * v`, which would need `impl Mul<V2> for f64`). The
-second has no `Output`, because `+=` changes its left side in place
-through `&mut self`. The third is drip-rs: the heap keeps one arena per
-object type, and this impl lets the VM write `heap[h]` for a handle of
-any of them; `index` returns a reference, and rustc adds the `*`.
-Forget the impl, and rustc says plainly what is missing:
-
-```text
-error[E0369]: cannot add `V2` to `V2`
-note: an implementation of `Add` might be
-  missing for `V2`
-```
-
-<Prompts ids={['op-desugar', 'op-rhs', 'op-byvalue', 'op-index']} />
-
-## derive: the routine impls, written for you
-
-Look back at `V2`'s first line. Writing `Debug`, `Clone`, `Copy` and
-`PartialEq` by hand would take twenty lines that all say the obvious
-thing: print each field, clone each field, compare each field.
-
-<Analogy extra title="a form filled from your profile">
-A website that already knows your name and address fills in the
-delivery form for you, box by box, from what it knows. `#[derive]` fills
-in an impl the same way, field by field, from each field's own impl.
-<span slot="breaks">Autofill leaves a box empty when it knows nothing.
-derive refuses outright: if one field lacks the trait, there is no impl
-at all, and rustc says which field is to blame.</span>
-</Analogy>
+`Debug` gives `{:?}`; `Clone` gives `.clone()`; `Copy` makes
+assignment copy the value instead of moving it, so `a` is still usable
+after `let b = a;`; and `PartialEq` gives `==`, true when every field
+is equal (where TypeScript's `===` on two objects can only ask "the
+very same object?").
 
 <Figure takeaway="derive writes the impl you would have written: one line per field." caption="What #[derive(Clone, PartialEq, Debug)] produces for V2, written out by hand (simplified). Each method uses the same trait on every field, in order.">
   <DeriveExpand />
@@ -670,121 +232,53 @@ at all, and rustc says which field is to blame.</span>
 
 <Callout kind="definition">
 **`#[derive(...)]`** on a struct or enum asks the compiler to write
-impls of the named traits, using each field's own impl: `Debug` prints
-`V2 { x: 1.0, y: 2.0 }`, `Clone` clones each field, `PartialEq` is true
-when every field is equal, `PartialOrd` compares fields in the order
-they are declared, `Default` uses each field's default, and `Hash`
-hashes each field<Cite id="rust-book-derivable-traits" />. Every field
-must implement the trait. For a generic type, derive also requires the
-trait of each type parameter (`T: Clone`)<Cite id="rust-std-clone" />.
-`Display` cannot be derived, because only you know how a value should
-look to a user<Cite id="rust-std-fmt" />.
+impls of the named traits, using each field's own impl. It works for
+`Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`, `PartialOrd`, `Ord`,
+`Hash` and `Default`, and every field must implement the
+trait<Cite id="rust-book-derivable-traits" />. `Display` cannot be
+derived, because only you know how a value should look to a
+user<Cite id="rust-std-fmt" />.
 </Callout>
 
-<Examples of="derive">
-
-```rust
-#[derive(Debug, Default)]
-struct Args {          // the Viscosity CLI
-    cmd: String,
-    files: Vec<PathBuf>,
-    // ...
-}
-```
-
-```rust
-// companion/rust/src/value.rs
-// "The derived `==` is Drip's `==`"
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Value {
-    None,
-    Bool(bool),
-    Number(f64),
-    // ... handles to heap objects
-}
-```
-
-```rust
-// companion/rust/src/object.rs
-// derive would demand T: Clone, ...
-impl<T> Clone for Gc<T> {
-    fn clone(&self) -> Self { *self }
-}
-impl<T> Copy for Gc<T> {}
-```
-
-</Examples>
-
-The first is the command line tool's parsed arguments. `parse_args`
-starts from `Args { cmd: ..., ..Args::default() }`, and the derived
-`Default` fills each field with its own default: an empty `String`, an
-empty `Vec`, and for the `opts` field the hand-written
-`CompileOptions::default()` from the last chapter. The second is Drip's value type, where derive is
-the specification: two `Number`s are equal exactly when their `f64`s are
-`==`, so `NaN` is not equal to itself, as Drip requires. The third is
-where derive is wrong. A `Gc<T>` is only an index (with a zero-size
-marker naming `T`), so it can always be copied; but `#[derive(Clone)]`
-would write `impl<T: Clone> Clone for Gc<T>`, and a handle to a
-non-cloneable object would lose `clone`. So drip-rs writes `Clone`, `Copy`,
-`PartialEq`, `Eq` and `Debug` for it by hand.
-
 The classic refusal is `Copy` on a type that owns heap memory:
+`#[derive(Clone, Copy)]` on `struct Tok { text: String, line: u32 }` is
+E0204, pointing at `text`: "this field does not implement `Copy`".
 
-```text
-error[E0204]: the trait `Copy` cannot be
-  implemented for this type
-1 | #[derive(Clone, Copy)]
-  |                 ---- in this derive
-  |                 macro expansion
-2 | struct Tok { text: String, line: u32 }
-  |        ^^^   ------------ this field
-  |              does not implement `Copy`
-```
+<More title="Run it: a trait, two impls, dyn and a derive">
+<Run id="trait-play" />
 
-<OtherLanguages title="Equal points">
-
-```rust
-#[derive(PartialEq)]
-struct Pt { x: f64, y: f64 }
-
-let same = Pt { x: 1.0, y: 2.0 }
-    == Pt { x: 1.0, y: 2.0 }; // true
-```
-
-```ts
-const a = { x: 1, y: 2 };
-const b = { x: 1, y: 2 };
-a === b; // false: two objects
-a.x === b.x && a.y === b.y; // true
-```
-
-</OtherLanguages>
-
-In TypeScript `===` on objects asks "the very same object?", and there
-is no way to change that, so comparing fields is a helper you write.
-Rust's `==` asks `PartialEq`, and one derive makes it compare fields.
+<Run id="dyn-play" />
 
 <Run id="particle-ops" />
+</More>
 
-<Prompts ids={['derive-what', 'derive-fields', 'derive-display', 'derive-bound']} />
+<Prompts ids={['derive-fields', 'derive-display']} />
 
 ## Your turn
 
+<Exercise id="layouts" />
+
+<Exercise id="readDyn" />
+
 <Exercise id="vec2" />
+
+<Exercise id="aosoaLayout" />
 
 ## What you learned
 
-- Operators are trait calls: `a + b` is `Add::add(a, b)`, `a[i]` is
-  `*Index::index(&a, i)`, `a == b` is `PartialEq::eq(&a, &b)`.
-  Implement the **operator trait** to give your type the operator.
-- `Rhs` (default `Self`) chooses the right-hand type; the associated
-  `Output` chooses the result.
-- **`#[derive]`** writes `Debug`, `Clone`, `Copy`, `PartialEq`,
-  `PartialOrd`, `Default` and `Hash` field by field; every field must
-  have the trait, generic types get `T: Trait` bounds, and `Display`
-  is always yours to write.
+- A **trait** is a named set of methods. Types sign up with
+  `impl Trait for Type`, writing the required methods and inheriting
+  the default ones; matching method names are not enough (E0277), and
+  you must own the trait or the type.
+- A **trait object**, `&dyn Trait` or `Box<dyn Trait>`, lets one `Vec`
+  hold values of different types; its pointer is data plus a vtable,
+  and each call reads a fixed slot and calls indirectly.
+- **Operators** are trait calls: `a + b` is `Add::add(a, b)`.
+- **`#[derive]`** writes `Debug`, `Clone`, `Copy`, `PartialEq` and
+  friends field by field, when every field has the trait.
 
-Next: threads, and the two marker traits that make data races a compile
-error.
+Next: *Generics and monomorphization*, the other way to call a trait
+method, where Rust makes a copy of the function per type instead of
+passing a table.
 
 <Quiz />

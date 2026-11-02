@@ -1,23 +1,14 @@
-// Chapter 194 cards: recall prompts, examples, exercises and quiz.
+// Chapter 126 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 126, 126.
 
 export const prompts = {
   'gen-what': {
     q: 'What does the `<T>` in `fn first<T>(xs: &[T]) -> Option<&T>` declare?',
     a: 'A type parameter: `first` works for slices of any element type `T`, filled in at each call.',
   },
-  'gen-infer': {
-    q: 'In `first(&[1, 2])`, who decides that `T` is `i32`?',
-    a: 'The compiler, from the argument’s type; you rarely write the type at the call.',
-  },
   'gen-impl': {
     q: 'How do you read `impl<T> Pair<T> { ... }`?',
     a: '“For every type `T`, these are methods of `Pair<T>`.”',
-  },
-  'gen-gc': {
-    q: 'drip-rs’s `Gc<T>` is only a `u32` at run time. What does the `T` buy?',
-    a: 'Type safety: a `Gc<ObjClosure>` can’t be mixed up with a handle to another kind of object.',
   },
   'bound-what': {
     q: 'What does the bound in `fn top<T: PartialOrd>` allow, and what does it demand?',
@@ -31,10 +22,6 @@ export const prompts = {
     q: 'How do you ask for two traits, and where do long bounds go?',
     a: 'Join them with `+` (`T: PartialOrd + Copy`), and move long ones into a `where` clause after the signature.',
   },
-  'bound-impl': {
-    q: 'What does `fn show(p: &impl Plugin)` mean?',
-    a: 'The same as `fn show<P: Plugin>(p: &P)`: any type that implements `Plugin`.',
-  },
   'mono-what': {
     q: 'What is monomorphization?',
     a: 'Compiling a generic item into a separate ordinary copy for each concrete type it is used with.',
@@ -43,29 +30,9 @@ export const prompts = {
     q: 'A generic function is called a thousand times with `i32` and once with `f64`. How many copies are made?',
     a: 'Two: one per type used, not one per call.',
   },
-  'mono-evidence': {
-    q: 'What did `nm -C` list for a program calling `total` with an `Aos` and a `Soa`?',
-    a: 'Two functions, `total::<Aos>` and `total::<Soa>`, but only one `total_dyn`.',
-  },
-  'mono-cost': {
-    q: 'What does monomorphization cost, and what does it buy?',
-    a: 'Compile time and binary size; in return, direct calls the compiler can inline.',
-  },
-  'mono-option': {
-    q: 'Your program uses `Some(5)` and `Some(5.0)`. What does the compiler make of `Option<T>`?',
-    a: 'Two concrete types, as if you had written an `Option_i32` and an `Option_f64`.',
-  },
-  'mono-ic': {
-    q: 'Why is the call `l.slot(i, f)` inside `total::<Aos>` like a monomorphic inline cache, only better?',
-    a: 'It can only reach `Aos::slot`, and that is known before the program runs, so no guard or deoptimisation is needed.',
-  },
   'gen-vs-dyn': {
     q: 'When should you use `dyn Trait` instead of a generic parameter?',
     a: 'When one collection must hold several types, or the type is chosen while the program runs.',
-  },
-  'engine-generic': {
-    q: 'Why can’t the Rust Viscosity keep its plugins in a `Vec<&dyn LanguagePlugin>`?',
-    a: 'The trait has an associated type, `Extra`, which a trait object must name: E0191.',
   },
 };
 
@@ -219,7 +186,7 @@ fn ties_give_the_first() {
 - \`if xs[i] > xs[best] { best = i; }\` uses \`>\`, which the bound allows, and moves \`best\` only for a strictly larger element, so ties keep the first.
 - \`Some(best)\` wraps the answer.
 
-The compiler checks this body once, against the bound, and then accepts \`argmax\` on \`i32\`, \`f64\` and \`&str\` slices. (How it then compiles those three uses is the next chapter.)
+The compiler checks this body once, against the bound, and then accepts \`argmax\` on \`i32\`, \`f64\` and \`&str\` slices. (Rust then compiles one copy of it for each of the three element types: monomorphization.)
 
 **Common wrong attempts.**
 
@@ -258,8 +225,9 @@ The compiler checks this body once, against the bound, and then accepts \`argmax
   },
   totalGeneric: {
     lang: 'rust',
+    optional: true,
     title: 'Sum a field, generic over the layout',
-    prompt: 'Using the `Layout` trait and its two impls from the chapter *Traits* (given), write `total(l, buf, n, f)`: the sum of field `f` over elements `0..n`, reading through `l.slot`. It must be **generic** over the layout type `L`, not use `dyn`. The starter’s signature is missing something: the body won’t compile until you add the right trait bound.',
+    prompt: 'Using the `Layout` trait and its `Aos` and `Soa` impls (given), write `total(l, buf, n, f)`: the sum of field `f` over elements `0..n`, reading through `l.slot`. It must be **generic** over the layout type `L`, not use `dyn`. The starter’s signature is missing something: the body won’t compile until you add the right trait bound.',
     starter: `trait Layout {
     fn slot(&self, i: usize, f: usize)
         -> usize;
@@ -476,78 +444,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'With `fn top<T: PartialOrd>`, which call is rejected?',
-    options: [
-      {
-        t: '`top(&[3, 9, 4])`',
-        why: '`i32` implements `PartialOrd`.',
-      },
-      {
-        t: '`top(&["b", "a"])`',
-        why: '`&str` implements `PartialOrd`: strings compare like dictionary words.',
-      },
-      {
-        t: '`top(&ps)` where `ps` is an array of a struct with no derives',
-        correct: true,
-        why: 'E0277: can’t compare `P` with `P`; `#[derive(PartialOrd)]` would fix it.',
-      },
-    ],
-  },
-  {
-    q: 'Which signature means the same as `fn show(p: &impl Plugin)`?',
-    options: [
-      {
-        t: '`fn show<P: Plugin>(p: &P)`',
-        correct: true,
-        why: '`impl Trait` in a parameter is short for an anonymous type parameter with that bound.',
-      },
-      {
-        t: '`fn show(p: &dyn Plugin)`',
-        why: 'That takes a trait object, a fat pointer with a vtable, which the last chapter described.',
-      },
-      {
-        t: '`fn show(p: &Plugin)`',
-        why: 'A trait is not a type on its own (E0782).',
-      },
-    ],
-  },
-  {
-    q: 'What does `impl<T> Pair<T> { fn first(&self) -> &T { &self.a } }` give you?',
-    options: [
-      {
-        t: 'A `first` method only for `Pair<i32>`',
-        why: '`impl<T>` makes it for every `T`.',
-      },
-      {
-        t: 'A `first` method on `Pair<T>` for every type `T`',
-        correct: true,
-        why: '“For every `T`, here are methods of `Pair<T>`.”',
-      },
-      {
-        t: 'A trait called `Pair`',
-        why: 'It is an ordinary impl block with a type parameter.',
-      },
-    ],
-  },
-  {
-    q: 'How do Rust trait bounds differ from TypeScript’s `T extends ...` constraints?',
-    options: [
-      {
-        t: 'They are the same thing with a different keyword',
-        why: 'TypeScript constraints describe a shape; Rust bounds name traits a type has implemented.',
-      },
-      {
-        t: 'TypeScript has no way to constrain a type parameter',
-        why: 'It does, with `extends`.',
-      },
-      {
-        t: 'A Rust bound names traits, and the body may use nothing else; TypeScript constrains a shape, and even lets `>` through on a bare `T`',
-        correct: true,
-        why: 'Which is why the TypeScript `top` type-checks without any constraint.',
-      },
-    ],
-  },
-  {
     q: '`fn total<L: Layout>` is called with an `&Aos` and an `&Soa`. What is in the compiled program?',
     options: [
       {
@@ -598,42 +494,6 @@ export const quiz = [
       {
         t: 'Finding the largest element of a slice of numbers',
         why: 'One element type per call: a generic `T: PartialOrd` is the natural fit.',
-      },
-    ],
-  },
-  {
-    q: 'How does V8’s monomorphic inline cache compare with a call inside a monomorphized Rust copy?',
-    options: [
-      {
-        t: 'They are identical in every way',
-        why: 'V8 learns the shape at run time and keeps a check; Rust knows the target before running.',
-      },
-      {
-        t: 'V8 discovers the single shape by watching and keeps a guard; the Rust call is known at compile time and needs none',
-        correct: true,
-        why: 'Monomorphic by construction.',
-      },
-      {
-        t: 'Rust also deoptimises when a new type arrives',
-        why: 'A new type gets a new copy at compile time; nothing deoptimises.',
-      },
-    ],
-  },
-  {
-    q: 'How does the Rust Viscosity CLI pick a plugin for a file?',
-    options: [
-      {
-        t: 'It keeps a `Vec<&dyn LanguagePlugin>` and asks each one',
-        why: '`dyn LanguagePlugin` is E0191 as the trait stands: its associated type must be named.',
-      },
-      {
-        t: 'It has only a JavaScript plugin',
-        why: 'It also has `PyPlugin`; `nm` lists `compile::<PyPlugin>`.',
-      },
-      {
-        t: 'An `if` on the extension calls `compile(&src, &PyPlugin, ..)` or `compile(&src, &JsPlugin, ..)`, two monomorphized copies',
-        correct: true,
-        why: 'Chosen at run time, but each branch calls its own static copy.',
       },
     ],
   },

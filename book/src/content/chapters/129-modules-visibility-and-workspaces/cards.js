@@ -1,39 +1,18 @@
-// Chapter 197 cards: recall prompts, examples, exercises and quiz.
+// Chapter 129 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 129, 129.
 
 export const prompts = {
   'mod-file': {
     q: 'What does `mod scanner;` in `lib.rs` do?',
     a: 'Declares a child module `scanner` whose code is read from `scanner.rs` (or `scanner/mod.rs`). Without it, that file isn’t compiled.',
   },
-  'mod-root': {
-    q: 'What is the **crate root**, and which file is it usually?',
-    a: 'The file the compiler starts from, the root of the module tree: `src/lib.rs` for a library crate, `src/main.rs` for a binary.',
-  },
-  'mod-inline': {
-    q: 'What is the difference between `mod tests;` and `mod tests { ... }`?',
-    a: 'Only where the code lives: the first reads it from `tests.rs`, the second has it inline. Both make the same child module.',
-  },
   'mod-paths': {
     q: 'What do `crate::`, `super::` and `self::` mean at the start of a path?',
     a: 'Start from the crate root, from the parent module, or from the current module.',
   },
-  'mod-use': {
-    q: 'What does `use crate::gc::{Heap, Trace};` do?',
-    a: 'Brings `Heap` and `Trace` from module `gc` into scope, so the code can write `Heap` instead of the full path.',
-  },
-  'mod-glob': {
-    q: 'What does `use super::*;` bring into scope, and why is it used sparingly outside tests?',
-    a: 'Every public name of the parent module (and, in a child, its private ones too). It hides where each name came from.',
-  },
   'mod-use-scope': {
     q: 'A `use` line at the top of `compiler.rs`: does it also work inside `vm.rs`, or inside a child module of `compiler`?',
     a: 'No. A `use` makes a shortcut only in the module where it is written; every module needs its own.',
-  },
-  'mod-e0432': {
-    q: 'Inside module `report`, why does `use geom::area;` fail with E0432 when `geom` is a module at the crate root?',
-    a: 'A `use` path without `crate::` starts in the current module, and `report` has no child `geom`. Write `use crate::geom::area;`.',
   },
   'vis-default': {
     q: 'What is the visibility of a function, struct field or method with no `pub`?',
@@ -47,10 +26,6 @@ export const prompts = {
     q: 'Why can `mod tests` inside `table.rs` call `table`’s private functions?',
     a: 'Private items are visible in their module and its descendants, and `tests` is a child module.',
   },
-  'vis-why': {
-    q: 'Why does drip-rs keep `Table`’s `keys`, `values` and `count` private?',
-    a: 'So only `table.rs` can change them, and the table’s invariants (equal column lengths, a correct count) can’t be broken from outside.',
-  },
   'vis-reexport': {
     q: 'What does `pub use vm::{Options, Outcome, Vm};` in drip-rs’s `lib.rs` do?',
     a: 'Re-exports the three types, so users can write `drip::Vm` instead of `drip::vm::Vm`.',
@@ -58,14 +33,6 @@ export const prompts = {
   'ws-what': {
     q: 'What do the members of a cargo **workspace** share?',
     a: 'One `Cargo.lock` (so one version of each dependency) and one `target/` output folder; they are built and tested together.',
-  },
-  'ws-cycle': {
-    q: 'What does cargo do if two crates list each other under `[dependencies]`?',
-    a: 'It refuses to build: “cyclic package dependency”.',
-  },
-  'ws-dev': {
-    q: 'How do `viscosity-core`’s tests use the JavaScript plugin, which itself depends on core?',
-    a: 'Through `[dev-dependencies]`, built only for tests, so the normal dependency graph has no cycle.',
   },
 };
 
@@ -147,6 +114,7 @@ fn main() {
 export const exercises = {
   wireTree: {
     lang: 'rust',
+    optional: true,
     title: 'Wire up the module tree',
     prompt: 'The crate has a `vec2` module (a 2D vector and its dot product) and a `physics` module with a nested `drag` module. As given, it does not compile: `physics` and `drag` use `V2` and `dot` without bringing them into scope, and two bodies are missing. Add one `use` line to `physics` and one to `drag` (use `super::` in the second), then write `speed2` (the vector dotted with itself) and `slowed` (each component multiplied by `k`). Leave `vec2` as it is.',
     starter: `mod vec2 {
@@ -568,90 +536,6 @@ export const quiz = [
     ],
   },
   {
-    q: '`compiler.rs` has `use crate::gc::Heap;`. In `vm.rs`, can you write `Heap` without a `use`?',
-    options: [
-      {
-        t: 'Yes: a `use` applies to the whole crate',
-        why: 'A `use` only makes a shortcut in the module where it is written.',
-      },
-      {
-        t: 'Only if `vm` is declared after `compiler` in `lib.rs`',
-        why: 'Order of declaration does not matter; scope does.',
-      },
-      {
-        t: 'No: `vm.rs` needs its own `use crate::gc::Heap;` or the full path',
-        correct: true,
-        why: 'Each module has its own list of shortcuts.',
-      },
-    ],
-  },
-  {
-    q: 'Which declaration makes rustc read the module’s code from a file?',
-    options: [
-      {
-        t: '`mod gc;`',
-        correct: true,
-        why: 'With a semicolon and no body, the code comes from `gc.rs` or `gc/mod.rs`.',
-      },
-      {
-        t: '`mod gc { }`',
-        why: 'That declares an inline module with an empty body.',
-      },
-      {
-        t: '`use gc;`',
-        why: '`use` only makes shortcuts to modules that already exist.',
-      },
-      {
-        t: '`import gc from "./gc.rs";`',
-        why: 'That is JavaScript’s syntax, not Rust’s.',
-      },
-    ],
-  },
-  {
-    q: 'What does `use crate::chunk::{Chunk, OpCode};` do?',
-    options: [
-      {
-        t: 'Copies the two types into the current file',
-        why: 'Nothing is copied; it adds two shortcuts to the same items.',
-      },
-      {
-        t: 'Makes `Chunk` and `OpCode` usable by their short names in this module',
-        correct: true,
-        why: 'Braces bring several names from one module at once.',
-      },
-      {
-        t: 'Declares a new module called `chunk`',
-        why: 'Only `mod chunk;` declares it; `use` refers to it.',
-      },
-      {
-        t: 'Makes the two types public to other crates',
-        why: 'That would need `pub use`, a re-export.',
-      },
-    ],
-  },
-  {
-    q: 'In `pub struct Table { count: usize, pub keys: Vec<u32> }`, what can another module do?',
-    options: [
-      {
-        t: 'Read and write both fields',
-        why: '`count` has no `pub`, so it is private.',
-      },
-      {
-        t: 'Use `keys`, but not `count`, and not build the struct with a literal',
-        correct: true,
-        why: 'Fields have their own visibility, and a literal needs every field (E0451).',
-      },
-      {
-        t: 'Nothing: the struct’s fields are all hidden',
-        why: '`keys` is marked `pub`.',
-      },
-      {
-        t: 'Use `count` but not `keys`',
-        why: 'It is the other way round.',
-      },
-    ],
-  },
-  {
     q: 'A private function is defined in module `a`. Where can it be called?',
     options: [
       {
@@ -674,28 +558,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `pub use vm::{Options, Outcome, Vm};` in drip-rs’s `lib.rs` do?',
-    options: [
-      {
-        t: 'Makes the whole `vm` module public',
-        why: '`pub mod vm;` does that; `pub use` re-exports items.',
-      },
-      {
-        t: 'Copies the three types into `lib.rs`',
-        why: 'Nothing is copied; it adds a second path to the same items.',
-      },
-      {
-        t: 'Imports the types for `lib.rs` only',
-        why: 'That would be a plain `use`. The `pub` re-exports them.',
-      },
-      {
-        t: 'Re-exports them, so users can write `drip::Vm` instead of `drip::vm::Vm`',
-        correct: true,
-        why: 'It shapes the crate’s public paths.',
-      },
-    ],
-  },
-  {
     q: 'What do the six crates in engine/rust’s workspace share?',
     options: [
       {
@@ -710,24 +572,6 @@ export const quiz = [
       {
         t: 'One module tree, rooted at `crates/`',
         why: 'Each crate has its own module tree and its own `crate` root.',
-      },
-    ],
-  },
-  {
-    q: '`viscosity-core`’s tests use `viscosity-frontend-js`, which depends on core. How is that allowed?',
-    options: [
-      {
-        t: 'Cargo allows any cycle inside a workspace',
-        why: 'It doesn’t: cargo reports “cyclic package dependency”.',
-      },
-      {
-        t: 'The tests copy frontend-js’s source',
-        why: 'They depend on the real crate, through the dev-dependency.',
-      },
-      {
-        t: 'It is listed under `[dev-dependencies]`, used only to build core’s tests',
-        correct: true,
-        why: 'As a normal dependency it would be a cycle, which cargo rejects.',
       },
     ],
   },
