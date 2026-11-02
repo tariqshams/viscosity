@@ -231,8 +231,8 @@ shows another case: a `super.m()` call inside a mixin, where each use of
 the mixin creates a new class<Cite id="v8-fast-super" />. Do not reshape a
 whole program around this, though: two or three shapes is polymorphic,
 which is fine, and what matters is the hot loop. The deep dive *Stub
-caches and feedback vectors* looks inside the stub cache and the feedback
-vector. (The runs use ten calls per shape because in Node 22 a function
+caches and feedback vectors* looks inside the feedback vector, where V8
+keeps what each inline cache has seen. (The runs use ten calls per shape because in Node 22 a function
 gets its feedback vector only after about eight calls, and shapes seen
 before that are never recorded.) Try one shape against twenty on your
 device:
