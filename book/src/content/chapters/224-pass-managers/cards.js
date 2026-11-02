@@ -9,17 +9,9 @@ export const prompts = {
     q: 'What is the difference between an analysis pass and a transformation pass?',
     a: 'An analysis reads the IR and produces facts (like a dominator tree). A transformation changes the IR (like dead code elimination).',
   },
-  'visc-fixed': {
-    q: 'Does Viscosity have a pass manager today? What does it run instead?',
-    a: 'No. It runs one fixed pipeline: lower → analyze → plan → emit.',
-  },
-  'memo-safe': {
-    q: 'Viscosity’s `info(f)` caches dominators and loops and never clears the cache. Why is that safe?',
-    a: 'Nothing changes the IR while `analyze` runs, so a result computed once stays correct.',
-  },
-  'stale-danger': {
-    q: 'A pass changes the CFG but the cached dominator tree is kept. What can go wrong?',
-    a: 'Later passes read a stale tree and make decisions on facts that are no longer true, which can miscompile the program.',
+  'order-matters': {
+    q: 'Why can running constant propagation before dead code elimination give a better result than the other way round?',
+    a: 'Constant propagation can make a branch condition constant, which makes an arm dead; dead code elimination can only delete it if it runs afterwards.',
   },
   'pm-what': {
     q: 'What is a pass manager?',
@@ -33,9 +25,38 @@ export const prompts = {
     q: 'Constant propagation rewrites instructions but no blocks or edges. Which analyses can it report as preserved?',
     a: 'The CFG analyses, such as dominators and loops, which depend only on blocks and edges.',
   },
-  'deps-order': {
-    q: 'How does asking for analyses through the manager fix their order?',
-    a: 'An analysis that needs another asks for it, so the needed one is computed first, automatically.',
+  'visc-fixed': {
+    q: 'Does Viscosity have a pass manager today? What does it run instead?',
+    a: 'No. It runs one fixed pipeline: lower → analyze → plan → emit.',
+  },
+  'memo-safe': {
+    q: 'Viscosity’s `info(f)` caches dominators and loops and never clears the cache. Why is that safe today, and when would it stop being safe?',
+    a: 'Nothing changes the IR while `analyze` runs; a transformation between two stages would make the cached results stale.',
+  },
+};
+
+export const examples = {
+  cache: {
+    title: 'A cache, then an invalidation',
+    code: `let computed = 0;
+const cache = new Map();
+function get(name) {
+  if (!cache.has(name)) {
+    computed++;
+    cache.set(name, name + ' result');
+  }
+  return cache.get(name);
+}
+
+get('dom'); get('dom'); get('loops');
+console.log('computed', computed);
+
+// A pass deleted a block: the CFG
+// changed, so both are dropped.
+cache.delete('dom');
+cache.delete('loops');
+get('dom');
+console.log('computed', computed);`,
   },
 };
 
@@ -120,18 +141,32 @@ test('passes and analyses can ask', () => {
   expect(loops).toBe(1);
 });`,
     hints: [
-      'Keep a `Map` from analysis name to result. In `get`, compute and store only when the name is missing.',
-      'Pass `get` itself to each analysis and each pass, so they can ask for other analyses.',
+      'Start with `get` alone: how can it avoid computing the same analysis twice?',
+      'Keep a `Map` from analysis name to result; in `get`, compute and store only when the name is missing, and pass `get` itself to each analysis and each pass so they can ask for others.',
       'In `run`, if the pass returned `\'all\'`, stop. Otherwise delete every cached key that is not in the returned array. (Copy the keys first, then delete.)',
     ],
-    walkthrough: `This is the core of LLVM’s analysis manager in twenty lines.
+    walkthrough: `**How to think about it.** Two jobs, two functions. \`get\` is a memo: the first time a name is asked for, compute it and remember it; after that, hand back what you remembered. \`run\` is where the memory is corrected: only the pass knows what it changed, so it returns what it preserved, and the manager forgets everything else. Passing \`get\` itself to every analysis and pass is what lets them ask for other analyses, and that is what makes the order of analyses automatic.
 
-- **The cache.** \`get\` is a memo: the first call for a name computes it, later calls return the stored result. That turns “every pass computes its own dominator tree” into “the tree is computed once”.
-- **\`get\` is passed along.** Analyses and passes receive \`get\`, so an analysis that needs another (loops need dominators) just asks for it. That is what makes the order automatic: whatever is needed is computed first.
-- **Passes report, the manager forgets.** Only the pass knows what it changed, so it returns what it preserved. The manager deletes everything else. \`'all'\` is the common, cheap case: an analysis pass, or a transformation that changed nothing.
-- **Copy before deleting.** \`[...cache.keys()]\` takes a snapshot, so deleting entries doesn’t disturb the loop.
+**The solution, line by line.**
 
-What it doesn’t do: keep one cache per function, or notice that \`loops\` was built from a \`dom\` that has just been dropped. The extra exercise adds the second.`,
+- \`const cache = new Map();\` maps an analysis name to its result. A \`Map\` keeps any key and has \`has\`, \`get\`, \`set\` and \`delete\`.
+- \`const get = (name, ir) => {\` is the only way anyone obtains an analysis.
+- \`if (!cache.has(name)) {\` computes only on a miss.
+- \`const r = analyses[name](ir, get);\` runs the analysis, handing it \`get\` so it can ask for the analyses it needs (\`loops\` asks for \`dom\`); those are computed first, through the same cache.
+- \`cache.set(name, r);\` remembers the result.
+- \`return cache.get(name);\` returns the stored result on a hit or a miss alike.
+- \`const run = (pass, ir) => {\` runs one pass.
+- \`const keep = pass(ir, get);\` runs it, with access to the analyses, and receives its report: \`'all'\` or a list of names.
+- \`if (keep === 'all') return;\` is the cheap common case: an analysis-only pass, or one that changed nothing.
+- \`for (const k of [...cache.keys()]) {\` loops over a *copy* of the keys (\`[...]\` makes an array), so deleting entries cannot disturb the loop.
+- \`if (!keep.includes(k)) { cache.delete(k); }\` forgets every result the pass did not vouch for.
+
+**Common wrong attempts.**
+
+- Caching without ever invalidating: after a pass changes the IR, \`get\` keeps handing out stale results, which is a miscompile waiting to happen.
+- Clearing the whole cache after every pass is always correct, but it throws away exactly what passes preserved, so nothing is reused across passes and the cache only helps within one pass.
+
+What this version does not do: keep one cache per function, or notice that \`loops\` was built from a \`dom\` that has just been dropped. The extra exercise adds the second.`,
     wrong: [
       {
         code: `function makePM(analyses) {
@@ -267,13 +302,25 @@ test('a cached hit still records the dependency', () => {
       'Record the dependency even when the requested name is already cached: `loops` still used `dom`.',
       'An entry survives if it is in `keep` and all its dependencies survive. That check is naturally recursive.',
     ],
-    walkthrough: `Analyses are built from other analyses, so invalidation has to follow those edges.
+    walkthrough: `**How to think about it.** A result is only as good as what it was built from: \`loops\` was computed by reading \`dom\`, so if \`dom\` is thrown away, \`loops\` must go too, whatever the pass said. To know that, the manager has to record, while each analysis is being computed, which analyses it asked for. The asking happens through \`get\`, so \`get\` must know *who* is asking; a stack of "analyses currently being computed" answers that, because analyses can call \`get\` from inside other analyses.
 
-- **Who is asking?** Analyses call \`get\` while they are being computed. A stack of “currently computing” names tells you, at any \`get\`, which analysis is doing the asking. Push before computing, pop after.
-- **Record hits too.** If \`dom\` was cached before \`loops\` was computed, \`loops\` still read it. The dependency is about what a result was built from, not about who computed what.
-- **Survival is recursive.** \`loops\` is valid only if it was preserved and \`dom\` is valid. Dependencies form a DAG (an analysis can’t depend on itself), so the recursion ends.
+**The solution, line by line.**
 
-In LLVM, an analysis result can implement its own \`invalidate()\` method. That is where it checks its dependencies, as you just did, and where it can also declare that it survives changes it doesn’t care about.`,
+- \`const deps = new Map();\` maps each analysis name to the set of names it asked for.
+- \`const stack = [];\` holds the analyses being computed right now, innermost last.
+- \`const top = stack[stack.length - 1];\` is the analysis doing the asking, if any (\`undefined\` when a pass asks).
+- \`if (top) deps.get(top).add(name);\` records the dependency, on a hit as well as a miss: \`loops\` still used \`dom\` even if \`dom\` was already cached.
+- \`deps.set(name, new Set());\` starts a fresh record each time an analysis is computed.
+- \`stack.push(name);\` and \`stack.pop();\` around the call mark \`name\` as the asker while it runs.
+- \`const ok = (k, keep) => keep.includes(k) && [...deps.get(k)].every((d) => ok(d, keep));\` is the survival rule: preserved, and everything it was built from survives too. Analyses cannot depend on themselves, so the recursion ends.
+- In \`run\`, \`if (!ok(k, keep)) cache.delete(k);\` applies the rule to every cached result.
+
+**Common wrong attempts.**
+
+- Recording a dependency only on a cache miss: if \`dom\` was cached before \`loops\` was computed, the edge is never recorded, and \`loops\` survives a dropped \`dom\`.
+- Checking only direct dependencies: with \`a\` built from \`b\` built from \`c\`, dropping \`c\` must drop \`a\` too, which the recursion handles.
+
+In LLVM, an analysis result can implement its own \`invalidate()\` method, and its documentation shows one checking its dependencies exactly like this, with \`Inv.invalidate<BarAnalysis>(F, PA)\`.`,
     wrong: [
       {
         code: `function makePM(analyses) {
@@ -331,12 +378,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is Viscosity’s never-cleared `info(f)` cache correct today?',
+    q: 'Inlining a call exposes `if (DEBUG)` with `DEBUG` a known `false`. In which order should these passes run to delete the debug code?',
     options: [
-      { t: 'Dominators never change', why: 'They change whenever the CFG changes. It is just that nothing changes the CFG here.' },
-      { t: 'It recomputes on every call anyway', why: 'It doesn’t: it stores the first result in a Map.' },
-      { t: 'JavaScript Maps clear themselves', why: 'They don’t.' },
-      { t: 'Nothing changes the IR while `analyze` runs, so every cached result stays valid', correct: true, why: 'Add a transformation in the middle and the same cache would hand out stale facts.' },
+      { t: 'Dead code elimination, then constant propagation, then inlining', why: 'When DCE runs, the condition is not yet known, so nothing is dead.' },
+      { t: 'Inlining, then constant propagation, then dead code elimination', correct: true, why: 'Each pass creates the opportunity the next one needs: the call’s body appears, the condition becomes `false`, and the arm becomes dead.' },
+      { t: 'The order never matters', why: 'It does: that is the phase-ordering problem.' },
+      { t: 'Constant propagation, then dead code elimination, then inlining', why: 'The `if` only appears after inlining, so the first two passes see nothing to do.' },
     ],
   },
   {

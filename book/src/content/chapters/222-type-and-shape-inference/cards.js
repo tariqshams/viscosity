@@ -7,7 +7,15 @@ export const prompts = {
   },
   'ti-annotations': {
     q: 'Why doesn’t Viscosity rely on TypeScript annotations to prove a field is numeric?',
-    a: 'It strips them before analysis, and they are erased: they never change or check what actually runs.',
+    a: 'They are erased before the code runs and never check or change what actually runs, so they prove nothing about real values.',
+  },
+  'ti-flow': {
+    q: 'Why does giving facts to SSA values (rather than to variables) make them flow-sensitive?',
+    a: 'Each assignment makes a new SSA value, so one variable can have a different fact at each point in the program.',
+  },
+  'ti-union': {
+    q: '`x` is `1` on one path and `\'one\'` on the other. What is the fact for the phi where the paths meet, and what does Viscosity record?',
+    a: 'A union, number or string; Viscosity’s two-level lattice records it as “maybe not a number”.',
   },
   'ti-plus': {
     q: 'Why is `a + b` a number only when both `a` and `b` are numbers?',
@@ -19,19 +27,11 @@ export const prompts = {
   },
   'ti-optimistic': {
     q: 'Why does numeric inference start values on cycles at “number”, not “maybe not”?',
-    a: 'On a loop, each value waits for the other. Starting pessimistic, the cycle can never prove itself; starting optimistic, it can.',
+    a: 'On a loop each value waits for the other. Starting pessimistic, the cycle can never prove itself; starting optimistic, it can, and wrong guesses are knocked down.',
   },
   'ti-terminates': {
-    q: 'Why must the optimistic fixpoint loop end?',
-    a: 'Facts only fall (number → maybe not), and there are finitely many facts, so eventually a round changes nothing.',
-  },
-  'ti-poison': {
-    q: 'Only `y` ever gets a string. Why does `ps[i].x += ps[i].y` make `x` non-numeric too?',
-    a: 'It stores `x + y` into `x`, and with `y` maybe a string, that sum may be a string.',
-  },
-  'ti-plain': {
-    q: 'What does Viscosity do with a field that may hold non-numbers?',
-    a: 'Gives it a plain JavaScript array column. The numeric fields still get `Float64Array` columns.',
+    q: 'Why must the optimistic fixpoint end, and what does Viscosity do if it somehow doesn’t within 1000 rounds?',
+    a: 'Facts only fall (number → maybe not) and there are finitely many; if it hasn’t settled it fails closed, treating nothing as proven.',
   },
   'si-what': {
     q: 'What is shape inference?',
@@ -40,10 +40,6 @@ export const prompts = {
   'si-order': {
     q: 'Name one reason `{ x, y }` and `{ y, x }` count as different shapes.',
     a: 'JavaScript can see the order (`Object.keys`, `JSON.stringify`); also Viscosity reads each column’s value from a fixed position in the literal.',
-  },
-  'si-unify': {
-    q: 'How does Viscosity combine the field lists of all the literals pushed into a collection?',
-    a: 'The first list becomes the shape; every other list must be exactly equal, order included, or it bails out.',
   },
 };
 
@@ -111,18 +107,27 @@ test('no literals: no shape', () => {
   expect(unifyShapes([])).toBe(null);
 });`,
     hints: [
-      'With no literals, return `null` straight away. Otherwise the first literal is the candidate shape.',
-      'Compare every literal with the candidate: first the lengths, then each position.',
-      'Return `null` as soon as anything differs; after the loop, return the candidate.',
+      'There is no “expected shape” written anywhere. Which literal could propose one?',
+      'Take the first literal as the candidate, then compare every literal with it: what two things must match for two lists to be equal?',
+      'With no literals, return `null` at once. Otherwise compare lengths, then each position with `!==`, returning `null` at the first difference; after the loop, return the candidate.',
     ],
-    walkthrough: `This is \`setShape\` from Viscosity’s analysis, minus the bailout messages.
+    walkthrough: `**How to think about it.** This is \`setShape\` from Viscosity’s analysis without the bailout messages. Nobody declares the shape of a collection, so the first literal *proposes* one and every other literal must *agree* with it. "Agree" has to mean exactly equal: the same names, in the same order, and no more or fewer of them. Two lists are equal when they have the same length and the same element at every position, so the check has two parts.
 
-- **The first literal decides.** There is no “expected shape” written anywhere, so the first record seen proposes one, and the rest must agree with it.
-- **Equality, not similarity.** Comparing position by position checks names *and* order. \`['x', 'y']\` against \`['y', 'x']\` fails at position 0, which is what we want: JavaScript can observe the order, and the compiler reads column values by position.
-- **Check the length.** Without it, \`['x', 'y']\` against \`['x', 'y', 'z']\` would compare only two positions and wrongly agree. Either an extra or a missing field must fail.
-- **No literals is not a shape.** Viscosity says “no records are ever added, so there is nothing to lay out”.
+**The solution, line by line.**
 
-A smarter compiler could unify more generously, for example by sorting fields or allowing optional ones. Each step in that direction needs more care in the code generator, so Viscosity starts with the strict rule.`,
+- \`if (lits.length === 0) return null;\` handles the empty case first. With no literals there is no shape at all (Viscosity says "no records are ever added, so there is nothing to lay out"), and \`lits[0]\` would be \`undefined\`.
+- \`const shape = lits[0];\` makes the first literal the candidate shape.
+- \`for (const fs of lits) {\` visits every literal, including the first (comparing it with itself is harmless and keeps the loop simple).
+- \`if (fs.length !== shape.length) { return null; }\` rejects an extra or a missing field before looking at names.
+- \`for (let i = 0; i < fs.length; i++)\` walks the positions; because the lengths are now equal, \`shape[i]\` exists for every \`i\`.
+- \`if (fs[i] !== shape[i]) return null;\` rejects the first position where the names differ, which catches both a different name and a different order: \`['y', 'x']\` fails at position 0.
+- \`return shape;\` runs only if every literal survived every check.
+
+**Common wrong attempts.**
+
+- Leaving out the length check: \`['x', 'y']\` against \`['x', 'y', 'z']\` compares only the literal’s own two positions and wrongly agrees.
+- Sorting the names before comparing: \`{x, y}\` and \`{y, x}\` then look identical, but order is visible in JavaScript and the code generator reads values by position, so they must stay different.
+- Comparing with \`fs.join(',') === shape.join(',')\`: a field named \`'a,b'\` then matches the two fields \`a\` and \`b\`. (An earlier version of Viscosity had exactly this bug; it now compares the lists with \`JSON.stringify\`.)`,
     wrong: [
       {
         code: `function unifyShapes(lits) {
@@ -210,17 +215,31 @@ test('order does not matter', () => {
   })).toEqual({ b: false, a: false, s: false });
 });`,
     hints: [
-      'First set `num[k] = true` for every name: that is the optimistic start.',
-      'One round: recompute every name from its rule, using the current `num`. Note whether anything changed.',
-      'Repeat rounds while something changed. A name defined later may knock down one defined earlier, so one round is not enough.',
+      'What does “optimistic” mean for the starting value of every name?',
+      'One round recomputes every name from its rule, reading the current facts in `num`, and notes whether anything changed.',
+      'Wrap the round in `while (changed)`: a name defined later in `defs` can knock down one defined earlier, so one round is not enough.',
     ],
-    walkthrough: `This is section 3 of Viscosity’s \`analyze\`, for three kinds of instruction.
+    walkthrough: `**How to think about it.** This is section 3 of Viscosity’s \`analyze\`, for three kinds of instruction. The loop \`v1 = phi(v0, v2)\`, \`v2 = v1 + c\` is circular: to know \`v1\` you need \`v2\`, and to know \`v2\` you need \`v1\`. The way out is to guess for everything at once, then check the guesses with the rules, again and again, until the checks stop changing anything. Since the rules only ever say "number" when all inputs are numbers, a guess can only be knocked down, never raised, which is what makes the repetition end.
 
-- **Optimistic start.** Every name begins as \`true\`. For the loop, \`v1\` and \`v2\` depend on each other; starting them at \`true\` lets them confirm each other when everything they touch is numeric.
-- **Rounds until stable.** Each round applies the rules to the current facts. A \`false\` can make other names \`false\` in later rounds, which is why the \`while (changed)\` loop is needed. In the last test, \`s\` falls in round 1, \`a\` in round 2 and \`b\` only in round 3.
-- **Why it ends.** Rules only combine facts with “and”, so once a name is \`false\` it can never become \`true\` again. Each round either lowers at least one fact or stops.
+**The solution, line by line.**
 
-Try starting every name at \`false\` instead: the numeric loop then proves nothing, which is the pessimistic failure from the diagram.`,
+- \`const num = {};\` holds the current fact for each name.
+- \`for (const k in defs) num[k] = true;\` is the optimistic start: every name is guessed to be a number.
+- \`const rule = (d) => d.op === 'const' ? typeof d.value === 'number' : d.args.every((a) => num[a]);\` is the rule for one definition. A constant is a number if its \`typeof\` says so; an add or a phi is a number if every argument currently is.
+- \`let changed = true;\` makes the loop run at least once.
+- \`while (changed) {\` repeats whole rounds.
+- \`changed = false;\` starts each round assuming nothing will change.
+- \`for (const k in defs) {\` recomputes every name in the round.
+- \`const nv = rule(defs[k]);\` is the new fact, from the current facts of its inputs.
+- \`if (nv !== num[k]) { num[k] = nv; changed = true; }\` stores a changed fact and remembers that the round did something, so another round will run.
+- \`return num;\` runs after a round in which nothing changed: the fixpoint.
+
+In the numeric loop, round 1 confirms every guess and round 2 changes nothing. With \`c = '!'\`, round 1 knocks down \`c\` and \`v2\`, round 2 knocks down \`v1\`, and round 3 changes nothing. In the last test, \`s\` falls in round 1, \`a\` in round 2 and \`b\` in round 3.
+
+**Common wrong attempts.**
+
+- Starting every name at \`false\` is the pessimistic start: \`v1\` waits for \`v2\`, which waits for \`v1\`, so a perfectly numeric loop is never proven.
+- Running only one round: a fact that falls late in the round never reaches names computed earlier in it.`,
     wrong: [
       {
         code: `function inferNumeric(defs) {
@@ -275,46 +294,37 @@ export const quiz = [
   {
     q: 'Why would a pessimistic start fail on `v = v + 0.5` in a loop?',
     options: [
-      { t: '0.5 is not an integer', why: 'Floating-point numbers are numbers; a Float64Array stores them fine.' },
+      { t: '0.5 is not an integer', why: 'Fractions are numbers; a Float64Array stores them fine.' },
       { t: 'Loops can’t be analysed statically', why: 'They can: that is what the fixpoint is for.' },
       { t: 'The phi waits for the add, the add waits for the phi, and neither can go first', correct: true, why: 'Starting from “maybe not”, the cycle stays “maybe not” forever, even though it is clearly numeric.' },
       { t: 'It wouldn’t fail', why: 'Step through the diagram: the pessimistic start loses the loop.' },
     ],
   },
   {
-    q: '`add(5, \'far\')` is the only non-numeric call, and the hot loop is `ps[i].x *= 2`. What does Viscosity choose?',
+    q: '`let x = 1; if (c) x = \'one\';` What does Viscosity know about `x` after the `if`?',
     options: [
-      { t: 'Keep the array of objects: one field is not numeric', why: 'A non-numeric field gets a plain array column instead; that isn’t a bailout.' },
-      { t: 'Typed columns for both fields', why: '`y` may hold `\'far\'`, which a Float64Array would turn into NaN.' },
-      { t: 'Struct of arrays with a typed column for `x` and a plain array column for `y`', correct: true, why: 'That is the real explain output: typed for x, plain for y.' },
-      { t: 'A compile error', why: 'Viscosity never rejects a program; it only decides how to lay it out.' },
+      { t: 'It is a number, because it started as one', why: 'Facts belong to SSA values; after the `if`, `x` is the phi, not the first value.' },
+      { t: 'It is a string, because that was the last assignment', why: 'The assignment only happens on one path.' },
+      { t: 'The phi is number or string, a union, which Viscosity records as “maybe not”', correct: true, why: 'A join of number and string is a union; the two-level lattice cannot say more.' },
+      { t: 'Nothing: inference stops at branches', why: 'Phis are exactly how facts cross branches.' },
     ],
   },
   {
     q: 'The literals are `{ x: i, y: 1 }` and `{ y: 1, x: i }`. What does shape inference conclude?',
     options: [
-      { t: 'Different shapes: field order differs, so Viscosity bails out', correct: true, why: 'The lists must match exactly. Order is visible in JavaScript and used by the code generator.' },
       { t: 'One shape, {x, y}', why: 'That would need sorting the fields, which throws away an observable difference.' },
+      { t: 'Different shapes: field order differs, so Viscosity keeps the array of objects', correct: true, why: 'The lists must match exactly. Order is visible in JavaScript and used by the code generator.' },
       { t: 'One shape, but `y` becomes a plain column', why: 'Column kind is about types; this is a shape mismatch.' },
       { t: 'It depends on the values', why: 'Shape is about names and order, not values.' },
-    ],
-  },
-  {
-    q: 'Why does the optimistic fixpoint always finish?',
-    options: [
-      { t: 'Programs are short', why: 'Length doesn’t matter; the argument would hold for any finite program.' },
-      { t: 'Viscosity times out after one second', why: 'There is a 100-round guard, but the loop ends on its own because of monotonicity.' },
-      { t: 'Facts only ever fall from “number” to “maybe not”, and there are finitely many', correct: true, why: 'Each round either lowers some fact or changes nothing, and then it stops.' },
-      { t: 'Each value is computed only once', why: 'Values are recomputed every round until nothing changes.' },
     ],
   },
   {
     q: 'How does V8 learn similar facts, and why can’t Viscosity do it the same way?',
     options: [
       { t: 'From TypeScript annotations', why: 'Types are erased before the engine ever sees the code.' },
-      { t: 'By watching type feedback and speculating, with deoptimization as a way back; Viscosity has no way back, so it must prove', correct: true, why: 'A guess is fine if you can undo it. Ahead-of-time output must be right on every run.' },
       { t: 'By asking the programmer', why: 'Neither asks; both deduce.' },
       { t: 'It doesn’t: V8 treats every field as untyped', why: 'V8 tracks field representations and shapes, as Part V showed.' },
+      { t: 'By watching type feedback and speculating, with deoptimization as a way back; Viscosity has no way back, so it must prove', correct: true, why: 'A guess is fine if you can undo it. Ahead-of-time output must be right on every run.' },
     ],
   },
 ];
