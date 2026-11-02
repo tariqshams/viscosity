@@ -86,8 +86,8 @@ export const prompts = {
     a: 'Keep the column fields private (no `pub`) and expose methods like `push` that write every column.',
   },
   'soa-borrow': {
-    q: 'Can you hold `&mut s.x` and `&s.vx` at the same time?',
-    a: 'Yes. They are different fields, so the borrow checker sees two separate borrows. Two elements of one `Vec` are not separate.',
+    q: 'Inside `step(&mut self)`, while iterating `self.x.iter_mut()`, why does `self.vx[i]` compile but `self.vx_at(i)` (a `&self` method) fail with E0502?',
+    a: '`self.vx[i]` borrows only the `vx` field, separate from `x`. A method call borrows all of `self`, including the `x` column already borrowed mutably.',
   },
   'soa-get': {
     q: 'Why does a SoA `get(i)` return a `Particle` and not a `&Particle`?',
@@ -95,19 +95,11 @@ export const prompts = {
   },
   'debug-soa': {
     q: 'In a debug build the SoA loop was several times slower than the AoS loop. Why not trust that?',
-    a: 'Debug builds skip optimization, so every `s.x[i]` pays an unoptimized bounds check. Layout comparisons need a release build.',
-  },
-  'black-box-soa': {
-    q: 'Why wrap the data in `std::hint::black_box` when timing a loop?',
-    a: 'So the optimizer can’t assume it knows the data or that the result is unused, and delete or precompute the work being timed.',
+    a: 'Debug builds skip optimization, so every `s.x[i]` pays an unoptimized bounds check (about 20 ns per particle here, against 1.3 with `-O`). Layout comparisons need a release build.',
   },
   'soa-small': {
     q: 'With 1,000 particles, SoA and AoS measured the same in Rust. Why?',
     a: '1,000 particles are 48 KB; after the first pass they stay in cache, so fetching wasted bytes from memory never happens.',
-  },
-  'viscosity-column': {
-    q: 'What is the Rust counterpart of a column in Viscosity’s generated `__Vsc_ps` class?',
-    a: 'A `Vec<f64>` field: the generated JavaScript uses a `Float64Array` with its own `grow()`, while `Vec` grows itself.',
   },
 };
 
@@ -271,14 +263,22 @@ fn a_copy_is_not_the_storage() {
       'In `step`, loop `for i in 0..self.x.len()` and update `self.x[i]` from `self.vx[i]`.',
       '`get` builds a new `Particle { x: self.x[i], vx: self.vx[i] }`.',
     ],
-    walkthrough: `This is chapter 256’s generated container, written by hand in Rust.
+    walkthrough: `**How to think about it.** This is the container *Generating SoA storage* had Viscosity write, done by hand. Hold the diagram in mind: particle \`i\` is index \`i\` of every column. So every method answers one question: which index of which columns does it touch? \`push\` touches the *new* index of every column, \`len\` asks any one column, \`step\` touches every index of \`x\` and \`vx\`, and \`get\` reads index \`i\` of every column. Write them in that order, since \`len\` and \`get\` are what the tests use to check \`push\`.
 
-- **\`push\`** must write *every* column, or the invariant breaks: if \`vx\` were one shorter than \`x\`, \`get\` on the last particle would panic with an index out of bounds. It is the Rust twin of the generated \`push(v0, v1)\` that writes \`this.x[n]\` and \`this.vx[n]\`.
-- **\`len\`** asks one column. That is only correct because of the invariant, which is why the fields should stay private to the module that owns this type.
-- **\`step\`** is the hot loop: read \`self.vx[i]\`, then add it, times \`dt\`, to \`self.x[i]\`. (Written as one statement, \`self.x[i] += self.vx[i] * dt\`, it borrows two different fields at once, which is also allowed.) The loop streams through two \`Vec<f64>\`s and nothing else.
-- **\`get\`** materializes a particle (chapter 259). It returns a value, not a reference, because there is no \`Particle\` in memory to refer to. The last test shows the consequence: changing the copy changes nothing in the columns.
+**The solution, line by line.**
 
-Notice what Rust didn’t give you: nothing checked that \`push\` filled both columns. In Part VIII the compiler wrote this code; by hand, the tests are your safety net.`,
+- \`fn push(&mut self, p: Particle) {\` takes \`&mut self\` because it changes the columns, and takes the particle by value (it is \`Copy\`).
+- \`    self.x.push(p.x);\` and \`    self.vx.push(p.vx);\` append each field to its own column. Both lines must be there: after them, both columns are one longer, so the invariant (equal lengths) still holds.
+- \`fn len(&self) -> usize { self.x.len() }\` asks one column. That is only correct because of the invariant, which is why the fields should stay private to the module that owns this type.
+- \`fn step(&mut self, dt: f64) {\` is the hot loop. \`for i in 0..self.x.len() {\` visits every index.
+- \`    let v = self.vx[i];\` copies the speed out (an \`f64\` is \`Copy\`), and \`    self.x[i] += v * dt;\` moves the particle. Written as one statement, \`self.x[i] += self.vx[i] * dt\`, it borrows two different fields at once, which is also allowed. The loop streams through two \`Vec<f64>\`s and nothing else.
+- \`fn get(&self, i: usize) -> Particle {\` builds \`Particle { x: self.x[i], vx: self.vx[i] }\`: materialization, as *Identity and materialization* called it. It returns a value, not a reference, because there is no \`Particle\` in memory to refer to. The last test shows the consequence: changing the copy changes nothing in the columns.
+
+**Common wrong attempts.**
+
+- Forgetting one column in \`push\` compiles (both columns are \`Vec<f64>\`, and nothing ties them together), but \`vx\` stays empty, so \`step\` and \`get\` index past its end and panic. In Part VIII the compiler wrote this code; by hand, tests are your safety net.
+- Forgetting \`* dt\` in \`step\` moves each particle a whole \`vx\` per step; the test that compares with the plain AoS loop catches it.
+- Writing \`step\` as \`for (i, x) in self.x.iter_mut().enumerate()\` with a helper method \`self.vx_at(i)\` inside fails with E0502: the method borrows all of \`self\` while the loop holds \`self.x\` mutably. Index the field directly.`,
     wrong: [
       {
         code: `${HEAD}
@@ -305,7 +305,7 @@ ${GET}`,
     optional: true,
     title: 'AoS to SoA and back',
     prompt:
-      'Write `from_aos`, which turns a slice of `Particle`s into columns, and `to_aos`, which rebuilds a `Vec<Particle>` from the columns. Iterators (chapter 311) make each one short.',
+      'Write `from_aos`, which turns a slice of `Particle`s into columns, and `to_aos`, which rebuilds a `Vec<Particle>` from the columns. Iterators (from *Iterators and closures in Rust*) make each one short.',
     starter: `${BASE}
 fn from_aos(ps: &[Particle])
     -> Particles {
@@ -366,9 +366,21 @@ fn empty() {
       'For `to_aos`, `s.x.iter().zip(&s.vx)` walks both columns in step and gives you pairs of references.',
       'The closure `|(&x, &vx)| Particle { x, vx }` takes each pair apart and builds a particle.',
     ],
-    walkthrough: `\`from_aos\` makes one pass over the slice per field. Each \`map(|p| p.x)\` copies one field out of every particle and \`collect\` gathers them into a new \`Vec<f64>\`: this is the “construct” step of chapter 59, done eagerly.
+    walkthrough: `**How to think about it.** Converting AoS to SoA means building each column from one field of every particle; converting back means walking all the columns in step and gluing index \`i\` of each into a particle. Both are jobs for iterator chains from *Iterators and closures in Rust*: \`map\` to pick a field, \`zip\` to walk two columns together, \`collect\` to build a \`Vec\`.
 
-\`to_aos\` goes the other way. \`zip\` pairs the columns element by element, and the pattern \`(&x, &vx)\` copies the two \`f64\`s out of the references. Building a whole \`Vec<Particle>\` like this is materialization in bulk, the case Part II measured as SoA’s weak spot.`,
+**The solution, line by line.**
+
+- \`let x = ps.iter().map(|p| p.x);\` is a lazy iterator that yields each particle's \`x\`; nothing runs yet.
+- \`let vx = ps.iter().map(|p| p.vx);\` is the same for \`vx\`: a second pass over the slice.
+- \`Particles { x: x.collect(), vx: vx.collect() }\` runs both iterators, gathering each into a new \`Vec<f64>\` (the type comes from the struct's fields). This is the “construct” step of *AoS vs SoA, measured*, done eagerly.
+- In \`to_aos\`, \`s.x.iter().zip(&s.vx)\` walks both columns at once, yielding pairs \`(&f64, &f64)\`; \`zip\` stops at the shorter one.
+- \`.map(|(&x, &vx)| Particle { x, vx })\` takes each pair apart; the \`&\` in the pattern copies the numbers out of the references, and \`Particle { x, vx }\` is shorthand for \`Particle { x: x, vx: vx }\`.
+- \`.collect()\` builds the \`Vec<Particle>\` the signature asks for. Building a whole \`Vec<Particle>\` like this is materialization in bulk, the case *When SoA loses: materialization and AoSoA* measured as SoA's weak spot.
+
+**Common wrong attempts.**
+
+- Copy-pasting the first line and forgetting to change \`p.x\` to \`p.vx\` fills the \`vx\` column with positions. Both are \`Vec<f64>\`, so the compiler cannot see it; the first test does.
+- \`ps.iter().map(|p| (p.x, p.vx)).collect()\` builds a \`Vec<(f64, f64)>\`, which is still an array of structs (of tuples), not two columns, and does not match the return type.`,
     wrong: [
       {
         code: `${BASE}
@@ -420,22 +432,14 @@ export const quiz = [
     options: [
       { t: 'SoA is slower in Rust', why: 'This chapter’s release build measured the opposite at a million particles.' },
       { t: 'The Playground’s CPU has no cache', why: 'It has; the build mode is the issue.' },
-      { t: 'Probably nothing: it is a debug build, with unoptimized indexing. Measure with `--release`', correct: true, why: 'On this machine the debug build made SoA about 6× slower; the optimized build made it faster.' },
-    ],
-  },
-  {
-    q: 'What does `std::hint::black_box(&mut aos)` do in the benchmark?',
-    options: [
-      { t: 'It makes the code run in a sandbox', why: 'It doesn’t isolate anything.' },
-      { t: 'It hides the value from the optimizer, so it can’t precompute or delete the loop’s work', correct: true, why: 'The standard library documents it as a hint for exactly this, and calls it best-effort. Chapter 319 has more.' },
-      { t: 'It turns off bounds checks', why: 'Bounds checks are unaffected.' },
+      { t: 'Probably nothing: it is a debug build, with unoptimized indexing. Measure with `--release`', correct: true, why: 'On this book’s machine the debug build made SoA two to five times slower than AoS; the `-O` build made it almost twice as fast.' },
     ],
   },
   {
     q: 'In a SoA `Particles`, which of these is rejected by the borrow checker?',
     options: [
       { t: '`let xs = &mut s.x; let vs = &s.vx;` used together', why: 'Different fields are separate borrows: allowed.' },
-      { t: '`let a = &s.x[0]; let b = &mut s.x[1];` used together', correct: true, why: 'Both borrow the same `Vec`, one of them mutably (E0502).' },
+      { t: 'Calling a `&self` method inside a loop over `self.x.iter_mut()`', correct: true, why: 'The method borrows all of `self`, including the `x` column the loop already borrows mutably: E0502.' },
       { t: '`s.x[i] += s.vx[i] * dt;`', why: 'This is the hot loop; it compiles.' },
     ],
   },

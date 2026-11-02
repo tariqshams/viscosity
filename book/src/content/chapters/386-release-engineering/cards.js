@@ -28,12 +28,8 @@ export const prompts = {
     a: 'It can’t be undone: a crates.io version can never be overwritten or deleted, and an npm name and version can never be reused, even after unpublishing.',
   },
   'three-numbers': {
-    q: 'Which three files hold the version numbers a Viscosity release would change?',
+    q: 'Which three files hold the version numbers a Viscosity release changes?',
     a: '`engine/rust/Cargo.toml` (`[workspace.package]`, inherited by six crates), `engine/ts/packages/cli/package.json` and `engine/rust/packages/wasm/package.json`.',
-  },
-  'zero-y': {
-    q: 'Under Cargo’s rules, what is the next version after 0.1.0 for a breaking change? For a new feature?',
-    a: '0.2.0 for a breaking change (in 0.y.z, y counts as major). 0.1.1 for a feature (z counts as minor).',
   },
   'zero-zero': {
     q: 'Viscosity is at 0.0.1. Which later versions does Cargo’s caret requirement `"0.0.1"` accept, and why does that make 0.0.1 “experimental”?',
@@ -51,21 +47,13 @@ export const prompts = {
     q: 'What licence text did a packaged `viscosity-vir` crate first contain?',
     a: 'None: `crates/vir` had no LICENSE file, so the `.crate` held only the manifest, lockfile and sources. MIT asks for the notice to travel with copies, so each crate now has a LICENSE.',
   },
-  'bundle-why': {
-    q: 'Why does `@viscosity/cli` have no runtime dependencies?',
-    a: 'esbuild bundles the CLI, the engine, acorn, acorn-walk and sucrase into one file, `dist/viscosity.mjs`; their licences go in THIRD_PARTY_LICENSES.txt.',
+  'skip-published': {
+    q: 'Why does `scripts/release.sh` ask crates.io whether each crate’s version exists before running `cargo publish`?',
+    a: 'So a run that stopped partway can be repeated: what is already published is skipped (HTTP 200), and only the rest is uploaded.',
   },
-  'scoped-access': {
-    q: 'What does publishing a scoped npm package like `@viscosity/cli` for the first time need?',
-    a: '`--access public` (scoped packages are not public by default; both packages set it in `publishConfig`), and the right to publish under the `@viscosity` organization scope.',
-  },
-  'ci-gap': {
-    q: 'Name two release checks that CI does not run today.',
-    a: 'Any two of: the `@viscosity/wasm` smoke test (`smoke.mjs`), wasm-bindgen, a long fuzzing campaign, the benchmarks.',
-  },
-  'who-publishes': {
-    q: 'Who decides when Viscosity is published, and what does `scripts/release.sh` need before it will publish?',
-    a: 'Tariq. Publishing is permanent and claims names, so the script stops without `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN`, which he added after creating the npm organization `viscosity`.',
+  'rate-limit': {
+    q: 'Why did `viscosity-wasm` fail on the first `--crates-only` run, and what fixed it?',
+    a: 'crates.io answered HTTP 429 (“published too many new crates in a short period”): it limits how fast one account creates new crate names. Re-running the script about ten minutes later skipped the five and published it.',
   },
 };
 
@@ -173,13 +161,34 @@ fn every_bump_is_judged_right() {
       'For `accepts`, decide “same series” with a `match` on `parts(req)`: `(0, 0, _)` needs all three equal, `(0, y, _)` needs major 0 and minor y, `(x, _, _)` needs major x.',
       'Tuples compare left to right, so `parts(v) >= parts(req)` says “not older”. Without it, `0.1.4` would satisfy a requirement of `0.1.5`.',
     ],
-    walkthrough: `Cargo reads \`viscosity-core = "0.1"\` as \`>=0.1.0, <0.2.0\`: it accepts versions whose left-most non-zero part matches. Everything here follows from that one rule.
+    walkthrough: `**How to think about it.** Both functions come from one rule in the Cargo book: a caret requirement accepts versions whose *left-most non-zero part* is the same, and that are not older. So before writing code, find the left-most non-zero part of a few versions by hand. In \`1.4.2\` it is the 1 (the major number); in \`0.1.7\` it is the 1 in the middle; in \`0.0.3\` it is the 3 at the end. A breaking change must change that part (so that old requirements stop accepting it), and a compatible change must change something to its right, if there is anything to its right.
 
-- **Why 0.y.z is special.** Semantic Versioning says that while the major number is 0, anything may change. Cargo turns that into something usable: in \`0.y.z\` it treats y as the major part, so \`0.1.0\` → \`0.2.0\` is a break and \`0.1.0\` → \`0.1.1\` is not. In \`0.0.z\` the left-most non-zero part is z, so every release is a break: Viscosity’s \`"0.0.1"\` means \`>=0.0.1, <0.0.2\`.
-- **Why match on a tuple.** \`(x, y, c)\` puts all three facts in one place. The arms go from most to least specific, and \`match\` takes the first that fits, so \`(0, 0, _)\` must come before \`(0, _, Break)\`.
-- **Why the parts reset.** \`1.4.2\` plus a feature is \`1.5.0\`, not \`1.5.2\`: the patch number counts fixes *since that minor release*.
-- **Why \`b >= a\`.** A caret requirement is a range with a lower bound. \`"0.1.5"\` needs at least 0.1.5. Rust compares tuples element by element, which is exactly version order for numbers.
-- **The last test** ties the two functions together: a \`Break\` must never be accepted by the old requirement, and \`Feat\` and \`Fix\` must be, except in \`0.0.z\`.`,
+That gives three regimes, and the code is a \`match\` with one group of arms for each: from 1.0 on, the usual major/minor/patch; in \`0.y.z\`, y plays the major part and z everything else; in \`0.0.z\`, z is the only part there is, so every change bumps it.
+
+**The solution, line by line (\`next\`).**
+
+- \`let (x, y, z) = parts(v);\` splits \`"1.4.2"\` into the numbers \`(1, 4, 2)\`, using the helper from the preamble.
+- \`let (x, y, z) = match (x, y, c) {\` matches on a tuple of the two numbers that decide the regime and the kind of change. The new numbers shadow the old ones (a new \`let\` with the same names), which keeps the last line short.
+- \`(0, 0, _) => (0, 0, z + 1),\` is 0.0.z: whatever the change (\`_\` matches any), bump z.
+- \`(0, _, Break) => (0, y + 1, 0),\` is a break in 0.y.z: bump y, and reset z to 0, because z counts changes since that y.
+- \`(0, _, _) => (0, y, z + 1),\` is a feature or fix in 0.y.z: bump z.
+- \`(_, _, Break) => (x + 1, 0, 0),\`, \`(_, _, Feat) => (x, y + 1, 0),\` and \`(_, _, Fix) => (x, y, z + 1),\` are the 1.0 rules, with everything to the right of the bumped part reset to 0.
+- \`format!("{x}.{y}.{z}")\` joins them back into a string.
+
+The order of the arms matters: \`match\` takes the first arm that fits, and \`(0, 0, _)\` would also fit \`(0, _, Break)\`, so the most specific arm comes first.
+
+**The solution, line by line (\`accepts\`).**
+
+- \`let a = parts(req); let b = parts(v);\` gives both versions as tuples.
+- \`let (p, q, _) = b;\` names the candidate's major and minor numbers.
+- \`let same = match a {\` decides whether \`v\` is in the same series as \`req\`: for \`(0, 0, _)\` all three parts must be equal (\`a == b\`), for \`(0, y, _)\` the candidate must be \`0.y.something\`, and for \`(x, _, _)\` it must have the same major number.
+- \`same && b >= a\` adds the lower bound. Rust compares tuples left to right, which for numbers is exactly version order, so \`(0, 1, 4) >= (0, 1, 5)\` is false.
+
+**Common wrong attempts.**
+
+- Applying the 1.0 rules everywhere. A break at 0.1.0 then becomes 1.0.0 and a feature 0.2.0, which is the opposite of what Cargo's users expect: anyone on \`"0.1"\` would miss a harmless feature and could be handed a break.
+- Forgetting to reset the parts on the right: 1.4.2 plus a feature becomes 1.5.2, which claims two fixes that 1.5 never had.
+- Checking the series but not the lower bound, so that \`0.1.4\` satisfies a requirement of \`"0.1.5"\`; a user who asked for a fix in 0.1.5 would not get it.`,
     wrong: [
       {
         code: `${PRE}
@@ -287,23 +296,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `@viscosity/cli` ship a THIRD_PARTY_LICENSES.txt?',
-    options: [
-      { t: 'npm refuses packages without one', why: 'npm doesn’t require it. The licences of the bundled code do.' },
-      { t: 'Its bundle contains acorn, acorn-walk and sucrase, whose MIT licences require their notices to travel with the code', correct: true, why: 'Bundling copies their code into `dist/viscosity.mjs`, so their notices go with it.' },
-      { t: 'It lists the 71 Rust crates in the engine', why: 'That is `@viscosity/wasm`. The CLI package is the TypeScript engine.' },
-    ],
-  },
-  {
-    q: 'Which of these does CI run on every push?',
-    options: [
-      { t: 'Pack `@viscosity/cli`, install it in an empty folder and run it', correct: true, why: 'The TypeScript job does this, and checks `--version` against package.json.' },
-      { t: 'The `@viscosity/wasm` smoke test', why: '`smoke.mjs` exists but is run by hand. CI only builds the crate for wasm32, in debug.' },
-      { t: 'A 20,000-program fuzzing campaign', why: 'CI runs the fixed-seed fuzz test inside `cargo test`; long campaigns are run by hand.' },
-      { t: '`npm publish --dry-run`', why: 'Not there. It packs the CLI, but doesn’t try a publish; `scripts/release.sh --dry-run` does, by hand.' },
-    ],
-  },
-  {
     q: 'A user depends on `viscosity-core = "0.1"`. Which release will `cargo update` give them?',
     options: [
       { t: '0.2.0', why: 'Outside the range: `"0.1"` means `>=0.1.0, <0.2.0`.' },
@@ -317,6 +309,14 @@ export const quiz = [
       { t: 'Because npm can’t publish scoped packages without them', why: 'Scoped packages publish fine with `publishConfig.access` set to public. The tokens say who is publishing.' },
       { t: 'Because the packages don’t build without them', why: 'Both npm packages build and pack, and `--dry-run` verifies all six crates, with no tokens at all.' },
       { t: 'Because publishing is permanent, and whether and when to do it is the author’s decision', correct: true, why: 'A published version can’t be taken back. The script does the work; the tokens keep running it a deliberate human step.' },
+    ],
+  },
+  {
+    q: 'The second `--crates-only` run published five crates and then got HTTP 429 for `viscosity-wasm`. What was the right next step?',
+    options: [
+      { t: 'Bump the version to 0.0.2 and publish everything again', why: 'The five are fine at 0.0.1, and a new version would be a different release; only one upload was missing.' },
+      { t: 'Wait a few minutes and run the same command again', correct: true, why: 'The script skips every version crates.io already has, so the re-run uploads only `viscosity-wasm`. That is what happened, about ten minutes later.' },
+      { t: 'Yank the five crates and start over', why: 'Yanking does not delete anything and was not needed: nothing was wrong with them.' },
     ],
   },
 ];

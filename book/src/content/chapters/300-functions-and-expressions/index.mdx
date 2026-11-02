@@ -3,216 +3,294 @@ n: 300
 day: 75
 part: XI
 title: 'Functions and expressions'
-tagline: 'In TypeScript, if is a statement, so you reach for the ternary. In Rust, if, blocks and whole function bodies produce values, and one semicolon decides whether they do.'
+tagline: 'A Rust function looks like a TypeScript one with every type written out. Those types are not decoration: they are a contract the compiler checks at every call, before anything runs.'
 objectives:
-  - Write Rust functions with typed parameters and a return type.
-  - Use if and blocks as expressions that produce values.
-  - Explain how a missing or extra semicolon changes what a block returns.
-  - Read the compiler errors for mismatched branch types and stray semicolons.
-introduces: [expression-oriented, rust-functions]
-uses: [rust, cargo, let-mut, scalar-types, function, parameter, argument, return, call, if, while-loop, expression-vs-statement, ast, block-scope, type-annotation, typescript, jump, backpatching, short-circuit, stack-machine, single-pass-compiler]
-sources: [klabnik2026]
+  - Write Rust functions with typed parameters and a return type, and call them.
+  - Read the compiler errors for a missing parameter type, a wrong argument and a missing return type.
+  - Say what a function with no return type returns, and what () is.
+  - List what TypeScript functions can do that Rust functions cannot (defaults, overloads), and why.
+introduces: [rust-functions]
+uses: [rust, cargo, let-mut, scalar-types, function, parameter, argument, return, call, if, while-loop, type-annotation, typescript, type-checking, call-stack, byte, scanner, test]
+sources: [rust-book-functions, klabnik2026]
 ---
-import ExprSteps from '../../../components/diagrams/ch300/ExprSteps';
+import SignatureParts from '../../../components/diagrams/ch300/SignatureParts';
+import TypedCallSteps from '../../../components/diagrams/ch300/TypedCallSteps';
 
-## The ternary you never liked
+## The same function, with nothing left to guess
 
-You want a label that depends on a number. In TypeScript:
+You have met one Rust function already, `seconds_in`, and it looked a
+lot like TypeScript. Here is a slightly bigger one, side by side with
+its TypeScript twin:
+
+```rust
+fn area(w: i32, h: i32) -> i32 {
+    return w * h;
+}
+```
 
 ```ts
-let label: string;
-if (n < 0) {
-  label = 'negative';
-} else {
-  label = 'not negative';
+function area(
+  w: number, h: number,
+): number {
+  return w * h;
 }
 ```
 
-Four lines, a variable that has to be `let`, and a moment where it holds
-nothing. So you write a ternary instead: `const label = n < 0 ?
-'negative' : 'not negative';`. The ternary exists because `if` is a
-statement. It *does* something but has no value.
+The shape is the same: a keyword, a name, parameters in brackets, a
+return type, a body in braces and a `return`. The difference is that in
+TypeScript the types are optional and vanish before the program runs,
+while in Rust every parameter type and the return type are required, and
+rustc checks every call against them before the program is built.
 
-Chapter 81 drew that line through Drip's own grammar: expressions
-produce values, statements don't. Rust moves most things to the
-expression side:
+<Analogy title="a parcel with a customs form">
+A parcel crossing a border carries a form saying what is inside, and
+the customs officer checks each parcel against its form before it goes
+any further. A Rust signature is that form: it says exactly what goes in
+and what comes out, and the compiler checks every call against it at
+the border (compile time), so nothing undeclared gets through.
+<span slot="breaks">Customs opens only some parcels; rustc checks every
+single call, every time you build, and a call that does not match the
+form is never allowed to run at all.</span>
+</Analogy>
 
-```rust
-let label = if n < 0 {
-    "negative"
-} else {
-    "not negative"
-};
-```
+## Signatures
 
-No ternary, no `mut`, and `label` is never empty.
+<Figure takeaway="Every parameter has a type, and the arrow says what comes back." caption="The parts of a Rust signature. The TypeScript signature below says the same thing, but its types are optional and erased.">
+  <SignatureParts />
+</Figure>
 
-<Callout kind="intuition">
-In TypeScript, a block of code is a room you walk through. In Rust, most
-blocks are vending machines: you walk through, and something drops out
-the bottom, namely whatever the last line was. Put a semicolon on that
-last line and the machine drops nothing.
-</Callout>
+`fn` starts a function; the name is in snake_case (words joined with
+underscores, so `seconds_in`, never `secondsIn`, and rustc warns "should
+have a snake case name" if you forget); each parameter is a name, a
+colon and a type; and `-> i32` after the brackets is the type of the
+value that comes back. A function may be defined above or below the code
+that calls it, in any order, because rustc reads the whole file before
+it checks anything<Cite id="rust-book-functions" />.
 
-## Blocks have values
-
-Any `{ ... }` block is an expression. Its value is its last expression,
-written **without** a semicolon:
-
-```rust
-let y = {
-    let a = 3;
-    a + 1
-};
-// y is 4
-```
-
-`let a = 3;` is a statement, and it ends with a semicolon. `a + 1` has
-none, so it is the block's value. Put a semicolon after it and it
-becomes a statement too. The block then has the value `()`, the
-**unit** value, Rust's "nothing" (much like `void`).
-
-`let` itself is a statement, so `let x = let y = 6;` is an error. In
-JavaScript, `x = y = 6` works, because assignment is an expression.
-
-<Callout kind="definition">
-Rust is **expression-oriented**. A block `{ ... }` evaluates to its
-final expression, or to `()` if it ends in a statement. `if` is an
-expression: every branch must produce the same type, and an `if`
-without `else` produces `()`. Adding `;` after an expression turns it
-into a statement and throws its value away.
-</Callout>
-
-Both branches of an `if` must agree:
-
-```
-error[E0308]: `if` and `else` have
-  incompatible types
- --> f2.rs:3:31
-  |
-3 |     let s = if b { 1 } else { "no" };
-  |                    -          ^^^^
-  |                    |  expected integer,
-  |                    |  found `&str`
-  |                    expected because
-  |                    of this
-```
-
-(rustc 1.97, wrapped to fit. `b` is a `bool`.) TypeScript would happily give `s` the
-type `number | string`. Rust wants one type.
-
-<Prompts ids={['ex-block-value', 'ex-semicolon', 'ex-unit', 'ex-if-types', 'ex-let-stmt']} />
-
-## Functions
-
-You've seen one already. Here is the full shape:
+Why insist on parameter types, when rustc can work out the type of a
+`let` by itself? It is a deliberate choice: with every signature written
+out, the compiler almost never needs annotations anywhere else, and its
+error messages can point at the exact call that broke the
+contract<Cite id="rust-book-functions" />. Leave a type out and the
+parser stops you at once:
 
 ```rust
-fn add(a: i32, b: i32) -> i32 {
-    a + b
+fn area(w, h) -> i32 {         // broken
+fn area(w: i32, h: i32) -> i32 { // fixed
+```
+
+```text
+error: expected one of `:`, `@`, or `|`,
+  found `,`
+1 | fn area(w, h) -> i32 {
+  |          ^ expected one of `:`,
+  |            `@`, or `|`
+help: if this is a parameter name, give it
+a type
+```
+
+<Prompts ids={['fn-param-types', 'fn-why-types', 'fn-order']} />
+
+## Calling, checked
+
+Step through a call: first what the compiler checks, then what happens
+when it runs.
+
+<TypedCallSteps client:visible />
+
+A call must pass exactly as many arguments as there are parameters, each
+of the right type. Both mistakes are caught while compiling:
+
+```rust
+let a = area(3);      // broken: one short
+let b = area(3, 2.5); // broken: a float
+let c = area(3, 4);   // fixed
+```
+
+```text
+error[E0061]: this function takes 2
+  arguments but 1 argument was supplied
+error[E0308]: mismatched types
+5 |     let b = area(3, 2.5);
+  |                     ^^^ expected
+  |       `i32`, found floating-point number
+```
+
+<Analogy title="a socket and a plug">
+A plug fits a socket only if it has the right number of pins in the
+right shapes; a two-pin plug will not go into a three-pin socket, and
+you find out when you try to push it in, not after the lights go out.
+A call is the plug, the signature is the socket, and rustc is the
+moment you try to push it in.
+<span slot="breaks">An adapter can make a plug fit a foreign socket;
+Rust has no hidden adapters, so even a whole number where a float is
+wanted needs you to convert it yourself with `as`.</span>
+</Analogy>
+
+<Prompts ids={['fn-arg-count']} />
+
+## What comes back
+
+`-> i32` promises an `i32`, and `return value;` keeps the promise, ending
+the call at once, as in TypeScript. Leave the arrow out, and the function
+returns `()`, called **unit**, Rust's value for "nothing to report" (it
+plays the part of `void`). That means you cannot forget the arrow and
+still return a number:
+
+```rust
+fn area(w: i32, h: i32) {        // broken
+    return w * h;
+}
+fn area(w: i32, h: i32) -> i32 { // fixed
+    return w * h;
 }
 ```
 
-- `fn`, a snake_case name, and parameters, each with its type. A
-  function's parameter types are never inferred.
-- `-> i32` is the return type. Leave it out and the function returns
-  `()`.
-- The body is a block, so its final expression is the return value.
-  `a + b` with no semicolon *is* the `return`.
+```text
+error[E0308]: mismatched types
+1 | fn area(w: i32, h: i32) {
+  |      - help: try adding a return type:
+  |              `-> i32`
+2 |     return w * h;
+  |            ^^^^^ expected `()`,
+  |                  found `i32`
+```
 
-`return` still exists, for leaving early:
+<Examples of="rust-functions">
+
+```rust
+fn double(n: i32) -> i32 {
+    return n * 2;
+}
+// double(21) is 42
+```
+
+```rust
+fn greet(name: &str) {
+    println!("Hello, {name}!");
+}
+fn max(a: f64, b: f64) -> f64 {
+    if a > b { return a; }
+    return b;
+}
+```
+
+```rust
+// the Rust Drip scanner's is_alpha,
+// written here with return
+fn is_alpha(c: u8) -> bool {
+    return c.is_ascii_alphabetic()
+        || c == b'_';
+}
+```
+
+</Examples>
+
+The first is the smallest useful function: one `i32` in, one out. The
+second shows two shapes: `greet` has no arrow, so it returns `()` and is
+called for what it prints (`&str` is the type of a piece of text, from
+*Slices and strings*), while `max` has two `return`s and the first one
+that runs ends the call, as in *Functions: naming a piece of work*. The
+third is the Rust Drip scanner's test for "can this byte start a name?":
+a byte in, a `bool` out, true for an ASCII letter or `_`
+(`is_ascii_alphabetic` is a method every `u8` has). The real file writes
+it without `return`, which the next chapter explains.
+
+<OtherLanguages title="A function that might return early">
 
 ```rust
 fn safe_div(a: i32, b: i32) -> i32 {
     if b == 0 {
         return 0;
     }
-    a / b
+    return a / b;
 }
 ```
 
-Idiomatic Rust uses `return` only for early exits, and lets the last
-expression do the rest<Cite id="klabnik2026" />. Two more differences
-from TypeScript: a function can be called from code above its
-definition, and there are no default or optional parameters.
+```ts
+function safeDiv(
+  a: number, b: number,
+): number {
+  if (b === 0) return 0;
+  return a / b;
+}
+```
+
+```c
+int safe_div(int a, int b) {
+    if (b == 0) return 0;
+    return a / b;
+}
+```
+
+```python
+def safe_div(a, b):
+    if b == 0:
+        return 0
+    return a // b
+```
+
+</OtherLanguages>
+
+Rust's version is closest to C's: both type every parameter and divide
+whole numbers to a whole number. The genuine differences: Rust requires
+braces round every `if` body and no brackets round its condition; C
+silently converts an argument of the wrong number type, where Rust
+refuses; and only TypeScript and Python let a parameter have a default
+value. In Rust, `fn greet(times: i32 = 1)` is "parameter defaults are not
+supported", and two functions with the same name are E0428, "the name
+is defined multiple times": one name, one signature.
 
 <Callout kind="definition">
-A Rust function is declared with `fn name(param: Type, ...) -> Ret`.
-Every parameter needs a type. The body's final expression is returned;
-`return expr;` returns early. A function with no `->` returns `()`.
+A **Rust function** is declared with `fn name(param: Type, ...) -> Ret`
+followed by a body in braces. Every parameter needs a type. Every call
+must pass one argument of the right type per parameter, which rustc
+checks before the program runs. `return value;` ends the call with that
+value; a function with no `->` returns `()`, the **unit**
+value<Cite id="rust-book-functions" />.
 </Callout>
 
-<Prompts ids={['fn-param-types', 'fn-tail', 'fn-no-arrow']} />
+<Formal title="The rule for a call">
 
-## Watching a value flow out
-
-Here is chapter 1's `clamp`, the Rust way. It has no `return` and no
-variables, just one `if` expression whose value becomes the function's:
-
-<ExprSteps client:visible />
-
-The last step is the famous mistake. Here it is for real, in a smaller
-function:
-
-```rust
-fn inc(x: i32) -> i32 {
-    x + 1;
-}
+```text
+f : (T1, T2) → R    Γ ⊢ a : T1    Γ ⊢ b : T2
+──────────────────────────────────────────
+              Γ ⊢ f(a, b) : R
 ```
 
-```
-error[E0308]: mismatched types
- --> f1.rs:1:19
-  |
-1 | fn inc(x: i32) -> i32 {
-  |    ---            ^^^ expected `i32`,
-  |    |                  found `()`
-  |    |
-  |    implicitly returns `()` as its body
-  |    has no tail or `return` expression
-2 |     x + 1;
-  |          - help: remove this semicolon
-  |            to return this value
-```
+<span slot="read">If f is a function from a T1 and a T2 to an R, and in
+the current scope a has type T1 and b has type T2, then the call f(a, b)
+has type R. If either argument has another type, no rule applies, and
+that is exactly the moment rustc reports an error.</span>
+</Formal>
 
-The compiler even points at the semicolon. When you see "expected `i32`,
-found `()`", look for a semicolon at the end of a block.
-
-<Run id="exprs" />
-
-<Prompts ids={['ex-found-unit']} />
-
-Loops look as you'd expect, minus the parentheses: `while n > 0 { ... }`. Rust has no C-style `for (let i = 0; ...)` loop. Chapter 311
-covers its `for`.
+<Prompts ids={['fn-no-arrow', 'fn-unit', 'fn-no-defaults', 'fn-early-return']} />
 
 <Callout kind="engine" label="Under the hood">
-Your Drip VM already compiles an expression with branches. Look at
-`or_` in the TypeScript VM's compiler (chapter 152): a `JUMP_IF_FALSE`, a
-`JUMP`, and two paths that each leave exactly one value on the stack.
-An `if` expression would compile the same way as Drip's `if` statement,
-with one change: each branch compiles an expression, not a statement,
-so the value it leaves stays on the stack instead of being popped.
-Expression-oriented code costs nothing extra to run.
+This is the typing rule you implemented for typed Drip, in *Checking
+annotations, functions and calls*, with one difference: there the
+annotations were optional, and here they are not. Because every Rust
+signature is complete, rustc can check each function's body on its own,
+knowing only the signatures of the functions it calls; and because the
+types are settled before the program runs, the machine code passes an
+`i32` as four bytes in a register, with no type tag and no check.
 </Callout>
 
 ## Your turn
 
-<Exercise id="grade" />
-
-<Exercise id="collatz" />
+<Exercise id="scanner-helpers" />
 
 ## What you learned
 
-- Rust is **expression-oriented**: blocks and `if` produce values. A
-  block's value is its final expression, without a semicolon.
-- A trailing `;` turns an expression into a statement, giving `()`.
-  "expected `i32`, found `()`" usually means a stray semicolon.
-- Both branches of an `if` must have the same type, and an `if` used as
-  a value needs an `else`.
-- Functions: `fn name(p: T) -> R { ... }`. Parameter types are required.
-  The final expression is the return value; `return` is for early exits.
+- A **Rust function** is `fn name(p: T, ...) -> R { ... }`: snake_case
+  name, a type on every parameter, and the return type after the arrow.
+- Every call is checked against the signature before the program runs:
+  the number of arguments (E0061) and their types (E0308).
+- `return` ends the call with a value; a function with no `->` returns
+  `()`, the **unit** value. There are no default parameters and no
+  overloads.
 
-Next comes the idea that makes Rust Rust: who owns a value, and when it
-goes away.
+Next: why the Rust Drip scanner writes `is_alpha` without `return`, and
+why almost everything in Rust is an expression.
 
 <Quiz />

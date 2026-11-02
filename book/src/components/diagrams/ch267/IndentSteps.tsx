@@ -30,17 +30,17 @@ export default function IndentSteps() {
     <StepFrame title="Turning indentation into tokens" steps={s} note={st.note}>
       <CodeTrace code={CODE} line={st.line} />
       <Svg w={400} h={190} title="The indentation stack and the tokens emitted for the current line">
-        <T x={10} y={14} size={10} weight={700} fill={tok('muted')}>WIDTH</T>
+        <T x={10} y={14} size={11} weight={700} fill={tok('muted')}>WIDTH</T>
         <Box x={10} y={24} w={70} h={40} fill={st.bad ? tok('f6', 0.2) : tok('accent', 0.1)} stroke={st.bad ? tok('f6') : tok('accent')}>
           <T x={45} y={44} size={18} mono anchor="middle" weight={700}>{st.col === null ? '–' : st.col}</T>
         </Box>
-        <T x={10} y={86} size={10} weight={700} fill={tok('muted')}>STACK</T>
+        <T x={10} y={86} size={11} weight={700} fill={tok('muted')}>STACK</T>
         {st.stack.map((w, k) => (
           <Box key={k} x={10} y={160 - k * 26} w={70} h={22} fill={k === st.stack.length - 1 ? tok('brand', 0.18) : tok('panel')} stroke={k === st.stack.length - 1 ? tok('brand') : tok('line')}>
             <T x={45} y={171 - k * 26} size={12} mono anchor="middle">{w}</T>
           </Box>
         ))}
-        <T x={100} y={14} size={10} weight={700} fill={tok('muted')}>TOKENS FOR THIS LINE</T>
+        <T x={100} y={14} size={11} weight={700} fill={tok('muted')}>TOKENS FOR THIS LINE</T>
         {st.out.map((t, k) => {
           const special = t === 'INDENT' || t === 'DEDENT' || t === 'NEWLINE' || t === 'EOF' || t === 'error';
           return (

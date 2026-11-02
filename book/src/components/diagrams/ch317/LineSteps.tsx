@@ -37,7 +37,7 @@ export default function LineSteps() {
       <Svg w={400} h={178} title="Three 64-byte cache lines, each eight f64 slots, coloured by field and dimmed where the loop doesn't use them">
         <T x={8} y={12} size={11} weight={700} fill={tok('brand')}>{st.title}</T>
         {[0, 1, 2].map((r) => (
-          <T key={r} x={56} y={44 + r * 42} size={10} anchor="end" fill={tok('muted')}>line {r + 1}</T>
+          <T key={r} x={56} y={44 + r * 42} size={11} anchor="end" fill={tok('muted')}>line {r + 1}</T>
         ))}
         {cells.map((c, i) => {
           const x = x0 + (i % 8) * cw;
@@ -57,7 +57,7 @@ export default function LineSteps() {
           return <line key={k} x1={x} y1={y - 3} x2={x} y2={y + 35} stroke={tok('ink', 0.6)} strokeWidth={2} />;
         })}
         {st.useful && <T x={8} y={166} size={11} weight={700} fill={tok('ink')}>useful: {st.useful}</T>}
-        {st.layout === 'aos' && <T x={392} y={166} size={10} anchor="end" fill={tok('muted')}>| = particle boundary</T>}
+        {st.layout === 'aos' && <T x={392} y={166} size={11} anchor="end" fill={tok('muted')}>| = particle boundary</T>}
       </Svg>
     </StepFrame>
   );

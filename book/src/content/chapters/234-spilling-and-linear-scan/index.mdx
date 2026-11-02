@@ -1,0 +1,227 @@
+---
+n: 234
+day: 59
+part: VII
+title: 'Spilling and linear scan'
+tagline: 'Sometimes more values are alive at once than there are registers, and no cleverness can fit them. Then some must wait in memory. Choosing which, and rewriting the code so they come and go at the right moments, is spilling, and its price is paid in loads and stores.'
+objectives:
+  - Say what spilling is, and why it is needed whenever more values are live at once than there are registers.
+  - Estimate a value's spill cost from its loads and stores and the loops they sit in, and choose a spill as Chaitin did.
+  - Rewrite code for a spilled value (store after each definition, load before each use) and rebuild the graph.
+  - Write the spill-code rewriter in JavaScript.
+introduces: [spilling]
+uses: [register-allocation, graph-coloring, simplify-select, coalescing, interference-graph, live-range, liveness, stack-pointer, load-store, addressing-mode, prologue-epilogue, caller-callee-saved, calling-convention, risc-v, assembly-language, machine-code, natural-loop, array, object, set, for-of, function, test]
+sources: [chaitin1982, briggs1994, llvm-codegen, riscv-psabi]
+---
+import SpillSteps from '../../../components/diagrams/ch234/SpillSteps';
+import O0Figure from '../../../components/diagrams/ch234/O0Figure';
+
+## Four values, three registers
+
+After coalescing, `sumsq` is down to four values, and its loop reads
+like the code we have been aiming at since chapter 226:
+
+```text
+    mv   n, a0
+    li   s, 0
+    li   i, 0
+loop:
+    bge  i, n, done
+    mul  t, i, i
+    add  s, s, t
+    addi i, i, 1
+    j    loop
+done:
+    mv   a0, s
+    ret
+```
+
+Just after the `mul`, all four of `n`, `s`, `i` and `t` are alive.
+RISC-V has plenty of registers for that, but imagine, for a moment,
+that we could only use three (a real function in a big loop can have
+forty values alive at once, so the situation is not far-fetched). No
+colouring can help: four values alive together need four places to
+be. One of them has to live somewhere else for part of the time, and
+the only somewhere else is memory, in the function's stack frame.
+
+<Analogy title="a small kitchen counter">
+A cook keeps what they are using on the counter and everything else
+in the pantry. When the counter is full, something goes back on the
+shelf; the sensible choice is the jar you will need least often,
+because every time you need it again it costs a walk to the pantry.
+<span slot="breaks">A cook can change their mind as they go; a
+compiler decides once, before the program runs, and has to guess how
+often each value will be needed from the shape of the code (mostly,
+from how deeply it sits in loops).</span>
+</Analogy>
+
+<Analogy title="offloading apps from a phone">
+A phone that is short of space can offload apps you rarely open to
+the cloud, keeping their icons; open one and it is fetched back,
+which takes a moment.
+<span slot="breaks">A phone fetches the app back once and keeps it;
+a spilled value is loaded again before *every* use, and stored again
+after every change, because the register it borrowed is handed to
+someone else in between.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Spilling** a value means keeping it in memory, in a **stack slot**
+of the function's frame (an address like `8(sp)`), instead of in a
+register for its whole life. The allocator inserts a **store** (`sd`)
+just after each definition of the value and a **load** (`ld`) into a
+fresh, short-lived virtual register just before each use, then builds
+the interference graph again and colours it. The extra loads and
+stores are the value's **spill code**.
+</Callout>
+
+<Prompts ids={['spill-what', 'spill-when', 'spill-code']} />
+
+## Which value?
+
+Spilling any one of the four would work, but not equally well. Each
+spilled value costs a store for every definition and a load for every
+use, and code in a loop runs many times, so a load inside the loop
+costs far more than one outside it. Chaitin's allocator estimated
+this **spill cost** for every value, weighting each load and store by
+how often it might run, and when simplify was stuck it chose the
+value with the smallest cost divided by its degree: cheap to spill,
+and in the way of many others<Cite id="chaitin1982" />. A common way
+to estimate "how often" is to count 10 for each loop around the
+instruction.
+
+<Formal title="Chaitin's spill choice">
+
+```text
+cost(v) = Σ over each load or store
+          spilling v would add, at p:
+            10^depth(p)
+spill the v with the smallest
+          cost(v) / degree(v)
+```
+
+<span slot="read">The spill cost of a value v adds up, for every load
+or store that spilling it would insert at some point p, ten to the
+power of the number of loops around p (1 outside any loop, 10 inside
+one, 100 inside two). Among the values that could be spilled, choose
+the one whose cost, divided by its degree in the interference graph,
+is smallest.</span>
+</Formal>
+
+Values whose live range is tiny get a cost of infinity: spilling `t`,
+which lives from the `mul` to the very next instruction, would only
+replace it with two equally short values around a store and a load,
+and help nobody. Step through the whole process with three registers:
+
+<SpillSteps client:visible />
+
+The spill code, after colouring, uses `a0`, `a1` and `a2` only, and
+gives the right answer (14 for `n = 4`); it assembles as it stands:
+
+```text
+sumsq:
+    addi sp, sp, -16
+    sd   a0, 8(sp)      # spill n
+    li   a1, 0          # s
+    li   a2, 0          # i
+loop:
+    ld   a0, 8(sp)      # reload n
+    bge  a2, a0, done
+    mul  a0, a2, a2     # t
+    add  a1, a1, a0
+    addi a2, a2, 1
+    j    loop
+done:
+    mv   a0, a1
+    addi sp, sp, 16
+    ret
+```
+
+The prologue and epilogue (chapter 228) make room for the slot: the
+frame is 16 bytes, because the psABI keeps the stack pointer a
+multiple of 16<Cite id="riscv-psabi" />, even though only 8 are used.
+And `a0` is shared, in turn, by `n` on entry, the reloaded `n`, `t`
+and the result.
+
+<Prompts ids={['loop-weight', 'cost-over-degree', 'tiny-range', 'rebuild']} />
+
+<Examples of="spilling">
+
+```text
+li   x, 7        ; x spilled to 0(sp)
+sd   x1, 0(sp)   ; after the definition
+...
+ld   x2, 0(sp)   ; before each use
+add  y, y, x2
+```
+
+```text
+k = 3, sumsq: spill n
+  cost 11 / degree 3 = 3.7, the least
+  one load per trip round the loop
+```
+
+<Run id="costs" />
+
+</Examples>
+
+The first is the shape of every spill: the definition writes a fresh
+name, a store puts it in the slot, and each use gets its own fresh
+name, loaded just before. The second is the stepper's choice for
+`sumsq`. The third works out all four costs in JavaScript; change the
+depths (put `n`'s load outside the loop, say) and see the choice
+move.
+
+## The cost, made visible
+
+Compile `sumsq` with `llc -O0` and LLVM uses its *fast* allocator,
+"the default for debug builds", which works one basic block at a
+time<Cite id="llvm-codegen" />. A value that is alive across a block
+boundary is stored at the end of one block and loaded at the start of
+the next, so the loop is full of spill code. Here is its loop head
+(abridged; `Folded Spill` and `Folded Reload` are LLVM's own comments):
+
+```text
+.LBB0_1:
+  ld  a1, 24(sp)  # 8-byte Folded Reload
+  ld  a2, 32(sp)  # 8-byte Folded Reload
+  ld  a0, 40(sp)  # 8-byte Folded Reload
+  sd  a0, 8(sp)   # 8-byte Folded Spill
+  sd  a2, 16(sp)  # 8-byte Folded Spill
+  bge a0, a1, .LBB0_3
+```
+
+<Figure takeaway="Spills are memory traffic: every one is a load or a store that the loop pays for on every trip." caption="The shape of llc -O0's sumsq: at each block boundary, the values that cross it are stored to stack slots and loaded back on the other side. Counted over the loop head and body, each trip does five loads and four stores around just three real operations.">
+  <O0Figure />
+</Figure>
+
+At `-O2` the same function has no stack frame at all. Two refinements
+make spills cheaper still. **Rematerialisation**: a value that is a
+constant, or cheap to recompute, can be recomputed (an `li`) instead
+of reloaded, which needs no slot; Briggs, Cooper and Torczon extended
+Chaitin's handling of it<Cite id="briggs1994" />. And **splitting**: a
+value can be kept in a register in one part of the function and in
+memory in another, which the allocators of the next chapter do.
+
+<Prompts ids={['o0-why']} />
+
+## Your turn
+
+<Exercise id="spill" />
+
+## What you learned
+
+- **Spilling** keeps a value in a stack slot when more values are
+  alive at once than there are registers: a store after each
+  definition, a load before each use, each into a fresh name; then
+  the graph is rebuilt and coloured again.
+- The **spill cost** counts those loads and stores, weighted by 10
+  per enclosing loop; Chaitin spills the value with the smallest
+  cost divided by degree, and never one whose range is already tiny.
+- Spill code is real memory traffic: LLVM's `-O0` allocator spills
+  everything that crosses a block, and pays for it on every trip.
+
+Next: an allocator that skips the graph altogether, walks the
+function once, and is fast enough for a JIT.
+
+<Quiz />

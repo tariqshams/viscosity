@@ -51,11 +51,11 @@ export default function ProfileSteps() {
           </Box>
         ))}
         <Box x={145} y={158} w={14} h={10} r={2} fill={tok('brand', 0.25)} />
-        <T x={164} y={163} size={10} fill={tok('muted')}>Rust</T>
+        <T x={164} y={163} size={11} fill={tok('muted')}>Rust</T>
         <Box x={200} y={158} w={14} h={10} r={2} fill={tok('f3', 0.25)} />
-        <T x={219} y={163} size={10} fill={tok('muted')}>node</T>
+        <T x={219} y={163} size={11} fill={tok('muted')}>node</T>
         <Box x={255} y={158} w={14} h={10} r={2} fill={tok('panel')} stroke={tok('line')} />
-        <T x={274} y={163} size={10} fill={tok('muted')}>a file</T>
+        <T x={274} y={163} size={11} fill={tok('muted')}>a file</T>
         {st.line && (
           <T x={200} y={214} size={11} mono anchor="middle" fill={tok('ink')}>{st.line}</T>
         )}

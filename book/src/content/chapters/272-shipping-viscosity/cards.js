@@ -25,178 +25,184 @@ export const prompts = {
     q: 'Why did the bundled CLI print nothing when run through `npx`?',
     a: 'It only called `main()` when `import.meta.url` matched `process.argv[1]`, and through npm’s bin link `argv[1]` is the link’s path, not the file’s.',
   },
+  'pkg-order': {
+    q: 'Why were the six Rust crates published in a fixed order (vir, core, the front ends, cli, wasm)?',
+    a: 'Each crate depends on the ones before it, and cargo will not publish a crate whose dependencies are not on crates.io yet.',
+  },
+
+  'pkg-files': {
+    q: 'What does the `files` field in `package.json` do?',
+    a: 'It limits the tarball to the listed files and folders (package.json is always included).',
+  },
   'pkg-dryrun': {
-    q: 'How do you see exactly which files a package would contain, without publishing?',
+    q: 'How do you see exactly which files a package would contain, without publishing anything?',
     a: '`npm pack --dry-run`.',
   },
-  'sv-rules': {
-    q: 'In semver, which part do you bump for a backward compatible new feature, and what happens to the part after it?',
-    a: 'MINOR; PATCH resets to 0.',
-  },
-  'sv-zero': {
-    q: 'What does semver promise for versions 0.y.z?',
-    a: 'Nothing: major version zero is for initial development, and anything may change at any time.',
-  },
-  'sv-caret': {
-    q: 'Which versions does the range `^0.1.0` accept?',
-    a: 'Only 0.1.x (at least 0.1.0, below 0.2.0): in 0.x the minor number is treated as breaking.',
-  },
-  'sv-numeric': {
-    q: 'Is `1.10.0` newer than `1.9.0`? What does the string comparison `\'1.10.0\' > \'1.9.0\'` say?',
-    a: 'Yes, because the parts compare as numbers (10 > 9). The string comparison says `false`, because it compares characters.',
-  },
-  'sv-api': {
-    q: 'Name two things besides the CLI options that are part of Viscosity’s public API.',
-    a: 'Any two of: the plugin API, the explain report’s text, and its layout decisions.',
-  },
-};
 
-export const examples = {
-  'semver-compare': {
-    title: 'Versions are numbers, not strings',
-    code: `const a = '1.10.0';
-const b = '1.9.0';
-// strings: character by character
-console.log(a > b);
-
-function parse(v) {
-  return v.split('.').map(Number);
-}
-console.log(parse(a), parse(b));
-// numbers compare by value
-console.log(parse(a)[1] > parse(b)[1]);`,
-  },
 };
 
 export const exercises = {
-  bump: {
-    title: 'Bump a version',
+  packList: {
+    title: 'What goes in the tarball?',
     prompt:
-      'Write `bump(v, kind)`. `v` is a version like `\'1.4.2\'` and `kind` is `\'major\'`, `\'minor\'` or `\'patch\'`. Return the next version as a string, following semver: add 1 to that part and reset every part to its right to 0.',
-    starter: `function bump(v, kind) {
-  return v + '.1';
+      'Write `packList(paths, files)`, a simplified version of how npm decides what to pack. `paths` lists every file in the package folder, and `files` is the `files` field of `package.json` (or `undefined` if there is none). Return, sorted, the paths that are packed: `package.json` always; with no `files` field, everything; otherwise every path that equals an entry of `files` or lies inside a folder named by one (`dist` covers `dist/viscosity.mjs`, but not `distant.txt`).',
+    starter: `function packList(paths, files) {
+  return paths;
 }`,
-    solution: `function bump(v, kind) {
-  const p = v.split('.').map(Number);
-  if (kind === 'major') {
-    return \`\${p[0] + 1}.0.0\`;
-  }
-  if (kind === 'minor') {
-    return \`\${p[0]}.\${p[1] + 1}.0\`;
-  }
-  return \`\${p[0]}.\${p[1]}.\${p[2] + 1}\`;
+    solution: `function packList(paths, files) {
+  const keep = (p) =>
+    p === 'package.json' ||
+    !files ||
+    files.some((f) =>
+      p === f || p.startsWith(f + '/'));
+  return paths.filter(keep).sort();
 }`,
-    tests: `test('a patch release', () => {
-  expect(bump('0.1.0', 'patch')).toBe('0.1.1');
+    tests: `const paths = ['package.json', 'build.mjs', 'src/cli.ts', 'src/profile.ts', 'bin/viscosity.mjs', 'dist/viscosity.mjs', 'LICENSE', 'THIRD_PARTY_LICENSES.txt'];
+const files = ['bin', 'dist', 'LICENSE', 'THIRD_PARTY_LICENSES.txt'];
+test('the real CLI packs five files', () => {
+  expect(packList(paths, files)).toEqual(['LICENSE', 'THIRD_PARTY_LICENSES.txt', 'bin/viscosity.mjs', 'dist/viscosity.mjs', 'package.json']);
 });
-test('minor resets patch', () => {
-  expect(bump('0.1.9', 'minor')).toBe('0.2.0');
+test('a folder name is not a prefix of other names', () => {
+  expect(packList(['dist/a.js', 'distant.txt', 'package.json'], ['dist'])).toEqual(['dist/a.js', 'package.json']);
 });
-test('major resets minor and patch', () => {
-  expect(bump('1.4.2', 'major')).toBe('2.0.0');
+test('package.json is always packed', () => {
+  expect(packList(['package.json', 'a.js'], ['a.js'])).toEqual(['a.js', 'package.json']);
 });
-test('9 + 1 is 10, not 91', () => {
-  expect(bump('1.9.0', 'minor')).toBe('1.10.0');
-});
-test('leaves 0.x alone when patching', () => {
-  expect(bump('0.9.9', 'patch')).toBe('0.9.10');
+test('no files field packs everything', () => {
+  expect(packList(['src/cli.ts', 'package.json'])).toEqual(['package.json', 'src/cli.ts']);
 });`,
     hints: [
-      '`v.split(\'.\')` gives three strings. Turn them into numbers before adding.',
-      'Handle the three kinds separately; each one builds the result from the parts.',
-      'Everything to the right of the bumped part becomes 0.',
+      'Write one test, `keep(p)`, that says whether a single path is packed, then `filter` and `sort`.',
+      'Three reasons to keep a path: it is `package.json`; there is no `files` field at all; or some entry of `files` matches it.',
+      'An entry `f` matches a path that equals `f`, or that starts with `f + \'/\'` (the slash stops `dist` from matching `distant.txt`).',
     ],
-    walkthrough: `Semver’s rules, as code.
+    walkthrough: `**How to think about it.** Work the first test by hand. The folder has eight files, and \`files\` names two folders and two single files. \`bin/viscosity.mjs\` is inside \`bin\`, so it is packed; \`dist/viscosity.mjs\` is inside \`dist\`; the two licence files are named directly; \`package.json\` is always packed; and \`build.mjs\` and the two \`src\` files are left out. That is five files, the same five the real \`@viscosity/cli\` tarball holds. So the job splits into a yes-or-no question about one path, asked of every path, followed by a sort.
 
-- **Parse as numbers.** \`v.split('.').map(Number)\` gives \`[1, 9, 0]\`. Without \`Number\`, \`'9' + 1\` is the string \`'91'\`.
-- **Major** adds 1 to the first part and resets the other two: \`1.4.2\` becomes \`2.0.0\`.
-- **Minor** keeps the major, adds 1 to the minor, and resets the patch: \`0.1.9\` becomes \`0.2.0\`.
-- **Patch** only adds 1 to the last part.
+**The solution, line by line.**
 
-Note that nothing special happens in 0.x: bumping is the same arithmetic. What changes in 0.x is what the numbers *promise*, and how caret ranges read them.`,
+- \`function packList(paths, files) {\` takes the folder's paths and the optional \`files\` list.
+- \`  const keep = (p) =>\` defines the question for one path \`p\`.
+- \`    p === 'package.json' ||\` keeps the manifest no matter what.
+- \`    !files ||\` keeps everything when there is no \`files\` field (\`undefined\` is falsy, so \`!files\` is \`true\`).
+- \`    files.some((f) =>\` asks whether any entry matches;
+- \`      p === f || p.startsWith(f + '/'));\` an entry matches the file it names exactly, or anything inside the folder it names. Adding the \`'/'\` is what stops \`dist\` from matching \`distant.txt\`.
+- \`  return paths.filter(keep).sort();\` keeps the matching paths and sorts them (capital letters sort before small ones, which is why \`LICENSE\` comes first).
+
+The real npm also always includes a README and a licence file, and ignores some folders by default; this exercise keeps only the rule that bit the CLI.
+
+**Common wrong attempts.**
+
+- \`p.startsWith(f)\` without the slash: \`distant.txt\` is packed because it begins with \`dist\`.
+- Forgetting \`package.json\`: a tarball without its manifest cannot be installed at all.
+- Forgetting the no-\`files\` case: \`files.some\` on \`undefined\` throws, although a package without a \`files\` field is perfectly normal (it packs everything, which is exactly how the first CLI tarball ended up holding raw TypeScript).`,
     wrong: [
       {
-        code: `function bump(v, kind) {
-  const p = v.split('.');
-  if (kind === 'major') {
-    return \`\${p[0] + 1}.0.0\`;
-  }
-  if (kind === 'minor') {
-    return \`\${p[0]}.\${p[1] + 1}.0\`;
-  }
-  return \`\${p[0]}.\${p[1]}.\${p[2] + 1}\`;
+        code: `function packList(paths, files) {
+  const keep = (p) =>
+    p === 'package.json' ||
+    !files ||
+    files.some((f) =>
+      p.startsWith(f));
+  return paths.filter(keep).sort();
 }`,
-        why: 'The parts are still strings, so `\'9\' + 1` is `\'91\'` and `1.9.0` becomes `1.91.0`. Convert with `Number` first.',
+        why: 'Without the slash, `dist` matches `distant.txt` too. A folder entry should match only paths inside that folder.',
       },
       {
-        code: `function bump(v, kind) {
-  const p = v.split('.').map(Number);
-  if (kind === 'major') p[0]++;
-  if (kind === 'minor') p[1]++;
-  if (kind === 'patch') p[2]++;
-  return p.join('.');
+        code: `function packList(paths, files) {
+  if (!files) return paths.sort();
+  return paths.filter((p) =>
+    files.some((f) => p === f ||
+      p.startsWith(f + '/'))).sort();
 }`,
-        why: 'Nothing is reset, so `0.1.9` bumped by minor becomes `0.2.9`. Semver resets the parts to the right of the one you bump.',
+        why: '`package.json` is left out whenever `files` does not list it, and a package without its manifest cannot be installed.',
       },
     ],
   },
-  newer: {
+  releaseOrder: {
     optional: true,
-    title: 'Which version is newer?',
+    title: 'Publish in dependency order',
     prompt:
-      'Write `newer(a, b)` for plain versions like `\'1.10.0\'` (no pre-release tags). Return `true` if `a` is newer than `b`, otherwise `false`. Compare major, then minor, then patch, as numbers; the first part that differs decides.',
-    starter: `function newer(a, b) {
-  return a > b;
+      'Write `releaseOrder(deps)`. `deps` maps each crate name to the list of crates it depends on (all of them in `deps`). Return an array of every crate in an order where each crate comes after all of its dependencies. When several crates are ready at once, take them in alphabetical order. If no crate is ready but some are left (a cycle), throw an `Error` with message `\'cycle\'`.',
+    starter: `function releaseOrder(deps) {
+  return Object.keys(deps).sort();
 }`,
-    solution: `function newer(a, b) {
-  const x = a.split('.').map(Number);
-  const y = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (x[i] !== y[i]) {
-      return x[i] > y[i];
-    }
+    solution: `function releaseOrder(deps) {
+  const done = [];
+  const names =
+    Object.keys(deps).sort();
+  while (done.length < names.length) {
+    const next = names.find((n) =>
+      !done.includes(n) &&
+      deps[n].every((d) =>
+        done.includes(d)));
+    if (!next) throw new Error('cycle');
+    done.push(next);
   }
-  return false;
+  return done;
 }`,
-    tests: `test('minor 10 beats minor 9', () => {
-  expect(newer('1.10.0', '1.9.0')).toBe(true);
+    tests: `const v = 'viscosity-';
+const real = {
+  [v + 'cli']: [v + 'core', v + 'frontend-js', v + 'frontend-python', v + 'vir'],
+  [v + 'core']: [v + 'vir'],
+  [v + 'frontend-js']: [v + 'core', v + 'vir'],
+  [v + 'frontend-python']: [v + 'core', v + 'vir'],
+  [v + 'vir']: [],
+  [v + 'wasm']: [v + 'core', v + 'frontend-js', v + 'frontend-python', v + 'vir'],
+};
+test('the six Viscosity crates', () => {
+  expect(releaseOrder(real).map((n) => n.slice(v.length))).toEqual(['vir', 'core', 'frontend-js', 'frontend-python', 'cli', 'wasm']);
 });
-test('major decides first', () => {
-  expect(newer('2.0.0', '1.99.99')).toBe(true);
-  expect(newer('1.99.99', '2.0.0')).toBe(false);
+test('a chain', () => {
+  expect(releaseOrder({ a: ['b'], b: ['c', 'd'], c: [], d: [] })).toEqual(['c', 'd', 'b', 'a']);
 });
-test('equal is not newer', () => {
-  expect(newer('1.2.3', '1.2.3')).toBe(false);
+test('independent crates in alphabetical order', () => {
+  expect(releaseOrder({ z: [], m: [], a: [] })).toEqual(['a', 'm', 'z']);
 });
-test('patch decides last', () => {
-  expect(newer('0.1.0', '0.1.1')).toBe(false);
-  expect(newer('0.1.12', '0.1.2')).toBe(true);
+test('a cycle cannot be published', () => {
+  let msg = 'no error';
+  try { releaseOrder({ a: ['b'], b: ['a'] }); } catch (e) { msg = e.message; }
+  expect(msg).toBe('cycle');
 });`,
     hints: [
-      'Split both versions and convert the parts to numbers.',
-      'Walk the three positions in order. The first position where they differ decides.',
-      'If all three are equal, `a` is not newer.',
+      'A crate is ready when every crate it depends on has already been published.',
+      'Keep a list `done`. Over and over, find the first name (in alphabetical order) that is not done and is ready, and add it.',
+      'If no name is ready but some are left, they depend on each other in a circle: throw.',
     ],
-    walkthrough: `This is semver precedence for plain versions.
+    walkthrough: `**How to think about it.** This is the order \`scripts/release.sh\` follows, and the order cargo enforces: a crate can only go up once everything it depends on is already on crates.io. Do the real case by hand. At the start only \`vir\` depends on nothing, so it goes first. Then \`core\` is ready (it needs only \`vir\`). Then both front ends are ready, and alphabetical order puts \`frontend-js\` first, then \`frontend-python\`. Then \`cli\` and \`wasm\` are both ready, and \`cli\` comes first. So the method is: repeatedly pick the first ready crate, alphabetically, until none are left. (This is a *topological sort*, the same ordering a build tool uses for its targets.)
 
-- **Numbers, not strings.** As strings, \`'1.10.0' > '1.9.0'\` is \`false\`, because the character \`'1'\` sorts before \`'9'\`.
-- **First difference wins.** Compare major; if equal, minor; if equal, patch. \`2.0.0\` beats \`1.99.99\` at the first part, and the rest never matters.
-- **Equal versions** fall out of the loop and return \`false\`.
+**The solution, line by line.**
 
-The full rules also order pre-releases (\`1.0.0-alpha\` comes before \`1.0.0\`) and ignore build metadata after a \`+\`. Libraries such as node-semver implement all of it.`,
+- \`function releaseOrder(deps) {\` takes the dependency map.
+- \`  const done = [];\` is the publishing order so far.
+- \`  const names =
+    Object.keys(deps).sort();\` lists every crate alphabetically, so that \`find\` below always prefers the alphabetically first ready crate.
+- \`  while (done.length < names.length) {\` repeats until every crate is placed.
+- \`    const next = names.find((n) =>\` looks for the first crate that is
+- \`      !done.includes(n) &&\` not yet published, and
+- \`      deps[n].every((d) =>\` and \`        done.includes(d)));\` whose dependencies are all published already.
+- \`    if (!next) throw new Error('cycle');\` handles the case where crates remain but none is ready: they wait on each other forever.
+- \`    done.push(next);\` publishes it.
+- \`  return done;\` returns the order.
+
+**Common wrong attempts.**
+
+- Sorting the names alphabetically and stopping there: \`cli\` would go before \`core\` and \`vir\`, and cargo would refuse to publish it.
+- Sorting by how many dependencies each crate has: it happens to work for the six real crates, but in the chain test \`a\` has fewer dependencies than \`b\` while depending on it, and a cycle is never detected.`,
     wrong: [
       {
-        code: `function newer(a, b) {
-  const x = a.split('.');
-  const y = b.split('.');
-  for (let i = 0; i < 3; i++) {
-    if (x[i] !== y[i]) {
-      return x[i] > y[i];
-    }
-  }
-  return false;
+        code: `function releaseOrder(deps) {
+  return Object.keys(deps).sort();
 }`,
-        why: 'Comparing the parts as strings still fails: `\'10\' > \'9\'` is `false`. Convert to numbers.',
+        why: 'Alphabetical order ignores dependencies: cli would be published before core and vir.',
+      },
+      {
+        code: `function releaseOrder(deps) {
+  return Object.keys(deps).sort(
+    (a, b) => deps[a].length -
+      deps[b].length ||
+      (a < b ? -1 : 1));
+}`,
+        why: 'Fewer dependencies does not mean earlier: in `{ a: [\'b\'], b: [\'c\', \'d\'], ... }`, `a` comes before `b`, which it needs. And a cycle is never reported.',
       },
     ],
   },
@@ -231,30 +237,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'A release fixes a bug without changing the public API. The current version is 1.9.3. What is the next?',
+    q: 'The CLI’s `files` field is `["bin", "dist", "LICENSE", "THIRD_PARTY_LICENSES.txt"]`. Which file is *not* in the published tarball?',
     options: [
-      { t: '1.9.4', correct: true, why: 'A backward compatible bug fix bumps PATCH.' },
-      { t: '1.10.0', why: 'That’s for a backward compatible new feature.' },
-      { t: '2.0.0', why: 'That’s for an incompatible API change.' },
-      { t: '1.9.3, re-published with the fix', why: 'A released version must never change, and npm forbids reusing a name and version.' },
+      { t: '`package.json`', why: 'It is always packed, whatever `files` says.' },
+      { t: '`src/cli.ts`', correct: true, why: 'The TypeScript sources are compiled into `dist/viscosity.mjs`; `src` is not listed, so it stays out.' },
+      { t: '`dist/viscosity.mjs`', why: 'It is inside the listed folder `dist`.' },
+      { t: '`THIRD_PARTY_LICENSES.txt`', why: 'It is listed by name: a bundle contains other people’s code, so their licences ship with it.' },
     ],
   },
   {
-    q: 'A project depends on `^0.1.0`. Which release will npm install for it?',
+    q: 'crates.io answered the sixth crate, `viscosity-wasm`, with HTTP 429. What happened next?',
     options: [
-      { t: '1.0.0', why: 'Far outside: caret never crosses the left-most non-zero part.' },
-      { t: '0.2.0', why: 'In 0.x the minor number is the breaking one, so `^0.1.0` stops below 0.2.0.' },
-      { t: '0.1.7', correct: true, why: '`^0.1.0` means at least 0.1.0 and below 0.2.0.' },
-      { t: 'Only exactly 0.1.0', why: 'That would be the range `0.1.0` with no caret.' },
-    ],
-  },
-  {
-    q: 'A new Viscosity release keeps a collection it used to transform. Output is identical, but the program is slower. What does the chapter conclude?',
-    options: [
-      { t: 'It must be a major release by semver’s rules', why: 'Semver’s rules are about the declared API. Identical output fits a fix or a feature.' },
-      { t: 'It can’t happen, because the differential tests would fail', why: 'Those tests check output and layouts in the corpus, not your program’s speed.' },
-      { t: 'Semver says nothing until the project declares whether decisions are part of its public API', correct: true, why: 'The numbers only mean something relative to a declared API; deciding that is part of shipping.' },
-      { t: 'It should be a patch, because speed never matters', why: 'For an optimizer, speed is the whole point; that’s why it needs deciding.' },
+      { t: 'All six crates had to be published again under 0.0.2', why: 'The first five were fine; and a re-run skips crates already on crates.io.' },
+      { t: 'A re-run about ten minutes later skipped the five already published and published the sixth', correct: true, why: 'The limit was on creating many *new* crates in a short time, so waiting was enough.' },
+      { t: 'The wasm crate was renamed', why: 'Nothing was wrong with its name; 429 means “too many requests”.' },
     ],
   },
 ];

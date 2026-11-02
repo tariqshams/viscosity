@@ -1,0 +1,201 @@
+---
+n: 383
+split_of: 383
+day: 96
+part: XIII
+title: 'One bad file, and how fast it gets'
+tagline: 'With 396 files, one syntax error or one compiler bug should cost one file, not the run. And four threads made the build 2.95 times faster to memory but only 1.24 times faster to disk, for a reason no thread can fix: the part of the work that stays serial.'
+objectives:
+  - Say what happens to the output, the exit status and the other files when one file fails or panics.
+  - Explain what catch_unwind catches, and what it cannot.
+  - Read the measured speed-ups, and estimate a run’s serial part from two timings with Amdahl’s law.
+  - Say why available_parallelism can overcount on a shared machine.
+introduces: []
+uses: [data-parallelism, viscosity-rs, compile-time-performance, cpu, rust-closure, option, result, vec, rust-thread, atomics, release-build, median-p95, benchmark-isolation, cargo-test]
+sources: [rust-std-catch-unwind, rust-std-available-parallelism, rust-std-thread-scope]
+---
+import AmdahlSteps from '../../../components/diagrams/ch383b/AmdahlSteps';
+import SpeedupBars from '../../../components/diagrams/ch383b/SpeedupBars';
+
+## When one file goes wrong
+
+*Compiling in parallel* left each file's result in a numbered slot.
+A result can be a failure, and that turns out to be the easy case: a
+file that does not compile is an `Err` in its slot, like any other
+result. Here is a run I did with three files (`-j` is short for `--jobs`), the middle one holding
+`const ps = [;` (output trimmed):
+
+```
+$ viscosity explain -j 4 a.js bad.js b.js
+== a.js ==
+ps (line 1) {x, y} → kept as array of ...
+viscosity: bad.js: Unexpected token (1:12)
+
+== b.js ==
+qs (line 1) {v} → struct of arrays
+$ echo $?
+1
+```
+
+The main thread walks the slots in order: it prints `a.js`'s
+explanation, writes `bad.js`'s error to stderr (the error stream, which
+is why it has no `==` header of its own) with the file name in front,
+prints `b.js`, and returns `Ok(false)`, which `main` turns into exit
+status 1, so a script that runs the CLI knows something failed. `build`
+behaves the same way; `out/` gets `a.js` and `b.js`, and no `bad.js`.
+
+A **panic** is different: it is Rust's way of stopping when a bug is
+found (an index out of range, an `unwrap` of `None`), and it would
+normally end the thread that hit it, and with a scope, the whole run.
+With 396 files, a bug that one strange file triggers should cost that
+file, not the other 395. So `compile_file` wraps the compiler (rewrapped):
+
+```rust
+// A panic is a bug, but with many files
+// it should cost only that file.
+let r = std::panic::catch_unwind(|| {
+    if extension(file) == "py" {
+        compile(&src, &PyPlugin, opts)
+    } else {
+        compile(&src, &JsPlugin, opts)
+    }
+})
+.map_err(|_| "internal error: the \
+    compiler panicked (see above)"
+    .to_string())?;
+```
+
+`catch_unwind` runs the closure, and if it panics by unwinding (Rust's
+usual way, which climbs back up the call stack cleaning up as it goes),
+it returns `Err` instead of letting the panic go on<Cite id="rust-std-catch-unwind" />.
+`map_err` replaces that `Err` with a message, and `?` returns it as
+this file's error. "See above" points at the panic message itself,
+which Rust's panic hook has already printed to stderr. And because the
+panic is caught inside `f`, no thread ever panics while holding the
+slots' lock, so the `expect` on `lock()` can never fire. Here is the
+whole pattern, with a stand-in compiler that fails on one file and
+panics on another:
+
+<Run id="panic-costs-one" />
+
+`compile` returns `Ok` with a made-up size for ordinary names, an `Err`
+for `bad.js`, and panics for `bug.js`; `guarded` wraps it in
+`catch_unwind`. Two threads share the counter and the slots, as in the
+CLI, and the main loop prints every file in order: `bad.js` and `bug.js`
+are reported, the other three are compiled, and the status is 1. (The
+panic message also appears, on stderr, from the hook.)
+
+<Analogy title="a fuse box">
+When a heater shorts out, the fuse for that room blows and the room
+goes dark, while the fridge and the rest of the house carry on; you see
+which fuse went, and you know where to look.
+<span slot="breaks">A fuse always blows; `catch_unwind` only catches
+panics that unwind. A program built to abort on panic ends the whole
+process at the first one, and the documentation warns that it "might not catch all Rust panics"
+<Cite id="rust-std-catch-unwind" />.</span>
+</Analogy>
+
+<Prompts ids={['dp-fail', 'dp-panic', 'dp-see-above', 'dp-unwind-only']} />
+
+## Reading the numbers
+
+`engine/rust/results/parallel-build-2026-10-31.md` timed 396 files (the
+66 JavaScript and Python test programs, copied six times) on a shared
+cloud VM with 4 virtual CPUs, best of 11 runs, median in brackets, in
+milliseconds (wrapped):
+
+```
+                1 thread     4 threads
+build, tmpfs    40.0 (45.2)  13.5 (14.9)
+build, disk    105.3 (109.6) 85.1 (98.8)
+explain         34.6 (36.5)  18.1 (20.9)
+```
+
+`tmpfs` is a folder held in memory, so writing a file there costs
+almost nothing; "disk" is the VM's ordinary virtual disk. The same
+compiler and the same threads gave three very different speed-ups:
+
+<Figure caption="Four threads against one, 396 files, best of 11, from the committed results file." takeaway="Same threads, different serial parts.">
+  <SpeedupBars />
+</Figure>
+
+<Analogy title="a toll booth on a motorway">
+Widening a motorway from one lane to four lets four times as many cars
+drive side by side, but if every car must stop at a single toll booth
+at the end, the queue at the booth decides when the last car gets home.
+<span slot="breaks">A toll booth is plainly visible; the serial part of
+a program is usually hidden (here, inside the virtual disk), and it is
+found only by measuring, as the results file did by timing two kinds
+of output folder.</span>
+</Analogy>
+
+The serial part has a name and a formula, **Amdahl's law**: if a share
+`s` of a run cannot be shared between threads and the rest can, `N`
+threads can make it at most `1 / (s + (1 − s) / N)` times faster.
+Turned round, two timings give an estimate of the serial part, and
+the estimate fits the measurements well. Step through it:
+
+<AmdahlSteps client:visible />
+
+<Formal title="Amdahl's law, and the serial part from two timings">
+
+```text
+T(N) = S + (T(1) − S) / N
+speed-up(N) = T(1) / T(N)
+S = (N · T(N) − T(1)) / (N − 1)
+```
+
+<span slot="read">The time with N threads is the serial time S, plus the
+rest of the one-thread time divided among the N threads. The speed-up is
+the one-thread time over the N-thread time. Solving the first line for S
+gives the third: N times the N-thread time, minus the one-thread time,
+over N minus 1.</span>
+</Formal>
+
+With the tmpfs numbers, `S = (4 × 13.5 − 40.0) / 3`, about 4.7 ms; on
+disk, `(4 × 85.1 − 105.3) / 3`, about 78 ms. The results file explains
+that second number from the other side: creating 396 files costs about
+65 ms on that disk whatever the thread count, because the virtual disk
+creates them one at a time. The estimate is rough (it assumes the rest
+shrinks perfectly, on a machine whose load average was 2 to 3.5, so
+four threads rarely had four free CPUs), but it tells you where to look.
+`explain` gained 1.9 times (2.15 times at 3 threads) because all of its
+text, as large as its input, is printed by the main thread after the
+workers finish. With 1,584 files on tmpfs, `build` peaked at 2.5 times
+with 3 threads; for a handful of files none of this matters, and the
+default is as fast as `--jobs 1`.
+
+<Prompts ids={['dp-disk', 'dp-explain', 'dp-amdahl']} />
+
+<Callout kind="engine" label="Under the hood">
+The default `--jobs` is `std::thread::available_parallelism()`, "an
+estimate of the default amount of parallelism a program should use".
+Its documentation says it does not account for "current system load"
+and "may overcount the amount of parallelism available when running in
+a VM with CPU usage limits"<Cite id="rust-std-available-parallelism" />,
+which is the situation these measurements were taken in. The shared
+counter keeps that from hurting much: a thread that gets little CPU
+takes fewer files. (Scoped threads are joined before the scope
+returns, and if one of them had panicked the scope itself would
+panic<Cite id="rust-std-thread-scope" />; `catch_unwind` inside `f` is
+what keeps that from happening.)
+</Callout>
+
+<Prompts ids={['dp-available']} />
+
+## Your turn
+
+<Exercise id="serialPart" />
+
+## What you learned
+
+- A file that fails is an `Err` in its **slot**: reported with its name,
+  the others still compiled, exit status 1.
+- `catch_unwind` turns an **unwinding panic** into one file's error;
+  it cannot catch an abort.
+- **Amdahl's law**: the serial part caps the speed-up, whatever the
+  thread count, and two timings estimate it.
+- To tmpfs four threads gave 2.95 times; to disk 1.24 times, because
+  file creation there stayed **serial**.
+
+<Quiz />

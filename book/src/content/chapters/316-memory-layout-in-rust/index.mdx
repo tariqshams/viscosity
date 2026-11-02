@@ -3,205 +3,327 @@ n: 316
 day: 79
 part: XI
 title: 'Memory layout in Rust'
-tagline: 'In JavaScript you never learn how many bytes an object takes. In Rust you can ask, and the answer explains a lot: why drip-rs’s values are 16 bytes, why field order can cost a third of a struct, and how many of your records fit in one cache line.'
+tagline: 'In TypeScript you never find out how many bytes a value takes. In Rust you can ask, and the answers (1, 8, 24, 48) tell you how many particles fit in a cache line, why a Vec costs three words, and where each value is allowed to sit.'
 objectives:
-  - Measure the size and alignment of any type with size_of and align_of.
-  - Work out where padding goes in a struct, and why a struct’s size is a multiple of its alignment.
-  - Say what repr(C) and repr(u8) promise, and when you need them.
-  - Explain the size of drip-rs’s Value and relate struct sizes to 64-byte cache lines.
-introduces: [size-of, alignment, padding, repr]
+  - Measure any type with size_of, and say what the number counts.
+  - Explain alignment, and predict which addresses a value may start at.
+  - Read the sizes of references, slices, Vec and Option, and say why some Options cost nothing extra.
+  - Connect a struct's size to the 64-byte cache lines of Part II.
+introduces: [size-of, alignment]
 uses: [rust, rust-functions, scalar-types, struct, enum, option, vec, rust-generics, box, arena, typed-index, byte, memory, address, pointer, contiguous, cache-line, spatial-locality, tagged-value, value-representation, nan-boxing, float64, opcode, chunk, hash-table, aos-vs-soa, webassembly, linear-memory]
 sources: [rustref-type-layout, rust-std-size-of, rust-std-option]
 ---
-import PadSteps from '../../../components/diagrams/ch316/PadSteps';
+import AlignSteps from '../../../components/diagrams/ch316/AlignSteps';
+import SizeBars from '../../../components/diagrams/ch316/SizeBars';
 
-## How big is a value?
+## How big is a particle?
 
-Chapter 143 drew a Drip value as a tag that says what kind of value it
-is, plus a payload, and let the TypeScript VM borrow JavaScript's own
-tags. Chapter 162 squeezed a value into 8 bytes with NaN-boxing. drip-rs keeps the plain tagged enum. How big
-is it? In TypeScript you could only guess. In Rust you ask.
+In *How JavaScript stores numbers and objects* you had to piece
+together what an object with six number fields really costs (a header,
+a hidden class pointer, perhaps a boxed number per field), because
+JavaScript has no expression that answers "how many bytes is this?".
+Rust has one:
 
-<Callout kind="intuition">
-Think of a car park with bays of fixed widths. Motorbikes can park in
-any bay, but a lorry only fits where a lorry bay begins, every eighth
-metre. Park a motorbike, then a lorry, and the gap in between is just
-wasted tarmac. Rearrange the order you park in, and the gaps change.
-</Callout>
+```rust
+use std::mem::size_of;
 
-## size_of and align_of
+struct Particle {
+    x: f64, y: f64,
+    vx: f64, vy: f64,
+    mass: f64, health: f64,
+}
 
-`std::mem::size_of::<T>()` gives a type's size in bytes, and
-`align_of::<T>()` its alignment. Both are worked out at compile time.
+fn main() {
+    let n = size_of::<Particle>();
+    println!("{n}"); // 48
+}
+```
+
+The `use` line brings `size_of` in from the standard library's `mem`
+(memory) module. The struct is the book's particle: six `f64`s, the
+8-byte float JavaScript uses for every number. `size_of::<Particle>()`
+asks for the size of the *type* (`::<...>`, the "turbofish", is how a
+type is handed to a generic function), and it prints `48`: six times
+8, with nothing added. No header, no hidden class, no boxes.
+
+That number connects to *Cache lines and locality*: memory moves in
+64-byte **cache lines**, so a particle fits one and a third times into
+a line, and a loop that reads only `x` still drags all 48 bytes of
+each particle through the cache.
+
+## size_of: the distance to the next one
+
+<Analogy title="train carriages on a platform">
+To plan a platform, a station measures from the front of one
+carriage to the front of the next, couplings included, because that is
+what eight carriages in a row really take. `size_of` is that
+front-to-front distance: the room one value takes in a row of them.
+<span slot="breaks">Carriages in a real train can differ in length;
+every element of a Rust array has exactly the same type and so exactly
+the same size, which the compiler knows before the program ever
+runs.</span>
+</Analogy>
+
+<Analogy title="a sheet of stamps">
+To know how many stamps fit on a sheet, you measure from one
+perforated edge to the next, white border and all, not only the
+picture. A type's size counts its "border" too: unused bytes inside
+it are part of every copy.
+<span slot="breaks">Every stamp has a border, but many Rust types have
+no unused bytes at all (`Particle` has none); and unlike a stamp, a
+type can have size 0 and take no room whatever.</span>
+</Analogy>
+
+Here is what is inside some everyday Rust values, drawn to scale:
+
+<Figure takeaway="Plain numbers are their own bytes; references and collections are a few machine words that point at the data." caption="Sizes in bytes on x86-64 Linux, from size_of with rustc 1.97. A slice reference is an address and a length; a Vec adds a capacity. Option<&f64> needs no tag, because an address is never 0.">
+  <SizeBars />
+</Figure>
+
+<Examples of="size-of">
+
+```rust
+size_of::<u8>()    // 1
+size_of::<u32>()   // 4
+size_of::<f64>()   // 8
+size_of::<char>()  // 4: any Unicode value
+size_of::<()>()    // 0: the empty tuple
+```
+
+```rust
+size_of::<&f64>()      // 8: one address
+size_of::<&[f64]>()    // 16: addr + length
+size_of::<Vec<f64>>()  // 24: + capacity
+size_of::<Box<f64>>()  // 8: one address
+```
 
 <Run id="sizes" />
 
-On this machine (x86-64 Linux, rustc 1.97) the run prints, among
-others:
+</Examples>
 
-```
-type        size align
-u8            1   1
-f64           8   8
-&f64          8   8
-Opt<&f64>     8   8
-Opt<f64>     16   8
-Vec<f64>     24   8
-(u8, u32)     8   4
-```
+The first block is plain numbers, whose sizes the Rust Reference
+fixes<Cite id="rustref-type-layout" />: a `char` is four bytes (enough
+for any Unicode character) and the empty tuple `()` takes none. The
+second is where guesses go wrong. A reference is one address, 8 bytes
+on a 64-bit machine, whatever it points at; a slice reference adds a
+length (the pair *Slices and strings* drew), which is how `xs.len()`
+works without touching the data; a `Vec<f64>` adds a capacity, 24
+bytes however many million numbers it holds, since those live on the
+heap; a `String` is the same three words, being a `Vec` of UTF-8
+bytes; and a `Box<f64>` is one address. The runnable one prints a
+table (the third column, alignment, is the next section); here it
+printed `Vec<f64>` as `24 8` and `Particle` as `48 8`, and `64 / 48`
+rounds down to one whole particle per line.
 
-A few of these deserve a look. A reference is one 8-byte address, and
-`Option<&f64>` is no bigger, because a null address is never a valid
-reference, so it can mean `None`<Cite id="rust-std-option" />. An
-`f64` has no such spare pattern: every 64 bits are some number, so
-`Option<f64>` needs a separate tag, which with padding costs 8 bytes.
-A `Vec` is a pointer, a length and a capacity. And `(u8, u32)` is 8
-bytes, not 5. Those 3 extra bytes are the subject of this chapter.
+One line deserves a second look. `Option<&f64>` is 8 bytes, like
+`&f64`, because a reference is never address 0, so 0 can mean
+`None`<Cite id="rust-std-option" />; `Option<f64>` is 16, because
+every bit pattern of an `f64` is some number, so `None` needs a tag of
+its own. That spare pattern is the **niche** of *Sum types in
+memory*.
 
-<Callout kind="definition">
-**`size_of::<T>()`** is the number of bytes between one `T` and the
-next in an array, padding included<Cite id="rust-std-size-of" />.
-A type's **alignment** is a power of two, and a value of that type may
-only be stored at an address that is a multiple of it. A type's size is
-always a multiple of its alignment<Cite id="rustref-type-layout" />.
-</Callout>
-
-<Prompts ids={['size-what', 'align-what']} />
-
-## Padding
-
-Here an `f64` has alignment 8. So when a field would land at the wrong
-offset, the compiler skips bytes. Step through
-a `u8`, an `f64` and another `u8`:
-
-<PadSteps client:visible />
-
-<Callout kind="definition">
-**Padding** is bytes the compiler leaves unused inside a struct: before
-a field, so it starts at a multiple of its alignment, and at the end, so
-the size is a multiple of the struct's alignment and the *next* element
-of an array is aligned too<Cite id="rustref-type-layout" />.
-</Callout>
-
-The last step is the surprise. Without an attribute, Rust uses its
-default representation, which only promises that each field is aligned
-and that fields don't overlap. It may reorder them, and rustc 1.97 did:
-the run's `R3` line shows `b@0`, `a@8` and `c@9`, 16 bytes. Don't build
-on that order, though. The Reference says the default representation
-guarantees no particular layout<Cite id="rustref-type-layout" />.
-
-<Prompts ids={['pad-what', 'tail-pad', 'reorder']} />
-
-## repr(C) and friends
-
-Sometimes you need the layout pinned down: a C library will read your
-struct, a WebAssembly host will read bytes in linear memory (chapter
-270), or a file format fixes the offsets. For that:
-
-<Callout kind="definition">
-A **`#[repr(..)]`** attribute chooses a type's **representation**.
-`#[repr(C)]` lays fields out in declaration order using C's rules, so
-the layout is fixed. On an enum without data, a primitive representation
-such as `#[repr(u8)]` makes the tag exactly that integer type.
-`#[repr(align(N))]` raises the alignment to `N`, and `#[repr(packed)]`
-removes padding (at the cost of misaligned fields)<Cite id="rustref-type-layout" />.
-</Callout>
-
-drip-rs uses one of them. Its opcodes are an enum:
+A common slip is to forget the two colons:
 
 ```rust
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OpCode {
-    Constant,
-    Nil,
-    // ...
-}
+let n = size_of<f64>();
+// error: comparison operators cannot
+//        be chained
+// help: use `::<...>` instead of `<...>`
+let n = size_of::<f64>(); // 8
 ```
 
-`#[repr(u8)]` makes each variant exactly the byte that encodes it, so
-writing an instruction into a chunk is `op as u8`, and the numbering
-matches the TypeScript VM's `OP` table. A `#[repr(align(64))]` struct,
-by the way, measured 64 bytes with alignment 64 here: one per cache
-line.
+Without `::`, rustc 1.97 reads `size_of < f64 > ()` as two
+comparisons in a row, and says so (trimmed above); its help line gives
+the fix.
 
-<Prompts ids={['repr-c', 'repr-u8']} />
+<Callout kind="definition">
+**`std::mem::size_of::<T>()`** returns the size of the type `T` in
+bytes: the distance from one `T` to the next in an array, including
+any unused bytes inside `T`<Cite id="rust-std-size-of" />. It is worked
+out by the compiler, so calling it costs nothing when the program runs.
+</Callout>
 
-## drip-rs's Value: 16 bytes
+<Formal title="Sizes of arrays">
 
-Here is drip-rs's `Value`, from `value.rs`:
+```text
+size([T; n]) = n × size(T)
+size(T) = k × align(T), for some whole k ≥ 0
+```
+
+<span slot="read">An array of n values of type T takes n times the
+size of one T, with nothing between them. And a type's size is always a
+whole number of times its alignment (the next section), with 0 counting
+as a multiple of anything.</span>
+</Formal>
+
+<OtherLanguages title="How big is one floating-point number?">
 
 ```rust
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Value {
-    Nil,
-    Bool(bool),
-    Number(f64),
-    String(StrRef),
-    Function(Gc<ObjFunction>),
-    // Native, Closure, Class,
-    // Instance, BoundMethod: all Gc
+use std::mem::size_of;
+println!("{}", size_of::<f64>()); // 8
+```
+
+```ts
+// No sizeof. Only typed arrays say:
+console.log(Float64Array.BYTES_PER_ELEMENT);
+// 8 (one slot; a plain number may be
+// boxed on the heap, at the engine's
+// choice)
+```
+
+```c
+#include <stdio.h>
+printf("%zu\n", sizeof(double)); /* 8 */
+```
+
+```python
+import sys
+print(sys.getsizeof(1.5))  # 24
+```
+
+</OtherLanguages>
+
+Rust and C agree that an `f64` (C's `double`) is 8 bytes, and both
+let you ask. TypeScript can only give the size of a typed-array slot;
+where a plain `number` lives is the engine's choice. Python 3.13 says
+24, because every float is a full object, with a reference count and
+a type pointer in front of its 8 bytes.
+
+<Prompts ids={['size-what', 'size-vec', 'size-opt']} />
+
+## Alignment: where a value may start
+
+`size_of::<(u8, u32)>()` is 8, not 5. To see why, you need the second
+fact the table printed: **alignment**.
+
+<Analogy title="booking a sports hall">
+A sports hall takes half-hour bookings at any half hour, but the big
+two-hour sessions may only start on the even hours (2, 4, 6), so the
+courts can be set up the same way each time. A value is the same: a
+`u8` may start at any address, a `u32` only at a multiple of 4, an
+`f64` only at a multiple of 8.
+<span slot="breaks">The hall's rule is a convenience for the staff;
+the computer's rule comes from how its memory hardware fetches words,
+and in Rust it is not a preference at all: a value at a wrong address
+is a broken promise, as *Unsafe Rust* explains.</span>
+</Analogy>
+
+<Analogy title="lorry bays in a car park">
+In a car park painted with a lorry bay every eight metres, a motorbike
+can park anywhere, but a lorry only fits where a bay begins. Park a
+motorbike at the start, and the lorry behind it cannot squeeze in right
+after; it goes to the next painted line, and the tarmac in between is
+left empty.
+<span slot="breaks">A car park can be repainted on a whim; the
+alignments of Rust's types are fixed by the target machine and the
+compiler, and differ only between machines (an `f64` is aligned to 4
+on many 32-bit ones).</span>
+</Analogy>
+
+Step through where each type may start, ending with the `(u8, u32)`
+puzzle:
+
+<AlignSteps client:visible />
+
+The CPU wants this because it fetches memory in aligned chunks: an
+aligned `f64` always lies inside one chunk (and one cache line, as 64
+is a multiple of 8), while a misaligned one could straddle two, and
+some CPUs refuse such loads outright.
+
+<Examples of="alignment">
+
+```rust
+align_of::<u8>()    // 1: anywhere
+align_of::<u16>()   // 2: even addresses
+align_of::<f64>()   // 8
+```
+
+```rust
+align_of::<(u8, u32)>()   // 4
+align_of::<[f64; 4]>()    // 8
+align_of::<Particle>()    // 8
+```
+
+```rust
+let xs = [1.5f64, 2.5, 3.5];
+for x in &xs {
+    println!("{:p}", x);
 }
+// 0x7ffdbd4808b0
+// 0x7ffdbd4808b8
+// 0x7ffdbd4808c0
 ```
 
-drip-rs's own types, measured by linking a small program against the
-crate (rustc 1.97, release build):
+</Examples>
 
+The first block is this x86-64 machine; the Reference says
+alignments are platform-specific, usually equal to the size but not
+always<Cite id="rustref-type-layout" />. The second shows the rule
+for compound types: a tuple, array or struct is aligned like its most
+demanding field. The third prints each element's address with `{:p}`:
+in hexadecimal they go up by 8 and end in `0` or `8`, so each is a
+multiple of 8. (The numbers change from run to run; the pattern does
+not.)
+
+Alignments belong to the target, too. Compiled for
+`wasm32-unknown-unknown`, `size_of::<&f64>()` returned 4, since
+WebAssembly's linear memory (*WebAssembly as a target*) has 32-bit
+addresses, while `align_of::<f64>()` stayed 8.
+
+<Callout kind="definition">
+A type's **alignment** (`std::mem::align_of::<T>()`) is a power of
+two, at least 1, and a value of that type may only be stored at an
+address that is a multiple of it. A compound type's alignment is at
+least the largest alignment of its fields, and its size is always a
+multiple of its alignment<Cite id="rustref-type-layout" />.
+</Callout>
+
+<Formal title="The alignment rule">
+
+```text
+addr(v) mod align(T) = 0
+align(S) ≥ max { align(F) : F a field of S }
 ```
-Value            16  align 8
-Option<Value>    16
-StrRef            8  align 4
-Option<StrRef>   12
-Gc<ObjClass>      4
-ObjInstance      64
-```
 
-The biggest payloads are 8 bytes: an `f64`, or a `StrRef`, which is a
-4-byte handle (chapter 315) plus the string's 4-byte hash. Add a tag,
-and round up to the alignment of 8: 16. The hash rides along in space
-an `f64` needed anyway: the README notes that it costs nothing. `Option<Value>` is
-also 16, because the tag has values to spare. `Option<StrRef>` has no
-spare pattern (every `u32` is a valid index), so it grows to 12.
+<span slot="read">The address of any value v of type T leaves no
+remainder when divided by T's alignment. And a struct S is aligned at
+least as strictly as the most strictly aligned of its fields.</span>
+</Formal>
 
-<Prompts ids={['value-16', 'opt-value']} />
-
-Now connect it to chapter 52. Memory moves in 64-byte cache lines, so
-one line holds four `Value`s. The VM's stack is a `Vec<Value>`,
-contiguous, so pushing and popping walks along lines. NaN-boxed
-values (chapter 162) would fit eight; drip-rs keeps the plain enum and
-pays in cache space. And chapter 317's particle, six `f64`s, is
-48 bytes: a line holds one and a third of them, and a loop that only
-reads `x` and `vx` uses 16 of every 48 bytes it pulls in.
-
-<Prompts ids={['line-values']} />
+<Prompts ids={['align-what', 'align-compound', 'align-target']} />
 
 <Callout kind="engine" label="Under the hood">
-drip-rs's hash table stores its keys and values in two `Vec`s, as the
-TypeScript table does. Layout shows what that buys. One `Vec<(Option<StrRef>, Value)>` would need 32 bytes per entry,
-4 of them padding; the two `Vec`s need 12 + 16 = 28. And `find` reads a
-value only at an empty key: probing past occupied slots touches the
-12-byte keys alone, five to a cache line. That is struct-of-arrays
-again, chosen by hand. Chapter 317 does the same for particles.
+drip-rs's `Value` enum (none, a boolean, a number, or a handle to a
+string, list, function, class or instance, as *Tagging values at run
+time* drew it) measured 16 bytes, aligned to 8, in a small program
+linked against the crate (rustc 1.97, release). So a cache line holds
+four values of the VM's stack, where NaN-boxed ones (*Measuring and
+speeding up the VM*) would fit eight; and `Option<Value>` is also 16,
+since the tag has spare values. The next chapter takes the 16 apart.
 </Callout>
+
+<Prompts ids={['value-line', 'per-line']} />
 
 ## Your turn
 
-<Exercise id="cLayout" />
+The core exercise is arithmetic every allocator needs; the second puts
+`size_of` to work.
 
-<Exercise id="tightLayout" />
+<Exercise id="alignUp" />
+
+<Exercise id="perLine" />
 
 ## What you learned
 
-- **`size_of`** and **`align_of`** tell you a type's size and
-  alignment; a size is always a multiple of the alignment.
-- **Alignment** says which addresses a value may start at; an `f64`
-  needs a multiple of 8.
-- **Padding** fills gaps before misaligned fields and after the last
-  one. Field order changes how much you need.
-- The default representation may reorder fields; **`#[repr(C)]`** fixes
-  declaration order, **`#[repr(u8)]`** fixes an enum's tag, and
-  `align` and `packed` adjust alignment.
-- drip-rs's `Value` is 16 bytes, four per cache line; `Option<Value>`
-  costs nothing extra.
+- **`size_of::<T>()`** gives a type's size in bytes: the distance from
+  one value to the next in an array. It costs nothing at run time.
+- A reference is one address; a slice reference adds a length; a `Vec`
+  or `String` adds a capacity: 8, 16 and 24 bytes on a 64-bit machine.
+- **Alignment** says which addresses a type may start at: a multiple of
+  `align_of::<T>()`, a power of two. Compound types take their fields'
+  largest alignment.
+- `Option<&T>` costs nothing extra, `Option<f64>` costs 8 more bytes:
+  a niche, from *Sum types in memory*.
+Next: the bytes between fields, and how to choose a layout yourself.
 
 <Quiz />

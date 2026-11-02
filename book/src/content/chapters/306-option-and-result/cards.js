@@ -1,65 +1,37 @@
 // Chapter 306 cards. Keys are stable ids: never rename them.
 
-const VALUE = `enum Value {
-    Num(f64),
-    Bool(bool),
-}
-
-fn as_num(v: &Value)
-    -> Result<f64, String> {
-    match v {
-        Value::Num(n) => Ok(*n),
-        _ => Err(String::from(
-            "Operands must be numbers."
-        )),
-    }
-}
-`;
-
 export const prompts = {
   'opt-what': {
     q: 'What are the two variants of `Option<T>`?',
     a: '`Some(value)`, holding a `T`, and `None`, holding nothing.',
   },
   'opt-vs-undefined': {
-    q: 'Why can’t you add 1 to the `Option<usize>` that a search returns?',
-    a: '`Option<usize>` is a different type from `usize`. You must first check for `Some` and take the number out.',
+    q: 'Why can’t you add 1 to an `Option<usize>`?',
+    a: 'It is a different type from `usize` (E0369). You must first check whether it is `Some` and take the number out.',
   },
   'opt-minus-one': {
     q: 'What is wrong with returning `-1` for “not found”, as `indexOf` does?',
-    a: '`-1` is an ordinary number, so nothing forces the caller to check for it. `None` can’t be mistaken for an index.',
+    a: '`-1` is still a number, so nothing stops the caller from using it as if it were a real answer.',
   },
-  'if-let': {
-    q: 'What does `if let Some(i) = opt { ... }` do?',
-    a: 'Runs the block only if `opt` is `Some`, with `i` bound to the value inside: a `match` with one arm.',
+  'opt-open': {
+    q: 'A `match` on an `Option` has a `Some(i)` arm only. What happens?',
+    a: 'It doesn’t compile: E0004, non-exhaustive patterns, `None` not covered.',
+  },
+  'opt-if-let': {
+    q: 'What does `if let Some(i) = find(&xs, 6) { ... }` do when `find` returns `None`?',
+    a: 'Nothing: the block is skipped. It runs only for `Some`, with `i` bound.',
   },
   'unwrap-panics': {
-    q: 'What does `unwrap()` do on `None`, and when is it reasonable?',
-    a: 'It panics and stops the program. Use it only where `None` would be a bug, for example in tests.',
+    q: 'What does `.unwrap()` do on `None`, and when is it acceptable?',
+    a: 'It panics, stopping the program. Use it only where `None` would be a bug, as in a test.',
   },
-  'res-what': {
-    q: 'What do the two variants of `Result<T, E>` carry?',
-    a: '`Ok` carries the successful value, a `T`; `Err` carries an error of type `E` saying what went wrong.',
-  },
-  'res-vs-throw': {
-    q: 'A TypeScript function can throw without its type saying so. What changes when a Rust function returns `Result`?',
-    a: 'The possible failure is in its return type, and callers must deal with the `Err` before they can use the value.',
-  },
-  'q-does': {
-    q: 'What does `let x = as_num(a)?;` do when `as_num(a)` is `Err(e)`?',
-    a: 'It returns `Err(e)` from the enclosing function immediately. Nothing after it runs.',
-  },
-  'q-where': {
-    q: 'Where may you use the `?` operator?',
-    a: 'Only inside a function whose return type can hold the early return: a `Result` (for `?` on a `Result`) or an `Option` (for `?` on an `Option`).',
-  },
-  'q-option': {
-    q: 'What does `?` do after an `Option`?',
-    a: 'It unwraps `Some(v)` to `v`, and on `None` returns `None` from the enclosing function.',
+  'unwrap-or': {
+    q: 'What is `find(&xs, 9).unwrap_or(0)` when 9 is not in `xs`?',
+    a: '`0`: the default given to `unwrap_or`, since there was no value.',
   },
   npo: {
-    q: 'Why is `Option<&T>` the same size as `&T`?',
-    a: 'A reference is never null, so `None` can be stored as the null bit pattern; the standard library guarantees it.',
+    q: 'Why is `Option<&T>` the same size as `&T`, while `Option<i32>` is bigger than `i32`?',
+    a: 'A reference is never null, so `None` can use the null pattern. Every `i32` pattern is a real number, so a tag is needed.',
   },
 };
 
@@ -80,195 +52,114 @@ export const examples = {
 fn main() {
     let xs = [4, 5, 6];
     match find(&xs, 5) {
-        Some(i) => println!("at {}", i),
+        Some(i) => println!("at {i}"),
         None => println!("absent"),
     }
     if let Some(i) = find(&xs, 6) {
-        println!("6 is at {}", i);
+        println!("6 is at {i}");
     }
-    let i = find(&xs, 9).unwrap_or(99);
-    println!("{}", i);
+    let i = find(&xs, 9).unwrap_or(0);
+    println!("{i}");
     println!("{:?}", find(&xs, 4));
+    println!("{:?}", xs.get(9));
     // Try: find(&xs, 9).unwrap()
-}`,
-  },
-  'question-play': {
-    lang: 'rust',
-    title: 'Errors passed up with ?',
-    code: `${VALUE}
-fn sub(a: &Value, b: &Value)
-    -> Result<f64, String> {
-    let x = as_num(a)?;
-    let y = as_num(b)?;
-    Ok(x - y)
-}
-
-fn main() {
-    let one = Value::Num(1.0);
-    let t = Value::Bool(true);
-    println!("{:?}", sub(&one, &one));
-    println!("{:?}", sub(&one, &t));
-    match sub(&t, &one) {
-        Ok(n) => println!("{}", n),
-        Err(e) => println!("{}", e),
-    }
 }`,
   },
 };
 
+const sig = `fn resolve(locals: &[&str], name: &str)
+    -> Option<usize> {`;
+
 export const exercises = {
-  addTop: {
+  resolve: {
     lang: 'rust',
-    title: 'Add the top two values',
+    title: 'Which slot is that local in?',
     prompt:
-      'A toy VM stack is a slice of `Value`s, with the top at the end. Write `add_top(st)`, which returns the sum of the top two values. If there are fewer than two values, return `Err("Stack underflow.")`. If either is not a number, return the error from `as_num`. Use `?` for that.',
-    starter: `${VALUE}
-fn add_top(st: &[Value])
-    -> Result<f64, String> {
-    todo!()
+      'When Drip’s compiler meets a variable name inside a function, it looks for it among the locals declared so far: `locals[i]` is the name in stack slot `i`. A name can be declared twice (an inner block’s `let x` hides an outer `x`), and the **most recent** declaration wins, so search from the end. Write `resolve(locals, name)`, returning `Some(slot)` of the last local with that name, or `None` if there is none (then the name must be a global). This is `resolve_local` from `companion/rust/src/compiler.rs`, simplified. Use a `while` loop counting down.',
+    starter: `${sig}
+    None
 }`,
-    solution: `${VALUE}
-fn add_top(st: &[Value])
-    -> Result<f64, String> {
-    let n = st.len();
-    if n < 2 {
-        return Err(String::from(
-            "Stack underflow."));
+    solution: `${sig}
+    let mut i = locals.len();
+    while i > 0 {
+        i -= 1;
+        if locals[i] == name {
+            return Some(i);
+        }
     }
-    let a = as_num(&st[n - 2])?;
-    let b = as_num(&st[n - 1])?;
-    Ok(a + b)
-}`,
-    tests: `fn s(m: &str) -> Result<f64, String> {
-    Err(m.to_string())
-}
-
-#[test]
-fn adds_two_numbers() {
-    let st = [Value::Num(1.0), Value::Num(2.5)];
-    assert_eq!(add_top(&st), Ok(3.5));
-}
-
-#[test]
-fn uses_only_the_top_two() {
-    let st = [
-        Value::Bool(true),
-        Value::Num(1.0),
-        Value::Num(2.0),
-    ];
-    assert_eq!(add_top(&st), Ok(3.0));
-}
-
-#[test]
-fn too_few_values() {
-    assert_eq!(add_top(&[Value::Num(1.0)]),
-        s("Stack underflow."));
-    assert_eq!(add_top(&[]), s("Stack underflow."));
-}
-
-#[test]
-fn top_is_not_a_number() {
-    let st = [Value::Num(1.0), Value::Bool(false)];
-    assert_eq!(add_top(&st),
-        s("Operands must be numbers."));
-}
-
-#[test]
-fn second_is_not_a_number() {
-    let st = [Value::Bool(false), Value::Num(1.0)];
-    assert_eq!(add_top(&st),
-        s("Operands must be numbers."));
-}`,
-    hints: [
-      'Check `st.len()` first: with fewer than two values, return the underflow error straight away.',
-      'The top value is `st[n - 1]` and the one below it is `st[n - 2]`. Pass references: `as_num(&st[n - 1])`.',
-      'Write `let a = as_num(&st[n - 2])?;` and the same for `b`, then `Ok(a + b)`.',
-    ],
-    walkthrough: `There are three outcomes, and the return type names all of them: \`Ok(sum)\`, or one of two \`Err\` messages.
-
-- **Check the length first.** \`st.len()\` is a \`usize\`. If you skipped the check and wrote \`st[n - 2]\` on a one-value stack, \`n - 2\` would underflow, and in a debug build Rust panics on that subtraction. Returning \`Err\` is the polite version.
-- **Let \`as_num\` decide.** \`as_num(&st[n - 2])?\` either gives you an \`f64\` or returns its \`Err\` from \`add_top\` at once. You don’t have to write the type-error message again, and you can’t forget to check the second operand: each \`?\` is its own check.
-- **Wrap the answer.** The last expression is \`Ok(a + b)\`, because the function returns a \`Result\`, not a bare \`f64\`.
-
-This is the shape of drip-rs’s \`pop_numbers\`: check, then \`?\` on each step that can fail.`,
-    wrong: [
-      {
-        code: `${VALUE}
-fn add_top(st: &[Value])
-    -> Result<f64, String> {
-    let n = st.len();
-    let a = as_num(&st[n - 2])?;
-    let b = as_num(&st[n - 1])?;
-    Ok(a + b)
-}`,
-        why: 'Without the length check, a stack of one value makes `n - 2` underflow, which panics, so the test expecting `Err("Stack underflow.")` fails.',
-      },
-      {
-        code: `${VALUE}
-fn add_top(st: &[Value])
-    -> Result<f64, String> {
-    let n = st.len();
-    if n < 2 {
-        return Err(String::from(
-            "Stack underflow."));
-    }
-    let b = as_num(&st[n - 1])?;
-    match &st[n - 2] {
-        Value::Num(a) => Ok(a + b),
-        _ => Ok(b),
-    }
-}`,
-        why: 'It quietly treats a non-number below the top as zero instead of reporting it. Swallowing an error like this is exactly what `?` is there to prevent.',
-      },
-    ],
-  },
-  topTwo: {
-    lang: 'rust',
-    optional: true,
-    title: 'Peek at the top two, with ? on an Option',
-    prompt:
-      'Write `top_two(st)`, which returns `Some((below, top))` for the last two numbers of the slice, or `None` if there are fewer than two. Use `st.len().checked_sub(2)`, which gives `None` instead of underflowing, together with `?`.',
-    starter: `fn top_two(st: &[f64])
-    -> Option<(f64, f64)> {
-    todo!()
-}`,
-    solution: `fn top_two(st: &[f64])
-    -> Option<(f64, f64)> {
-    let i = st.len().checked_sub(2)?;
-    Some((st[i], st[i + 1]))
+    None
 }`,
     tests: `#[test]
-fn two_values() {
-    assert_eq!(top_two(&[1.0, 2.0]), Some((1.0, 2.0)));
+fn finds_a_single_local() {
+    let ls = ["a", "b"];
+    assert_eq!(resolve(&ls, "b"), Some(1));
 }
-
 #[test]
-fn takes_the_last_two() {
-    assert_eq!(top_two(&[7.0, 1.0, 2.0]),
-        Some((1.0, 2.0)));
+fn the_latest_declaration_wins() {
+    let ls = ["x", "y", "x"];
+    assert_eq!(resolve(&ls, "x"), Some(2));
 }
-
 #[test]
-fn too_short() {
-    assert_eq!(top_two(&[1.0]), None);
-    assert_eq!(top_two(&[]), None);
+fn slot_zero_is_a_real_slot() {
+    let ls = ["n", "m"];
+    assert_eq!(resolve(&ls, "n"), Some(0));
+}
+#[test]
+fn unknown_names_are_none() {
+    assert_eq!(resolve(&["a"], "z"), None);
+    assert_eq!(resolve(&[], "a"), None);
 }`,
     hints: [
-      '`checked_sub(2)` returns `Some(len - 2)` when that fits in a `usize`, and `None` otherwise.',
-      'Put `?` after it: `let i = st.len().checked_sub(2)?;`. On `None`, the function returns `None` there.',
-      'Then the answer is `Some((st[i], st[i + 1]))`.',
+      'Two answers are possible: a slot number, or “not a local”. That is exactly `Option<usize>`: `Some(slot)` or `None`.',
+      'Start one past the end, `let mut i = locals.len();`, and loop `while i > 0`. Take one off `i` *before* reading `locals[i]`, so the first slot you read is the last one.',
+      'Inside the loop: `i -= 1; if locals[i] == name { return Some(i); }`. If the loop finishes without returning, the last line of the function is `None`.',
     ],
-    walkthrough: `\`checked_sub\` is a small example of the standard library returning \`Option\` instead of a magic value: \`3usize.checked_sub(2)\` is \`Some(1)\`, and \`1usize.checked_sub(2)\` is \`None\`.
+    walkthrough: `**How to think about it.** Picture the locals as a stack of name cards, newest on top: for \`["x", "y", "x"]\` the top card is the inner \`x\` in slot 2, and it hides the outer \`x\` in slot 0. Looking a name up means reading from the top down and stopping at the first match. There are two kinds of answer, "slot 2" and "not here at all", and the second is not a number, so the return type is \`Option<usize>\` rather than a \`usize\` with a magic value. (Using \`-1\` would not even type-check: \`usize\` cannot be negative.)
 
-Because \`top_two\` itself returns an \`Option\`, \`?\` is allowed: it turns the \`None\` into an early \`return None\`. After that line, \`i\` is a plain \`usize\` and both indexes are in range, so the slice reads can’t panic.`,
+**The solution, line by line.**
+
+- \`let mut i = locals.len();\` starts one past the last slot. With three locals, \`i\` is 3.
+- \`while i > 0 {\` keeps going while there is a slot below \`i\` left to read. Counting down with \`usize\` needs care: \`i\` can never go below 0, so the test is \`i > 0\`, and the step comes first.
+- \`i -= 1;\` moves to the slot to read now: 2, then 1, then 0.
+- \`if locals[i] == name {\` compares two string slices; \`==\` on \`&str\` compares their text.
+- \`return Some(i);\` leaves at once with the slot, wrapped in \`Some\`, so the caller has to read the slip before using it.
+- \`None\` (the last line, after the loop) is reached only when no slot matched: the name is not a local.
+
+For \`resolve(&["x", "y", "x"], "x")\`: \`i\` goes 3 to 2, \`locals[2]\` is \`"x"\`, so the answer is \`Some(2)\`, the inner declaration. For an empty list the loop never runs and the answer is \`None\`.
+
+**How the real compiler writes it.** \`resolve_local\` in the companion does the same search in one line, with iterators (a later chapter): \`locals.iter().enumerate().rev().find(...)?\`, and that \`?\` on an \`Option\` is the subject of the next chapter.
+
+**Common wrong attempts.**
+
+- Searching from the start finds the *outer* \`x\`, slot 0, so an inner variable could never hide an outer one.
+- \`while i > 0 { if locals[i - 1] == name { return Some(i); } i -= 1; }\` checks the right slot but returns \`i\`, one too many: the classic off-by-one, which the test for slot 0 catches.
+- \`let mut i = locals.len() - 1;\` looks natural, but for an empty list \`0 - 1\` on a \`usize\` panics with "attempt to subtract with overflow".`,
     wrong: [
       {
-        code: `fn top_two(st: &[f64])
-    -> Option<(f64, f64)> {
-    let n = st.len();
-    Some((st[n - 2], st[n - 1]))
+        code: `${sig}
+    let mut i = 0;
+    while i < locals.len() {
+        if locals[i] == name {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }`,
-        why: 'For a short slice `n - 2` underflows and the function panics instead of returning `None`.',
+        why: 'Searching from the start finds the oldest declaration, so `["x", "y", "x"]` gives `Some(0)` instead of `Some(2)`.',
+      },
+      {
+        code: `${sig}
+    let mut i = locals.len();
+    while i > 0 {
+        if locals[i - 1] == name {
+            return Some(i);
+        }
+        i -= 1;
+    }
+    None
+}`,
+        why: 'It compares slot `i - 1` but returns `i`, one too many.',
       },
     ],
   },
@@ -276,47 +167,48 @@ Because \`top_two\` itself returns an \`Option\`, \`?\` is allowed: it turns the
 
 export const quiz = [
   {
-    q: 'A Rust function might have no answer. What should it return?',
+    q: 'What does `[4, 5, 6].get(9)` return?',
     options: [
-      { t: '`null`', why: 'Rust has no `null`.' },
-      { t: '`Option<T>`: `Some(answer)` or `None`', correct: true, why: 'Absence is a variant of an enum, so the caller has to check for it.' },
-      { t: 'A magic value such as `-1`', why: 'That is what `indexOf` does, and nothing makes the caller check for it.' },
-      { t: 'It should panic', why: 'Panicking stops the program; “no answer” is a normal outcome, not a bug.' },
+      { t: '`undefined`', why: 'Rust has no `undefined`.' },
+      { t: '`None`', correct: true, why: '`get` asks politely and answers with an `Option`; there is no slot 9.' },
+      { t: 'It panics: index out of bounds', why: 'That is what `xs[9]` does. `get` returns `None` instead.' },
     ],
   },
   {
-    q: 'What happens at `let y = as_num(b)?;` when `as_num(b)` returns `Err(e)`?',
+    q: `Does this compile?
+\`\`\`
+match find(&xs, 5) {
+    Some(i) => println!("{i}"),
+}
+\`\`\``,
     options: [
-      { t: '`y` is set to `e`', why: '`y` would have to be an `f64`; the error never becomes `y`.' },
-      { t: 'The program panics', why: 'That is `unwrap()`. `?` returns instead.' },
-      { t: 'The function containing that line returns `Err(e)` at once', correct: true, why: 'The rest of the function, here `Ok(x - y)`, doesn’t run.' },
-      { t: 'Execution continues with `y` set to `0.0`', why: 'Rust never invents a default value for you.' },
+      { t: 'Yes, and it prints nothing when 5 is missing', why: 'A `match` with an uncovered variant does not compile.' },
+      { t: 'Yes, but it panics when 5 is missing', why: 'The compiler catches it before the program runs.' },
+      { t: 'No: E0004, `None` not covered', correct: true, why: '`match` must be exhaustive; add `None => ...`, or use `if let`.' },
     ],
   },
   {
-    q: 'You write `?` inside `fn half(n: i32) -> i32`. What happens?',
+    q: 'Where is `.unwrap()` on an `Option` a reasonable choice?',
     options: [
-      { t: 'It compiles, and the error is converted to 0', why: 'There is no such conversion.' },
-      { t: 'It compiles, but panics at run time on an error', why: 'The problem is caught at compile time.' },
-      { t: 'It is a compile error: E0277, `?` can only be used in a function that returns `Result` or `Option`', correct: true, why: 'An early return needs somewhere to go, and an `i32` can’t hold an `Err`.' },
+      { t: 'In a test, or where `None` would mean your own program has a bug', correct: true, why: 'A panic there points straight at the bug. For input that can really be missing, handle `None`.' },
+      { t: 'On user input, to keep the code short', why: 'One bad input then stops the whole program.' },
+      { t: 'Nowhere: it does not compile on `None`', why: 'It compiles; it panics at run time if the value is `None`.' },
     ],
   },
   {
-    q: 'Which TypeScript idea is closest to `Option<T>`?',
+    q: 'Which TypeScript type is closest to `Option<number>`?',
     options: [
-      { t: 'A discriminated union like `{ kind: "some", value: T } | { kind: "none" }`', correct: true, why: 'Both are “one of these variants”, and `match` is the checked version of narrowing on `kind`.' },
-      { t: 'An interface', why: 'An interface describes the shape of an object, not a choice between variants.' },
-      { t: '`try`/`catch`', why: 'That is about failures being thrown; `Option` is about a value being absent, and nothing is thrown.' },
-      { t: '`any`', why: '`any` turns checking off. `Option` makes the compiler check more.' },
+      { t: '`number`, with `-1` meaning missing', why: 'That is the magic-value habit `Option` replaces: `-1` is still a number.' },
+      { t: '`number | undefined`, under `strictNullChecks`', correct: true, why: 'Both make you check before use; `Option` is an ordinary enum, so the check never depends on compiler settings.' },
+      { t: '`number[]`', why: 'An array can hold many values; an `Option` holds at most one.' },
     ],
   },
   {
-    q: 'How does drip-rs report `1 - true` compared with the TypeScript VM?',
+    q: 'On this machine `&i32` is 8 bytes. How big is `Option<&i32>`?',
     options: [
-      { t: 'Both throw an exception', why: 'Rust has no exceptions.' },
-      { t: 'drip-rs panics', why: 'A Drip runtime error is an expected outcome, not a bug in the VM, so it is returned as a value.' },
-      { t: 'drip-rs ignores it and pushes nil', why: 'It reports “Operands must be numbers.”, exactly like the TypeScript VM.' },
-      { t: 'The TypeScript VM throws `VmRuntimeError`; drip-rs returns `Err(RuntimeError)` and passes it up with `?`', correct: true, why: 'Same message and stack trace, but in Rust the failure travels as a return value.' },
+      { t: '16 bytes: the reference plus a tag', why: 'No tag is needed: a reference is never null, so `None` uses the null pattern.' },
+      { t: '9 bytes', why: 'Sizes are rounded up to the alignment anyway; and here no tag byte is needed at all.' },
+      { t: '8 bytes, the same as `&i32`', correct: true, why: 'The null pointer optimization, which the standard library guarantees for references and `Box`.' },
     ],
   },
 ];

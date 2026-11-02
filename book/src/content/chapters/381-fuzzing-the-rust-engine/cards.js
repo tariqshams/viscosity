@@ -1,84 +1,60 @@
 // Chapter 381 cards. Keys are stable ids: never rename them.
 
-const SOL = `// Line-based delta debugging, as in
-// fuzz.mjs: remove chunks of k lines
-// while \`fails\` still says the program
-// fails, halving k down to 1. Never
-// tries an empty program.
-fn reduce<'a>(
-    mut ls: Vec<&'a str>,
-    fails: impl Fn(&[&str]) -> bool,
-) -> Vec<&'a str> {
-    let mut k = (ls.len() / 2).max(1);
-    loop {
-        let mut changed = true;
-        while changed {
-            changed = false;
-            let mut i = 0;
-            while i + k <= ls.len() {
-                let mut c = ls.clone();
-                c.drain(i..i + k);
-                if !c.is_empty()
-                    && fails(&c)
-                {
-                    ls = c;
-                    changed = true;
-                } else {
-                    i += k;
-                }
-            }
+const SOL = `// AFL's edge map, one flag per index.
+// \`path\` lists the blocks a run went
+// through, in order. Mark every edge it
+// took in \`seen\`, and return true if
+// any of them was new.
+fn keep(
+    seen: &mut [bool],
+    path: &[usize],
+) -> bool {
+    let mut prev = 0;
+    let mut new = false;
+    for &cur in path {
+        let e =
+            (cur ^ prev) % seen.len();
+        if !seen[e] {
+            seen[e] = true;
+            new = true;
         }
-        if k == 1 {
-            return ls;
-        }
-        k = (k / 2).max(1);
+        prev = cur >> 1;
     }
+    new
 }`;
 
 export const prompts = {
   'fz-coverage': {
     q: 'Which inputs does a coverage-guided fuzzer keep?',
-    a: 'Those whose run reached coverage no earlier input reached (for AFL, a new branch edge or hit-count bucket). The rest are dropped.',
-  },
-  'fz-afl-edge': {
-    q: 'AFL’s instrumentation does `shared_mem[cur ^ prev]++` at each branch. What does it count, and why not just blocks?',
-    a: 'Edges: (previous location, current location) pairs. Edges tell A→B→C→D apart from A→C→B→D, which block counts can’t.',
+    a: 'Only those whose run reached coverage no earlier input reached (for AFL, a new branch edge or a new hit-count bucket). The rest are thrown away.',
   },
   'fz-generation': {
     q: 'What makes `scripts/fuzz.mjs` generation-based rather than coverage-guided?',
-    a: 'It writes every program from its own model of the language, from a seed. Nothing measured during a run is fed back into what it writes next.',
+    a: 'It writes every program from its own model of the language, starting from a seed. Nothing measured during a run feeds back into what it writes next.',
+  },
+  'fz-afl-edge': {
+    q: 'AFL adds `shared_mem[cur ^ prev]++` to every block. What does one counter stand for?',
+    a: 'An edge: a step from the previous block to the current one, since the index mixes both block numbers.',
+  },
+  'fz-blocks': {
+    q: 'Why does AFL count edges rather than blocks?',
+    a: 'Two runs can visit the same blocks in a different order (A→B→C→D and A→C→B→D). Block counts cannot tell them apart; edge counts can.',
   },
   'fz-valid': {
-    q: 'Why would random bytes make a poor input for Viscosity’s fuzzer?',
-    a: 'Nearly all are syntax errors, refused while parsing, so the analyses are never reached and there is no program for node to run as an oracle.',
+    q: 'Why are mutated bytes a poor input for Viscosity?',
+    a: 'Nearly all are syntax errors, refused while parsing, so the analyses never run, and there is no program for node to run as an oracle.',
   },
   'fz-seed': {
-    q: 'Why does program k of a campaign get a seed mixed from (S, k) instead of continuing one random stream?',
-    a: 'So any single program can be regenerated alone: `--seed S --only k` replays a failure without the k programs before it.',
+    q: 'Why does program k of a campaign get a seed mixed from (S, k), rather than continuing one random stream?',
+    a: 'So any one program can be made again on its own: `--seed S --only k` rebuilds it without generating the k programs before it.',
   },
-  'fz-batch': {
-    q: 'How does fuzz.mjs keep the Rust engine’s process starts cheap?',
-    a: 'It compiles a batch of 250 programs per CLI call (`viscosity build a.js b.js ... -o dir/`), so it pays a process start per batch, not per program.',
+  'fz-order': {
+    q: 'In `ls[1].a = (ls.push(...), 7)`, which runs first in JavaScript: finding where to store, or the right-hand side?',
+    a: 'Finding where to store (the reference `ls[1].a`, or in the old compiled code the column `ls.a`); the right-hand side runs after it.',
   },
-  'fz-ci': {
-    q: 'What does `crates/cli/tests/fuzz.rs` run on every `cargo test`?',
-    a: 'fuzz.mjs with seed 1 and 200 programs against the freshly built binary; any failing program fails the test.',
-  },
-  'fz-reduce': {
-    q: 'What does `fuzz.mjs --reduce` keep while it deletes lines?',
-    a: 'The same kind of failure (for example behaviour-check or ts-crash), and a program that still parses.',
-  },
-  'fz-reduce-trap': {
-    q: 'The reduced sequence-index program uses an undeclared `k`. Why did the reducer accept that?',
-    a: 'It checks only that the same kind of failure remains. The original now throws a ReferenceError and the compiled one a SyntaxError: still a behaviour difference.',
-  },
-  'fz-plateau': {
-    q: 'In the chapter’s measurement, what did 3,000 fuzz programs add over 300 to the TS engine’s line coverage?',
-    a: 'Three lines: 2,433 of 2,614 against 2,430. The generator’s coverage had already flattened out.',
-  },
-  'fz-lines-not-bugs': {
-    q: 'The fuzzer ran fewer engine lines than the hand-written programs, yet found five bugs they missed. How?',
-    a: 'The bugs needed combinations (a push inside the right-hand side of a field write, an access inside a push). Line coverage records that a line ran, not in what combination.',
+  'fz-oracle': {
+    q: 'What is an oracle, in fuzzing?',
+    a: 'Something that says whether a run was right, such as “the compiled program prints what the original prints” or “the program did not crash”.',
   },
 };
 
@@ -168,105 +144,95 @@ fn main() {
 };
 
 export const exercises = {
-  reduceLines: {
+  keepIfNew: {
     lang: 'rust',
-    title: 'Shrink a failing program',
+    title: 'The feedback step',
     prompt:
-      'Write `reduce(lines, fails)`, the reducer of `fuzz.mjs --reduce`. Start with chunks of half the lines (at least 1). Try deleting each chunk in turn; keep a deletion if `fails` still returns true for what is left, and otherwise move on by one chunk. Repeat the pass until nothing changes, then halve the chunk size, down to 1. Never call `fails` on an empty program, and keep the lines in order.',
-    starter: `fn reduce<'a>(
-    mut ls: Vec<&'a str>,
-    fails: impl Fn(&[&str]) -> bool,
-) -> Vec<&'a str> {
+      'Write `keep(seen, path)`, the step a coverage-guided fuzzer takes after every run. `path` lists the blocks the run went through, as numbers, in order. Work out each edge as AFL does: start with `prev = 0`; for each block `cur`, the edge index is `(cur ^ prev) % seen.len()`, and then `prev = cur >> 1`. Set `seen[e] = true` for every edge of the run, and return `true` if at least one of them was not set before.',
+    starter: `fn keep(
+    seen: &mut [bool],
+    path: &[usize],
+) -> bool {
     todo!()
 }`,
     solution: SOL,
-    tests: `fn names(n: usize) -> Vec<String> {
-    (0..n).map(|i| format!("l{i}")).collect()
+    tests: `#[test]
+fn the_first_run_is_new() {
+    let mut seen = [false; 64];
+    assert!(keep(&mut seen, &[10, 20, 30]));
 }
 
 #[test]
-fn keeps_only_the_lines_that_matter() {
-    let ns = names(20);
-    let ls: Vec<&str> =
-        ns.iter().map(|s| s.as_str()).collect();
-    let r = reduce(ls, |c| {
-        c.contains(&"l3") && c.contains(&"l17")
-    });
-    assert_eq!(r, ["l3", "l17"]);
+fn the_same_path_again_is_not_new() {
+    let mut seen = [false; 64];
+    keep(&mut seen, &[10, 20, 30, 40]);
+    assert!(!keep(&mut seen, &[10, 20, 30, 40]));
 }
 
 #[test]
-fn never_returns_an_empty_program() {
-    let ns = names(9);
-    let ls: Vec<&str> =
-        ns.iter().map(|s| s.as_str()).collect();
-    let r = reduce(ls, |_| true);
-    assert_eq!(r.len(), 1);
+fn same_blocks_in_another_order_are_new() {
+    let mut seen = [false; 64];
+    keep(&mut seen, &[10, 20, 30, 40]);
+    assert!(keep(&mut seen, &[10, 30, 20, 40]));
 }
 
 #[test]
-fn never_asks_about_an_empty_program() {
-    let ls = vec!["a", "b", "c", "d", "e"];
-    let r = reduce(ls, |c| {
-        assert!(!c.is_empty());
-        c.contains(&"d")
-    });
-    assert_eq!(r, ["d"]);
+fn a_prefix_of_an_old_path_is_not_new() {
+    let mut seen = [false; 64];
+    keep(&mut seen, &[10, 20, 30, 40]);
+    assert!(!keep(&mut seen, &[10, 20]));
 }
 
 #[test]
-fn keeps_the_order_of_lines() {
-    let ls = vec!["let", "x", "y", "use"];
-    let r = reduce(ls, |c| {
-        c.first() == Some(&"let")
-            && c.last() == Some(&"use")
-    });
-    assert_eq!(r, ["let", "use"]);
+fn every_edge_of_a_run_is_recorded() {
+    let mut seen = [false; 64];
+    assert!(keep(&mut seen, &[1, 2, 3]));
+    assert!(!keep(&mut seen, &[1, 2, 3]));
 }
 
 #[test]
-fn no_single_line_can_be_removed() {
-    let ls = vec!["1", "4", "2", "5", "3", "6"];
-    let sum = |c: &[&str]| -> u32 {
-        c.iter().map(|s| s.parse::<u32>().unwrap()).sum()
-    };
-    let fails = |c: &[&str]| sum(c) >= 10;
-    let r = reduce(ls, fails);
-    assert!(fails(&r));
-    for i in 0..r.len() {
-        let mut c = r.clone();
-        c.remove(i);
-        assert!(!fails(&c), "{r:?} minus {i}");
-    }
-}
-
-#[test]
-fn a_program_that_passes_is_returned_whole() {
-    let ls = vec!["a", "b", "c"];
-    let r = reduce(ls.clone(), |_| false);
-    assert_eq!(r, ls);
+fn a_to_b_and_b_to_a_are_different_edges() {
+    let mut seen = [false; 64];
+    keep(&mut seen, &[9]);
+    keep(&mut seen, &[6, 9]);
+    assert!(keep(&mut seen, &[9, 6]));
 }
 `,
     hints: [
-      'Keep the outer structure: `let mut k = (ls.len() / 2).max(1); loop { ... if k == 1 { return ls; } k = (k / 2).max(1); }`.',
-      'One pass: `let mut i = 0; while i + k <= ls.len() { ... }`. Build the candidate with `let mut c = ls.clone(); c.drain(i..i + k);`.',
-      'On success, replace `ls` and do not advance `i`: the next lines have slid into place. On failure, `i += k`. Repeat passes while one changed something.',
+      'You need two pieces of state while walking the path: the previous (shifted) block, starting at 0, and a flag saying whether anything new turned up.',
+      'For each `cur`: work out `e`, and if `seen[e]` is false, set it and remember that something was new. Do not stop early: every edge of the run must be marked.',
+      'The order inside the loop matters: compute `e` from the old `prev`, then set `prev = cur >> 1`. Return the flag after the loop.',
     ],
-    walkthrough: `This is \`reduce\` from \`engine/rust/scripts/fuzz.mjs\`, in Rust. There, \`fails\` writes the candidate to a file, compiles it with one or both engines, runs it under node, and asks whether the *same kind* of failure is still reported.
+    walkthrough: `**How to think about it.** This is the feedback arrow of the coverage-guided loop. The fuzzer ran an input and the instrumentation reported the blocks it went through; now the fuzzer must decide whether the input taught it anything. "Anything" means at least one edge, a step from one block to the next, that no earlier run took. Two jobs, then: mark every edge of this run, and report whether any was new. Do the first example by hand before you write code: for the path 10, 20, 30, the edges are \`10 ^ 0 = 10\`, then \`20 ^ (10 >> 1) = 20 ^ 5 = 17\`, then \`30 ^ (20 >> 1) = 30 ^ 10 = 20\`.
 
-- **Why start with big chunks.** A 20-line program usually needs two or three of its lines. Deleting half at once gets rid of most of the noise in a few calls, and each call to \`fails\` costs a compile and two runs.
-- **Why not advance after a deletion.** After \`c.drain(i..i + k)\`, the lines that followed the chunk now start at \`i\`. Advancing would skip them for the rest of the pass.
-- **Why repeat passes.** Deleting one chunk can make another deletable that wasn't before (in the real reducer, a line that declared a variable only the deleted lines used).
-- **Why go down to 1.** Chunks of 2 can leave a needed line paired with a useless neighbour. Only single-line deletions make the result *1-minimal*: removing any one line makes it pass. \`no_single_line_can_be_removed\` checks exactly that.
-- **Why never empty.** An empty program can "fail" for silly reasons (both engines print nothing, or a crash on empty input), and the reducer would happily return it.`,
+**The solution, line by line.**
+
+- \`fn keep(seen: &mut [bool], path: &[usize]) -> bool {\` takes the map as a mutable slice (the fuzzer keeps it between runs, so we change it in place) and the path as a shared slice (we only read it).
+- \`let mut prev = 0;\` is AFL's "previous location". At the start of a run nothing came before, so it is 0.
+- \`let mut new = false;\` will become true the moment we meet an edge that was not marked.
+- \`for &cur in path {\` walks the blocks in order; \`&cur\` copies each number out of the slice.
+- \`let e = (cur ^ prev) % seen.len();\` mixes the current and previous block into one index (exclusive or), and \`%\` keeps it inside the map, as AFL's fixed 64 kB map does.
+- \`if !seen[e] { seen[e] = true; new = true; }\` marks an unmarked edge and remembers that this run found something.
+- \`prev = cur >> 1;\` is the shift. Without it, A→B and B→A would mix to the same index, because \`a ^ b\` equals \`b ^ a\`; and every tight loop A→A would land on index 0, because \`a ^ a\` is 0.
+- \`new\` after the loop is the answer.
+
+**Common wrong attempts.**
+
+- **Counting blocks.** \`let e = cur % seen.len();\` records which blocks ran. The path 10, 30, 20, 40 visits the same four blocks as 10, 20, 30, 40, so it looks old, and the fuzzer throws away an input that took a new route.
+- **Returning at the first new edge.** \`return true\` inside the \`if\` leaves the rest of the run's edges unmarked, so the very same input looks new again next time, and the corpus fills with copies.
+- **No shift.** \`prev = cur;\` makes the edge from 6 to 9 and the edge from 9 to 6 the same index, so the run 9, 6 is wrongly reported as old.`,
     wrong: [
       {
-        code: SOL.replace('                if !c.is_empty()\n                    && fails(&c)\n                {', '                if fails(&c) {'),
-        why: 'It tries the empty program. With a test that always fails it returns nothing at all, which tells you nothing about the bug.',
+        code: SOL.replace('        let e =\n            (cur ^ prev) % seen.len();', '        let e = cur % seen.len();'),
+        why: 'That records blocks, not edges: the same blocks in another order look old, so `same_blocks_in_another_order_are_new` fails.',
       },
       {
-        code: SOL.replace('        if k == 1 {\n            return ls;\n        }\n        k = (k / 2).max(1);', '        k /= 2;\n        if k <= 1 {\n            return ls;\n        }'),
-        why: 'It stops before trying single lines, so a needed line can stay glued to a useless neighbour: `["l3", "l17"]` comes back with extra lines.',
+        code: SOL.replace('            seen[e] = true;\n            new = true;', '            seen[e] = true;\n            return true;'),
+        why: 'Returning at the first new edge leaves the rest of the run unmarked, so the same input looks new the second time.',
+      },
+      {
+        code: SOL.replace('prev = cur >> 1;', 'prev = cur;'),
+        why: 'Without the shift, 6 then 9 and 9 then 6 mix to the same index (`a ^ b` equals `b ^ a`), so a new edge is missed.',
       },
     ],
   },
@@ -276,51 +242,42 @@ export const quiz = [
   {
     q: 'What does a coverage-guided fuzzer do with an input whose run reached no new edge?',
     options: [
-      { t: 'Keeps it, so the corpus stays diverse', why: 'That is the opposite: inputs that add no coverage are dropped.' },
-      { t: 'Drops it', correct: true, why: 'Only inputs that reach new coverage are kept and mutated further.' },
-      { t: 'Reduces it with delta debugging', why: 'Reduction is for failing inputs, not for uninteresting ones.' },
-      { t: 'Reports it as a bug', why: 'A bug is a crash or an oracle disagreement, not a lack of new coverage.' },
+      { t: 'Keeps it, so the corpus stays varied', why: 'The opposite: inputs that add no coverage are thrown away.' },
+      { t: 'Throws it away', correct: true, why: 'Only inputs that reach new coverage are kept and mutated further.' },
+      { t: 'Reports it as a bug', why: 'A bug is a crash or a disagreement with an oracle, not a lack of new coverage.' },
+      { t: 'Shrinks it with the reducer', why: 'Reduction is for failing inputs, not for uninteresting ones.' },
+    ],
+  },
+  {
+    q: 'Run 1 goes A→B→C→D and run 2 goes A→C→B→D. What does an edge counter see in run 2?',
+    options: [
+      { t: 'Nothing new, since the blocks are the same', why: 'That is what a block counter sees.' },
+      { t: 'New edges: A→C, C→B and B→D', correct: true, why: 'Run 1’s edges were A→B, B→C and C→D; none of run 2’s three edges is among them.' },
+      { t: 'Only one new edge, A→C', why: 'C→B and B→D were not taken in run 1 either.' },
     ],
   },
   {
     q: 'Which statement about `scripts/fuzz.mjs` is accurate?',
     options: [
-      { t: 'It mutates the corpus programs byte by byte', why: 'It generates each program from a seed; it doesn’t mutate files.' },
-      { t: 'It is coverage-guided through V8’s coverage', why: 'Nothing measured in a run feeds back into the generator.' },
-      { t: 'It generates valid programs from a seed, with no feedback from runs', correct: true, why: 'Generation-based, like Csmith.' },
+      { t: 'It mutates the corpus programs byte by byte', why: 'It writes each program from a seed; it changes no files.' },
+      { t: 'It is guided by V8’s coverage', why: 'Nothing measured in a run feeds back into the generator.' },
+      { t: 'It writes valid programs from a seed, with no feedback from runs', correct: true, why: 'Generation-based, like Csmith.' },
     ],
   },
   {
     q: 'A run reports `FAIL program 90 (--seed 5 --only 90)`. How do you see that program again?',
     options: [
       { t: 'Run the whole campaign again and wait for program 90', why: 'Not needed: each program’s seed depends only on (S, k).' },
-      { t: '`node scripts/fuzz.mjs --seed 5 --only 90 --print`', correct: true, why: 'It regenerates just that program and prints it.' },
-      { t: 'It is lost unless you passed --keep', why: 'Failing programs are kept in a temp dir anyway, and the seed regenerates them.' },
+      { t: '`node scripts/fuzz.mjs --seed 5 --only 90 --print`', correct: true, why: 'It rebuilds just that program and prints it.' },
+      { t: 'It is lost unless you passed `--keep`', why: 'The seed rebuilds it (and failing programs are written to a temporary folder anyway).' },
     ],
   },
   {
-    q: 'Why did the reduced sequence-index program refer to an undeclared `k`?',
+    q: 'Why did the old engine lose the `7` in `ls[1].a = (ls.push({ a: 0, b: 0 }), 7)`?',
     options: [
-      { t: 'The generator writes programs with undeclared variables', why: 'The original program 12 declared `let k = 3;`. The reducer removed it.' },
-      { t: 'The reducer keeps the kind of failure, not the program’s meaning', correct: true, why: 'Original (ReferenceError) and compiled (SyntaxError) still differ, so the deletion was accepted.' },
-      { t: 'The emitter deleted the declaration', why: 'The emitter’s bug was the missing parentheses in `const p = k++, i;`.' },
-    ],
-  },
-  {
-    q: 'In the chapter’s measurement, the fuzzer ran fewer TS-engine lines than the hand-written programs. What follows?',
-    options: [
-      { t: 'The fuzzer is useless next to the corpus', why: 'It found five bugs the corpus missed.' },
-      { t: 'Line coverage doesn’t show whether combinations of features were exercised', correct: true, why: 'All five bugs needed one construct inside another.' },
-      { t: 'The corpus must contain the five bugs', why: 'It didn’t; corpus programs were added for them after they were found.' },
-      { t: 'More fuzz programs would raise coverage a lot', why: '3,000 programs ran 3 more lines than 300.' },
-    ],
-  },
-  {
-    q: 'Why does the parity check alone not find any of the five fuzz finds?',
-    options: [
-      { t: 'They were in both engines, and parity only compares the engines', correct: true, why: 'The behaviour oracle (original vs compiled under node) or the TS crash found them.' },
-      { t: 'The fuzzer doesn’t compare the engines', why: 'It does: code, explain and frames, byte for byte.' },
-      { t: 'The Rust engine crashed first', why: 'Both engines crashed the same way on the overlapping rewrites.' },
+      { t: 'The push threw an error', why: 'The push worked; it is what caused the trouble.' },
+      { t: 'JavaScript found the column `ls.a` first, then the push grew the collection into a new column, and the 7 went into the old one', correct: true, why: 'The target of an assignment is worked out before its right-hand side runs.' },
+      { t: 'The bounds check rejected index 1', why: 'Index 1 was in bounds.' },
     ],
   },
 ];

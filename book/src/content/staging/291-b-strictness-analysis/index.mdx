@@ -1,0 +1,208 @@
+---
+n: 291
+split_of: 291
+day: 73
+part: X
+title: 'Strictness analysis'
+tagline: 'Laziness has a price: a heap allocation for every argument, and chains of thunks that eat memory. A lazy compiler wins most of it back by proving which values will be needed anyway, with an analysis that runs your program on only two values, 0 and 1.'
+objectives:
+  - Explain how a lazy accumulator turns into a space leak, and why evaluating it early is safe.
+  - Define strictness with ⊥, and decide by hand whether a function is strict in an argument.
+  - Run a strictness analysis on the two-point domain, including a recursive function by fixpoint.
+  - Say what GHC does with the results, and what bang patterns are for.
+introduces: [strictness-analysis]
+uses: [thunk, call-by-need, abstract-interpretation, abstract-domain, lattice, fixpoint, dataflow, recursion, call-stack, stack-overflow, closure, heap-object, garbage-collection, function, object, test]
+sources: [mycroft1980, cousot1977, ghc-demand-analysis, launchbury1993]
+---
+import ThunkChain from '../../../components/diagrams/ch291b/ThunkChain';
+import FixpointSteps from '../../../components/diagrams/ch291b/FixpointSteps';
+
+## The price of a thunk
+
+Laziness saves work you never needed, but every delayed argument costs
+an allocation now and a force later, and the worst case is a running
+total. Here is a loop that sums 1 to `n` the lazy way, next to the
+strict way:
+
+```js
+function lazySum(n) {
+  let acc = () => 0;
+  for (let i = 1; i <= n; i++) {
+    const prev = acc;
+    acc = () => prev() + i;
+  }
+  return acc();
+}
+```
+
+```js
+function strictSum(n) {
+  let acc = 0;
+  for (let i = 1; i <= n; i++)
+    acc = acc + i;
+  return acc;
+}
+```
+
+In `lazySum`, each pass wraps the old accumulator in a new thunk instead
+of adding; nothing is added until the very end. Both return 55 for
+`n = 10`; however, for a million, `strictSum` returns `500000500000`
+and `lazySum` fails in Node 22 with `Maximum call stack size exceeded`,
+because forcing the last thunk forces the one before it, and so on a
+million calls deep. Even when the stack holds, a million thunks sit on
+the heap: a **space leak**, memory held only by work that was put off.
+
+<Figure takeaway="A lazy accumulator is a linked list of postponed additions." caption="After four passes the lazy acc is a chain of five thunks; the strict acc is one number.">
+  <ThunkChain />
+</Figure>
+
+<Prompts ids={['sa-cost', 'sa-leak']} />
+
+## Strict functions
+
+The fix is to evaluate `acc + i` at once, but a compiler may only do
+that when it cannot change the program's answer. Write **⊥** ("bottom")
+for a computation that never gives a value, because it loops forever or
+fails. A function is **strict** in an argument if giving it ⊥ there
+always gives ⊥ back: in practice, if every path through the function
+evaluates that argument. Then evaluating the argument early is safe: if
+it has a value, it was going to be computed anyway; if it is ⊥, the call
+was going to be ⊥ too.
+
+<Analogy title="the passport at the airport">
+Every route through an airport, whichever airline and gate, ends with
+someone checking your passport; so it costs nothing to have it in your
+hand from the start. A ticket for the lounge is different: only some
+routes ask for it, so you leave it in your bag until someone does.
+<span slot="breaks">Holding your passport early is free; evaluating an
+argument early still costs the work, and it only pays because it saves
+building and later forcing a thunk.</span>
+</Analogy>
+
+<Analogy title="eggs in every variant of a recipe">
+If every version of a cake on the card (plain, lemon or chocolate)
+starts with "beat two eggs", you can beat the eggs before deciding which
+cake to make, and save yourself a second bowl.
+<span slot="breaks">If the eggs are bad you find out sooner, which in
+a kitchen is a good thing; in a program, finding out sooner is only
+allowed because the function would have found out anyway.</span>
+</Analogy>
+
+<Callout kind="definition">
+A function f is **strict** in an argument when f(…, ⊥, …) = ⊥. **Strictness
+analysis** is a static analysis that proves, without running the
+program, that a function is strict in some of its arguments, so that a
+lazy compiler may pass those arguments by value instead of building
+thunks. It must be safe: it may miss a strict argument, but it must
+never call a non-strict one strict.
+</Callout>
+
+## Running the program on 0 and 1
+
+The analysis Mycroft introduced in 1980<Cite id="mycroft1980" /> is an
+abstract interpretation (chapter 200, after Cousot and
+Cousot<Cite id="cousot1977" />) on the smallest useful domain: **0**
+means "surely ⊥" and **1** means "may have a value". Every construct
+gets an abstract rule. A literal is 1; `a + b` (or any operator) needs
+both sides, so it is `a ∧ b`; and `if c then t else e` always evaluates
+the test and then one branch, so it is `c ∧ (t ∨ e)`. To ask whether f
+is strict in its i-th argument, compute f# (the abstract f) with 0 in
+that place and 1 everywhere else: a 0 back means strict.
+
+<Formal title="The abstract rules">
+
+```text
+⟦n⟧#            = 1
+⟦a ⊕ b⟧#        = ⟦a⟧# ∧ ⟦b⟧#
+⟦if c t e⟧#     = ⟦c⟧# ∧ (⟦t⟧# ∨ ⟦e⟧#)
+f strict in xᵢ  ⇐ f#(1,…,0ᵢ,…,1) = 0
+```
+
+<span slot="read">The abstract value of a number is 1. An operator ⊕
+is 1 only if both operands are 1. An if is 1 only if its test is 1 and
+at least one branch is 1. And f is strict in its i-th parameter if f#,
+given 0 in position i and 1 elsewhere, gives 0. (The arrow points one
+way: a 1 does not prove f is not strict, because 1 means "don't
+know".)</span>
+</Formal>
+
+<Examples of="strictness-analysis">
+
+```text
+add(x, y) = x + y
+add#(0, 1) = 0 ∧ 1 = 0   strict in x
+```
+
+```text
+pick(c, a, b) = if c then a else b
+pick#(1, 0, 1) = 1 ∧ (0 ∨ 1) = 1
+                         not strict in a
+```
+
+```text
+g(c, a) = if c then a else a + 1
+g#(1, 0) = 1 ∧ (0 ∨ (0 ∧ 1)) = 0
+                         strict in a
+```
+
+</Examples>
+
+`add` uses both arguments, so a ⊥ in `x` gives ⊥. `pick` may take the
+`b` branch, so a ⊥ in `a` can still give a value: not strict, and the
+compiler must keep `a` as a thunk (last chapter's `pick(true, 1, slow())`
+must not run `slow`). `g` uses `a` on both branches, so the
+analysis proves it strict even though no single line uses it
+unconditionally.
+
+A recursive function is defined in terms of itself, so f# is too, and
+we solve it the way chapter 196 solved dataflow equations: guess "f# is
+always 0", substitute the guess into the body, and repeat until the
+table of f# stops changing. Step through it for the running total:
+
+<FixpointSteps client:visible />
+
+The same fixpoint, in code, for any function of a few arguments:
+
+<Run id="fixpoint" />
+
+`add` and `cond` are the abstract rules. `fix` keeps f# as a table
+with one entry per combination of input bits, starts it at all 0s, and
+each round rebuilds the table by running the abstract body with the
+current table standing in for the recursive call; `at` turns a list of
+bits into a table index and `args` does the reverse. It prints each
+round, stops when two rounds agree, and the last lines ask the
+strictness questions: `sum` is strict in both arguments, `pick` is not
+strict in `a`.
+
+<Prompts ids={['sa-bottom', 'sa-strict', 'sa-safe', 'sa-domain', 'sa-if', 'sa-rec']} />
+
+## What GHC does with the answer
+
+GHC's version is **demand analysis**, turned on by `-O`. In the words
+of its user's guide, if an argument "is scrutinised on every code path,
+the function is strict in that argument and GHC is free to use the more
+efficient call-by-value calling convention, as well as pass parameters
+unboxed"; it also finds arguments used at most once (where call-by-name
+is enough) or not at all, and the worker/wrapper transformation turns
+the results into faster code<Cite id="ghc-demand-analysis" />. When the
+analysis cannot prove what you know, you can say it yourself:
+`BangPatterns` lets you write `go !acc n = ...` to make `acc` strict,
+and the same guide notes that "eliminating thunks from an inner loop
+can be a huge win"<Cite id="ghc-demand-analysis" />.
+
+<Prompts ids={['sa-ghc', 'sa-bang']} />
+
+## Your turn
+
+<Exercise id="strictness" />
+
+## What you learned
+
+- Lazy accumulators build chains of thunks: **space leaks** and deep
+  forces.
+- f is **strict** in x when f(⊥) = ⊥; then x may be evaluated early.
+- **Strictness analysis** runs the program on 0 and 1 (`∧` for
+  operators, `c ∧ (t ∨ e)` for `if`), with a **fixpoint** for
+  recursion; GHC's demand analysis turns the answers into call-by-value.
+
+<Quiz />

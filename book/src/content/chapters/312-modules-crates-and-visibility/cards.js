@@ -1,44 +1,29 @@
 // Chapter 312 cards. Keys are stable ids: never rename them.
 
-// The particle store: two columns that must stay the same length.
-const ps = ({ p = 'pub ', step = 'pub ', dt = ' * dt' } = {}) => `mod soa {
-    // Invariant: xs and vxs always
-    // have the same length.
-    ${p}struct Particles {
-        xs: Vec<f64>,
-        vxs: Vec<f64>,
+const VEC2 = `mod vec2 {
+    pub struct V2 {
+        pub x: f64,
+        pub y: f64,
     }
 
-    impl Particles {
-        ${p}fn new() -> Self {
-            Particles {
-                xs: Vec::new(),
-                vxs: Vec::new(),
-            }
-        }
+    pub fn dot(a: &V2, b: &V2) -> f64 {
+        a.x * b.x + a.y * b.y
+    }
+}
+`;
 
-        ${p}fn push(&mut self, x: f64,
-            vx: f64) {
-            self.xs.push(x);
-            self.vxs.push(vx);
-        }
+const tree = ({ top = '', inner = '', speed = 'dot(v, v)', slow = 'V2 {\n                x: v.x * k,\n                y: v.y * k,\n            }' } = {}) => `${VEC2}
+mod physics {
+${top}
+    pub fn speed2(v: &V2) -> f64 {
+        ${speed}
+    }
 
-        ${p}fn len(&self) -> usize {
-            self.xs.len()
-        }
-
-        ${p}fn x(&self, i: usize)
-            -> f64 {
-            self.xs[i]
-        }
-
-        ${step}fn step(&mut self,
-            dt: f64) {
-            let vs = &self.vxs;
-            let xs = self.xs.iter_mut();
-            for (x, v) in xs.zip(vs) {
-                *x += v${dt};
-            }
+    pub mod drag {
+${inner}
+        pub fn slowed(v: &V2, k: f64)
+            -> V2 {
+            ${slow}
         }
     }
 }`;
@@ -48,6 +33,14 @@ export const prompts = {
     q: 'What does `mod scanner;` in `lib.rs` do?',
     a: 'Declares a child module `scanner` whose code is read from `scanner.rs` (or `scanner/mod.rs`). Without it, that file isn’t compiled.',
   },
+  'mod-root': {
+    q: 'What is the **crate root**, and which file is it usually?',
+    a: 'The file the compiler starts from, the root of the module tree: `src/lib.rs` for a library crate, `src/main.rs` for a binary.',
+  },
+  'mod-inline': {
+    q: 'What is the difference between `mod tests;` and `mod tests { ... }`?',
+    a: 'Only where the code lives: the first reads it from `tests.rs`, the second has it inline. Both make the same child module.',
+  },
   'mod-paths': {
     q: 'What do `crate::`, `super::` and `self::` mean at the start of a path?',
     a: 'Start from the crate root, from the parent module, or from the current module.',
@@ -56,84 +49,113 @@ export const prompts = {
     q: 'What does `use crate::gc::{Heap, Trace};` do?',
     a: 'Brings `Heap` and `Trace` from module `gc` into scope, so the code can write `Heap` instead of the full path.',
   },
-  'vis-default': {
-    q: 'What is the visibility of a function, struct field or method with no `pub`?',
-    a: 'Private: usable only in the module where it is defined and that module’s descendants.',
+  'mod-glob': {
+    q: 'What does `use super::*;` bring into scope, and why is it used sparingly outside tests?',
+    a: 'Every public name of the parent module (and, in a child, its private ones too). It hides where each name came from.',
   },
-  'vis-field': {
-    q: '`pub struct Table { count: usize }`. Can another module read `t.count`?',
-    a: 'No (E0616): the struct is public but its field isn’t. Fields need their own `pub`.',
+  'mod-use-scope': {
+    q: 'A `use` line at the top of `compiler.rs`: does it also work inside `vm.rs`, or inside a child module of `compiler`?',
+    a: 'No. A `use` makes a shortcut only in the module where it is written; every module needs its own.',
   },
-  'vis-child': {
-    q: 'Why can `mod tests` inside `scanner.rs` call scanner’s private functions?',
-    a: 'Private items are visible in their module and its descendants, and `tests` is a child module.',
-  },
-  'vis-why': {
-    q: 'Why does drip-rs keep `Table`’s `keys`, `values` and `count` private?',
-    a: 'So only `table.rs` can change them, and the table’s invariants (equal column lengths, a correct count) can’t be broken from outside.',
-  },
-  'ws-what': {
-    q: 'What do the members of a cargo **workspace** share?',
-    a: 'One `Cargo.lock` and one `target/` output folder; they are built and tested together.',
-  },
-  'ws-why': {
-    q: 'How does engine/rust’s crate split keep JavaScript out of the analyses?',
-    a: '`viscosity-core` doesn’t depend on `viscosity-frontend-js` or oxc, so its code can’t name them; it only sees VIR and its own plugin trait.',
+  'mod-e0432': {
+    q: 'Inside module `report`, why does `use geom::area;` fail with E0432 when `geom` is a module at the crate root?',
+    a: 'A `use` path without `crate::` starts in the current module, and `report` has no child `geom`. Write `use crate::geom::area;`.',
   },
 };
 
-export const examples = {};
+export const examples = {
+  'modules-play': {
+    lang: 'rust',
+    title: 'Modules, paths and use',
+    code: `mod scanner {
+    pub fn is_digit(c: char) -> bool {
+        c.is_ascii_digit()
+    }
+
+    pub mod tests {
+        pub fn check() -> bool {
+            // up to the parent, scanner
+            super::is_digit('7')
+        }
+    }
+}
+
+mod compiler {
+    // from the root, then down
+    use crate::scanner::is_digit;
+
+    pub fn digits(s: &str) -> usize {
+        s.chars()
+            .filter(|c| is_digit(*c))
+            .count()
+    }
+}
+
+fn main() {
+    let a = scanner::is_digit('x');
+    let b = scanner::tests::check();
+    let n = compiler::digits("a1b22");
+    println!("{a} {b} {n}");
+}`,
+  },
+};
+
+const TOP = '    use crate::vec2::{dot, V2};';
+const INNER = '        use super::V2;';
 
 export const exercises = {
-  particles: {
+  wireTree: {
     lang: 'rust',
-    title: 'A store that keeps its promise',
+    title: 'Wire up the module tree',
     prompt:
-      'The `soa` module holds particles as two columns, `xs` and `vxs`, that must always be the same length. As given, the tests can’t even compile: nothing is public. Make exactly the API public (the struct, `new`, `push`, `len`, `x` and `step`), and keep the columns private so no one outside can push to just one. Then fix `step`, which should move each particle by `vx * dt`.',
-    starter: ps({ p: '', step: '', dt: '' }),
-    solution: ps(),
+      'The crate has a `vec2` module (a 2D vector and its dot product) and a `physics` module with a nested `drag` module. As given, it does not compile: `physics` and `drag` use `V2` and `dot` without bringing them into scope, and two bodies are missing. Add one `use` line to `physics` and one to `drag` (use `super::` in the second), then write `speed2` (the vector dotted with itself) and `slowed` (each component multiplied by `k`). Leave `vec2` as it is.',
+    starter: tree({ speed: 'todo!()', slow: 'todo!()' }),
+    solution: tree({ top: TOP, inner: INNER }),
     tests: `#[test]
-fn starts_empty() {
-    let ps = soa::Particles::new();
-    assert_eq!(ps.len(), 0);
+fn speed_squared() {
+    let v = vec2::V2 { x: 3.0, y: 4.0 };
+    assert_eq!(physics::speed2(&v), 25.0);
 }
 
 #[test]
-fn push_and_read() {
-    let mut ps = soa::Particles::new();
-    ps.push(1.0, 2.0);
-    ps.push(5.0, -1.0);
-    assert_eq!(ps.len(), 2);
-    assert_eq!(ps.x(1), 5.0);
+fn drag_scales_both_parts() {
+    let v = vec2::V2 { x: 2.0, y: -6.0 };
+    let w = physics::drag::slowed(&v, 0.5);
+    assert_eq!((w.x, w.y), (1.0, -3.0));
 }
 
 #[test]
-fn step_moves_every_particle() {
-    let mut ps = soa::Particles::new();
-    ps.push(1.0, 2.0);
-    ps.push(5.0, -1.0);
-    ps.step(0.5);
-    assert_eq!(ps.x(0), 2.0);
-    assert_eq!(ps.x(1), 4.5);
+fn still_at_rest() {
+    let v = vec2::V2 { x: 0.0, y: 0.0 };
+    assert_eq!(physics::speed2(&v), 0.0);
 }`,
     hints: [
-      'The tests live in `mod tests`, a sibling of `soa`, not a child. To them, anything in `soa` without `pub` is invisible (E0603, E0624).',
-      'Put `pub` on the struct and on each method in the `impl`. Leave `xs` and `vxs` without `pub`: that is what guards the invariant.',
-      'In `step`, the update is `*x += v * dt`.',
+      'Read the first error: rustc says it cannot find type `V2` in `physics`. Which module is `V2` really in, and how do you name that module from the root?',
+      'In `physics`, write `use crate::vec2::{dot, V2};`. Inside `drag`, the parent is `physics`, which now has `V2` in scope, so `use super::V2;` works.',
+      '`speed2` is `dot(v, v)`. `slowed` builds a new vector: `V2 { x: v.x * k, y: v.y * k }`.',
     ],
-    walkthrough: `**What needs \`pub\`.** \`mod tests\` and \`mod soa\` are both children of the crate root. The tests can see \`soa\` itself (a private item of their parent, the root), but inside it they only see what \`soa\` marks \`pub\`. So the struct and the six methods need it, and nothing else does.
+    walkthrough: `**How to think about it.** Draw the tree first: the root has two children, \`vec2\` and \`physics\`, and \`physics\` has a child \`drag\` (plus the hidden \`tests\` module the checker adds as another child of the root). \`V2\` and \`dot\` live in \`vec2\`. Every module that writes the bare name \`V2\` needs that name in *its own* scope, because a \`use\` covers only the module it is written in. So there are two places to fix, and each needs a path that starts somewhere sensible.
 
-**What must stay private.** If \`xs\` were \`pub\`, any code could write \`ps.xs.push(1.0)\` and leave the columns different lengths; then \`step\`’s \`zip\` would silently skip particles, and a later \`x(i)\` might read the wrong one. With the fields private, \`push\` is the only way in, and it always pushes to both. The invariant is kept by one module, so one module is all you need to read to trust it. This is chapter 59’s struct of arrays with a lock on it.
+**The solution, line by line.**
 
-**\`step\`.** \`xs.zip(vs)\` walks both columns side by side, giving \`&mut f64\` and \`&f64\`; \`*x += v * dt\` updates in place. \`vs\` borrows one field shared and \`xs\` the other mutably, which Rust allows because they are different fields.`,
+- \`use crate::vec2::{dot, V2};\` (in \`physics\`): start at the root with \`crate::\`, go into \`vec2\`, and bring in two names at once with braces. Now \`physics\` can write \`V2\` and \`dot\`.
+- \`pub fn speed2(v: &V2) -> f64 { dot(v, v) }\`: the squared speed is the vector dotted with itself, \`x*x + y*y\`; \`v\` is already a \`&V2\`, which is what \`dot\` takes.
+- \`use super::V2;\` (in \`drag\`): \`super\` is \`physics\`, and \`V2\` is a name in \`physics\` thanks to its \`use\`, so this works. A child module may use its parent's names, even private ones such as that \`use\`. (\`use crate::vec2::V2;\` would work equally well.)
+- \`V2 { x: v.x * k, y: v.y * k }\` builds a new vector with both parts scaled. Its fields are \`pub\`, so code outside \`vec2\` may name them.
+
+**Common wrong attempts.**
+
+- \`use vec2::{dot, V2};\` in \`physics\`: a \`use\` path without \`crate::\` starts in the current module, and \`physics\` has no child \`vec2\`, so rustc reports E0432, unresolved import, and suggests \`crate::vec2\`.
+- Putting both names in the top \`use\` only and expecting \`drag\` to see them: \`drag\` is a separate module, and \`use\` does not reach into children, so \`V2\` is still unknown there: rustc 1.97 reports E0425, "cannot find type \`V2\` in this scope".
+- \`use super::super::vec2::V2;\` in \`drag\` is correct but hard to read; prefer \`crate::\` for anything more than one step up.`,
     wrong: [
       {
-        code: ps({ step: '' }),
-        why: '`step` has no `pub`, so the tests can’t call it: E0624, “method `step` is private”. Every method a user needs must be marked.',
+        code: tree({ top: '    use vec2::{dot, V2};', inner: INNER }),
+        why: 'A `use` path without `crate::` starts in `physics`, which has no child `vec2`: E0432, unresolved import.',
       },
       {
-        code: ps({ dt: '' }),
-        why: 'Everything is public in the right places, but `step` adds `v` instead of `v * dt`, so with `dt = 0.5` the particles move twice as far.',
+        code: tree({ top: TOP }),
+        why: '`drag` is its own module, and `physics`’s `use` does not reach into it, so `V2` is unknown inside `drag`.',
       },
     ],
   },
@@ -149,46 +171,37 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `pub struct Table { count: usize, pub keys: Vec<u32> }`, what can another module do?',
+    q: 'Inside `mod tests` in `scanner.rs`, what does `super::is_alpha` name?',
     options: [
-      { t: 'Read and write both fields', why: '`count` has no `pub`, so it is private.' },
-      { t: 'Nothing: the struct’s fields are all hidden', why: '`keys` is marked `pub`.' },
-      { t: 'Use `keys`, but not `count`, and not build the struct with a literal', correct: true, why: 'Fields have their own visibility, and a literal needs every field.' },
-      { t: 'Use `count` but not `keys`', why: 'It is the other way round.' },
+      { t: 'A function `is_alpha` in the crate root', why: 'That would be `crate::is_alpha`.' },
+      { t: 'A function `is_alpha` inside `tests` itself', why: 'That would be `self::is_alpha`, or plain `is_alpha`.' },
+      { t: 'The function `is_alpha` in `scanner`, the parent of `tests`', correct: true, why: '`super::` starts one level up, like `..` in a file path.' },
     ],
   },
   {
-    q: 'A private function is defined in module `a`. Where can it be called?',
+    q: '`compiler.rs` has `use crate::gc::Heap;`. In `vm.rs`, can you write `Heap` without a `use`?',
     options: [
-      { t: 'Only in `a` and modules inside `a`', correct: true, why: 'Private means: the defining module and its descendants.' },
-      { t: 'Anywhere in the same file', why: 'Visibility follows modules, not files: an inline sibling module in the same file can’t call it.' },
-      { t: 'Anywhere in the crate', why: 'That is `pub(crate)`.' },
-      { t: 'Nowhere except the function itself', why: 'The rest of module `a` can call it.' },
+      { t: 'Yes: a `use` applies to the whole crate', why: 'A `use` only makes a shortcut in the module where it is written.' },
+      { t: 'Only if `vm` is declared after `compiler` in `lib.rs`', why: 'Order of declaration does not matter; scope does.' },
+      { t: 'No: `vm.rs` needs its own `use crate::gc::Heap;` or the full path', correct: true, why: 'Each module has its own list of shortcuts.' },
     ],
   },
   {
-    q: 'What does `pub use vm::{Options, Outcome, Vm};` in drip-rs’s `lib.rs` do?',
+    q: 'Which declaration makes rustc read the module’s code from a file?',
     options: [
-      { t: 'Makes the whole `vm` module public', why: '`pub mod vm;` does that; `pub use` re-exports items.' },
-      { t: 'Copies the three types into `lib.rs`', why: 'Nothing is copied; it adds a second path to the same items.' },
-      { t: 'Imports the types for `lib.rs` only', why: 'That would be a plain `use`. The `pub` re-exports them.' },
-      { t: 'Re-exports them, so users can write `drip::Vm` instead of `drip::vm::Vm`', correct: true, why: 'It shapes the crate’s public paths.' },
+      { t: '`mod gc;`', correct: true, why: 'With a semicolon and no body, the code comes from `gc.rs` or `gc/mod.rs`.' },
+      { t: '`mod gc { }`', why: 'That declares an inline module with an empty body.' },
+      { t: '`use gc;`', why: '`use` only makes shortcuts to modules that already exist.' },
+      { t: '`import gc from "./gc.rs";`', why: 'That is JavaScript’s syntax, not Rust’s.' },
     ],
   },
   {
-    q: 'What do the six crates in engine/rust’s workspace share?',
+    q: 'What does `use crate::chunk::{Chunk, OpCode};` do?',
     options: [
-      { t: 'Nothing: each is built entirely on its own', why: 'They share a lock file and an output folder.' },
-      { t: 'One `Cargo.lock` and one `target/` folder', correct: true, why: 'That is what makes them a workspace; versions of dependencies agree across members.' },
-      { t: 'One module tree, rooted at `crates/`', why: 'Each crate has its own module tree and its own `crate` root.' },
-    ],
-  },
-  {
-    q: '`viscosity-core`’s tests use `viscosity-frontend-js`, which depends on core. How is that allowed?',
-    options: [
-      { t: 'It is listed under `[dev-dependencies]`, used only to build core’s tests', correct: true, why: 'As a normal dependency it would be a cycle, which cargo rejects.' },
-      { t: 'Cargo allows any cycle inside a workspace', why: 'It doesn’t: cargo reports “cyclic package dependency”.' },
-      { t: 'The tests copy frontend-js’s source', why: 'They depend on the real crate, through the dev-dependency.' },
+      { t: 'Copies the two types into the current file', why: 'Nothing is copied; it adds two shortcuts to the same items.' },
+      { t: 'Makes `Chunk` and `OpCode` usable by their short names in this module', correct: true, why: 'Braces bring several names from one module at once.' },
+      { t: 'Declares a new module called `chunk`', why: 'Only `mod chunk;` declares it; `use` refers to it.' },
+      { t: 'Makes the two types public to other crates', why: 'That would need `pub use`, a re-export.' },
     ],
   },
 ];

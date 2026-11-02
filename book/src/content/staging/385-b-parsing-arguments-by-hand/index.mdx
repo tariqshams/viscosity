@@ -1,0 +1,284 @@
+---
+n: 385
+split_of: 385
+day: 97
+part: XIV
+title: 'Parsing arguments by hand'
+tagline: 'A command line is a short sentence in a very small language, and the Rust CLI reads it with one while loop, one match and a closure that borrows the loop counter. Here is that parser word by word, the grammar it follows, and what the usual library, clap, would have changed.'
+objectives:
+  - Sort the words of a command line into a command, files, flags and options with values.
+  - Read the Rust CLI's hand-written parse_args and write one in the same style.
+  - Write the grammar of a command line, and say why a loop is enough to read it.
+  - Say what clap would change, and why parity with the TypeScript CLI makes that a real cost.
+introduces: [argument-parsing]
+uses: [cli, rust, cargo, crate, struct, enum, match, pattern, option, result, question-mark, string-vs-str, slice, vec, rust-closure, rust-iterator, borrow, error-enum, cargo-test, viscosity-rs, engine-parity]
+sources: [rust-std-env-args, clap-readme]
+---
+import ArgvSteps from '../../../components/diagrams/ch385b/ArgvSteps';
+import WordKinds from '../../../components/diagrams/ch385b/WordKinds';
+
+## A sentence in a small language
+
+*A command-line interface* followed a run from the moment `run` returned.
+Before that, something has to read the words. The shell hands the
+program a list of strings, such as
+
+```
+["build", "a.js", "-o", "out/", "--frames",
+ "b.js"]
+```
+
+and every word means something different: `build` is what to do,
+`a.js` and `b.js` are files, `--frames` switches a feature on, and `-o`
+says "the next word is where the output goes", so `out/` is not a file to
+compile at all. Reading the list correctly means deciding, word by word,
+which of these each one is.
+
+<Analogy title="taking a coffee order">
+"Flat white, oat milk, extra shot, to go." The barista hears it in order:
+"flat white" is the drink, "to go" is a switch, and "milk" only makes
+sense with the word after it, so "oat" is not a second drink.
+<span slot="breaks">A barista who hears "oat mlik" guesses what you
+meant; the parser does not guess. A word it does not know, if it starts
+with a dash, stops everything with "unknown option".</span>
+</Analogy>
+
+<Analogy title="filling in a form from dictation">
+Someone reads out "name Ada, newsletter, city Leeds" and you fill in the
+boxes: "name" tells you the next word goes in the name box, "newsletter"
+ticks a box, "city" claims the word after it.
+<span slot="breaks">On a paper form every box has a fixed place. A
+command line has no places, only order: `-o out/` may come first or last,
+and the files may be anywhere between.</span>
+</Analogy>
+
+<Figure caption="The four kinds of word on one command line. An option and its value are read together, so out/ is never mistaken for a file." takeaway="Each word is a command, a file, a flag or an option, and an option takes the next word with it.">
+  <WordKinds />
+</Figure>
+
+<Callout kind="definition">
+**Argument parsing** turns a CLI's list of words into typed options; in
+Viscosity, an `Args` struct with the command, the files, the output path
+and a `CompileOptions`. A **flag** such as `--frames` is a switch, on if
+present. An **option** such as `-o out/` takes the next word as its
+**value**. The other words are **positional** arguments: here, the
+command and then the files.
+</Callout>
+
+<Formal title="The grammar of a Viscosity command line">
+
+```text
+line   ::= command word*
+word   ::= flag | option value | file
+flag   ::= "--frames" | "--explain" | ...
+option ::= "-o" | "--mode" | "--jobs" | ...
+file   ::= any word not starting with "-"
+```
+
+<span slot="read">A line is a command followed by any number of words
+(the star means "zero or more"). Each word is a flag, or an option
+followed by its value, or a file; the bar reads "or". Nothing nests
+inside anything else, so the language is regular (the regular-languages
+chapters of Part III): one loop that looks at one word at a time can
+read all of it, with no recursion and no stack.</span>
+</Formal>
+
+<Prompts ids={['flag-vs-option', 'regular-grammar']} />
+
+## A loop and a closure
+
+Here is the walk in `parse_args` (`engine/rust/crates/cli/src/main.rs`),
+rewrapped to fit, with `...` marking lines left out:
+
+```rust
+let mut i = 1; // argv[0] is the command
+while i < argv.len() {
+    let raw = &argv[i];
+    let Some(a) = raw.to_str() else {
+        // ... not UTF-8: a file name
+    };
+    let mut next_os = || {
+        i += 1;
+        argv.get(i).cloned().ok_or_else(
+            || CliError::Usage(format!(
+                "{a} needs a value")))
+    };
+    let mut next = || next_os()
+        .map(|v| v.to_string_lossy()
+            .into_owned());
+    match a { /* below */ }
+    i += 1;
+}
+```
+
+`i` is the index of the word being read, starting at 1 because word 0
+(the command) was stored already. `raw.to_str()` asks whether the word is
+valid UTF-8 text; every option is plain ASCII, so a word that is not text
+can only be a file name, and `let ... else` handles that case and moves
+on. Then come two closures (small unnamed functions that can use the
+variables around them; *Iterators and closures in Rust*). `next_os` moves
+`i` on by one and returns that word, or, if the line has ended, a usage
+error such as "-o needs a value"; `argv.get(i)` gives `None` past the
+end, and `ok_or_else` turns `None` into that `Err`. `next` does the same
+but converts the word to a `String`, for values that must be text, such
+as a number or a keyword.
+
+The clever part is that `next_os` *borrows `i` mutably*. That is allowed
+because the borrow ends as soon as the `match` has used the closure for
+the last time, before the final `i += 1` (*Borrowing*): the borrow checker
+sees that the two never overlap. Step through a real command line:
+
+<ArgvSteps client:visible />
+
+Now the `match` itself (an excerpt, rewrapped):
+
+```rust
+match a {
+    "-o" | "--out" =>
+        args.out = next_os()?,
+    "--explain" => args.explain = true,
+    "--frames" => args.frames = true,
+    // ... --jobs, --mode, --bounds, ...
+    _ if !a.starts_with('-') =>
+        args.files.push(PathBuf::from(a)),
+    _ => return Err(CliError::Usage(
+        format!("unknown option {a}"))),
+}
+```
+
+An option's arm calls `next_os()?`: the `?` returns the "needs a value"
+error at once, or else the value is stored. A flag's arm sets a boolean.
+The last two arms catch everything else, in a deliberate order: first,
+any word *without* a dash is a file (the `_ if ...` is a **match guard**,
+a pattern with an extra condition); then anything left, which must start
+with a dash, is an unknown option. `match` tries its arms from top to
+bottom, so the real flags have to come before both.
+
+<Examples of="argument-parsing">
+
+```
+$ viscosity explain a.js
+  cmd "explain", files [a.js]
+```
+
+```
+$ viscosity build a.js -o out/ b.js --frames
+  files [a.js, b.js], out "out/",
+  frames on
+```
+
+```
+$ viscosity explain a.js --min-size 0x10
+  files [a.js], min_size 16
+```
+
+</Examples>
+
+The first is the smallest useful line: a command and one file. The second
+mixes everything, and shows that order is free; `b.js` after `-o out/` is
+still a file, because `out/` was taken by `-o`. The third is the kind of
+detail a port has to get right: `--min-size` reads its value with
+`js_to_number`, a copy of JavaScript's `Number()`, because that is what
+the TypeScript CLI uses, and `Number("0x10")` is 16.
+
+A common slip is to end the line with an option:
+
+```
+$ viscosity build a.js -o
+viscosity: -o needs a value
+$ viscosity build a.js -o out.js
+```
+
+The first is a usage error (status 1, followed by the help); the second
+writes `out.js`. This program shows how `js_to_number` and Rust's own
+`str::parse` disagree:
+
+<Run id="numbers" />
+
+Each line shows the input, what JavaScript's rules give and what Rust's
+`parse` gives (`None` when it refuses). A padded `" 12 "`, an empty
+string and `"0x10"` are numbers to JavaScript and errors to Rust, while
+`"inf"` is the other way round; a port that used `parse` would accept
+and refuse different command lines from the TypeScript CLI.
+
+<Prompts ids={['next-closure', 'positional', 'arm-order', 'js-number']} />
+
+## What clap would change
+
+clap is the "Command Line Argument Parser for Rust", which builds a
+parser "declaratively or procedurally"<Cite id="clap-readme" />, and it
+is what most Rust CLIs use. Here is part of Viscosity's CLI in its
+declarative style; this is a design, not code from the repository (I
+built it against clap 4.6.7 to see what it does):
+
+```rust
+// Design: not in the repository.
+#[derive(Parser)]
+#[command(version)]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Show every decision and why
+    Explain {
+        files: Vec<String>,
+        #[arg(long)]
+        frames: bool,
+        #[arg(long, default_value_t = 64.0)]
+        min_size: f64,
+    },
+}
+```
+
+The `#[derive(...)]` and `#[arg(...)]` attributes describe the options,
+and clap writes the parser and the help from them; it is shorter, but it
+is a different CLI. On `--bogus` it printed `error: unexpected argument
+'--bogus' found` rather than `viscosity: unknown option --bogus`, and it
+exited with status 2, clap's code for usage errors (as GNU `ls` and
+Python's argparse use)<Cite id="clap-readme" />, where both real CLIs
+exit with 1. It refused `--min-size 0x10`, which both real CLIs read as
+16, and it accepted `--min-size inf`, which both refuse.
+
+The repository does not say why the port skipped clap; however, the code
+points one way. The port promises to behave like the TypeScript CLI, and
+`tests/multi_file.rs` runs both CLIs and compares their output and, for
+bad `--min-size` values, their messages and exit statuses. With clap,
+those would be clap's to choose.
+
+<Prompts ids={['clap-diff', 'why-hand']} />
+
+<Callout kind="engine" label="Under the hood">
+The arguments arrive through `std::env::args_os()`, not
+`std::env::args()`, because the second panics on a word that is not
+valid UTF-8<Cite id="rust-std-env-args" />. That is why `parse_args`
+takes `&[OsString]`, keeps the files as `PathBuf`s, and converts a word to
+`&str` only to compare it with the options.
+</Callout>
+
+## Your turn
+
+Write `parse` for a small part of the CLI: files, `-o`, `--frames` and
+`--mode`. The messages are given; your job is the walk, and deciding what
+each word is.
+
+<Exercise id="parse" />
+
+## What you learned
+
+- **Argument parsing** sorts words into a **command**, **files**,
+  **flags** (switches) and **options** (which take the next word as
+  their **value**).
+- A command line is a **regular** language, so one loop over the words
+  reads it; the Rust CLI's is a `while` loop and a `match`.
+- The `next_os` closure borrows the index mutably, moves it on and
+  returns the value or a "needs a value" usage error.
+- The order of the `match` arms matters: real flags, then files, then
+  "unknown option".
+- clap would be shorter and would change messages, number parsing and
+  the exit status (2), all of which parity with the TypeScript CLI holds
+  fixed.
+
+<Quiz />

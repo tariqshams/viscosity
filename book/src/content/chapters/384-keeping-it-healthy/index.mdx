@@ -3,61 +3,143 @@ n: 384
 day: 96
 part: XIII
 title: 'Keeping it healthy'
-tagline: 'Every test in this Part ran on one machine that had everything installed. Continuous integration runs them on a machine that has nothing, on every push. Here is the workflow as committed, the two ways a fresh machine bites, and an honest note on what has actually run.'
+tagline: 'Every test in this Part passed on a machine that already had everything installed. Continuous integration runs them on a machine that has nothing, on every push; here is the repository’s workflow, its caches, and what its real runs have said so far.'
 objectives:
-  - Say what continuous integration adds to tests that already pass locally.
-  - Read the five-job workflow, its triggers, concurrency and caches.
-  - Name the gates in the Rust job, and one check the workflow doesn’t run.
-  - Explain how a lockfile or a missing install breaks a fresh runner, and check a fixture set yourself.
+  - Say what continuous integration adds to tests that already pass on your machine.
+  - Read the workflow’s triggers, concurrency group, permissions and five jobs.
+  - Explain how a cache keyed by a lockfile hits and misses.
+  - Predict which runs a concurrency group cancels, and implement that rule in Rust.
 introduces: [continuous-integration]
-uses: [viscosity-rs, cargo-test, cross-implementation-tests, engine-parity, coverage-guided-fuzzing, diagnostic, data-parallelism, test-corpus, npm-package, workspace, cargo, vec, string-vs-str, slice, rust-iterator, rust-closure]
-sources: [npm-ci-docs, gha-concurrency, setup-node-readme, rust-cache-readme, clippy-readme, rustfmt-readme]
+uses: [viscosity-rs, cargo-test, cross-implementation-tests, engine-parity, coverage-guided-fuzzing, diagnostic, data-parallelism, test-corpus, npm-package, workspace, cargo, vec, string-vs-str, slice, rust-iterator, rust-closure, hashmap]
+sources: [npm-ci-docs, gha-concurrency, setup-node-readme, rust-cache-readme]
 ---
 import CiSteps from '../../../components/diagrams/ch384/CiSteps';
+import CacheFigure from '../../../components/diagrams/ch384/CacheFigure';
 
 ## It worked on my machine
 
-I checked out `engine/ts` as it was just before commit `cff36bb` and
-ran the command a CI server runs to install it (npm 10.9.9, trimmed):
+On 31 October 2026, the commit that added the fuzzer of *Fuzzing the
+Rust engine* was pushed to GitHub, and a fresh machine there ran the
+engine's Rust tests. One failed (from the job's log, trimmed and
+wrapped):
+
+```
+test a_fixed_seed_fuzz_run_finds_nothing
+  ... FAILED
+Error [ERR_MODULE_NOT_FOUND]: Cannot find
+  package 'acorn' imported from
+  .../frontend-js/src/index.ts
+```
+
+`fuzz.rs` runs `fuzz.mjs`, which loads the TypeScript engine as its
+reference, and the TypeScript engine imports acorn, its parser. On the
+machine where the test was written, `engine/ts/node_modules` was
+already full of installed packages, so the test passed every time. The
+fresh machine had only what the repository said to install, and the
+Rust job had never been told to install the TypeScript engine's
+packages. The same job was red, for the same reason, on the next three
+runs that were not cancelled; then the workflow gained one step, `npm
+ci` in `engine/ts` before `cargo test`, and that job has been green on
+every run since (37 of 37, when I read the record on 2 November).
+
+The same thing had happened to the TypeScript engine's own install a
+little earlier. I checked out `engine/ts` as it was just before commit
+`cff36bb` and ran the install command a CI machine runs, with npm
+10.9.9, and it refused (trimmed and wrapped):
 
 ```
 $ npm ci
 npm error code EUSAGE
 npm error `npm ci` can only install
   packages when your package.json and
-  package-lock.json or npm-shrinkwrap.json
-  are in sync. Please update your lock
-  file with `npm install` before
-  continuing.
+  package-lock.json ... are in sync.
 npm error Missing: @viscosity/cli@0.1.0
   from lock file
 ```
 
-Five workspace packages were missing from the lockfile. On the machine where all of this was written, nobody had
-noticed: `node_modules` was already there, and `npm install` updates
-the lockfile when it disagrees. `npm ci` is built for automated
-installs and does the opposite: if the lock and `package.json` don't
-match, it "will exit with an error, instead of updating the package
-lock"<Cite id="npm-ci-docs" />. The fix regenerated the lockfile and
-made `esbuild`, which bundles the CLI, an explicit dev dependency.
+A **lockfile** (`package-lock.json`) records the exact version of
+every package to install. Five workspace packages were missing from it,
+and nobody had noticed, because `npm install`, the everyday command,
+quietly updates the lockfile when it disagrees with `package.json`.
+`npm ci` is built for automated installs and does the opposite: if the
+two do not match, it "will exit with an error, instead of updating the
+package lock"<Cite id="npm-ci-docs" />. Both failures are the same
+lesson: a check that only ever runs where its inputs are already present
+cannot tell you that they are missing.
 
-<Callout kind="intuition">
-A recipe tested only in your own kitchen hides the things you never
-wrote down: the spice you always have, the oven that runs hot. Give it
-to a new cook in an empty kitchen every day, and the missing lines
-show up the first morning.
-</Callout>
+<Analogy title="a recipe in someone else's kitchen">
+A recipe you have only ever cooked in your own kitchen hides what you
+never wrote down: the spice that is always in your cupboard, the oven
+that runs hot. Hand it to a new cook in an empty kitchen every morning,
+and the missing lines show up on the first day.
+<span slot="breaks">A new cook improvises when something is missing;
+a CI machine does exactly what the workflow says and stops at the first
+step that fails, which is what makes the gap visible rather than
+papered over.</span>
+</Analogy>
+
+<Analogy title="a new starter and the onboarding guide">
+A team's onboarding guide says "install the tools, then run the tests".
+The old hands never read it; the new starter follows it word for word,
+and is the first to discover that step 4 assumes a password nobody
+mentions.
+<span slot="breaks">A new starter arrives once; CI is a brand-new starter
+on every push, so the guide (the workflow) is checked again each time
+anything changes.</span>
+</Analogy>
+
+<Prompts ids={['ci-acorn', 'ci-lockfile', 'ci-npm-ci']} />
 
 ## The workflow
 
+**Continuous integration** (CI) means that every change is built and
+checked, automatically, on a machine set up from scratch. This
+repository describes its CI in one file, `.github/workflows/ci.yml`,
+which GitHub Actions reads and runs on a fresh virtual machine, called
+a **runner**, for every job. Step through a push:
+
 <CiSteps client:visible />
 
-`.github/workflows/ci.yml` runs on every `push` and `pull_request`.
-Its `concurrency` group is the workflow and the branch, with
-`cancel-in-progress: true`: a new push cancels the run it supersedes
-<Cite id="gha-concurrency" />. Its `permissions` let the jobs only read
-the repository.
-Five jobs run side by side on `ubuntu-latest`, each with a timeout:
+<Examples of="continuous-integration">
+
+```yaml
+on:
+  push:
+  pull_request:
+```
+
+```yaml
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+```yaml
+- name: Install the TypeScript engine
+  working-directory: engine/ts
+  run: npm ci
+```
+
+</Examples>
+
+The first is the trigger: the workflow runs on every push to any
+branch and on every pull request. The second (with the group folded onto its own line by `>-`, which
+YAML reads as the same one-line string) is the **concurrency group**: runs whose group string is the same (here the workflow's name
+and the branch, `github.ref`) never run side by side, and with
+`cancel-in-progress: true`, a newer run cancels the one still in
+progress<Cite id="gha-concurrency" />, since only the latest commit's
+result matters. That is not a rare event here: of the 62 runs GitHub
+lists for the repository (31 October 22:16 to 2 November 14:34, UTC),
+19 were cancelled by a newer push, one of them 17 seconds after it
+started. The third is the fix from the opening, the step of the
+`engine-rust` job that installs the TypeScript reference before the
+tests (the step's name is shortened here). The workflow also sets
+`permissions: contents: read`, so a job can read the repository but
+not change it, and gives each job a time limit.
+
+The five jobs run side by side on `ubuntu-latest`, none waiting for
+another, so one red job never hides the others:
 
 ```
 job          what it runs
@@ -73,135 +155,91 @@ book         check_chapters, vitest, build,
 website      npm ci, build, link check
 ```
 
-Two caches save work between runs. `actions/setup-node` caches npm's
-downloads under a key built from each `package-lock.json`
-<Cite id="setup-node-readme" />, so a changed lockfile means a fresh
-download. `Swatinem/rust-cache` caches `~/.cargo` and the compiled
-*dependencies* in `target/`, keyed by the rustc version among other
-things, and deliberately not the workspace's own crates
-<Cite id="rust-cache-readme" />: oxc comes from the cache, and
-Viscosity's own crates are rebuilt on every run.
-
-A key computed from a file's contents means the same lockfile always
-finds the same cache, and any change to it misses. A toy version:
-
-<Run id="cache-key" />
+The next chapter, *The gates: what each check protects*, goes through what each of these checks
+protects.
 
 <Callout kind="definition">
 **Continuous integration** runs every check on every change, on a
-**fresh machine** that has only what the repository says to install.
-A change is healthy when every **gate** passes there. It catches what
-passes on your machine only because of something your machine has.
+**fresh machine** that has only what the repository says to install. A
+change is healthy when every **gate** (every check that can fail the
+run) passes there. It catches what passes on your machine only because
+of something your machine has.
 </Callout>
 
-<Prompts ids={['ci-def', 'ci-npm-ci', 'ci-concurrency', 'ci-cache']} />
+<Formal title="Healthy">
 
-## The gates
-
-The `engine-rust` job is mostly one command, `cargo test --workspace`,
-and everything in this Part hangs off it. When I ran it locally on the
-engine at commit `288e497` (rustc 1.97), it passed 75 tests in 14 test
-binaries:
-
-```
-binary         tests  what it holds
-parity          10    190 pairs, 14 frames,
-                      4 profiles, the CLI
-differential     2    node and python3
-early_errors     6    108 invalid programs
-multi_file       8    several files, jobs
-profile_cli      2    odd profiles, cleanup
-os_args          2    non-UTF-8 file names
-fuzz             1    200 programs, seed 1
-unit + core     44    SSA, CFG, plugins...
+```text
+healthy(c) ⟺ ∀ g ∈ Gates :
+               g(fresh(c)) = pass
 ```
 
-Each is a **gate**: if one fails, the job is red. Parity holds the
-engines together (chapter 376), the differential holds the compiled
-programs to the originals, `multi_file` holds the parallel CLI of
-chapter 383 to its order, and `fuzz.rs` runs the fuzzer of chapter
-381.
+<span slot="read">A change c is healthy exactly when, for every gate g
+in the set of gates, running g on a fresh machine set up from c alone
+passes. The word fresh is the whole point: the same gates run on your
+own machine check a different thing, c plus whatever your machine
+already had.</span>
+</Formal>
 
-Then `cargo clippy --workspace --all-targets -- -D warnings`, which
-turns every lint warning into an error. It passed when I ran it.
-Clippy's README now prefers `CARGO_BUILD_WARNINGS=deny` (Cargo 1.97
-and later), which "has the benefit of not invalidating build
-caches"<Cite id="clippy-readme" />, a good fit for a cached CI job.
+<Prompts ids={['ci-def', 'ci-concurrency', 'ci-parallel-jobs']} />
 
-When this chapter was first written, one check was missing:
-`cargo fmt --check`, which exits with 1 when rustfmt would change a
-file<Cite id="rustfmt-readme" />. The code was formatted (rustfmt
-1.9.0, with the repository's `rustfmt.toml`), but nothing kept it so.
-The job now runs `cargo fmt --all --check` before the tests, and
-`cargo package --workspace` after them (chapter 386).
+## Caches
 
-<Prompts ids={['ci-gates', 'ci-clippy', 'ci-fmt']} />
+A fresh machine every time would mean downloading every package and
+compiling every Rust dependency (oxc among them) on every push. Two caches save that work, and both are keyed so that they can
+never serve something stale. `actions/setup-node` keeps npm's download
+cache under a key built from a hash of each `package-lock.json`
+<Cite id="setup-node-readme" />: the same lockfile always gives the same
+key and finds its cache, and any change to the lockfile gives a new key,
+a miss, and a fresh download.
 
-## Fixtures that keep up
+<Figure caption="The same lockfile gives the same key and a hit; a changed lockfile gives a new key, a miss, and a cache saved under the new key." takeaway="A key computed from the inputs can never return outputs of different inputs.">
+  <CacheFigure />
+</Figure>
 
-The parity fixtures in `tests/expected/` are the TypeScript engine's
-output, committed. That is why the Rust half of parity needs no
-TypeScript at all. The price is a rule: after changing the reference,
-run `node scripts/gen_expected.mjs`, then `cargo test`, and commit
-both. Forget the first step and the gate says so:
-`fixtures_match_the_programs_exactly` compares the fixture folder with
-the program list and fails with "run `node scripts/gen_expected.mjs`;
-missing [...], stale [...]". Your exercise is that check.
+`Swatinem/rust-cache` keeps `~/.cargo` and the compiled
+*dependencies* in `target/`, under a key that includes the rustc
+version, and deliberately not the workspace's own crates
+<Cite id="rust-cache-readme" />: oxc comes from the cache, and
+Viscosity's six crates are compiled afresh on every run, which is what a
+test of Viscosity should do anyway. Here is the setup-node idea at toy
+size, with Rust's standard hasher standing in for the real one:
 
-<Prompts ids={['ci-fixtures']} />
+<Run id="cache-key" />
 
-## Has it run?
+`key` feeds the lockfile's text to a `DefaultHasher` and returns the
+64-bit result. The loop plays four pushes: the first misses and saves
+its key in the set `saved`, the second has the same lockfile and hits,
+the third adds a package (`esbuild`) so its key is new and it misses,
+and the fourth hits again.
 
-I can't see GitHub from here, so this chapter describes the workflow
-as committed, not runs I watched. The commit says each job's commands
-were run locally first. But a local run has your machine's state, and
-I could simulate one difference. The `engine-rust` job, as first
-committed, installed node but never ran `npm ci` in `engine/ts`. Two
-tests added after the workflow load the TypeScript engine from there:
-`fuzz.rs`, and the TypeScript half of `multi_file.rs`. With
-`engine/ts/node_modules` removed, `cargo test -p viscosity-cli` gave me
-(wrapped):
-
-```
-test a_fixed_seed_fuzz_run_finds_nothing
-  ... FAILED
-Error [ERR_MODULE_NOT_FOUND]: Cannot find
-  package 'acorn' imported from
-  .../frontend-js/src/index.ts
-test the_typescript_cli_prints_the_same
-  ... FAILED
-```
-
-So the first real run of that job would most likely have been red, for
-the same reason as the lockfile: something the repository didn't
-install. The fix was one step, `npm ci` in `engine/ts` before
-`cargo test`, and the workflow has it now.
-
-<Prompts ids={['ci-runner-state', 'ci-honest']} />
+<Prompts ids={['ci-cache', 'ci-rust-cache']} />
 
 <Callout kind="engine" label="Under the hood">
-Notice what made both failures possible: a check that only ever ran
-where its inputs were already present. CI turns "it passed" into "it
-passed from scratch". That is the same move the differential tests
-made for compiled programs, and the fuzzer for inputs nobody wrote:
-replace an assumption with a machine that doesn't share it.
+GitHub keeps a record of every run, which is the honest answer to "has
+CI actually passed?". When I read it on 2 November (with `gh run
+list`), the 43 runs that were not cancelled had a green `engine-ts`,
+`drip` and `website` job every time, and a green `engine-rust` job
+every time except the four runs before its fix. The `book` job was red on 27 of them, for
+reasons the next chapter reads; the latest, on 2 November, because
+chapters cited references whose files existed on the machine where they
+were written but had not been committed. CI found that the same way it
+found acorn.
 </Callout>
 
 ## Your turn
 
-<Exercise id="fixtureCheck" />
+<Exercise id="cancelledRuns" />
 
 ## What you learned
 
 - **Continuous integration** runs every gate on every push, on a
-  **fresh runner**: here five parallel jobs, older runs cancelled.
-- `npm ci` **refuses** a lockfile out of sync with `package.json`;
-  `npm install` would have rewritten it.
-- Caches are keyed by **lockfiles** and the **rustc version**; workspace
-  crates are rebuilt each time.
-- The Rust gates: `cargo fmt --check`, parity, differential, early
-  errors, multi-file, **fuzz**, clippy `-D warnings`, a wasm build and
-  `cargo package`.
-- Committed **fixtures** need regenerating after the reference changes.
+  **fresh runner** that has only what the repository installs.
+- A test that passes only where its inputs already exist proves
+  nothing about a fresh machine: acorn, and the lockfile `npm ci`
+  refused.
+- A **concurrency group** with `cancel-in-progress` lets only the
+  newest run of a branch finish; five jobs run side by side.
+- Caches are keyed by a **hash** of their inputs (lockfiles, the rustc
+  version), so a change misses rather than serving stale work.
 
 <Quiz />

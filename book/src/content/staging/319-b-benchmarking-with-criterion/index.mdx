@@ -1,0 +1,233 @@
+---
+n: 319
+split_of: 319
+day: 80
+part: XI
+title: 'Benchmarking with criterion'
+tagline: 'One timing is one sample from a noisy machine. Criterion takes a hundred, fits a line, puts a margin of error on it and tells you whether anything changed. Here is how to read it, and the run where it called pure noise an improvement.'
+objectives:
+  - Set up a criterion benchmark with harness = false, and run it with cargo bench.
+  - Read criterion's output, from the interval to the outliers and the change report.
+  - Explain the slope, the bootstrap confidence interval and Tukey's fences in plain words.
+  - Judge a reported change against the noise of a shared machine.
+introduces: [criterion]
+uses: [release-build, black-box, rust, cargo, crate, scalar-types, rust-functions, slice, vec, rust-closure, rust-iterator, cargo-test, workspace, dead-code-elimination, jit-warmup, median-p95, benchmark-isolation, end-to-end-benchmark, compiler, virtual-machine, drip]
+sources: [cargo-profiles, cargo-bench-docs, criterion-analysis, rust-std-black-box]
+---
+import CriterionSteps from '../../../components/diagrams/ch319b/CriterionSteps';
+import Fences from '../../../components/diagrams/ch319b/Fences';
+
+## Is that difference real?
+
+*Measuring Rust performance* got the build and the optimizer out of
+the way, and its exercise collected one time per run. Now suppose you
+change a function and the median goes from 665 ns to 690. Did you make
+it slower, or did another program on the machine wake up?
+*Noisy numbers: the median, p95 and a fresh process* answered with a
+median and a careful eye; the Rust world's usual answer is a crate
+that does the statistics for you.
+
+<Analogy title="an opinion poll">
+A poll does not ask every voter; it asks a thousand, and reports
+"42 percent, give or take 3". The "give or take" is the honest part: a
+second poll might say 44, and that alone would not mean anyone changed
+their mind. Criterion reports a benchmark the same way: an estimate and
+a margin.
+<span slot="breaks">A poll's margin comes from asking different
+people; criterion asks the same code again and again, and its spread
+comes from the machine (other programs, caches, the CPU's clock), so
+the "true value" itself drifts from hour to hour.</span>
+</Analogy>
+
+<Analogy title="weighing yourself a hundred times">
+Step on a bathroom scale a hundred times and the readings wobble by a
+few hundred grams; once or twice you forgot to take off your coat.
+You would report the typical reading, flag the coat readings, and not
+believe a 200-gram "loss" between two mornings.
+<span slot="breaks">A coat is easy to spot; a benchmark's "coat" (a
+background task) is invisible, and it can make a whole run slower, not
+just one reading, which is how a quiet hour can look like an
+improvement.</span>
+</Analogy>
+
+## Setting it up
+
+Stable Rust's `cargo bench` runs whatever is in a crate's `benches/`
+folder, but the built-in `#[bench]` attribute is nightly-only, so the
+Cargo book points to crates such as **criterion** for stable
+Rust<Cite id="cargo-bench-docs" />. The book's Run button cannot run
+it (it compiles single files with no crates, in debug mode), so for
+this chapter I ran it with cargo 1.97, which fetched criterion 0.5.1
+from crates.io.
+
+<Examples of="criterion">
+
+```toml
+# Cargo.toml
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "sum"
+harness = false
+```
+
+```rust
+// benches/sum.rs
+use criterion::{criterion_group,
+    criterion_main, Criterion};
+use crit::sum;
+use std::hint::black_box;
+
+fn bench(c: &mut Criterion) {
+    let xs: Vec<f64> = (0..1000)
+        .map(|i| i as f64)
+        .collect();
+    c.bench_function("sum 1000", |b| {
+        b.iter(|| sum(black_box(&xs)))
+    });
+}
+criterion_group!(benches, bench);
+criterion_main!(benches);
+```
+
+```text
+$ cargo bench
+Finished `bench` profile [optimized]
+sum 1000   time: [658.64 ns 665.74 ns
+                  672.99 ns]
+```
+
+</Examples>
+
+The first adds criterion as a **dev-dependency** (used only by tests
+and benchmarks, never shipped) and declares one benchmark, `sum`, with
+`harness = false`, which tells Cargo that the file brings its own
+`main` instead of using the built-in test harness. The second is that
+file. `sum` comes from the crate being measured (here called `crit`);
+`bench` builds a thousand numbers once, then `bench_function` names the
+benchmark, and `b.iter` runs the closure as many times as criterion
+asks, passing each result through `black_box` itself, so only the
+input needs hiding. The last two lines generate that `main`. The third
+is what `cargo bench` printed on this book's VM: it built with the
+`bench` profile, which inherits from `release`<Cite id="cargo-profiles" />,
+and reported the time per call as three numbers.
+
+<Prompts ids={['crit-what', 'crit-harness', 'crit-nightly']} />
+
+## What criterion does
+
+Step through one benchmark as criterion measures it:
+
+<CriterionSteps client:visible />
+
+The key move is the slope. One call to `sum` takes well under a
+microsecond, too short for the clock to time on its own, so criterion
+never times one call: sample *k* runs *k* × *d* calls, and the time per
+call is the slope of the line through all the samples. To put a margin
+on that slope it uses the **bootstrap**: pick 100 samples at random
+from the 100 it has (some twice, some not at all), fit a line, and
+repeat a hundred thousand times; the middle 95 percent of those slopes
+is the interval it prints<Cite id="criterion-analysis" />. The
+runnable example does a bootstrap by hand, on the mean of twelve
+timings:
+
+<Run id="bootstrap" />
+
+It prints a mean of 676.2 ns and a 95 percent interval of 665.8 to
+689.4, wider on the high side because of the two slow samples.
+
+<Callout kind="definition">
+**Criterion** is a statistical benchmarking crate for stable Rust. It
+warms the code up, takes many samples of growing size, estimates the
+time per iteration as the slope of a fitted line, gives a bootstrap
+**confidence interval** for it, flags outliers with Tukey's fences, and
+compares each run with the last one saved<Cite id="criterion-analysis" />.
+</Callout>
+
+<Formal title="Slope and fences">
+
+```text
+tₖ ≈ β × (k × d),   k = 1 … 100
+IQR = Q3 − Q1
+mild:   x outside [Q1 − 1.5·IQR,
+                   Q3 + 1.5·IQR]
+severe: x outside [Q1 − 3·IQR,
+                   Q3 + 3·IQR]
+```
+
+<span slot="read">The total time of sample k is about β times its
+number of calls, k times d; β, the slope, is the time per call. A
+sample is a mild outlier if it lies more than one and a half
+interquartile ranges below the first quartile or above the third, and
+a severe one beyond three. The interquartile range is the distance
+between the first and third quartiles, the middle half of the
+data.</span>
+</Formal>
+
+<Figure takeaway="Outliers are judged against the middle half of the data, and reported rather than thrown away." caption="Tukey's fences on some illustrative timings: one sample beyond the 1.5 IQR fence (mild), one beyond 3 IQR (severe).">
+  <Fences />
+</Figure>
+
+<Prompts ids={['crit-slope', 'crit-ci', 'tukey']} />
+
+## The run that improved nothing
+
+Criterion saves each run's samples and compares the next run with
+them, using a statistical test; it reports a change only if the test
+says it is unlikely to be chance (p below 0.05) *and* the change is
+bigger than its noise threshold, 1 percent by default<Cite id="criterion-analysis" />.
+I ran the same benchmark, on the same code, eight times in a row. Six
+runs said `No change in performance detected` or `Change within noise
+threshold`. Two did not:
+
+```text
+run 6  change: [-4.93% -3.24% -1.49%]
+       (p = 0.00 < 0.05)
+       Performance has improved.
+run 8  change: [+2.15% +4.25% +6.68%]
+       (p = 0.00 < 0.05)
+       Performance has regressed.
+```
+
+Neither was false, in a narrow sense: the timings really did differ
+between those runs. However, the cause was the shared VM's other
+tenants, not the code, which had not changed at all. Criterion's own
+guide warns that small, deterministic benchmarks are this sensitive,
+and that the noise threshold exists for exactly this<Cite id="criterion-analysis" />;
+on a machine like this one, 1 percent is too small. The lesson
+survives any tool: alternate the two versions you compare, repeat the
+whole comparison, and treat a single 5 percent difference on a shared
+machine as a rumour.
+
+<Prompts ids={['crit-change', 'crit-noise']} />
+
+<Callout kind="engine" label="Under the hood">
+Neither of the book's Rust projects uses criterion. drip-rs depends on
+nothing but the standard library, and its benchmarks are whole
+programs (83 to 406 ms each in drip-rs), compared with the
+TypeScript VMs timed the same way, so `scripts/bench.sh` takes the best
+of three fresh processes; its committed results, for instance, put
+`fib` at 406 ms against the TypeScript VM's 1906. engine/rust's
+`compile_speed` example times 500 warm calls and reports the median and
+minimum. Both say how they measured and on what machine, and both say
+to allow for noise, which is the part that matters more than the tool.
+</Callout>
+
+## Your turn
+
+<Exercise id="tukey" />
+
+## What you learned
+
+- **Criterion** runs on stable Rust through `cargo bench`: a
+  dev-dependency, and a `[[bench]]` with `harness = false`.
+- It fits a line through samples of growing size; the **slope** is
+  the time per call, and a **bootstrap** gives its interval.
+- Outliers are counted with **Tukey's fences** (1.5 and 3 IQR), and
+  reported, not dropped.
+- It compares runs with a test and a 1 percent noise threshold; on a
+  shared VM, unchanged code was reported as 3 percent faster, then 4
+  percent slower.
+
+<Quiz />

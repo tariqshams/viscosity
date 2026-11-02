@@ -52,13 +52,9 @@ export const prompts = {
     q: 'In the chapter’s program, the first loop runs to 10 instead of 1000. What happens to `ps`?',
     a: 'It is kept as objects: “about 10 elements: below the 64-element threshold, where the benefit is too small”.',
   },
-  'm-engine': {
-    q: 'Why does the CLI compile-speed ratio overstate how much faster the Rust engine is?',
-    a: 'Each TypeScript CLI run starts Node and loads a bundle. Inside one warm Node process the gap between the engines is smaller.',
-  },
   'm-open': {
     q: 'Name three things about Viscosity that are unfinished or open.',
-    a: 'Any three of: no changelog yet; the port rejects TypeScript input; syntax errors worded by oxc, not acorn; the cost model is engine-blind (heat on JSC); many programs refused; no WebAssembly output; Drip’s 256-constant limit.',
+    a: 'Any three of: no changelog yet; the port rejects TypeScript input; syntax errors worded by oxc, not acorn; the cost model is engine-blind (heat on JSC); many programs refused; no WebAssembly output.',
   },
   'm-chore': {
     q: 'Which is research, and which a chore: running the wasm smoke test in CI, or knowing how much a layout will gain on an engine?',
@@ -67,10 +63,6 @@ export const prompts = {
   'm-mastery': {
     q: 'What does mastery mean in this book?',
     a: 'Being able to build the thing again yourself, from an empty folder, knowing why each piece is there and how you would check it works.',
-  },
-  'm-parity-why': {
-    q: 'What rule did Track B add to the Crafting Interpreters shape of building twice?',
-    a: 'The second implementation must agree with the first on every output (code and explain text), byte for byte, not just every result.',
   },
 };
 
@@ -226,12 +218,28 @@ fn no_numbers_or_no_loops_stay() {
       'For the bailouts, `c.bailouts.iter().map(|b| format!("unsafe: {b}")).collect()` builds the whole list.',
       'A `f64` prints without a fraction when it is whole (`1000.0` prints as `1000`), so `format!("about {} elements", c.size)` matches the real text. Use `l.touches.join(", ")` for the field names.',
     ],
-    walkthrough: `This is the decision at the centre of chapter 370, cut down to the cases the chapter’s program meets. The real \`plan_one\` also handles annotations, opt-in mode, Python, AoSoA block sizes, measured profile sizes and plain columns.
+    walkthrough: `**How to think about it.** This is the decision at the centre of *The cost model in Rust*, \`plan_one\` in \`engine/rust/crates/core/src/plan.rs\`, cut down to the cases this chapter's program meets (the real one also handles annotations, opt-in mode, Python, AoSoA block sizes, measured profile sizes and plain columns). Before writing it, say the questions out loud in order, and for each one ask "if the answer is no, can anything later change the verdict?". Safety first: an unsafe collection is never transformed, however big, so bailouts come before everything (the test \`bailouts_come_before_size\` holds you to that). Then the two questions that make the gain zero: no numeric fields means no typed columns to gain, and no loops means nothing to speed up. Only then the cost question, the size. Each "no" is an early \`return\` with \`Layout::Aos\` and its reason; if every question passes, the answer is \`Soa\` with one reason per fact.
 
-- **Why this order.** Safety first: a collection that isn’t provably safe is never transformed, however big it is, so bailouts come before everything (\`bailouts_come_before_size\`). Then the questions that make the gain zero (no typed columns, no loops), and only then the cost question, size.
-- **Why every bailout.** The report lists each reason, so a user who fixes one sees the next. The real planner maps every bailout to \`unsafe: …\` the same way.
-- **Why the exact words.** \`explain\` is part of Viscosity’s API, and the Rust engine’s text has to match the TypeScript engine’s byte for byte. Rebuilding it means rebuilding the words too.
-- **Why f64.** Sizes are JavaScript numbers in the reference, so the port keeps them as \`f64\` and prints them as JavaScript would (\`vir::js_number\`). For whole numbers Rust’s \`{}\` gives the same text.`,
+**The solution, line by line.**
+
+- \`fn plan(c: &Coll, min: f64) -> (Layout, Vec<String>) {\` borrows the collection's facts and returns the layout with its reasons, in the order \`explain\` prints them.
+- \`use Layout::*;\` lets the body write \`Aos\` and \`Soa\`.
+- \`if !c.bailouts.is_empty() {\` is the safety rung. \`c.bailouts.iter().map(|b| format!("unsafe: {b}"))\` turns every bailout into a reason, and \`return (Aos, r.collect());\` gathers them into a \`Vec<String>\` and stops. Every bailout is listed, not only the first, so a user who fixes one sees the next.
+- \`if !c.numeric { return (Aos, vec![NO_NUM.into()]); }\` and \`if c.loops.is_empty() { return (Aos, vec![NO_LOOP.into()]); }\` are the zero-gain rungs; \`.into()\` turns the \`&str\` constants into \`String\`s.
+- \`let n = c.fields.len();\` keeps the number of fields for the messages below.
+- \`if c.size < min {\` is the cost rung. The \`format!\` builds "about 10 elements: below the 64-element threshold, where the benefit is too small"; the backslashes at the ends of the lines continue the string literal without adding spaces or newlines.
+- \`let mut r = Vec::new();\` starts the list of reasons for a transformed collection.
+- \`for l in &c.loops { r.push(format!(...)); }\` adds one "loop at line 6 in <module>() touches 2 of 3 fields (x, vx)" per loop, with \`l.touches.len()\` for the count and \`l.touches.join(", ")\` for the names.
+- \`r.push(format!("typed Float64Array columns for all {n} fields"));\` and \`r.push(format!("about {} elements", c.size));\` add the last two facts. An \`f64\` that holds a whole number prints without a fraction in Rust, so \`1000.0\` prints as \`1000\`, exactly as JavaScript would print it.
+- \`(Soa, r)\` is the verdict.
+
+The exact words matter because \`explain\` is part of Viscosity's public face, and the Rust engine's text must match the TypeScript engine's byte for byte; rebuilding the planner means rebuilding its sentences too.
+
+**Common wrong attempts.**
+
+- Checking the size first. A small collection with a bailout would then be reported as "below the threshold", hiding the real reason, which is that it is unsafe.
+- Returning only the first bailout. It looks tidier, but the user then fixes one problem, runs again and meets the next; the real planner reports them all.
+- Writing the reasons from memory with small differences ("fields" against "field", a missing "in"). The tests compare whole strings, as the parity fixtures do.`,
     wrong: [
       {
         code: `${PRE}
@@ -421,13 +429,13 @@ export const quiz = [
     options: [
       { t: 'The same bytes as the Rust CLI', correct: true, why: 'That is the parity guarantee, frames included.' },
       { t: 'The same decisions in different words', why: 'The words are the same too: the explain text is compared byte for byte.' },
-      { t: 'Nothing: frames are a Rust-only feature', why: 'Both CLIs have `--frames`, and 13 fixtures check they agree.' },
+      { t: 'Nothing: frames are a Rust-only feature', why: 'Both CLIs have `--frames`, and the parity tests hold `--frames` fixtures that check they agree.' },
     ],
   },
   {
     q: 'Which of these is still open?',
     options: [
-      { t: 'The Rust engine can’t compile Python', why: 'It can: the Python plugin was ported in chapter 375.' },
+      { t: 'The Rust engine can’t compile Python', why: 'It can: the Python plugin was ported (*The Python plugin in Rust*).' },
       { t: 'The Rust engine can’t run in a browser', why: 'It runs in this page’s Playground, as WebAssembly.' },
       { t: 'The cost model can’t tell how much a layout will gain on a given engine', correct: true, why: 'Heat gained a lot on V8 and nothing on JSC with the same code, and the cause is still a hypothesis.' },
       { t: 'The two engines sometimes disagree on decisions', why: 'Every stored fixture matches byte for byte, and the fuzzer checks thousands more programs.' },
@@ -453,7 +461,7 @@ export const quiz = [
     q: 'By this book’s definition, which shows mastery of Viscosity best?',
     options: [
       { t: 'Remembering every line of `plan.rs`', why: 'Lines can be looked up. Mastery is about why they are there.' },
-      { t: 'Having read all 200 chapters', why: 'Reading is the start. The test is building.' },
+      { t: 'Having read every chapter', why: 'Reading is the start. The test is building.' },
       { t: 'Rebuilding a stage from an empty file, and knowing which test would show it is right', correct: true, why: 'That is “being able to build it again yourself”: the pieces, their reasons, and how to check them.' },
     ],
   },

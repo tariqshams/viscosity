@@ -8,8 +8,8 @@ const FIXED = [
   'let src = String::from("let x");',
   'let t;',
   '{',
-  '    let mut sc = Scanner::new(&src);',
-  '    t = sc.next();',
+  '  let mut sc = Scanner::new(&src);',
+  '  t = sc.next();',
   '}',
   'println!("{}", t.lexeme);',
 ];
@@ -17,9 +17,9 @@ const FIXED = [
 const LINES = [
   'let t;',
   '{',
-  '    let src = String::from("let x");',
-  '    let mut sc = Scanner::new(&src);',
-  '    t = sc.next();',
+  '  let src = String::from("let x");',
+  '  let mut sc = Scanner::new(&src);',
+  '  t = sc.next();',
   '}',
   'println!("{}", t.lexeme);',
 ];
@@ -68,9 +68,9 @@ export default function LifetimeSteps() {
         <T x={392} y={12} size={11} mono weight={700} anchor="end" fill={tok('brand')}>'src</T>
         {(st.fixed ? FIXED : LINES).map((l, k) => (
           <g key={k}>
-            {k === st.line && <rect x={0} y={y(k) - 11} width={244} height={22} fill={tok('brand', 0.15)} />}
-            <T x={4} y={y(k)} size={9} mono fill={tok('muted')}>{k + 1}</T>
-            <T x={18} y={y(k)} size={9} mono>{l.replace(/^ +/, (m) => '\u00a0'.repeat(m.length))}</T>
+            {k === st.line && <rect x={0} y={y(k) - 11} width={250} height={22} fill={tok('brand', 0.15)} />}
+            <T x={2} y={y(k)} size={11} mono fill={tok('muted')}>{k + 1}</T>
+            <T x={14} y={y(k)} size={11} mono>{l.replace(/^ +/, (m) => '\u00a0'.repeat(m.length))}</T>
           </g>
         ))}
         {COLS.map((c) => {

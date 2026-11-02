@@ -44,10 +44,10 @@ export default function BindingSteps() {
               <T x={x + 44} y={12} size={14} mono weight={700} anchor="middle">{v.name}</T>
               <Box x={x} y={22} w={88} h={50} r={6} fill={v.hl ? tok('brand', 0.15) : tok('panel')} stroke={v.hl ? tok('brand') : col}>
                 <T x={x + 44} y={44} size={v.val.length > 4 ? 13 : 18} mono weight={700} anchor="middle" fill={tok('f1')}>{v.val}</T>
-                <T x={x + 44} y={63} size={10} mono anchor="middle" fill={tok('muted')}>{v.ty}</T>
+                <T x={x + 44} y={63} size={11} mono anchor="middle" fill={tok('muted')}>{v.ty}</T>
               </Box>
-              <T x={x + 44} y={86} size={10.5} anchor="middle" fill={col} weight={700}>{v.bad ? '✕ locked' : v.mut ? 'mut: open' : 'locked'}</T>
-              {v.old && <T x={x + 44} y={102} size={10} anchor="middle" fill={tok('muted')}>shadowed</T>}
+              <T x={x + 44} y={86} size={11} anchor="middle" fill={col} weight={700}>{v.bad ? '✕ locked' : v.mut ? 'mut: open' : 'locked'}</T>
+              {v.old && <T x={x + 44} y={102} size={11} anchor="middle" fill={tok('muted')}>shadowed</T>}
             </g>
           );
         })}

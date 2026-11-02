@@ -1,0 +1,320 @@
+---
+n: 325
+day: 82
+part: XI
+title: 'Threads, Send and Sync'
+tagline: 'Rust threads share memory like C threads do, yet a program with a data race does not compile. Two small traits with no methods at all, Send and Sync, are how the compiler knows.'
+objectives:
+  - Start threads with thread::spawn and thread::scope, and get their results back with join.
+  - Explain why spawn needs move and 'static, and why scoped threads may borrow.
+  - Define Send and Sync, and predict which common types have each.
+  - Read the rustc errors that stop a data race, and connect them to chapter 293's definition.
+introduces: [rust-thread, send-sync]
+uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, slice, vec, struct, option, result, trait, rust-generics, trait-bound, rust-closure, rust-iterator, lifetime, rc, refcell, raw-pointer, data-race, memory-model, atomics, event-loop, typescript, differential-testing, reference-counting]
+sources: [rust-book-threads, rust-std-thread-spawn, rust-std-thread-scope, rust-std-send-sync, rustref-auto-traits, rust-book-send-sync, node-worker-data]
+---
+import ScopeSteps from '../../../components/diagrams/ch325/ScopeSteps';
+import SendSyncTable from '../../../components/diagrams/ch325/SendSyncTable';
+
+## Three cores asleep
+
+Hand Viscosity's command line tool ten files and each is compiled on
+its own. On a four-core laptop one thread keeps one core busy and
+leaves three idle. The
+fix is to run several **threads**: separate lines of execution inside
+one program, each with its own stack, all sharing the program's memory.
+
+JavaScript keeps your code on one thread (the event loop of chapter
+40), and a Node `Worker` gets a *copy* of the data you hand it, cloned
+"according to the HTML structured clone algorithm"<Cite id="node-worker-data" />.
+Rust threads are like C's: they really share memory. Chapter 293
+(*Threads, memory models and atomics*) showed where that leads: a
+**data race**, two threads touching the same place without
+synchronisation, at least one of them writing. In C that is undefined
+behaviour; in safe Rust it does not compile. This chapter is how.
+
+## Spawning a thread
+
+```rust
+let h = thread::spawn(|| 6 * 7);
+let v = h.join().unwrap(); // 42
+```
+
+`thread::spawn` takes a closure (chapter 311) and runs it on a new
+thread; it returns a `JoinHandle` at once, while the closure runs. `join`
+waits for the thread to finish and hands back its result, inside a
+`Result` that is `Err` only if the thread panicked. Now borrow a local:
+
+```rust
+let v = vec![1, 2, 3];
+let h = thread::spawn(|| println!("{v:?}"));
+```
+
+```text
+error[E0373]: closure may outlive the
+  current function, but it borrows `v`,
+  which is owned by the current function
+note: function requires argument type to
+  outlive `'static`
+help: to force the closure to take
+  ownership of `v` (and any other
+  referenced variables), use the `move`
+  keyword
+```
+
+A spawned thread may keep running after the function that started it
+has returned and freed `v`, so its closure must not borrow anything
+that could die first: it must be `'static`<Cite id="rust-std-thread-spawn" />.
+`move ||` hands the closure ownership of `v`, and the error goes away.
+
+<Analogy title="a courier">
+You hand a parcel to a courier and go back to work. You cannot lend
+them your desk, because they may come back after you have locked the
+office and gone home; you can only give them what they carry away.
+`join` is waiting at the door for them to come back with a reply.
+<span slot="breaks">A courier who never comes back is a mystery; a
+thread that panics comes back with an `Err` from `join`, and the rest
+of the program carries on.</span>
+</Analogy>
+
+Often you *want* to borrow: split a slice in half and sum each half on
+its own thread. **Scoped threads** allow it. `thread::scope` runs a
+closure that may spawn threads, and it does not return until every one
+of them has finished, so they may borrow anything that outlives the
+scope<Cite id="rust-std-thread-scope" />. Step through it:
+
+<ScopeSteps client:visible />
+
+<Analogy title="a cooking class">
+Students use the school's knives and bowls, and the class does not end
+until every student has finished and put them back. Nobody needs their
+own knives, because nobody can still be cooking after the school locks
+up.
+<span slot="breaks">A teacher can let a student stay late; a scope
+cannot. It always waits for every thread, even one that is stuck, so a
+thread that never finishes means a scope that never returns.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **thread** runs a closure alongside the rest of the program.
+`thread::spawn(f)` starts one and returns a `JoinHandle`; `join()` waits
+for it and returns its result (or `Err` if it panicked). Because a
+spawned thread may outlive its caller, `f` must be `Send + 'static`, so
+it owns what it uses (`move`). `thread::scope(|s| ...)` lends a `Scope`
+whose `s.spawn(f)` threads may borrow from outside, because every one is
+joined before `scope` returns<Cite id="rust-book-threads" />.
+</Callout>
+
+<Examples of="rust-thread">
+
+```rust
+let name = String::from("drip");
+let h = thread::spawn(move || name.len());
+assert_eq!(h.join().unwrap(), 4);
+```
+
+```rust
+let (a, b) = xs.split_at(xs.len() / 2);
+let (sa, sb) = thread::scope(|s| {
+    let h = s.spawn(|| sum(a));
+    let sb = sum(b);
+    (h.join().unwrap(), sb)
+});
+```
+
+```rust
+// engine/rust: cli/tests/differential.rs
+let results: Vec<_> = thread::scope(|s| {
+  let handles: Vec<_> = progs.iter()
+    .map(|p| s.spawn(move || run(p)))
+    .collect();
+  handles.into_iter()
+    .map(|h| h.join().expect("no panic"))
+    .collect()
+});
+```
+
+</Examples>
+
+The first moves a `String` into the thread and gets its length back.
+The second borrows: `split_at` makes two slices of the same vector, a
+new thread sums the first half (`sum` adds up a slice) while the current
+thread sums the second, and only then joins; the scope hands back both
+answers. The third is Viscosity's differential
+test (trimmed, with its body shortened to `run(p)`): every benchmark
+program runs on its own scoped thread,
+because each takes seconds, and the handles are joined in the order
+they were spawned, so the results come back in program order whichever
+thread finished first. `move` there moves only the *reference* `p` into
+each closure; the programs themselves stay borrowed.
+
+<Run id="scoped-sum" />
+
+<Prompts ids={['spawn-static', 'spawn-join', 'scope-borrow']} />
+
+## Send and Sync
+
+Two errors show what scopes cannot excuse. Send an `Rc` (chapter 314)
+to a thread:
+
+```text
+error[E0277]: `Rc<i32>` cannot be sent
+  between threads safely
+note: required by a bound in `spawn`
+```
+
+Share a `RefCell` between two scoped threads:
+
+```text
+error[E0277]: `RefCell<i32>` cannot be
+  shared between threads safely
+  = help: the trait `Sync` is not
+    implemented for `RefCell<i32>`
+  = note: required for `&RefCell<i32>` to
+    implement `Send`
+```
+
+Both are right. An `Rc`'s count is changed with ordinary, non-atomic
+additions, so two threads cloning it at once could lose an update; a
+`RefCell`'s borrow flag has the same problem<Cite id="rust-std-send-sync" />.
+
+<Analogy title="posting a letter, pinning a notice">
+A letter can be posted to someone else: it changes hands, and the sender
+no longer has it (Send). A notice can be pinned on a board where many
+people read it at the same time (Sync). Some things can be posted but
+not pinned up: a notebook is fine to hand over, but not to have five
+people writing in at once.
+<span slot="breaks">Some notices may be changed while pinned up: a
+`Mutex` is Sync because it makes the writers queue, one at a time. The
+next chapter is about exactly those.</span>
+</Analogy>
+
+<Figure takeaway="Most types are both; the exceptions are exactly the unsynchronised shortcuts." caption="Send and Sync for common types. Rc and RefCell trade thread safety for speed; Arc, Mutex and the atomics pay for synchronisation and get both.">
+  <SendSyncTable />
+</Figure>
+
+<Callout kind="definition">
+**`Send`** marks types whose values may be moved to another thread;
+**`Sync`** marks types that may be shared by reference between threads:
+`T` is `Sync` exactly when `&T` is `Send`<Cite id="rust-std-send-sync" />.
+Both are **auto traits**: the compiler implements them for a struct or
+enum when all its fields have them, and for a closure when everything
+it captures has them<Cite id="rustref-auto-traits" />. They have no
+methods; implementing one by hand needs `unsafe`, because the compiler
+must then trust you<Cite id="rust-book-send-sync" />.
+</Callout>
+
+<Formal title="The rules that rule out races">
+
+```text
+T: Sync  ⇔  &T: Send
+S{a: A, b: B}: Send ⇐ A: Send ∧ B: Send
+spawn(f)          needs  f: Send + 'static
+scope.spawn(f)    needs  f: Send + 'scope
+```
+
+<span slot="read">T is Sync exactly when a shared reference to T may be
+sent to another thread. A struct is Send when every field is (Sync is
+the same, field by field). spawn needs a closure that can be sent and
+borrows nothing short-lived; a scoped spawn relaxes only the second
+part, to "lives as long as the scope".</span>
+</Formal>
+
+Together with the borrowing rules, that closes every door. A data race
+needs two threads reaching the same place, one writing. To write
+through shared data a thread needs `&mut`, which is exclusive, so two
+threads cannot both have it:
+
+```text
+s.spawn(|| total += 1);
+s.spawn(|| total += 1);
+error[E0499]: cannot borrow `total` as
+  mutable more than once at a time
+```
+
+Or it needs a type with interior mutability, which can only be shared
+if it is `Sync`, which means it synchronises inside.
+
+<Examples of="send-sync">
+
+```rust
+let n = Rc::new(5);
+thread::spawn(move || n); // ✗ not Send
+let n = Arc::new(5);
+thread::spawn(move || n); // ✓
+```
+
+```rust
+let c = RefCell::new(0);   // ✗ not Sync
+let c = AtomicU32::new(0); // ✓ Sync
+thread::scope(|s| {
+    s.spawn(|| c.fetch_add(1, Relaxed));
+    s.spawn(|| c.fetch_add(1, Relaxed));
+});
+```
+
+```rust
+// engine/rust/crates/cli/src/main.rs
+fn for_each_parallel<T: Send>(
+    n: usize, jobs: usize,
+    f: impl Fn(usize) -> T + Sync,
+) -> Vec<T>
+```
+
+</Examples>
+
+The first swaps `Rc` for `Arc`, whose count is atomic, so it is `Send`.
+The second swaps `RefCell` for an atomic counter (*Atomics and happens-before*, in Part X), which is
+`Sync`, so two scoped threads may both increment it through `&`. The
+third is the signature of Viscosity's parallel build: every result `T`
+must be `Send`, because it is made on a worker thread and handed back,
+and the work function `f` must be `Sync`, because every worker calls the
+same `f` through a shared reference. The bounds are the whole safety
+argument, checked by the compiler.
+
+<OtherLanguages title="Sum two halves at once">
+
+```rust
+let (a, b) = xs.split_at(mid);
+let t = thread::scope(|s| {
+    let h = s.spawn(|| sum(a));
+    h.join().unwrap() + sum(b)
+});
+```
+
+```ts
+// main.ts: the worker gets a clone
+const w = new Worker('./sum.js', {
+  workerData: xs.slice(0, mid),
+});
+w.on('message', (sa: number) =>
+  console.log(sa + sum(xs.slice(mid))));
+```
+
+</OtherLanguages>
+
+The Node worker gets a copy of half the array (only a
+`SharedArrayBuffer` is truly shared) and answers with a message. The
+Rust threads read the very same slice, and the borrow checker proves
+nobody writes it meanwhile.
+
+<Prompts ids={['send-what', 'sync-what', 'rc-not-send', 'race-closed', 'auto-trait']} />
+
+## Your turn
+
+<Exercise id="wordCounts" />
+
+## What you learned
+
+- `thread::spawn` runs a `move` closure on a new thread and `join`
+  gets its result; it needs `'static`, so it cannot borrow.
+- `thread::scope` joins every thread before it returns, so **scoped
+  threads** may borrow.
+- **`Send`** (may move to another thread) and **`Sync`** (may be shared
+  by `&`) are auto traits; `Rc` and `RefCell` lack them, and with the
+  borrowing rules they make data races compile errors.
+
+Next: sharing data that threads must change, with `Arc` and `Mutex`,
+and passing values between threads through channels.
+
+<Quiz />

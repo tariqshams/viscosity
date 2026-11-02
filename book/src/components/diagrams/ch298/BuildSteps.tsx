@@ -13,7 +13,7 @@ const RS = ['main.rs', 'rustc: check', 'rustc: compile', 'CPU: runs binary'];
 
 const STATES: S[] = [
   { ts: ['on', 'off', 'off', 'off'], rs: ['on', 'off', 'off', 'off'], clock: 'before', note: 'Two versions of the same program. On top, TypeScript; below, Rust. Nothing has run yet. Watch WHEN each road does its work.' },
-  { ts: ['done', 'on', 'off', 'off'], rs: ['done', 'on', 'off', 'off'], clock: 'before', note: 'Both roads check types first. TypeScript then throws its types away (type erasure, chapter 27). Rust keeps going: rustc also checks the ownership rules you meet in chapter 301. Any error stops the build here.' },
+  { ts: ['done', 'on', 'off', 'off'], rs: ['done', 'on', 'off', 'off'], clock: 'before', note: 'Both roads check types first. TypeScript then throws its types away (type erasure). Rust keeps going: rustc also checks the ownership rules of the chapter Ownership. Any error stops the build here.' },
   { ts: ['done', 'done', 'on', 'off'], rs: ['done', 'done', 'on', 'off'], clock: 'before', note: 'TypeScript hands plain JavaScript text to the engine. rustc turns the whole crate into machine code for your CPU, and writes it to a file: target/debug/hello.' },
   { ts: ['done', 'done', 'done', 'on'], rs: ['done', 'done', 'done', 'on'], clock: 'run', note: 'Now the program runs. V8 still has a lot to do while it runs: parse the text, interpret bytecode, watch for hot code to JIT-compile, and collect garbage. The Rust binary just runs: the compiling happened earlier.' },
   { ts: ['done', 'done', 'done', 'done'], rs: ['done', 'done', 'done', 'done'], clock: 'run', note: 'The trade: Rust makes you wait for the compiler, and makes you satisfy it, before anything runs. In return, the running program carries no parser, no JIT and no garbage collector.' },
@@ -30,7 +30,7 @@ export default function BuildSteps() {
     <g key={l}>
       <Box x={xs[k]} y={y} w={94} h={40} fill={fill(stages[k])} stroke={stroke(stages[k])} opacity={stages[k] === 'off' ? 0.45 : 1}>
         {l.split(': ').map((part, j, all) => (
-          <T key={j} x={xs[k] + 47} y={y + 20 + (j - (all.length - 1) / 2) * 13} size={10.5} anchor="middle" mono={k === 0 || k === 2} weight={stages[k] === 'on' ? 700 : 400}>{part}</T>
+          <T key={j} x={xs[k] + 47} y={y + 20 + (j - (all.length - 1) / 2) * 13} size={11} anchor="middle" mono={k === 0 || k === 2} weight={stages[k] === 'on' ? 700 : 400}>{part}</T>
         ))}
       </Box>
       {k < 3 && <Arrow x1={xs[k] + 94} y1={y + 20} x2={xs[k + 1] - 1} y2={y + 20} width={1.5} color={tok('ink', stages[k + 1] === 'off' ? 0.25 : 0.7)} />}
@@ -46,7 +46,7 @@ export default function BuildSteps() {
         <line x1={296} y1={6} x2={296} y2={150} stroke={tok('muted', 0.6)} strokeDasharray="4 4" />
         <T x={150} y={166} size={11} anchor="middle" fill={tok('muted')} weight={st.clock === 'before' ? 700 : 400}>before the program runs</T>
         <T x={348} y={166} size={11} anchor="middle" fill={tok('muted')} weight={st.clock === 'run' ? 700 : 400}>while it runs</T>
-        <T x={200} y={183} size={10} anchor="middle" fill={tok('muted')}>green: done · amber: happening now</T>
+        <T x={200} y={183} size={11} anchor="middle" fill={tok('muted')}>green: done · amber: happening now</T>
       </Svg>
     </StepFrame>
   );

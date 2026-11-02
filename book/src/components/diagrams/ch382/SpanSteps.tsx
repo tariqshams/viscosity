@@ -49,9 +49,9 @@ export default function SpanSteps() {
         <Arrow x1={200} y1={52} x2={200} y2={64} color={grey} width={1.5} />
         <Arrow x1={200} y1={110} x2={200} y2={122} color={grey} width={1.5} />
         <Arrow x1={200} y1={168} x2={200} y2={180} color={grey} width={1.5} />
-        <T x={12} y={248} size={10.5} mono fill={st.hi === 'frame' ? tok('ink') : tok('muted')}>{nb('6 | ⇥if (ps[i].x > 3) keep.push(ps[i]);')}</T>
-        <T x={12} y={266} size={10.5} mono fill={st.hi === 'frame' ? tok('danger') : tok('muted')}>{nb('  | ⇥' + ' '.repeat(27) + '^^^^^')}</T>
-        <T x={390} y={282} size={9} anchor="end" fill={tok('muted')}>⇥ = a tab, kept in the caret line</T>
+        <T x={12} y={248} size={11} mono fill={st.hi === 'frame' ? tok('ink') : tok('muted')}>{nb('6 | ⇥if (ps[i].x > 3) keep.push(ps[i]);')}</T>
+        <T x={12} y={266} size={11} mono fill={st.hi === 'frame' ? tok('danger') : tok('muted')}>{nb('  | ⇥' + ' '.repeat(27) + '^^^^^')}</T>
+        <T x={390} y={282} size={11} anchor="end" fill={tok('muted')}>⇥ = a tab, kept in the caret line</T>
       </Svg>
     </StepFrame>
   );

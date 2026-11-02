@@ -43,21 +43,13 @@ export const prompts = {
     q: 'What does `log2_exact` in `emit.rs` return for 8, and for 6?',
     a: '`Some(3)` (`8.trailing_zeros()`), and `None`: 6 isn’t a power of two.',
   },
-  'ao-refuse-1': {
-    q: 'Why is `aosoa(1)` refused even though 1 is a power of two?',
-    a: 'A block of one element isn’t AoSoA. The planner requires `b >= 2` as well as `b.is_power_of_two()`.',
+  'ao-js-number': {
+    q: 'Why are the stride, offset and mask computed as `f64` and printed with `js_number`?',
+    a: 'So the text is exactly what the TypeScript reference prints from its doubles, `12` and not `12.0`, byte for byte.',
   },
-  'ao-huge': {
-    q: 'What went wrong with `// @viscosity aosoa(1073741824)` before the size limit?',
-    a: 'Both engines accepted it, and the compiled program failed with “RangeError: Array buffer allocation failed”. Now both refuse it: the block size must be at most 65536.',
-  },
-  'ao-type-not-heat': {
-    q: 'In Viscosity, what decides whether a field gets a `Float64Array` column or a plain array?',
-    a: 'Only its type: proven always a number gives a typed column. How often loops touch it plays no part.',
-  },
-  'ao-numeric-only': {
-    q: 'Why must every field of an AoSoA collection be numeric?',
-    a: 'All fields share one `Float64Array`, `data`, so there is nowhere to put a string or an object.',
+  'ao-shift-why': {
+    q: 'For `B = 2^sh`, why is `i >> sh` the same as `i / B` rounded down?',
+    a: 'Shifting right by `sh` bits drops the low `sh` binary digits, which is dividing by 2^sh and throwing the remainder away.',
   },
 };
 
@@ -156,16 +148,26 @@ fn one_field_is_the_identity() {
 }
 `,
     hints: [
-      'Refuse first: `if b < 2 || !b.is_power_of_two() { return None; }`.',
-      'The shift is `b.trailing_zeros()`. The block is `i >> sh` and the lane is `i & (b - 1)`.',
-      'A block holds `f * b` slots, and field `k`’s run starts `k * b` into it.',
+      'Refuse first, as the planner does: `if b < 2 || !b.is_power_of_two() { return None; }`.',
+      'The shift is `b.trailing_zeros()`. Then the block is `i >> sh` and the lane is `i & (b - 1)`.',
+      'A whole block holds `f * b` slots, and field `k`’s run starts `k * b` into it: `Some(block * f * b + k * b + lane)`.',
     ],
-    walkthrough: `This is the arithmetic of the \`slot\` closure in \`engine/rust/crates/frontend-js/src/emit.rs\`, computed instead of printed, together with the planner’s test from \`plan.rs\`.
+    walkthrough: `**How to think about it.** This is the arithmetic of the \`slot\` closure in \`engine/rust/crates/frontend-js/src/emit.rs\`, computed as a number instead of printed as text, together with the planner's test on the block size from \`plan.rs\`. Work one case by hand before writing code: \`{x, y, vx}\` (\`f = 3\`) in blocks of 4, element 10, field \`y\` (\`k = 1\`). Element 10 is in block 2 (elements 8 to 11) at lane 2. Each block holds 3 × 4 = 12 slots, so block 2 starts at 24; \`y\`'s run starts 4 slots into it, at 28; lane 2 is slot 30. The test \`matches_the_generated_push\` checks exactly that against the push the emitter writes.
 
-- **Why the stride is \`f * b\`.** Each block holds \`b\` elements of every field. Forgetting the \`f\` makes block 1 start inside block 0’s second field, and \`whole_blocks_are_filled_exactly\` sees the collisions.
-- **Why \`b - 1\`.** For a power of two, \`b - 1\` is all ones below \`b\`’s bit, so \`i & (b - 1)\` is \`i % b\`. \`i & b\` tests a single bit.
-- **Why refuse 6.** \`6.trailing_zeros()\` is 1 and \`i & 5\` is not \`i % 6\`, so the emitted shift-and-mask arithmetic would be wrong. Division would work, but the emitter never writes division, so the planner refuses.
-- **Why refuse 1.** \`1.is_power_of_two()\` is true (it is 2⁰), but a block of one element is just an array of structs with extra arithmetic.`,
+**The solution, line by line.**
+
+- \`if b < 2 || !b.is_power_of_two() { return None; }\` refuses what the planner refuses: 0, 1 (a power of two, 2⁰, but not a block), and anything that isn't a power of two.
+- \`let sh = b.trailing_zeros();\` is the shift: for 4 (\`0b100\`) there are two zero bits below the one bit, so 2. It returns a \`u32\`, which is what \`>>\` on a \`usize\` accepts.
+- \`let block = i >> sh;\` divides by \`b\`, rounding down.
+- \`let lane = i & (b - 1);\` keeps the low \`sh\` bits, the remainder: for \`b = 4\`, \`b - 1\` is \`0b11\`.
+- \`Some(block * f * b + k * b + lane)\` adds the block's start (\`f * b\` slots per block), the start of field \`k\`'s run in it, and the lane.
+
+**Common wrong attempts.**
+
+- \`block * b + ...\` as the block's start: each block holds \`b\` elements of **every** field, so the stride is \`f * b\`. With \`b\` alone, element 4's \`x\` lands on element 0's \`y\`, and \`whole_blocks_are_filled_exactly\` sees the collision.
+- Testing only \`is_power_of_two()\`: it accepts 1, which the planner refuses, so \`refuses_what_the_planner_refuses\` fails.
+- \`i & b\` for the lane: that keeps a single bit of \`i\`, not its remainder. The mask is \`b - 1\`, all ones below \`b\`'s bit.
+- \`i / b\` and \`i % b\`: the numbers are right for any size, but then 3, 6 and 12 are accepted, and the emitted code, which only ever uses a shift and a mask, would be wrong for them.`,
     wrong: [
       {
         code: SOL.replace('Some(block * f * b + k * b + lane)', 'Some(block * b + k * b + lane)'),
@@ -237,19 +239,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'What happens with `// @viscosity aosoa(1073741824)` on a small numeric collection?',
+    q: 'Records `{x, y, vx}` in blocks of 4: `x` of element 5 is at slot 13. The container grows from capacity 8 to 16. Where is it now?',
     options: [
-      { t: 'The planner refuses it: the block size must be at most 65536', correct: true, why: 'Both engines check the 2¹⁶ limit before the power-of-two rule, and keep the array of objects.' },
-      { t: 'It works, just with one huge block', why: 'Before the limit, the constructor’s allocation failed first.' },
-      { t: 'Both engines accept it, and the compiled program throws a RangeError allocating the data array', why: 'That is what happened before the limit was added: a miscompile, since the original runs fine.' },
-    ],
-  },
-  {
-    q: 'Which statement about Viscosity’s hot/cold splitting is accurate?',
-    options: [
-      { t: 'It groups fields that loops use together into hot columns', why: 'The access tables could support that, but nothing in the planner uses them for grouping.' },
-      { t: 'Fields are split by type: proven numbers get Float64Array columns, everything else plain arrays', correct: true, why: 'A field read in the hottest loop can still get a plain column, as `tag` does in mixed_columns.js.' },
-      { t: 'Cold fields are left in the original objects', why: 'Every field gets a column; there are no objects left.' },
+      { t: 'It moves to the new second half of the array', why: 'Copying with `d.set(this.data)` puts the old array at the front of the new one.' },
+      { t: 'Still at 13: the slot depends only on the element and the field', correct: true, why: '`(5 >> 2) * 12 + 0 + (5 & 3)` has no capacity in it, so growing moves nothing.' },
+      { t: 'Every element is reshuffled into the new block size', why: 'The block size never changes; only the number of blocks does.' },
     ],
   },
 ];

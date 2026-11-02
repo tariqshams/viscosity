@@ -1,0 +1,266 @@
+---
+n: 229
+day: 58
+part: VII
+title: 'Code shape: lowering control flow and data'
+tagline: 'The same IR can become many different instruction sequences, and some are much better than others. This chapter collects the standard shapes for ifs, short-circuit tests and loops, and the one formula behind every array and record access, base plus index times size.'
+objectives:
+  - Lower an if, an else and a short-circuit && into RISC-V branches.
+  - Compare a top-tested loop with a rotated one, and count the branches each executes.
+  - Compute the address of an array element, a record field and a 2D element with base + index × size.
+  - Write the RISC-V instructions that load ps[i].vx, and see how the layout changes them.
+introduces: [code-shape, array-address-arithmetic]
+uses: [machine-code, assembly-language, risc-v, load-store, addressing-mode, calling-convention, ir, lowering, basic-block, cfg, short-circuit, pipeline, branch-prediction, induction-variable, strength-reduction, array, index, array-of-objects, aos-vs-soa, stride, contiguous, field, while-loop, if, logical-operators, test]
+sources: [coopertorczon2022, riscv-isa-unpriv, riscv-asm-manual]
+---
+import LoopShapeSteps from '../../../components/diagrams/ch229/LoopShapeSteps';
+import AddressFigure from '../../../components/diagrams/ch229/AddressFigure';
+
+## Same meaning, different shapes
+
+Put our hand-written `sumsq` beside clang's, and look only at the
+loops:
+
+```text
+loop:                   # ours
+    bge  t1, a0, done
+    ...body...
+    j    loop
+
+    blez a0, skip       # clang -O2
+loop:
+    ...body...
+    bne  a0, a2, loop
+```
+
+Both come from the same IR and compute the same sum; however, ours
+runs two branch instructions on every trip round the loop and clang's
+runs one. Nothing in the IR says which to choose. A back end needs a
+repertoire of patterns, one or more for each construct, and a reason
+to prefer one over another; Cooper and Torczon's textbook gives the
+idea a whole chapter, under the name this chapter
+borrows<Cite id="coopertorczon2022" />.
+
+<Analogy title="a translator's phrasebook">
+A good translator does not render "it's raining cats and dogs" word by
+word; for each common phrase they know a few natural ways to say it in
+the other language, and pick the one that fits.
+<span slot="breaks">A translator's choice is a matter of taste; a code
+shape is chosen by measurable costs (instructions executed, branches,
+bytes of code), and every shape must mean exactly the same thing, not
+roughly the same.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Code shape** is the set of patterns a compiler uses to express each
+source construct (a condition, a loop, an array access, a call) in the
+target's instructions. Different shapes for the same construct are
+equally correct but differ in speed and size, and the choice also
+decides how much freedom later passes have<Cite id="coopertorczon2022" />.
+</Callout>
+
+## Ifs and short circuits
+
+In the IR, a decision is a block ending in `condbr %c, bT, bF`. RISC-V
+has no instruction with two targets: a branch either jumps or falls
+through to the next instruction. So the usual shape lays out the
+"then" block right after the test and branches *away* on the opposite
+condition: `if (a < b)` becomes "branch to the else part if
+`a >= b`". A short-circuit `&&` (chapter 102) needs no boolean value
+at all: each half becomes its own branch to the same exit, so the
+second test runs only if the first passed.
+
+<Examples of="code-shape">
+
+```text
+ifelse:  # if (a < b) f(); else g();
+    bge  a0, a1, .Lelse  # opposite test
+    tail f
+.Lelse:
+    tail g
+```
+
+```text
+andand:  # if (a > 0 && b > 0) f();
+    blez a0, .Lend       # a <= 0: skip
+    blez a1, .Lend       # b <= 0: skip
+    tail f
+.Lend:
+    ret
+```
+
+```text
+mx:      # return a < b ? b : a;
+    blt  a1, a0, .Ldone  # b < a: keep a
+    mv   a0, a1
+.Ldone:
+    ret
+```
+
+</Examples>
+
+All three are clang's `-O2` output (labels renamed). In the first, the
+test is inverted (`bge` for `a < b`) so that the "then" part, the call
+to `f`, follows straight on. `tail f` is a pseudoinstruction for a
+**tail call**: since `ifelse` has nothing left to do after `f`, it
+jumps to `f` without saving anything, and `f`'s `ret` returns straight
+to `ifelse`'s caller<Cite id="riscv-asm-manual" />. The second shows
+`&&` with no `&&` left: two `blez` ("branch if ≤ 0") to the same
+label. The third is a conditional value: `a` is already in `a0`, the
+result register, so the shape is "copy `b` over it unless `b < a`",
+one branch and one move.
+
+## Loops: test at the top, or at the bottom?
+
+The two loops at the top of the chapter are the two classic shapes.
+The **top-tested** one is the IR read literally: test, body, jump back
+to the test. The **rotated** one tests once before the loop (a guard,
+for the case of zero trips) and then once at the bottom of each trip,
+where a single conditional branch both tests and jumps back.
+
+<LoopShapeSteps client:visible />
+
+<Formal title="Two shapes for while c { body }">
+
+```text
+top-tested:         rotated:
+L: if !c goto E       if !c goto E
+   body            L: body
+   goto L             if c goto L
+E:                 E:
+```
+
+<span slot="read">On the left, label L tests the condition and leaves
+for E when it is false; otherwise the body runs and an unconditional
+goto returns to L. On the right, the test appears twice: once before
+the loop, skipping it entirely when c is false at the start, and once
+after the body, jumping back to L while c is true. Both run the body
+the same number of times; the right one executes one branch per trip
+instead of two.</span>
+</Formal>
+
+Rotation is why clang's `sumsq` counts with `bne a0, a2` at the
+bottom. The cost is a second copy of the test, which is small, and the
+benefit is one fewer branch per trip, which adds up over millions of
+trips (and taken branches are what a pipeline has to predict, as
+chapter 55 showed).
+
+<Prompts ids={['shape-what', 'invert-test', 'andand-shape', 'rotate-why', 'tail-call']} />
+
+## Data: base plus index times size
+
+Control flow is half of lowering; the other half is data. RISC-V's one
+addressing mode is a register plus a small constant, so `xs[i]` has to
+be turned into an address with ordinary arithmetic first. The elements
+of an array sit side by side (chapter 48), each `size` bytes, so
+element `i` starts `i × size` bytes after the first.
+
+<Analogy title="plots on a new street">
+On a street where every plot is the same width, you can find house
+number 7 without walking past the others: it starts at the corner plus
+seven plot widths.
+<span slot="breaks">Real streets skip numbers and have odd-sized
+plots; an array has no gaps and every element has exactly the same
+size, which is what makes the arithmetic exact (and why a list of
+mixed values has to store pointers instead).</span>
+</Analogy>
+
+<Callout kind="definition">
+**Array address arithmetic** computes where an element lives: the
+address of `a[i]` is `base + i × size`, where `base` is the address of
+`a[0]` and `size` is the size of one element in bytes. A record field
+adds the field's offset within the record, and a 2D array stored row by
+row adds whole rows first. When `size` is a power of two, the multiply
+is a left shift (`slli` by 3 multiplies by 8).
+</Callout>
+
+<Formal title="Addresses of elements">
+
+```text
+addr(a[i])    = base + i × size
+addr(a[i].f)  = base + i × size + off(f)
+addr(m[i][j]) = base + (i × cols + j) × size
+```
+
+<span slot="read">The address of element i of a is the base address
+plus i times the element size. For field f of element i, add the
+field's offset inside the record. For row i, column j of a matrix
+stored row after row with cols columns, first count the elements
+before it, i times cols plus j, then multiply by the size.</span>
+</Formal>
+
+For the particles of this book, the layout changes the arithmetic,
+which is the whole point of Viscosity's rewrite seen from the
+machine's side:
+
+<Figure takeaway="The same field access needs different address arithmetic in each layout, and SoA's has the smaller stride." caption="Reading vx of particle 2. In an array of structs each record is 16 bytes, so the address is base + 2 × 16 + 8. In a struct of arrays, vx has its own column of 8-byte values, so it is vxs + 2 × 8.">
+  <AddressFigure />
+</Figure>
+
+<Examples of="array-address-arithmetic">
+
+```text
+getsoa:  # return vxs[i];  8-byte items
+    slli a1, a1, 3      # i * 8
+    add  a0, a0, a1     # vxs + i*8
+    ld   a0, 0(a0)
+    ret
+```
+
+```text
+getvx:   # return ps[i].vx; 16-byte P
+    slli a1, a1, 4      # i * 16
+    add  a0, a0, a1     # ps + i*16
+    ld   a0, 8(a0)      # + off(vx) = 8
+    ret
+```
+
+```text
+at:      # return m[i * cols + j];
+    mul  a1, a2, a1     # i * cols
+    slli a1, a1, 3      # ... * 8
+    slli a3, a3, 3      # j * 8
+    add  a0, a0, a3
+    add  a0, a0, a1
+    ld   a0, 0(a0)
+    ret
+```
+
+</Examples>
+
+All three are clang's `-O2` output. The first is the simplest case,
+the SoA column: shift by 3 to multiply by 8, add the base, load at
+offset 0. The second is the AoS record, `struct P { long x, vx; }`:
+the shift is 4 because a record is 16 bytes, and the field offset 8
+rides for free in the load's 12-bit offset, the addressing mode doing
+the last addition. The third is a 2D array, where the row count needs
+a real `mul`, since `cols` is not known in advance. Inside a loop,
+compilers rarely redo this arithmetic each time: clang's loop for
+summing `xs[0..n]` keeps a pointer and adds 8 to it each trip
+(`addi a0, a0, 8`), the strength reduction of chapter 214 at work.
+You can check the formula for both layouts here:
+
+<Run id="addresses" />
+
+<Prompts ids={['addr-formula', 'shift-for-mul', 'field-offset', 'aos-soa-stride']} />
+
+## Your turn
+
+<Exercise id="lower-load" />
+
+## What you learned
+
+- **Code shape** is the choice of instruction patterns for each
+  construct; shapes for the same construct are equally correct but not
+  equally fast.
+- An `if` branches away on the opposite condition and falls into the
+  "then" part; `&&` becomes one branch per operand to a shared exit;
+  a loop is best rotated, testing once at the bottom of each trip.
+- **Array address arithmetic** finds `a[i]` at `base + i × size`, plus
+  a field's offset for records; powers of two become shifts, and the
+  layout (AoS or SoA) decides the numbers.
+
+Next: the switch statement, and the table that turns a chain of tests
+into a single jump.
+
+<Quiz />

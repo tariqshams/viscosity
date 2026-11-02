@@ -7,6 +7,7 @@ import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 //  - analysis and plan: fields of viscosity_core::analyze and plan;
 //  - code and explain: `viscosity build` and `viscosity explain --frames`
 //    (the release CLI), which the TypeScript CLI matches byte for byte;
+//    all re-run by the author on 2026-11-02 against the current crates;
 //  - output: node on the original and on the compiled program.
 const SRC = `const ps = [];
 for (let i = 0; i < 1000; i++) {
@@ -109,12 +110,12 @@ $ node out.js
 type S = { title: string; code: string; line: number | null; note: string };
 const STATES: S[] = [
   { title: 'source', code: SRC, line: 5, note: 'The program: a thousand particles moved ten times, a hundred more that are only printed, and a sum. Line 6 is the hot loop.' },
-  { title: 'front-end → VIR', code: VIR, line: 11, note: 'oxc parses it (chapter 360) and the JavaScript plugin lowers the tree to VIR in SSA form (173, 176). Line 6’s for…of is now blocks b9 to b11: a phi for the hidden index, a length check, one index.get, two field reads and a field.set.' },
-  { title: 'analyses', code: ANALYSIS, line: 11, note: 'The analyses read only VIR: collection discovery (178), shapes and numeric fields (179), escapes (180), access patterns and loop depth (181), sizes and bounds proofs. qs[0] leaves the program’s sight in a call, so qs gets a bailout.' },
-  { title: 'plan', code: PLAN, line: 0, note: 'The cost model (182) decides: ps becomes a struct of arrays, with every reason recorded as it decides. qs stays as objects, and the plan keeps the bailout as its reason.' },
-  { title: 'emit', code: CODE, line: 14, note: 'The plugin rewrites the source from the plan (174, 183): a container class with three Float64Array columns, push(i, 1, 3) instead of an object, and the hot loop as two column reads and a write. qs is spliced through untouched.' },
-  { title: 'explain --frames', code: FRAMES, line: 9, note: 'explain prints the plan’s reasons (185). With --frames, each refusal gets the source line and carets under the element it is about. The TypeScript CLI prints the same bytes.' },
-  { title: 'run both', code: RUN, line: 4, note: 'And the promise underneath it all: the compiled program prints exactly what the original prints. The differential tests (chapter 376) check that for every test program, and the fuzzer for thousands more.' },
+  { title: 'front-end → VIR', code: VIR, line: 11, note: 'oxc parses it (Parsing with oxc) and the JavaScript plugin lowers the tree to VIR in SSA form (Lowering oxc’s AST to VIR; Dominators and SSA in Rust). Line 6’s for…of is now blocks b9 to b11: a phi for the hidden index, a length check, one index.get, two field reads and a field.set.' },
+  { title: 'analyses', code: ANALYSIS, line: 11, note: 'The analyses read only VIR: collection discovery, shapes and numeric fields, escapes, access patterns and loop depth, sizes and bounds proofs (the Rust chapters of each, from Collection discovery in Rust to Access patterns in Rust). qs[0] leaves the program’s sight in a call, so qs gets a bailout.' },
+  { title: 'plan', code: PLAN, line: 0, note: 'The cost model (The cost model in Rust) decides: ps becomes a struct of arrays, with every reason recorded as it decides. qs stays as objects, and the plan keeps the bailout as its reason.' },
+  { title: 'emit', code: CODE, line: 14, note: 'The plugin rewrites the source from the plan (SoA code generation in Rust): a container class with three Float64Array columns, push(i, 1, 3) instead of an object, and the hot loop as two column reads and a write. qs is passed through untouched.' },
+  { title: 'explain --frames', code: FRAMES, line: 9, note: 'explain prints the plan’s reasons (explain in Rust). With --frames, each refusal gets the source line and carets under the element it is about. The TypeScript CLI prints the same bytes.' },
+  { title: 'run both', code: RUN, line: 4, note: 'And the promise underneath it all: the compiled program prints exactly what the original prints. The differential tests (TypeScript vs Rust: differential tests) check that for every test program, and the fuzzer for thousands more.' },
 ];
 
 export default function WholeMachineSteps() {

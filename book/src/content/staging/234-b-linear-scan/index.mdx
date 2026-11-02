@@ -1,0 +1,218 @@
+---
+n: 234
+split_of: 234
+day: 59
+part: VII
+title: 'Linear scan'
+tagline: 'Building and colouring an interference graph takes time a just-in-time compiler does not have. Flatten each live range into one interval, sweep through the intervals once, and you get a register allocator that is fast, simple and nearly as good; this chapter builds it and then tours the allocators real compilers ship.'
+objectives:
+  - Turn live ranges into live intervals over a numbered instruction order, and say what precision is lost.
+  - Run Poletto and Sarkar's linear scan by hand, including its rule for choosing a spill.
+  - Compare linear scan's choices with graph colouring's on the same function.
+  - Describe, with sources, how LLVM, V8 and Cranelift actually allocate registers.
+introduces: [linear-scan, live-interval]
+uses: [spilling, register-allocation, graph-coloring, simplify-select, coalescing, interference-graph, live-range, liveness, natural-loop, ssa, ssa-destruction, parallel-copy, register, risc-v, assembly-language, optimizing-tiers, array, object, for-of, function, test]
+sources: [poletto1999, chaitin1982, llvm-codegen, llvm-regalloc-greedy, v8-regalloc-source, regalloc2, cranelift-isle]
+---
+import IntervalsFigure from '../../../components/diagrams/ch234b/IntervalsFigure';
+import ScanSteps from '../../../components/diagrams/ch234b/ScanSteps';
+
+## When the graph is too slow
+
+Graph colouring needs the interference graph, and the graph can be
+large: every value that is alive while many others are alive gets an
+edge to each of them. For an ahead-of-time compiler that is a fair
+price. For a just-in-time compiler (chapter 165's optimising tiers),
+which compiles while the user waits, it can be too much: the time
+spent allocating is time the program is not running. Poletto and
+Sarkar's answer was an allocator that is "not based on graph
+coloring" at all, but "allocates registers to variables in a single
+linear-time scan of the variables' live ranges"<Cite id="poletto1999" />.
+
+The first step is to give up a little precision. Number the
+instructions in one fixed order, top to bottom. A live range might be
+made of pieces with gaps; flatten it into one **live interval**, from
+the first number where the value is live to the last. Overlapping is
+then a question about two pairs of numbers, which is quick to answer,
+and no graph is ever built.
+
+<Analogy title="booking meeting rooms">
+A meeting-room calendar shows each booking as one solid block, from
+its start to its end. Two bookings can share a room if their blocks
+do not overlap, and you can tell at a glance.
+<span slot="breaks">A meeting that breaks for lunch is still drawn as
+one block, and nobody else gets the room over lunch; a value whose
+live range has a gap loses that gap the same way, which wastes a
+register where colouring would not.</span>
+</Analogy>
+
+<Analogy title="a car park with departure times">
+An attendant parks cars in arrival order. Each driver says when they
+will leave; when a car arrives and the car park is full, the sensible
+car to move to the overflow lot is the one leaving *latest*, since it
+would hold its space longest.
+<span slot="breaks">Drivers can be late; a value's interval is known
+exactly before allocation starts, because the code is already
+written. And a car moved to the overflow lot stays there, while a
+spilled value is fetched back before every use.</span>
+</Analogy>
+
+Here are `sumsq`'s intervals, over its instructions numbered 1 to
+10. One subtlety comes from the loop: `n` is read only at line 4, but
+the jump at line 8 goes back to line 4, so `n` is live all the way to
+8 (this is exactly what liveness said, flattened):
+
+<Figure takeaway="A live interval is a live range with its gaps filled in." caption="sumsq's four intervals. The loop is lines 4 to 8; n, s and i are used in it, so each stretches at least to its end, and s goes on to line 9, where it becomes the result. t lives from the mul at 5 to the add at 6.">
+  <IntervalsFigure />
+</Figure>
+
+<Callout kind="definition">
+A **live interval** is a live range flattened into a single span
+`[start, end]` over a fixed numbering of the instructions: `start` is
+the first point where the value is live and `end` the last. Two
+values whose intervals overlap are treated as interfering, even if
+their live ranges, with their gaps, never actually meet.
+</Callout>
+
+<Formal title="Overlap of two intervals">
+
+```text
+[s1, e1] and [s2, e2] overlap
+  ⟺  s1 ≤ e2  ∧  s2 ≤ e1
+```
+
+<span slot="read">Two intervals, from s1 to e1 and from s2 to e2,
+overlap exactly when each one starts no later than the other ends
+(∧ reads "and"). Otherwise one of them is entirely over before the
+other begins.</span>
+</Formal>
+
+<Prompts ids={['interval-what', 'interval-loses', 'loop-stretch']} />
+
+## One pass
+
+Linear scan visits the intervals in order of their start. It keeps an
+**active** list, the intervals that currently hold a register,
+sorted by their end. At each new interval it first **expires** the
+active intervals that ended before this one starts, giving their
+registers back; then, if a register is free, the new interval takes
+it. If none is free, something must be spilled, and the rule is the
+car park's: compare the new interval with the active one that ends
+*last*, and spill whichever of the two ends later, because that one
+would hold a register longest<Cite id="poletto1999" />.
+
+<ScanSteps client:visible />
+
+<Callout kind="definition">
+**Linear scan** allocates registers in one pass over the live
+intervals, sorted by start point. It keeps the active intervals
+sorted by end point; for each new interval it expires those that have
+ended, assigns a free register if there is one, and otherwise spills
+whichever ends last, the new interval or the last active one. The
+spilled interval is then handled with spill code, as in the previous
+chapter.
+</Callout>
+
+<Examples of="live-interval linear-scan">
+
+```text
+a: [1, 2]  b: [3, 4]  c: [5, 6]
+one register: a, b, c all get r1
+(each expires before the next)
+```
+
+```text
+a: [0, 10]  b: [1, 2], one register
+b arrives, a ends last: spill a,
+b gets r1, and later c: [3, 20] too
+```
+
+<Run id="scan" />
+
+</Examples>
+
+The first is the simplest case: three intervals in a row, each
+ending before the next begins, so expiry hands the one register on
+each time. The second shows the spill rule: when `b` arrives, `a`
+holds the only register but will hold it until 10, so `a` is spilled
+and `b`, which is short, takes its place; when `c` arrives at 3, `b`
+has expired and `c` gets the register. The third runs linear scan on
+`sumsq` with four registers, where everything fits, and with three,
+where `s` is spilled.
+
+That last result is worth a second look. Graph colouring, choosing by
+cost, spilled `n`: one load per trip round the loop. Linear scan,
+choosing by end point, spilled `s`: a load *and* a store per trip,
+because `s` is read and written in the loop. Linear scan never looks
+at loads and stores, only at interval ends; that is where its speed
+comes from, and occasionally its worse choices. Real linear-scan
+allocators add the missing knowledge back, by splitting intervals and
+weighing spill costs, while keeping the single pass.
+
+<Prompts ids={['scan-order', 'scan-expire', 'scan-spill-rule', 'scan-vs-colour']} />
+
+## Allocators that ship
+
+No production compiler uses exactly the textbook version of either
+algorithm; each takes ideas from both.
+
+**LLVM.** The default allocator for optimised builds is the *greedy*
+allocator, "a highly tuned implementation of the *Basic* allocator
+that incorporates global live range splitting" and "works hard to
+minimize the cost of spill code"; debug builds use the *fast* one,
+which works block by block<Cite id="llvm-codegen" />. Greedy takes
+live ranges from a priority queue (ranges that cross blocks go "in
+long->short order", so long ones that do not fit are dealt with
+early), and for each one it tries, in order: a free register; evicting a "less worthy" live range
+that holds one; splitting the range into pieces that fit around the
+interference (but only on its second visit, "when all smaller ranges
+have been allocated"); and finally spilling it<Cite id="llvm-regalloc-greedy" />.
+
+**V8.** TurboFan, V8's top optimising tier, has a
+`LinearScanAllocator`, which splits and spills live ranges as it
+scans; Maglev, the faster tier below it, uses a simpler
+`StraightForwardRegisterAllocator`, which tracks for every register
+whether it is free, used or blocked, and spills a live value "if there
+is register pressure"<Cite id="v8-regalloc-source" />.
+
+**Cranelift.** Cranelift (Wasmtime's code generator) uses regalloc2
+<Cite id="cranelift-isle" />, which "started life as, and is about
+50% still, a port of IonMonkey's backtracking register allocator";
+it groups live ranges into *bundles* with a spill weight, takes them
+from a priority queue, and either allocates a bundle, evicts bundles
+of strictly lower weight, or splits it. It also ships *Fastalloc*,
+"made specifically for fast compile times" and "based on the reverse
+linear scan" algorithm<Cite id="regalloc2" />.
+
+All three share the same questions this part has asked (which values
+overlap, which one is cheapest to keep in memory, which copies can
+vanish), and the interference graph of Chaitin<Cite id="chaitin1982" />
+lives on in them as the idea, even where the graph itself is never
+built. Viscosity, which emits JavaScript, allocates no registers; V8
+runs one of these allocators on its output.
+
+<Prompts ids={['greedy-order']} />
+
+## Your turn
+
+<Exercise id="scan" />
+
+## What you learned
+
+- A **live interval** flattens a live range into one span
+  `[start, end]` over numbered instructions; overlap is two
+  comparisons, at the price of losing the gaps.
+- **Linear scan** sorts intervals by start, keeps the active ones
+  sorted by end, expires those that have ended, and when no register
+  is free spills whichever interval ends last.
+- It is fast because it never builds a graph and never counts costs,
+  and that is also why it sometimes spills a worse value than
+  colouring would.
+- LLVM's greedy allocator, V8's linear scan and Maglev's single-pass
+  allocator, and Cranelift's regalloc2 all mix these ideas: priorities,
+  eviction, splitting and spilling.
+
+Next: the instructions are chosen and the registers assigned; the
+order the instructions run in is still ours to change.
+
+<Quiz />

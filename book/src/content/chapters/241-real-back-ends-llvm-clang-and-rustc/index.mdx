@@ -1,0 +1,254 @@
+---
+n: 241
+day: 61
+part: VII
+title: 'Real back ends: LLVM, clang and rustc'
+tagline: 'Our compiler from the last two chapters is a model; LLVM is the real thing, used by clang, rustc and many other compilers. This chapter reads the IR that clang actually produces for sumsq, and follows it through the optimiser, pass by pass, until the loop disappears altogether.'
+objectives:
+  - Read real LLVM IR, from clang -O0 and -O2, naming its values, types, instructions and flags.
+  - Explain what a pass is in LLVM, and what -O2 means in terms of passes.
+  - Follow sumsq through the passes that change it, and say what each one did.
+  - Write a small constant-folding pass over a typed IR, wrapping as the type demands.
+introduces: [llvm-ir, llvm-pass]
+uses: [ir, ssa, phi-node, ssa-construction, basic-block, cfg, dominator, three-address-code, compiler-pass, pass-manager, analysis-invalidation, constant-folding, induction-variable, natural-loop, loop-preheader, dce, native-pipeline, machine-code, assembly-language, risc-v, front-end-back-end, compiler-pipeline, type-system, function, map, array, test]
+sources: [llvm-readme, llvm-langref, llvm-passes-loops, llvm-new-pm-pass, llvmnewpm]
+---
+import PassSteps from '../../../components/diagrams/ch241/PassSteps';
+import IrLineFigure from '../../../components/diagrams/ch241/IrLineFigure';
+
+## The same function, in a real compiler
+
+The compiler we built in the last two chapters works, but it is a
+model. Many real compilers share one back end, **LLVM**, among them
+clang for C and C++ and rustc for Rust (the next chapter looks inside
+both). In its own words, LLVM is "a toolkit
+for the construction of highly optimized compilers", whose core
+contains the tools and libraries "needed to process intermediate
+representations and convert them into object files", with clang as
+the front end for the C family<Cite id="llvm-readme" />. Here is the
+running example in C, so that clang can compile it:
+
+```c
+long sumsq(long n) {
+  long s = 0;
+  for (long i = 0; i < n; i++)
+    s += i * i;
+  return s;
+}
+```
+
+This chapter reads what clang hands to LLVM, and watches the
+optimiser at work; the next follows LLVM down to RISC-V and looks
+inside clang and rustc.
+
+## LLVM IR
+
+Ask clang for its IR without optimising
+(`clang --target=riscv64 -S -emit-llvm -O0`) and the loop body comes
+out like this (with names kept, `-fno-discard-value-names`):
+
+```text
+for.body:
+  %2 = load i64, ptr %i, align 8
+  %3 = load i64, ptr %i, align 8
+  %mul = mul nsw i64 %2, %3
+  %4 = load i64, ptr %s, align 8
+  %add = add nsw i64 %4, %mul
+  store i64 %add, ptr %s, align 8
+  br label %for.inc
+```
+
+`for.body:` is a basic block's label; `br` ends it with a jump. Names
+starting with `%` are local values and names starting with `@` are
+global ones, such as the function `@sumsq` itself. Every value has a
+**type**: `i64` is a 64-bit integer, `i1` a single bit (the result of a
+comparison), `ptr` an address. At `-O0`, clang gives each variable a
+stack slot (`alloca`) and turns every read into a `load` and every
+write into a `store`, which is simple to produce and correct; the
+optimiser's first job is to take that apart.
+
+<Figure takeaway="Every LLVM instruction names its result, says what it does, and states the type it works on." caption="One instruction from sumsq. nsw promises that the signed addition does not overflow, which later passes may rely on.">
+  <IrLineFigure />
+</Figure>
+
+<Analogy title="sheet music">
+A composer writes in standard notation, and any orchestra in the world
+can play it; the notation knows nothing of who wrote the piece or which
+hall it will be played in. Front ends write LLVM IR, and LLVM can turn
+it into code for any chip it supports.
+<span slot="breaks">Musicians interpret a score; LLVM must keep the
+program's meaning exactly, and the IR is precise enough (typed, with
+flags such as nsw) to say exactly what may and may not change.</span>
+</Analogy>
+
+<Analogy title="a universal travel adapter">
+A travel adapter has one socket for your plug and many plugs for the
+walls of different countries. LLVM IR is the one socket: dozens of
+languages plug into it, and it fits many processors' walls.
+<span slot="breaks">An adapter passes the current through unchanged;
+LLVM spends most of its effort rewriting the program between the two
+ends, which is where the speed comes from.</span>
+</Analogy>
+
+<Callout kind="definition">
+**LLVM IR** is LLVM's intermediate representation: "a Static Single
+Assignment (SSA) based representation that provides type safety,
+low-level operations, flexibility, and the capability of representing
+'all' high-level languages cleanly"<Cite id="llvm-langref" />. It has
+three equivalent forms, an in-memory data structure, on-disk
+**bitcode** and human-readable text<Cite id="llvm-langref" />. A
+function is a list of basic blocks; each instruction produces at most
+one typed value, defined once.
+</Callout>
+
+<Formal title="When IR is well formed">
+
+```text
+for every instruction I that uses %x:
+  def(%x) dominates I
+```
+
+<span slot="read">Wherever a value %x is used, the instruction that
+defines it must dominate the use: every path from the function's entry
+to the use passes through the definition. The Language Reference gives
+%x = add i32 1, %x as a line the parser accepts but which is not well
+formed, because the definition does not dominate its own use; a
+verifier pass checks this rule<Cite id="llvm-langref" />.</span>
+</Formal>
+
+<Examples of="llvm-ir">
+
+```text
+%cmp = icmp slt i64 %i.0, %n
+br i1 %cmp, label %for.body,
+            label %for.end
+```
+
+```text
+%s.0 = phi i64 [ 0, %entry ],
+               [ %add, %for.body ]
+```
+
+```text
+%5 = zext nneg i64 %4 to i65
+%8 = mul i65 %5, %7
+```
+
+</Examples>
+
+The first is the loop test: `icmp slt` compares two `i64`s as signed
+numbers ("signed less than") and produces an `i1`, and `br` jumps to one
+of two blocks on it. The second is a phi node, exactly chapter 192's:
+`s` is 0 when arriving from `entry`, and `%add` when arriving from the
+loop body. The third is from the optimised code we are about to meet:
+LLVM's integer types can be any width from 1 bit to 2²³
+bits<Cite id="llvm-langref" />, and here the optimiser chose 65 bits, one more than the 64 the program uses, so that a product
+cannot overflow.
+
+<Prompts ids={['ir-forms', 'percent-at', 'nsw-what', 'alloca-why']} />
+
+## Passes, and what -O2 means
+
+Everything LLVM does to the IR is done by **passes**. In LLVM's
+current pass manager, a function pass is a class with a `run` method
+that "returns a PreservedAnalyses and takes in some unit of IR along
+with an analysis manager"<Cite id="llvm-new-pm-pass" />: it changes the
+function, or only looks at it, and then says which cached analyses
+(dominator trees, loop information and so on) are still true, so the
+pass manager knows what to recompute (chapter 224's invalidation). A
+pass can be run on its own with `opt -passes=name`, and `-O2` is
+nothing more than a long, carefully ordered list of passes, built by
+`PassBuilder::buildPerModuleDefaultPipeline`<Cite id="llvmnewpm" />.
+
+<Callout kind="definition">
+An **LLVM pass** is one transformation or analysis over LLVM IR, run
+by the pass manager on a module, a function or a loop. A
+transformation pass rewrites the IR and reports which analyses it has
+preserved; an analysis pass computes facts other passes can ask for.
+An optimisation level such as `-O2` is a fixed pipeline of passes.
+</Callout>
+
+Running the `-O2` pipeline on `sumsq` with `-print-changed`, which
+prints the IR after each pass that changed it, shows about 110 pass
+runs, of which 16 changed something. Step through the ones that
+matter:
+
+<PassSteps client:visible />
+
+The first two steps are the SSA construction of chapter 193: LLVM's
+`sroa` pass breaks up stack slots and, where it can, "transforms the
+individual alloca instructions into nice clean scalar SSA
+form"<Cite id="llvm-passes-loops" />. The fourth is the surprise. The
+documentation of `indvars` says that any use outside a loop of a value
+derived from the induction variable "is changed to compute the derived
+value outside of the loop", and that "if the only purpose of the loop
+is to compute the exit value of some derived expression, this
+transformation will make the loop dead"; `loop-deletion` then removes
+such a loop<Cite id="llvm-passes-loops" />. The final `-O2` IR for the
+sum of squares has no loop at all:
+
+```text
+%14 = mul i64 %13, 6148914691236517206
+%15 = add i64 %14, %0
+...
+%20 = add i64 %19, -1
+```
+
+The formula is built from products of `n − 1`, `n − 2` and `n − 3`.
+The odd constant is a division in disguise: 3 × 6148914691236517206
+is 2⁶⁴ + 2, so in 64-bit arithmetic, which wraps, multiplying by it
+is the same as multiplying by two-thirds whenever the number is a
+multiple of 3, as it always is here. (We checked the formula against
+the loop for every `n` from 0 to 2999.)
+
+<Examples of="llvm-pass">
+
+```text
+$ opt -passes=sroa -S sumsq.ll
+```
+
+```text
+$ opt -passes='default<O2>' \
+    -print-changed -disable-output \
+    sumsq.ll
+```
+
+```text
+$ opt -passes='default<O2>' \
+    -print-pipeline-passes \
+    -disable-output sumsq.ll
+annotation2metadata,forceattrs,...
+```
+
+</Examples>
+
+The first runs one pass, SROA, and prints the result: the loads and
+stores become phis. The second runs the whole `-O2` pipeline and prints
+the IR after every pass that changed something, which is how the
+stepper above was made. The third prints the pipeline itself as text,
+a single comma-separated line that runs for several screens. (All three
+are LLVM 18.1.3 as installed on the machine this chapter was written
+on; with `-O0`, clang marks functions `optnone`, so to experiment with
+`opt` on `-O0` output, add `-Xclang -disable-O0-optnone`.)
+
+<Prompts ids={['pass-what', 'preserved', 'o2-list', 'indvars-did', 'magic-constant']} />
+
+## Your turn
+
+<Exercise id="fold-pass" />
+
+## What you learned
+
+- **LLVM IR** is typed SSA: `%` locals, `@` globals, basic blocks
+  ending in branches, phi nodes, integer types of any width, and flags
+  such as `nsw` that record what the front end promises.
+- clang's `-O0` IR keeps every variable in memory; `sroa` builds SSA
+  from it, as chapter 193 did.
+- An **LLVM pass** is one transformation or analysis, and `-O2` is a
+  fixed pipeline of them; for `sumsq`, `indvars` and `loop-deletion`
+  replace the whole loop with a formula.
+
+Next: how LLVM turns that IR into RISC-V instructions, and how clang
+and rustc are put together around it.
+
+<Quiz />

@@ -1,268 +1,229 @@
 // Chapter 373 cards. Keys are stable ids: never rename them.
 
+// Shared by the exercise: a cut-down CollectionPlan.
+const SCAF = `enum Layout {
+    Aos,
+    Soa,
+    Aosoa(u64),
+}
+
+struct Plan {
+    name: String,
+    line: u32,
+    fields: Vec<String>,
+    layout: Layout,
+    reasons: Vec<String>,
+}
+`;
+
+const VERDICT = `fn verdict(l: &Layout) -> String {
+    match l {
+        Layout::Aos => String::from(
+            "kept as array of objects",
+        ),
+        Layout::Soa => String::from(
+            "struct of arrays",
+        ),
+        Layout::Aosoa(b) => format!(
+            "AoSoA, blocks of {b}"
+        ),
+    }
+}`;
+
+const SOL = `${SCAF}
+${VERDICT}
+
+fn header(p: &Plan) -> String {
+    let v = verdict(&p.layout);
+    let fs = p.fields.join(", ");
+    format!(
+        "{} (line {}) {{{fs}}} → {v}",
+        p.name, p.line
+    )
+}
+
+fn report(ps: &[Plan]) -> String {
+    let mut lines = Vec::new();
+    for p in ps {
+        lines.push(header(p));
+        for r in &p.reasons {
+            let l = format!("  · {r}");
+            lines.push(l);
+        }
+    }
+    lines.join("\\n")
+}`;
+
 export const prompts = {
   'rx-one-fn': {
     q: 'How do `explain` and `explain_with_frames` in `plan.rs` share their code?',
     a: 'Both call `explain_text(p, frames)`. `None` gives the plain report; `Some(source)` adds frames.',
   },
-  'rx-zip': {
-    q: 'What does `frames.zip(at)` give, and why is it used there?',
-    a: '`Some((src, at))` only when both are `Some`: a frame needs a source to quote and a position for this reason.',
+  'rx-two-fns': {
+    q: 'The reference has one `explain(p, { frames })`. Why does the port have two public functions instead?',
+    a: 'So a caller who wants the plain report can’t pass a source by accident; each name says what it does, and `compile` calls `explain(&p)`.',
   },
-  'rx-first-site': {
-    q: 'A collection bails out with the same message at two places. Which one does `--frames` show?',
-    a: 'The first: `bail` uses `entry(msg).or_insert(at)`, which only writes a new key.',
+  'rx-braces': {
+    q: 'What does `format!("{{{}}}", "x, y")` produce, and why?',
+    a: '`{x, y}`: in a format string `{{` and `}}` are a literal brace, and `{}` in between is the argument.',
   },
   'rx-refused': {
     q: 'Why does `explain_text` check that a collection has as many reasons as bailouts?',
     a: 'Then reason `k` is bailout `k`, so its message finds its site. Other reasons (annotations, size) get no frame.',
   },
+  'rx-first-site': {
+    q: 'A collection bails out with the same message at two places. Which one does `--frames` show?',
+    a: 'The first: `bail` uses `entry(msg).or_insert(at)`, which only writes a new key.',
+  },
+  'rx-dedupe': {
+    q: 'How does the analysis remove repeated bailout messages, and which copy does it keep?',
+    a: 'It drains the vector into an `IndexSet` and back, which keeps the first of each message, in first-seen order.',
+  },
   'rx-string-index': {
     q: 'In `string_index.js` the reason says line 6 but the frame shows line 4. Why?',
     a: 'The site is the index value’s instruction. In SSA, `k` is the constant `\'5\'`, written on line 4.',
   },
-  'rx-tabs': {
-    q: 'Why does the caret line keep the tabs that come before the code?',
-    a: 'A tab is drawn at different widths by different editors. Copying it means the carets move exactly as far as the code does.',
-  },
-  'rx-clip': {
-    q: 'An element is written across two lines. What does its frame show?',
-    a: 'Only its first line, with carets from the start of the span to the end of that line’s text.',
-  },
-  'rx-bytes': {
-    q: 'Rust spans are UTF-8 byte offsets and TypeScript spans UTF-16 offsets. How do the two frames still match?',
-    a: 'Each engine slices in its own units but counts columns in code points (`chars()` in Rust, `Array.from` in TS).',
-  },
-  'rx-fixtures': {
-    q: 'What checks that `--frames` output matches across the engines?',
-    a: '14 `.frames.txt` fixtures written by `gen_expected.mjs` (checked by `parity.rs`), and the fuzzer on every program it generates.',
-  },
-  'rx-display': {
-    q: 'What does a code frame still get wrong, in both engines?',
-    a: 'A code point is not a screen column: after an emoji drawn two columns wide, the carets start too early.',
-  },
-};
-
-export const examples = {
-  offsets: {
-    lang: 'rust',
-    title: 'Three ways to count the same column',
-    code: `fn main() {
-    let line = "naïve 🎉 ps[0]";
-    let b = line.find("ps").unwrap();
-    let before = &line[..b];
-    let cps = before.chars().count();
-    let u16s =
-        before.encode_utf16().count();
-    println!("UTF-8 bytes:  {b}");
-    println!("UTF-16 units: {u16s}");
-    println!("code points:  {cps}");
-    // Can we cut at byte 3, inside ï?
-    let ok = line.is_char_boundary(3);
-    println!("cut at byte 3: {ok}");
-}`,
+  'rx-none-site': {
+    q: 'Why is a bailout site an `Option<SourceRef>`?',
+    a: 'Some bailouts have no single place in the source, such as “no records are ever added”; they are recorded with `None`.',
   },
 };
 
 export const exercises = {
-  codeFrame: {
+  reportText: {
     lang: 'rust',
-    title: 'A code frame from byte offsets',
+    title: 'The plain report',
     prompt:
-      'Write `code_frame(src, start, end, line)`, a simpler `plan::code_frame`. `start..end` are byte offsets into `src`, and only `\\n` breaks lines. Return two lines with no final newline: `"{line} | {text}"`, where `text` is the line containing `start` with trailing whitespace trimmed; then a gutter of spaces as wide as the line number, `" | "`, a pad, and carets. The pad has one character per code point before `start` on that line: a tab stays a tab, anything else becomes a space. The carets run from `start` to `end`, clipped to the trimmed text, and there is at least one.',
-    starter: `fn code_frame(
-    src: &str,
-    start: usize,
-    end: usize,
-    line: u32,
-) -> String {
+      'Write `report(ps)`, the plain `explain` text. For each plan, in order, a header `{name} (line {line}) {fields} → {verdict}` (the fields joined with `", "` inside braces; the verdict is `kept as array of objects`, `struct of arrays` or `AoSoA, blocks of {b}`), then one line `  · {reason}` (two spaces, a middle dot, a space) per reason. Join all the lines with `\\n`, with no line break at the end. Helper functions are welcome.',
+    starter: `${SCAF}
+fn report(ps: &[Plan]) -> String {
     todo!()
 }`,
-    solution: `fn code_frame(
-    src: &str,
-    start: usize,
-    end: usize,
-    line: u32,
-) -> String {
-    let s = src[..start]
-        .rfind('\\n')
-        .map_or(0, |i| i + 1);
-    let e = src[start..]
-        .find('\\n')
-        .map_or(src.len(), |i| {
-            start + i
-        });
-    let text = src[s..e].trim_end();
-    let before = &src[s..start];
-    let col = before.chars().count();
-    let end = end.max(start).min(e);
-    let up_to =
-        src[s..end].chars().count();
-    let width = up_to
-        .min(text.chars().count())
-        .saturating_sub(col)
-        .max(1);
-    let pad: String = before
-        .chars()
-        .map(|c| match c {
-            '\\t' => c,
-            _ => ' ',
-        })
-        .collect();
-    let num = line.to_string();
-    let gap = " ".repeat(num.len());
-    let car = "^".repeat(width);
-    format!(
-        "{num} | {text}\\n{gap} | {}",
-        pad + &car
-    )
-}`,
-    tests: `#[test]
-fn points_at_the_span() {
-    let src = "let a = ps[0];";
-    assert_eq!(
-        code_frame(src, 8, 13, 1),
-        "1 | let a = ps[0];\\n  |         ^^^^^"
-    );
+    solution: SOL,
+    tests: `fn plan(
+    name: &str,
+    fields: &[&str],
+    layout: Layout,
+    reasons: &[&str],
+) -> Plan {
+    Plan {
+        name: name.to_string(),
+        line: 1,
+        fields: fields
+            .iter()
+            .map(|f| f.to_string())
+            .collect(),
+        layout,
+        reasons: reasons
+            .iter()
+            .map(|r| r.to_string())
+            .collect(),
+    }
 }
 
 #[test]
-fn quotes_only_the_spans_line() {
-    let src = "a();\\nf(ps[1]);\\nb();";
-    let at = src.find("ps").unwrap();
-    assert_eq!(
-        code_frame(src, at, at + 5, 2),
-        "2 | f(ps[1]);\\n  |   ^^^^^"
-    );
+fn a_transformed_collection() {
+    let p = plan("ps", &["x", "vx"],
+        Layout::Soa, &["about 100 elements"]);
+    assert_eq!(report(&[p]),
+        "ps (line 1) {x, vx} → struct of \\
+         arrays\\n  · about 100 elements");
 }
 
 #[test]
-fn counts_columns_in_code_points() {
-    let src = "s = \\"é🎉\\"; g(ps[0]);";
-    let at = src.find("ps").unwrap();
-    assert_eq!(
-        code_frame(src, at, at + 5, 9),
-        "9 | s = \\"é🎉\\"; g(ps[0]);\\n  |             ^^^^^"
-    );
+fn one_line_per_reason() {
+    let p = plan("ps", &["x"], Layout::Aos,
+        &["unsafe: a", "unsafe: b"]);
+    let r = report(&[p]);
+    let lines: Vec<&str> = r.lines().collect();
+    assert_eq!(lines, vec![
+        "ps (line 1) {x} → kept as array of \\
+         objects",
+        "  · unsafe: a",
+        "  · unsafe: b",
+    ]);
 }
 
 #[test]
-fn keeps_tabs_in_the_pad() {
-    let src = "{\\n\\t\\tf(ps[3]);\\n}";
-    let at = src.find("ps").unwrap();
-    assert_eq!(
-        code_frame(src, at, at + 5, 12),
-        "12 | \\t\\tf(ps[3]);\\n   | \\t\\t  ^^^^^"
-    );
+fn aosoa_shows_its_block_size() {
+    let p = plan("qs", &["a"],
+        Layout::Aosoa(4), &[]);
+    assert_eq!(report(&[p]),
+        "qs (line 1) {a} → AoSoA, blocks of 4");
 }
 
 #[test]
-fn clips_a_span_to_its_first_line() {
-    let src = "f(ps[\\n  4]);   ";
-    assert_eq!(
-        code_frame(src, 2, 10, 3),
-        "3 | f(ps[\\n  |   ^^^"
-    );
+fn no_fields_gives_empty_braces() {
+    let p = plan("keep", &[], Layout::Aos,
+        &[]);
+    assert!(report(&[p]).contains("{} →"));
 }
 
 #[test]
-fn trims_blanks_and_never_runs_past() {
-    let src = "q.push(ps[i]);  \\t";
-    let at = src.find("ps").unwrap();
-    assert_eq!(
-        code_frame(src, at, src.len(), 7),
-        "7 | q.push(ps[i]);\\n  |        ^^^^^^^"
-    );
-}`,
+fn collections_follow_each_other() {
+    let a = plan("a", &["x"], Layout::Soa,
+        &["r"]);
+    let b = plan("b", &["y"], Layout::Soa,
+        &[]);
+    let r = report(&[a, b]);
+    assert_eq!(r.lines().count(), 3);
+    assert!(!r.ends_with('\\n'));
+    assert!(r.lines().nth(2).unwrap()
+        .starts_with("b (line 1)"));
+}
+`,
     hints: [
-      '`src[..start].rfind(\'\\n\')` is the break before the line (`None`: the line starts at 0). `src[start..].find(\'\\n\')` is the next one, relative to `start`.',
-      'Count columns with `.chars().count()`, never with byte lengths: `é` is two bytes and `🎉` four, but each is one column here.',
-      'For the width, count code points from the line start to `end.max(start).min(e)`, take the smaller of that and the text’s length, subtract the column, and use `.saturating_sub(col).max(1)`.',
+      'Collect the lines in a `Vec<String>` and finish with `lines.join("\\n")`: `join` puts the separator only between lines, never after the last.',
+      'A small `fn verdict(l: &Layout) -> String` with a `match` keeps `report` short. For `Aosoa(b)`, `format!("AoSoA, blocks of {b}")` uses the number inside the variant.',
+      'In a format string a literal brace is written twice: `format!("{} (line {}) {{{fs}}} → {v}", p.name, p.line)`, where `fs` is `p.fields.join(", ")`. Then push `format!("  · {r}")` for each reason (in a `let` first, if the line gets long).',
     ],
-    walkthrough: `This is the core of \`code_frame\` in \`engine/rust/crates/core/src/plan.rs\`, without the indent and with only \`\\n\` as a line break (the real one also breaks at \`\\r\`, U+2028 and U+2029, whose length in bytes it adds when it steps past one).
+    walkthrough: `**How to think about it.** This is \`explain_text\` from \`engine/rust/crates/core/src/plan.rs\` with \`frames\` always \`None\`, on a cut-down plan. Write the expected text for one collection by hand first: \`ps (line 1) {x, vx} → struct of arrays\`, then \`  · about 100 elements\` on the next line. Two details decide whether a test passes: the braces around the fields, which \`format!\` treats specially, and the line breaks, which go *between* lines and never after the last one. Building a vector of lines and joining it at the end gets the second detail right for free, which is why the real function is written that way.
 
-- **Slicing by bytes is safe here** because every offset is at a character boundary: \`start\` comes from a span, and \`rfind\`/\`find\` return the position of a \`\\n\`. Slicing in the middle of \`é\` would panic.
-- **Columns are code points.** \`before.chars().count()\` is what the TypeScript engine gets from \`Array.from(...)\`. A byte count would push the carets right after any non-ASCII character, which is the first wrong attempt.
-- **The width is clipped twice**: \`min(e)\` stops the span at the end of its line, and \`min(text.chars().count())\` keeps the carets off trimmed blanks. \`saturating_sub\` can't underflow, and \`max(1)\` gives an empty span one caret.
-- **Tabs are copied**, which the second wrong attempt forgets: its carets are right in a terminal with 1-column tabs and wrong everywhere else.`,
+**The solution, line by line.**
+
+- \`fn verdict(l: &Layout) -> String { match l { ... } }\` turns the layout into its words: \`String::from("kept as array of objects")\` for \`Aos\`, \`String::from("struct of arrays")\` for \`Soa\`, and \`format!("AoSoA, blocks of {b}")\` for \`Aosoa(b)\`, where the pattern binds the block size inside the variant to \`b\`. (The real code prints it with \`js_number\`, because there it is a number that must look the way JavaScript prints it.)
+- \`fn header(p: &Plan) -> String {\` builds the first line. \`let v = verdict(&p.layout);\` and \`let fs = p.fields.join(", ");\` prepare the pieces; \`join\` gives \`"x, vx"\`, or \`""\` for no fields.
+- \`format!("{} (line {}) {{{fs}}} → {v}", p.name, p.line)\`: the two \`{}\` take \`p.name\` and \`p.line\`; \`{{\` and \`}}\` print a literal \`{\` and \`}\`, with \`{fs}\` between them; \`{v}\` names a variable directly.
+- \`fn report(ps: &[Plan]) -> String {\` and \`let mut lines = Vec::new();\` start the list of lines.
+- \`for p in ps { lines.push(header(p));\` adds each collection's header, in the plan's order.
+- \`for r in &p.reasons { let l = format!("  · {r}"); lines.push(l); }\` adds one line per reason: two spaces, a middle dot, a space, the reason.
+- \`lines.join("\\n")\` joins everything with line breaks between the lines, and none at the end.
+
+**Common wrong attempts.**
+
+- \`format!("{} (line {}) {fs} → {v}", ...)\` without doubled braces: it compiles, but prints \`ps (line 1) x, vx → ...\`, and every header test fails.
+- Pushing \`"\\n"\` after every line into one \`String\`: the report ends with a line break, which \`collections_follow_each_other\` rejects; the CLI adds that last line break itself when it prints.
+- Writing reasons as \`format!("· {r}")\`: the two leading spaces are part of the format that both engines share, and \`one_line_per_reason\` fails.`,
     wrong: [
       {
-        code: `fn code_frame(
-    src: &str,
-    start: usize,
-    end: usize,
-    line: u32,
-) -> String {
-    let s = src[..start]
-        .rfind('\\n')
-        .map_or(0, |i| i + 1);
-    let e = src[start..]
-        .find('\\n')
-        .map_or(src.len(), |i| {
-            start + i
-        });
-    let text = src[s..e].trim_end();
-    let before = &src[s..start];
-    let col = before.len();
-    let end = end.max(start).min(e);
-    let up_to =
-        src[s..end].chars().count();
-    let width = up_to
-        .min(text.chars().count())
-        .saturating_sub(col)
-        .max(1);
-    let pad: String = before
-        .chars()
-        .map(|c| match c {
-            '\\t' => c,
-            _ => ' ',
-        })
-        .collect();
-    let num = line.to_string();
-    let gap = " ".repeat(num.len());
-    let car = "^".repeat(width);
-    format!(
-        "{num} | {text}\\n{gap} | {}",
-        pad + &car
-    )
-}`,
-        why: 'The column is `before.len()`, a count of bytes. After `"é🎉"` (six bytes, two code points) the carets start four columns too far right, and the width comes out wrong too.',
+        code: SOL.replace('"{} (line {}) {{{fs}}} → {v}",', '"{} (line {}) {fs} → {v}",'),
+        why: 'Without doubled braces the field list loses its `{` and `}`: `ps (line 1) x, vx → struct of arrays`.',
       },
       {
-        code: `fn code_frame(
-    src: &str,
-    start: usize,
-    end: usize,
-    line: u32,
-) -> String {
-    let s = src[..start]
-        .rfind('\\n')
-        .map_or(0, |i| i + 1);
-    let e = src[start..]
-        .find('\\n')
-        .map_or(src.len(), |i| {
-            start + i
-        });
-    let text = src[s..e].trim_end();
-    let before = &src[s..start];
-    let col = before.chars().count();
-    let end = end.max(start).min(e);
-    let up_to =
-        src[s..end].chars().count();
-    let width = up_to
-        .min(text.chars().count())
-        .saturating_sub(col)
-        .max(1);
-    let pad = " ".repeat(col);
-    let num = line.to_string();
-    let gap = " ".repeat(num.len());
-    let car = "^".repeat(width);
-    format!(
-        "{num} | {text}\\n{gap} | {}",
-        pad + &car
-    )
-}`,
-        why: 'The pad is all spaces. Before tab-indented code, the code moves by a tab’s width but the carets move by one space each.',
+        code: SOL.replace(`    let mut lines = Vec::new();
+    for p in ps {
+        lines.push(header(p));
+        for r in &p.reasons {
+            let l = format!("  · {r}");
+            lines.push(l);
+        }
+    }
+    lines.join("\\n")`, `    let mut out = String::new();
+    for p in ps {
+        out += &header(p);
+        out += "\\n";
+        for r in &p.reasons {
+            out += "  · ";
+            out += r;
+            out += "\\n";
+        }
+    }
+    out`),
+        why: 'Every line ends with a line break, so the report has one at the end; the real report joins its lines and leaves the last break to the CLI.',
+      },
+      {
+        code: SOL.replace('let l = format!("  · {r}");', 'let l = format!("· {r}");'),
+        why: 'Each reason line starts with two spaces before the middle dot; without them the text differs from both engines’ reports.',
       },
     ],
   },
@@ -273,8 +234,24 @@ export const quiz = [
     q: 'You run `viscosity explain prog.js` without `--frames`. What does `explain_text` receive as `frames`?',
     options: [
       { t: '`Some("")`', why: 'An empty source would still be `Some`, and frames would be attempted.' },
-      { t: '`None`, so `frames.zip(at)` is always `None` and no frame is printed', correct: true, why: 'The default report is byte-for-byte what it was before frames existed.' },
+      { t: '`None`, so no frame is ever built and the report is the plain one', correct: true, why: '`explain(p)` is `explain_text(p, None)`.' },
       { t: 'The source, but frames are filtered out afterwards', why: 'Nothing is filtered: the frame is never built.' },
+    ],
+  },
+  {
+    q: 'What header does a collection `ps` on line 3 with fields `x` and `vx`, planned as SoA, get?',
+    options: [
+      { t: '`ps (line 3) {x, vx} → struct of arrays`', correct: true, why: 'Name, line in brackets, fields in braces joined by “, ”, an arrow, the verdict.' },
+      { t: '`ps (line 3) x, vx → struct of arrays`', why: 'The braces are part of the header; in the format string they are written `{{` and `}}`.' },
+      { t: '`ps: struct of arrays (x, vx)`', why: 'Both engines use one fixed form, `name (line n) {fields} → verdict`.' },
+    ],
+  },
+  {
+    q: 'A collection bails out with the message “line 7: an element is used by push” at two different places. What is recorded?',
+    options: [
+      { t: 'Both sites, and two reasons', why: 'The messages are deduplicated, so there is one reason, with one site.' },
+      { t: 'One reason, and the site of the first place it was found', correct: true, why: '`entry(msg).or_insert(at)` writes only a new key, and the `IndexSet` keeps the first copy of the message.' },
+      { t: 'One reason, and the site of the last place it was found', why: '`or_insert` never overwrites an existing entry.' },
     ],
   },
   {
@@ -282,33 +259,16 @@ export const quiz = [
     options: [
       { t: 'Every reason of every collection', why: '“typed Float64Array columns for all 8 fields” has no single place in the source.' },
       { t: 'Only reasons of transformed collections', why: 'The other way round: frames explain refusals.' },
-      { t: 'The `unsafe: ...` reasons of a kept collection whose reasons are exactly its bailouts, when a site was recorded', correct: true, why: 'Then reason `k` is bailout `k`, and `bailout_sites` maps its message to an `Option<SourceRef>`.' },
       { t: 'Only the first reason', why: 'Each bailout reason gets its own frame.' },
+      { t: 'The `unsafe: ...` reasons of a kept collection whose reasons are exactly its bailouts, when a site was recorded', correct: true, why: 'Then reason `k` is bailout `k`, and `bailout_sites` maps its message to an `Option<SourceRef>`.' },
     ],
   },
   {
-    q: 'A line is `naïve 🎉 ps[0]`. Where does `ps` start in each unit?',
+    q: 'In `string_index.js`, why does the frame for “line 6: indexes the array with something that may not be a number” show line 4?',
     options: [
-      { t: 'Byte 12, UTF-16 unit 9, code point 8', correct: true, why: '`ï` is 2 bytes but 1 unit; `🎉` is 4 bytes, 2 units (a surrogate pair), 1 code point. The Run example prints these numbers.' },
-      { t: '8 in all three', why: 'Only ASCII text has the same offsets in every unit.' },
-      { t: 'Byte 8, UTF-16 unit 9, code point 12', why: 'Bytes are the biggest count here, code points the smallest.' },
-    ],
-  },
-  {
-    q: 'Why does `code_frame` count `chars()` rather than use the byte offsets directly?',
-    options: [
-      { t: 'Byte offsets can’t be used to slice a Rust string', why: 'They can, at character boundaries; the function slices with them.' },
-      { t: 'Counting chars is faster', why: 'It is slower: the bytes must be decoded.' },
-      { t: 'So that the column means the same as in the TypeScript engine, which counts code points', correct: true, why: 'Bytes (Rust) and UTF-16 units (TS) differ after non-ASCII text; code points agree.' },
-      { t: 'Because oxc reports columns in chars', why: 'oxc reports byte spans and no columns at all.' },
-    ],
-  },
-  {
-    q: 'Both engines print the same frame, but in your terminal the carets after an emoji start one column early. What is going on?',
-    options: [
-      { t: 'A parity bug in the Rust engine', why: 'The TypeScript engine prints the same bytes.' },
-      { t: 'The fixtures are stale', why: 'They match; the bytes are as intended.' },
-      { t: 'Both count columns in code points, and the emoji is one code point drawn two columns wide', correct: true, why: 'Parity can’t catch a mistake both engines share. Fixing it would need a table of character widths.' },
+      { t: 'A bug in the line counter', why: 'Both engines agree, and the line is right for the instruction recorded.' },
+      { t: 'The bailout is about the index value, which in SSA is the constant `\'5\'` written on line 4', correct: true, why: 'The site is the span of the instruction the bailout is about.' },
+      { t: 'Frames always show the line of the collection’s declaration', why: 'The declaration is on line 2; the frame shows the site.' },
     ],
   },
 ];

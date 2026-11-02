@@ -3,71 +3,83 @@ n: 272
 day: 68
 part: IX
 title: 'Shipping Viscosity'
-tagline: 'A compiler that only runs inside its own repository is a prototype. Packing it for strangers turned up three bugs that no test in the repo could see, and version numbers turn out to be promises about what you will and won’t break.'
+tagline: 'A compiler that only runs inside its own repository is a prototype. Packing it for strangers turned up three bugs no test in the repository could see, and publishing it put eight packages on two registries, in an order the registries insisted on.'
 objectives:
-  - Describe what an npm package is, and how name and version identify it.
-  - Explain why the CLI, as first written, couldn’t be installed and run from npm, and what fixed it.
-  - Apply semantic versioning’s rules, including major version zero and caret ranges.
-  - Decide what counts as Viscosity’s public API, and so what a breaking change is.
-introduces: [npm-package, semantic-versioning]
+  - Describe what an npm package is, and how its name and version identify it.
+  - Explain why the CLI, as first written, could not be installed and run from npm, and what fixed it.
+  - Say what was published on 2026-11-02, to which registries, and in what order.
+  - Choose which files go into a package, and in what order packages that depend on each other must be published.
+introduces: [npm-package]
 uses: [module, import-export, program-structure, typescript, type-erasure, string-methods, map-filter-reduce, comparison, test, differential-testing, round-trip-testing, viscosity-pipeline, language-plugin, optimization-report, test-corpus, source-to-source, front-end-back-end]
-sources: [npm-package-json, npm-publish-docs, node-typescript-docs, semver2, node-semver-ranges]
+sources: [npm-package-json, npm-publish-docs, node-typescript-docs]
 ---
 import ShipSteps from '../../../components/diagrams/ch272/ShipSteps';
+import ReleaseOrder from '../../../components/diagrams/ch272/ReleaseOrder';
 
 ## Can I install it?
 
 Somebody reads this book, likes Viscosity, and types
-`npm install viscosity`. What do they get?
+`npm install viscosity`. What do they get? A library at version 0.3.0,
+described as "a sass library for fluid containers that handle aspect
+ratios across device sizes": the name `viscosity` on npm belongs to
+someone else. What they want is this:
 
-A library, version 0.3.0, described as “a sass library for fluid
-containers that handle aspect ratios across device sizes”. The name
-`viscosity` on npm belongs to someone else. And `@viscosity/cli`, the
-name in the repo’s `package.json`? When this chapter was written, the
-registry answered 404. Viscosity wasn’t published, and viscosity.dev’s
-install page said to clone the repository and run the CLI from source.
-(On 2026-11-02 the release script of chapter 386 published it, so
-`npm install -g @viscosity/cli` works now.)
+```text
+$ npm install -g @viscosity/cli
+$ viscosity --version
+viscosity 0.0.1
+```
 
-This chapter is about the last step, from “works on my machine” to
-“works on yours”.
-
-<Callout kind="intuition">
-A package is a sealed box on a warehouse shelf, with a label that says
-exactly what is inside: a name and a version. Once a box with a label is
-on the shelf it never changes. A fix goes into a new box with a new
-label, and the label’s numbers tell the customer how different the new
-box is.
-</Callout>
+That works today, because version 0.0.1 of the compiler was published
+on 2026-11-02, to npm and to crates.io. This chapter is about that last
+step, from "works on my machine" to "works on yours"; the next one is
+about what the number 0.0.1 promises.
 
 ## What a package is
 
-Here is the CLI’s first `package.json`, in
-`engine/ts/packages/cli`:
+<Analogy title="a sealed box with a label">
+A package is a sealed box on a warehouse shelf, with a label that says
+exactly what is inside: a name and a version. Once a labelled box is on
+the shelf it never changes. A fix goes into a new box with a new label,
+and the numbers on the label tell the customer how different the new
+box is.
+<span slot="breaks">A warehouse box is the same for every customer. A
+package can also say which other boxes it needs (its dependencies), and
+those are fetched fresh for each customer, so two people installing the
+"same" package can end up with different contents unless every
+dependency is pinned; Viscosity's CLI avoids that by needing none.</span>
+</Analogy>
 
-```
+Here is the CLI's `package.json` as it is published (some fields left
+out):
+
+```json
 {
   "name": "@viscosity/cli",
   "version": "0.0.1",
-  "description": "The viscosity command:
-    build, explain and profile.",
-  "author": "Tariq Shams",
-  "license": "MIT",
   "type": "module",
-  "bin": { "viscosity": "src/cli.ts" }
+  "bin": {
+    "viscosity": "bin/viscosity.mjs"
+  },
+  "files": ["bin", "dist", "LICENSE",
+    "THIRD_PARTY_LICENSES.txt"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "prepack": "node build.mjs"
+  }
 }
 ```
 
-(The description is wrapped here to fit.) The name and version are the
-only fields npm requires to publish, and together they identify the
-package. `@viscosity/` is a **scope**, a namespace that belongs to a
-user or organization, where only they can add
-packages<Cite id="npm-publish-docs" />. `bin` asks npm to install a `viscosity` command
-that runs `src/cli.ts`<Cite id="npm-package-json" />.
-
-`npm pack` builds the tarball that `npm publish` would upload, and
-`npm pack --dry-run` lists what would go in it without writing
-anything<Cite id="npm-publish-docs" />.
+The name and version are the only fields npm requires, and together
+they identify the package. `@viscosity/` is a **scope**, a namespace
+that belongs to one user or organization, where only they can add
+packages<Cite id="npm-publish-docs" />. `bin` asks npm to install a
+`viscosity` command that runs `bin/viscosity.mjs`<Cite id="npm-package-json" />;
+`files` limits the tarball to those paths; `engines` says which Node
+versions it supports; and `prepack` runs the build before every pack,
+so the tarball always holds a fresh build. `npm pack` makes the tarball
+that `npm publish` would upload, and `npm pack --dry-run` lists what
+would go in it without writing anything<Cite id="npm-publish-docs" />.
 
 <Callout kind="definition">
 An **npm package** is a folder described by a `package.json`, packed
@@ -78,51 +90,82 @@ packages it needs with version ranges, and `engines` says which Node
 versions it supports.
 </Callout>
 
-<Prompts ids={['pkg-what', 'pkg-identity', 'pkg-scope']} />
+<Examples of="npm-package">
+
+```json
+{ "name": "tiny", "version": "1.0.0" }
+```
+
+```text
+$ npm view @viscosity/cli dist.fileCount
+5
+```
+
+```json
+"exports": { ".": {
+  "node": "./dist/node/viscosity_wasm.js",
+  "browser": "./dist/web/viscosity_wasm.js"
+} }
+```
+
+</Examples>
+
+The first is the smallest valid `package.json`: a name and a version,
+nothing else. The second asks the public registry about the real CLI:
+its tarball holds five files (the bin file, the bundle, `package.json`
+and the two licence files). The third is a trimmed piece of
+`@viscosity/wasm`'s `package.json`, the Rust engine compiled to
+WebAssembly from the previous chapter: an `exports` map lets one package
+name hand Node one build and a browser bundler another.
+
+<Prompts ids={['pkg-what', 'pkg-identity', 'pkg-scope', 'pkg-dryrun', 'pkg-files']} />
 
 ## Three bugs nobody could see
 
-To find out what would happen, the author packed that CLI and
-installed the tarball in an empty scratch folder, the way a stranger
-would. Step through it:
+The CLI did not start like that. Before publishing anything, the author
+packed the CLI as it first was and installed the tarball into an empty
+folder, the way a stranger would. Step through what happened:
 
 <ShipSteps client:visible />
 
-None of the three was visible from inside the repository, because there
-everything works:
+<Analogy title="moving out of a flat">
+When you move out, you find out which things were yours and which came
+with the flat: the kettle you used every day turns out to belong to the
+landlord, and the new place has no curtains. A package leaving its
+repository finds out the same way what the repository was quietly
+providing.
+<span slot="breaks">You notice a missing kettle the first morning. A
+package's missing pieces may show up only on a stranger's machine, with
+a different Node version or folder layout, which is why the test is to
+install the tarball somewhere empty, the way a stranger would.</span>
+</Analogy>
+
+None of the three bugs was visible from inside the repository, because
+there everything works:
 
 1. **No dependencies.** `cli.ts` imports the core with a relative path,
-   `'../../core/src/index.ts'`, which only exists in the repo’s folder
-   layout. Its `package.json` declared no dependencies, so npm installed
-   one package and nothing else.
+   `'../../core/src/index.ts'`, which exists only in the repository's
+   folder layout, and its `package.json` declared no dependencies, so
+   npm installed one package and nothing else.
 2. **TypeScript in `node_modules`.** Node 22.18 and later strip
-   TypeScript types by default, which is why the repo runs `.ts` files
-   directly. But Node deliberately refuses to do it under
+   TypeScript types by default, which is why the repository runs `.ts`
+   files directly; however, Node deliberately refuses to do it under
    `node_modules`, to discourage publishing TypeScript
    sources<Cite id="node-typescript-docs" />.
 3. **The silent main check.** `cli.ts` ended with a check, so that
-   importing it in a test doesn’t run it:
+   importing it in a test does not run it, which compared
+   `import.meta.url` with `process.argv[1]`. Run through npm's link in
+   `node_modules/.bin`, `argv[1]` is the link's path, not the file's,
+   so the check was false and the command exited with status 0 having
+   done nothing.
 
-   ```js
-   if (import.meta.url ===
-       `file://${process.argv[1]}`)
-     process.exit(main(argv.slice(2)));
-   ```
-
-   (simplified). Run through npm’s link in `node_modules/.bin`,
-   `argv[1]` is the link’s path, not the file’s, so the check was false
-   and the command exited with status 0 having done nothing.
-
-The fixes were a build step and one small file, and they are in the
-repository now. `build.mjs` runs esbuild, which compiles the TypeScript
-and pulls the core, the front-ends and their parsers (acorn, acorn-walk,
-sucrase) into one file, `dist/viscosity.mjs`. The package has no
-runtime dependencies and needs only Node 18. A bundle contains other
-people’s code, so their MIT licence notices have to ship with it too:
-the build also writes `LICENSE` and `THIRD_PARTY_LICENSES.txt`, holding
-the full licence text of each bundled package.
-And a separate entry file, `bin/viscosity.mjs`, calls `main` without
-any check:
+The fixes were a build step and one small file. `build.mjs` runs
+esbuild, which compiles the TypeScript and pulls the core, the front
+ends and their parsers (acorn, acorn-walk, sucrase) into one file,
+`dist/viscosity.mjs`, so the package has no runtime dependencies; and
+because a bundle contains other people's code, the build also writes
+`LICENSE` and `THIRD_PARTY_LICENSES.txt`. A separate entry file calls
+`main` without any check:
 
 ```js
 #!/usr/bin/env node
@@ -131,125 +174,71 @@ import { main } from
 process.exit(main(process.argv.slice(2)));
 ```
 
-The `#!` line matters: npm’s documentation asks that every `bin` file
-start with it, or the script isn’t run by Node<Cite id="npm-package-json" />.
-The `package.json` gained the rest: `bin` points at that file,
-`"files"` limits the tarball to the bin file, the bundle and the two
-licence files, `engines` says
-`>=18`, and a `prepack` script runs the build, so `npm pack` always
-packs a fresh bundle. (The check in `cli.ts` now compares real paths,
-so even running the source through a link works.) Packed again and
-installed in an empty folder:
+The `#!` line matters: npm's documentation asks that every `bin` file
+start with it, or the script is not run by Node<Cite id="npm-package-json" />.
+(The check in `cli.ts` now compares real paths, so running the source
+through a link works too.)
 
-```
-$ npm pack
-npm notice total files: 5
-$ npm install viscosity-cli-0.0.1.tgz
-$ npx viscosity --version
-viscosity 0.0.1
-$ npx viscosity explain p.js
-ps (line 1) {x, vx} → struct of arrays
-  …
-```
-
-Viscosity wasn’t on the registry yet, but everything up to
-`npm publish` had now been walked.
-
-<Prompts ids={['pkg-ts', 'pkg-deps', 'pkg-main', 'pkg-dryrun']} />
-
-## Version numbers that mean something
-
-The version `0.0.1` isn’t decoration. npm works in **Semantic
-Versioning**: it requires versions that its semver library can
-parse<Cite id="npm-package-json" />. The rules fit in a
-sentence: given MAJOR.MINOR.PATCH, bump MAJOR for incompatible API
-changes, MINOR for backward compatible new features, PATCH for backward
-compatible bug fixes, and reset the numbers to the right of the one you
-bumped<Cite id="semver2" />.
-
-Three details catch people out. The parts are compared as numbers, so
-`1.10.0` is newer than `1.9.0`, even though as strings it sorts first:
-
-<Run id="semver-compare" />
-
-Second, a released version must never change. npm enforces it: once a
-name and version have been published, that pair can never be used
-again, even after unpublishing<Cite id="npm-publish-docs" />. Third,
-major version zero is for initial development, and “anything MAY
-change at any time”<Cite id="semver2" />. npm’s caret ranges follow
-that: a dependency on `^1.2.3` accepts anything below `2.0.0`, but
-`^0.1.0` accepts only `0.1.x`, because in 0.x the minor number is
-treated as the breaking one, and `^0.0.1` accepts no other version at
-all<Cite id="node-semver-ranges" />. That is why Viscosity starts at
-0.0.1: no project that depends on it gets a newer release without
-asking for it.
-
-<Callout kind="definition">
-**Semantic versioning** (semver) numbers releases MAJOR.MINOR.PATCH.
-MAJOR changes when the **public API** breaks, MINOR when it gains
-backward compatible features, PATCH for backward compatible fixes.
-Lower parts reset to 0. Released versions are immutable, and 0.y.z
-promises nothing. Pre-release tags (`1.0.0-beta.1`) sort before the
-release.
-</Callout>
-
-<Prompts ids={['sv-rules', 'sv-zero', 'sv-caret', 'sv-numeric']} />
-
-## What is Viscosity’s public API?
-
-Semver starts with a demand: declare your public API, because the
-numbers only mean something relative to it<Cite id="semver2" />. For a
-library that is its exported functions. For Viscosity it is more:
-
-- **The CLI**: commands and options. viscosity.dev’s CLI reference is
-  generated from `--help`, so the documentation can’t drift from it.
-- **The plugin API** from chapter 243, if other people write plugins.
-- **The explain text.** Chapter 263 argued that if people read the
-  reports, they are part of the interface. Scripts will grep them.
-- **The decisions.** A release that suddenly keeps a collection it
-  used to transform makes someone’s program slower without changing
-  its output.
-
-Is that last one a breaking change? The output is identical, which
-the differential tests check, so by semver’s letter it is a fix or a
-feature. A user who measured a speed-up may disagree. Deciding, and
-writing the decision down, is part of shipping. (One small thing was
-fixed on the way: `viscosity --version` used to print a hard-coded
-version, a second copy of the number in `package.json` that would one
-day disagree with it. Now it reads `package.json`.)
+<Prompts ids={['pkg-ts', 'pkg-deps', 'pkg-main']} />
 
 <Callout kind="engine" label="Under the hood">
-Node’s type stripping replaces type annotations with whitespace and
+Node's type stripping replaces type annotations with whitespace and
 checks nothing. By default it runs only TypeScript whose features need
 no code generation (an `enum` does), so it needs no source maps: line
-numbers stay the same<Cite id="node-typescript-docs" />. That is why the repository
-can run its `.ts` sources directly on Node 22.18 or later, the version
-its own `engines` field asks for, and also why that convenience stops at
-the edge of `node_modules`: the published CLI is plain JavaScript.
+numbers stay the same<Cite id="node-typescript-docs" />. That is why the
+repository can run its `.ts` sources directly on Node 22.18 or later,
+the version its own `engines` field asks for, and also why that
+convenience stops at the edge of `node_modules`: the published CLI is
+plain JavaScript, and asks only for Node 18.
 </Callout>
 
-<Prompts ids={['sv-api']} />
+
+## Out into the world
+
+On 2026-11-02, `scripts/release.sh` published everything at version
+0.0.1: `@viscosity/cli` (the TypeScript engine's command) and
+`@viscosity/wasm` to npm, and the Rust port's six crates to crates.io.
+
+<Figure takeaway="Crates go up in dependency order; a re-run skips what is already there." caption="What was published, and in what order. Each crate needs the ones above it to be on crates.io before it can be uploaded.">
+  <ReleaseOrder />
+</Figure>
+
+Crates go up in dependency order, because cargo will not publish a
+crate whose dependencies are not on crates.io yet: `viscosity-vir` (the
+IR) first,
+then `viscosity-core`, the two front ends, `viscosity-cli` and, last,
+`viscosity-wasm`. The first run published five of them; crates.io then
+answered the sixth with HTTP 429, "published too many new crates in a
+short period" (a limit on how many *new* crates one account may create
+at once), and a re-run about ten minutes later skipped the five already
+there and published the sixth. Both registries were then checked the
+way a stranger would use them: `npm install -g @viscosity/cli` and
+`cargo install viscosity-cli` each give a `viscosity` command whose
+`--version` prints `viscosity 0.0.1`. (Whether the book and docs move
+to the viscosity.dev domain is still the author's decision.)
+
+<Prompts ids={['pkg-order']} />
+
 
 ## Your turn
 
-<Exercise id="bump" />
+<Exercise id="packList" />
 
-<Exercise id="newer" />
+<Exercise id="releaseOrder" />
 
 ## What you learned
 
 - An **npm package** is a tarball described by `package.json`,
   identified by **name** and **version**, with `bin`, `files`,
   `dependencies` and `engines`. The name `viscosity` is taken, so the
-  CLI is `@viscosity/cli` (published on 2026-11-02).
-- Packing and installing the CLI found three bugs: undeclared
-  dependencies, TypeScript under `node_modules`, and a main check that
-  failed through npm’s link. A bundle and a bin entry fixed them, and
-  `npm pack` plus an install now works.
-- **Semantic versioning**: MAJOR.MINOR.PATCH, compared numerically,
-  immutable once released, with 0.y.z promising nothing. `^0.1.0`
-  accepts only `0.1.x`, and `^0.0.1` only 0.0.1.
-- Versions are only meaningful against a declared **public API**,
-  which for Viscosity includes its options, reports and decisions.
+  CLI is `@viscosity/cli`.
+- Packing and installing the CLI found three bugs (undeclared
+  dependencies, TypeScript under `node_modules`, a main check that
+  failed through npm's link); a bundle and a bin entry fixed them.
+- On 2026-11-02, version 0.0.1 went to npm (`@viscosity/cli`,
+  `@viscosity/wasm`) and crates.io (six crates, in dependency order,
+  one of them a day's lesson in rate limits).
+
+Next: what the number 0.0.1 on all of them actually promises.
 
 <Quiz />

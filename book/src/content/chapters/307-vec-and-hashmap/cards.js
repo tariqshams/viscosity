@@ -2,44 +2,36 @@
 
 export const prompts = {
   'vec-three': {
-    q: 'What three things does a `Vec<T>` value itself hold?',
+    q: 'What three things does a `Vec` value itself (on the stack) hold?',
     a: 'A pointer to its heap buffer, its length and its capacity.',
   },
   'vec-cap': {
     q: 'What is the difference between a `Vec`’s length and its capacity?',
-    a: 'Length is how many elements are in use; capacity is how many fit in the buffer before it must reallocate.',
+    a: 'Length is how many elements are in use; capacity is how many fit in the buffer before it must grow.',
   },
   'vec-same-type': {
-    q: 'Why can a `Vec<f64>` store its numbers side by side with no boxes, unlike a JavaScript array?',
-    a: 'Every element has the same type, `f64`, so each takes the same 8 bytes and the buffer is just those values in a row.',
+    q: 'Why can a `Vec<f64>` store its numbers side by side with no boxes?',
+    a: 'Every element has the same type and size, so element i sits at a fixed offset, i × 8 bytes.',
   },
   'vec-get': {
-    q: 'What is the difference between `v[9]` and `v.get(9)` on a short `Vec`?',
-    a: '`v[9]` panics (index out of bounds); `v.get(9)` returns `None`.',
+    q: 'What is the difference between `v[5]` and `v.get(5)` on a two-element `Vec`?',
+    a: '`v[5]` panics (index out of bounds); `v.get(5)` returns `None`.',
   },
   'vec-push-borrow': {
-    q: 'Why won’t Rust let you `push` while holding `let first = &v[0];`?',
-    a: 'The push might reallocate and move the elements, leaving `first` pointing at freed memory. It’s the shared-or-mutable rule.',
+    q: 'Why does Rust reject a `push` while a reference into the `Vec` is still in use?',
+    a: 'The push may move the elements to a new buffer, leaving the reference pointing at freed memory (E0502).',
+  },
+  'vec-oob': {
+    q: 'What happens when a Rust program reads `v[i]` with `i` past the end?',
+    a: 'It panics with “index out of bounds”, instead of reading whatever memory is there.',
   },
   'vec-loops': {
     q: 'What do `for x in &v`, `for x in &mut v` and `for x in v` each give you?',
-    a: 'Shared references, mutable references, or the elements themselves (moving them out and using up `v`).',
+    a: 'A shared reference to each element; a mutable reference to each; the elements themselves, using `v` up.',
   },
-  'map-get': {
-    q: 'Why does `HashMap::get` return an `Option`?',
-    a: 'The key might not be in the map: `None` says so, `Some(&v)` lends the value.',
-  },
-  'map-entry': {
-    q: 'What does `*m.entry(k).or_insert(0) += 1` do?',
-    a: 'Finds the value for `k`, inserting `0` first if it is missing, and adds one to it through the mutable reference.',
-  },
-  'map-order': {
-    q: 'Why does the Rust port of Viscosity use `IndexMap` in places instead of `HashMap`?',
-    a: '`HashMap` iterates in an arbitrary order; `IndexMap` keeps insertion order, like a JavaScript `Map`, so decisions and output match the TypeScript engine.',
-  },
-  'drip-table': {
-    q: 'Why does drip-rs’s table never call a hash function?',
-    a: 'Its keys are interned strings whose handles carry their hash, computed once when the string was interned.',
+  'vec-slice-param': {
+    q: 'Why should a function that only reads numbers take `&[f64]` rather than `&Vec<f64>`?',
+    a: 'A `&Vec<f64>` turns into a slice automatically, and the function then also works on arrays and parts of a `Vec`.',
   },
 };
 
@@ -67,201 +59,98 @@ fn main() {
     }
     println!("{:?}", v);
     println!("{:?}", v.get(9));
+    println!("{:?}", v.pop());
     println!("{}", sum(&v));
-}`,
-  },
-  'map-play': {
-    lang: 'rust',
-    title: 'Counting field uses',
-    code: `use std::collections::HashMap;
-
-fn main() {
-    let fs = ["x", "vx", "x", "y", "x"];
-    let mut n: HashMap<&str, i32> =
-        HashMap::new();
-    for f in fs {
-        *n.entry(f).or_insert(0) += 1;
-    }
-    println!("{:?}", n.get("x"));
-    println!("{:?}", n.get("mass"));
-    n.insert("mass", 0);
-    println!("{}", n.len());
-    // Run it twice: the order changes.
-    println!("{:?}", n);
 }`,
   },
 };
 
+const SIG = `fn add_constant(cs: &mut Vec<f64>,
+    v: f64) -> usize {`;
+
 export const exercises = {
-  countFields: {
+  constants: {
     lang: 'rust',
-    title: 'Count field accesses',
+    title: 'A constant pool without repeats',
     prompt:
-      'Viscosity’s analysis records which fields a loop reads. Write `count_fields(used)`, which takes the field names in the order they were read and returns a `HashMap<String, usize>` from each name to how many times it was read.',
-    starter: `use std::collections::HashMap;
-
-fn count_fields(used: &[&str])
-    -> HashMap<String, usize> {
-    todo!()
+      'Drip’s compiler keeps each function’s constants in a `Vec`, and the bytecode names a constant by its index. Write `add_constant(cs, v)`: if a constant equal to `v` is already in `cs`, return its index and add nothing; otherwise push `v` and return the index it now has. (The companion’s `Chunk::add_constant` always pushes; reusing equal constants keeps the pool small, which matters because an instruction can only name 65,536 of them.)',
+    starter: `${SIG}
+    0
 }`,
-    solution: `use std::collections::HashMap;
-
-fn count_fields(used: &[&str])
-    -> HashMap<String, usize> {
-    let mut n = HashMap::new();
-    for f in used {
-        let k = f.to_string();
-        *n.entry(k).or_insert(0) += 1;
+    solution: `${SIG}
+    let mut i = 0;
+    while i < cs.len() {
+        if cs[i] == v {
+            return i;
+        }
+        i += 1;
     }
-    n
+    cs.push(v);
+    cs.len() - 1
 }`,
     tests: `#[test]
-fn counts_repeats() {
-    let m = count_fields(&["x", "vx", "x"]);
-    assert_eq!(m.get("x"), Some(&2));
-    assert_eq!(m.get("vx"), Some(&1));
+fn first_constant_is_index_zero() {
+    let mut cs = Vec::new();
+    assert_eq!(add_constant(&mut cs, 1.5), 0);
+    assert_eq!(cs, vec![1.5]);
 }
-
 #[test]
-fn one_entry_per_field() {
-    let m = count_fields(&["x", "y", "x", "x"]);
-    assert_eq!(m.len(), 2);
-    assert_eq!(m.get("x"), Some(&3));
+fn new_constants_go_at_the_end() {
+    let mut cs = vec![1.5];
+    assert_eq!(add_constant(&mut cs, 2.5), 1);
+    assert_eq!(add_constant(&mut cs, 7.0), 2);
 }
-
 #[test]
-fn unread_fields_are_absent() {
-    let m = count_fields(&["x"]);
-    assert_eq!(m.get("mass"), None);
-}
-
-#[test]
-fn empty_loop() {
-    assert!(count_fields(&[]).is_empty());
+fn equal_constants_are_reused() {
+    let mut cs = vec![1.5, 2.5];
+    assert_eq!(add_constant(&mut cs, 1.5), 0);
+    assert_eq!(add_constant(&mut cs, 2.5), 1);
+    assert_eq!(cs.len(), 2);
 }`,
     hints: [
-      'Start with `let mut n = HashMap::new();` and return `n` at the end.',
-      'The map owns `String` keys, but you have `&str`s: make one with `f.to_string()`.',
-      'For each name, `*n.entry(k).or_insert(0) += 1;` inserts 0 the first time and then counts.',
+      'Two cases: the value is already there (answer: where it is), or it is not (answer: where you put it). Look first, then add.',
+      'Loop over the indexes with `while i < cs.len()`, and `return i;` as soon as `cs[i] == v`. If the loop finishes, the value is new.',
+      'After the loop, `cs.push(v);`, and the new element’s index is one less than the new length: `cs.len() - 1`, as the last expression.',
     ],
-    walkthrough: `Three ideas from this chapter meet here.
+    walkthrough: `**How to think about it.** Picture the pool \`[1.5, 2.5]\`. Asking for \`2.5\` should give back \`1\` and leave the pool alone; asking for \`7.0\` should give \`[1.5, 2.5, 7.0]\` and return \`2\`. So the function has two jobs, in order: search, and only if the search fails, append. The parameter is \`&mut Vec<f64>\`, a mutable borrow, because the function may grow the caller's \`Vec\`; a plain slice \`&[f64]\` could not, since a slice cannot change length.
 
-- **The map owns its keys.** The return type says \`String\`, not \`&str\`, so the map doesn’t borrow from the caller’s slice. \`f.to_string()\` makes an owned copy, and \`entry(k)\` moves it into the map.
-- **\`entry\` does the “is it there yet?” check for you.** \`or_insert(0)\` puts in a zero only if the key is new, and either way returns \`&mut usize\`. The \`*\` in front lets \`+= 1\` change the number the reference points at.
-- **Lookups give \`Option\`.** The tests compare \`m.get("x")\` with \`Some(&2)\`: a borrowed count, because the map still owns it. \`get\` accepts a \`&str\` even though the keys are \`String\`s.
+**The solution, line by line.**
 
-In TypeScript this would be \`m.set(f, (m.get(f) ?? 0) + 1)\`, which looks the key up twice. The entry API looks it up once.`,
+- \`let mut i = 0;\` starts the search at the first constant.
+- \`while i < cs.len() {\` visits every index that holds an element (from 0 up to, but not including, the length).
+- \`if cs[i] == v { return i; }\` stops at the first equal constant and hands back its index; nothing is added.
+- \`i += 1;\` moves on.
+- \`cs.push(v);\` runs only when no constant matched. It may reallocate the buffer, which is fine: we hold no references into \`cs\`, only the index \`i\`, a plain number.
+- \`cs.len() - 1\` is the index of the element just pushed (with three elements, the last is at index 2). As the last expression it is the return value.
+
+**A note on equality.** \`==\` on \`f64\` is IEEE equality: \`0.0 == -0.0\` is true and \`NaN == NaN\` is false, so a real compiler that deduplicates constants compares their bits instead, to keep \`-0.0\` and every \`NaN\` distinct. The tests here avoid those corners.
+
+**Common wrong attempts.**
+
+- Always pushing (\`cs.push(v); cs.len() - 1\`) passes the first two tests but fills the pool with repeats.
+- Returning \`cs.len()\` after the push is one too many: the last index is the length minus one.
+- Pushing *before* searching finds the value you just pushed every time, so nothing is ever reused correctly and the pool still grows.`,
     wrong: [
       {
-        code: `use std::collections::HashMap;
-
-fn count_fields(used: &[&str])
-    -> HashMap<String, usize> {
-    let mut n = HashMap::new();
-    for f in used {
-        n.insert(f.to_string(), 1);
-    }
-    n
+        code: `${SIG}
+    cs.push(v);
+    cs.len() - 1
 }`,
-        why: '`insert` overwrites, so every field ends up with a count of 1, however often it was read.',
+        why: 'It never looks for an equal constant, so `1.5` added twice is stored twice.',
       },
       {
-        code: `use std::collections::HashMap;
-
-fn count_fields(used: &[&str])
-    -> HashMap<String, usize> {
-    let mut n = HashMap::new();
-    for f in used {
-        let k = f.to_string();
-        n.entry(k).or_insert(1);
-    }
-    n
-}`,
-        why: '`or_insert(1)` only sets the first count. Later reads find the entry already there and change nothing, so repeats are never counted.',
-      },
-    ],
-  },
-  hotFields: {
-    lang: 'rust',
-    optional: true,
-    title: 'The hot fields, in a fixed order',
-    prompt:
-      'Write `hot_fields(n, min)`, which returns the names whose count is at least `min`, **sorted alphabetically** so the answer doesn’t depend on the map’s order. Loop with `for (k, c) in n`, push into a `Vec<String>`, then call `sort()` on it.',
-    starter: `use std::collections::HashMap;
-
-fn hot_fields(
-    n: &HashMap<String, usize>,
-    min: usize,
-) -> Vec<String> {
-    todo!()
-}`,
-    solution: `use std::collections::HashMap;
-
-fn hot_fields(
-    n: &HashMap<String, usize>,
-    min: usize,
-) -> Vec<String> {
-    let mut out = Vec::new();
-    for (k, c) in n {
-        if *c >= min {
-            out.push(k.clone());
+        code: `${SIG}
+    let mut i = 0;
+    while i < cs.len() {
+        if cs[i] == v {
+            return i;
         }
+        i += 1;
     }
-    out.sort();
-    out
+    cs.push(v);
+    cs.len()
 }`,
-    tests: `fn m(xs: &[(&str, usize)]) -> HashMap<String, usize> {
-    let mut n = HashMap::new();
-    for (k, c) in xs {
-        n.insert(k.to_string(), *c);
-    }
-    n
-}
-
-#[test]
-fn keeps_counts_at_or_above_min() {
-    let n = m(&[("x", 3), ("vx", 1), ("y", 2)]);
-    assert_eq!(hot_fields(&n, 2), vec!["x", "y"]);
-}
-
-#[test]
-fn sorted_whatever_the_map_order() {
-    let n = m(&[("z", 5), ("b", 5), ("m", 5), ("a", 5)]);
-    assert_eq!(hot_fields(&n, 1),
-        vec!["a", "b", "m", "z"]);
-}
-
-#[test]
-fn none_hot() {
-    let n = m(&[("x", 1)]);
-    assert!(hot_fields(&n, 2).is_empty());
-}`,
-    hints: [
-      'Looping over `n` (a `&HashMap`) gives pairs of references: `k: &String`, `c: &usize`.',
-      'Compare with `*c >= min`, and push an owned copy of the name: `k.clone()`.',
-      'Call `out.sort();` before returning, so the order is alphabetical.',
-    ],
-    walkthrough: `Iterating a borrowed map lends you each key and value, so \`k\` is a \`&String\`. The \`Vec\` must own its strings, because the result outlives the loop, so you push \`k.clone()\`, a copy.
-
-The sort is the important part. Without it the test “sorted whatever the map order” passes on some runs and fails on others, because \`HashMap\` iteration order is arbitrary. When output must be stable, either sort it, as here, or use an insertion-ordered map such as \`IndexMap\`, as the Rust Viscosity does.`,
-    wrong: [
-      {
-        code: `use std::collections::HashMap;
-
-fn hot_fields(
-    n: &HashMap<String, usize>,
-    min: usize,
-) -> Vec<String> {
-    let mut out = Vec::new();
-    for (k, c) in n {
-        if *c > min {
-            out.push(k.clone());
-        }
-    }
-    out.sort();
-    out
-}`,
-        why: '“At least `min`” includes `min` itself. With `>` a field read exactly `min` times is dropped.',
+        why: 'After the push the new element is at `len - 1`, not `len`: the first constant gets index 1.',
       },
     ],
   },
@@ -280,9 +169,9 @@ export const quiz = [
   {
     q: 'What does the standard library promise about how much a `Vec` grows?',
     options: [
-      { t: 'It always doubles', why: 'Doubling is what this machine showed, but the docs explicitly guarantee no particular strategy.' },
-      { t: 'It grows by one element each time', why: 'That would make `push` O(n), and the docs promise amortized O(1).' },
-      { t: 'No particular strategy, but `push` is amortized O(1)', correct: true, why: 'Also guaranteed: `with_capacity(n)` allocates exactly enough for n, and a Vec never shrinks by itself.' },
+      { t: 'It always doubles', why: 'Doubling is what this machine showed, but the docs guarantee no particular strategy.' },
+      { t: 'No particular strategy, but `push` is amortized constant time', correct: true, why: 'Also promised: `with_capacity(n)` has room for at least n, and a Vec never shrinks by itself.' },
+      { t: 'It grows by one element each time', why: 'That would make n pushes cost n² work; the docs promise amortized constant time.' },
     ],
   },
   {
@@ -290,34 +179,24 @@ export const quiz = [
     options: [
       { t: '`let a = v[0]; v.push(1.0); println!("{}", a);` for a `Vec<f64>`', why: '`v[0]` copies the `f64` out, so nothing borrows `v` during the push.' },
       { t: '`let a = &v[0]; println!("{}", a); v.push(1.0);`', why: 'The borrow ends after its last use, before the push.' },
-      { t: '`let a = &v[0]; v.push(1.0); println!("{}", a);`', correct: true, why: 'The shared borrow `a` is still used after the mutable borrow for `push`: E0502.' },
       { t: '`v.push(1.0); let a = &v[0]; println!("{}", a);`', why: 'The push is finished before the borrow starts.' },
+      { t: '`let a = &v[0]; v.push(1.0); println!("{}", a);`', correct: true, why: 'The shared borrow `a` is still used after the mutable borrow for `push`: E0502.' },
     ],
   },
   {
-    q: 'What is `m.get("x")` for a `HashMap<String, usize>` that holds `"x"` with count 2?',
+    q: 'What does `xs.pop()` return when `xs` is `vec![1.5, 2.5]`, and when it is empty?',
     options: [
-      { t: '`2`', why: '`get` can fail, so it doesn’t return a bare value.' },
-      { t: '`Some(&2)`', correct: true, why: 'An `Option` holding a reference: the map keeps owning the value.' },
-      { t: '`Some(2)`', why: 'It lends the value instead of copying or moving it out.' },
-      { t: '`Ok(2)`', why: 'A missing key isn’t an error with a reason; it’s an absence, so `Option`.' },
+      { t: '`2.5`, and `0.0` when empty', why: 'There is no sensible default, so `pop` returns an `Option`.' },
+      { t: '`Some(2.5)`, and `None` when empty', correct: true, why: 'It removes the last element and wraps it; an empty `Vec` has nothing to give.' },
+      { t: '`Some(1.5)`, and `None` when empty', why: '`pop` takes from the end, like a stack.' },
     ],
   },
   {
-    q: 'You print a `HashMap` in two runs of the same program and get different orders. Why?',
+    q: 'After `for x in v { ... }`, can you call `v.len()`?',
     options: [
-      { t: 'A bug in your program', why: 'It is documented behaviour: iteration order is arbitrary.' },
-      { t: 'The default hasher is randomly seeded, so keys land in different slots each run', correct: true, why: 'The random seed is part of resisting HashDoS attacks. Sort, or use an insertion-ordered map, when order matters.' },
-      { t: 'HashMap sorts by the time each key was last read', why: 'It keeps no such information.' },
-    ],
-  },
-  {
-    q: 'How does drip-rs’s `Table` differ from std’s `HashMap`?',
-    options: [
-      { t: 'It is a struct of arrays with linear probing and tombstones, and its interned keys carry their hash', correct: true, why: 'It is chapter 146’s table, ported. std’s map is a SwissTable port with quadratic probing and SipHash 1-3.' },
-      { t: 'It is a wrapper around `HashMap`', why: 'It is its own open-addressing table over two `Vec`s.' },
-      { t: 'It uses SipHash to resist attacks', why: 'It never hashes during lookups; the hash was computed when the string was interned.' },
-      { t: 'It keeps keys in sorted order', why: 'It keeps them in hash order, by slot.' },
+      { t: 'No: the loop moved the elements out and used `v` up (E0382)', correct: true, why: 'rustc’s help suggests `for x in &v` to borrow instead.' },
+      { t: 'Yes: loops always borrow', why: 'Only `&v` and `&mut v` borrow; plain `v` is moved into the loop.' },
+      { t: 'Yes, and it returns 0', why: 'It doesn’t compile at all.' },
     ],
   },
 ];

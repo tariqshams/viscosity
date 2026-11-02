@@ -45,7 +45,7 @@ export default function SliceSteps() {
                 stroke={inside ? tok('safe') : tok('line')}>
                 <T x={x0 + k * cw + cw / 2} y={cy} size={14} mono anchor="middle">{c === ' ' ? '·' : c}</T>
               </Box>
-              <T x={x0 + k * cw + cw / 2} y={cy + 26} size={10} mono anchor="middle" fill={tok('muted')}>{k}</T>
+              <T x={x0 + k * cw + cw / 2} y={cy + 26} size={11} mono anchor="middle" fill={tok('muted')}>{k}</T>
             </g>
           );
         })}
@@ -53,7 +53,7 @@ export default function SliceSteps() {
           <g>
             <rect x={x0 + lo * cw} y={cy - 20} width={(hi - lo) * cw} height={40} rx={4} fill="none" stroke={tok('safe')} strokeWidth={2.5} />
             <Box x={110} y={130} w={180} h={40} r={6} fill={tok('safe', 0.12)} stroke={tok('safe')}>
-              <T x={122} y={141} size={10} fill={tok('muted')}>slice: {st.type}</T>
+              <T x={122} y={141} size={11} fill={tok('muted')}>slice: {st.type}</T>
               <T x={122} y={159} size={13} mono>ptr → [{lo}]   len = {hi - lo}</T>
             </Box>
             <Arrow x1={150} y1={130} x2={x0 + lo * cw + cw / 2} y2={cy + 34} color={tok('safe')} />

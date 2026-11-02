@@ -21,21 +21,17 @@ export const prompts = {
     q: 'The TS CLI runs `process.execPath`. Which `node` does the Rust CLI run?',
     a: 'Whatever `node` is on the `PATH`. The Rust binary has no Node of its own; if none is found it says profiling needs Node.js.',
   },
-  'pg-filter-map': {
-    q: 'What does `read_profile` accept from the JSON?',
-    a: 'An object whose every entry is an object with a finite, non-negative `maxLength`, as `name -> f64`. Anything else is an error.',
+  'pg-drop': {
+    q: 'How does `profile` make sure its temporary directory is removed, even when it returns early with `?`?',
+    a: 'The directory is owned by a `TempDir` guard whose `Drop` calls `remove_dir_all`; `drop` runs on every way out of the function.',
   },
-  'pg-strict': {
-    q: 'A hand-edited profile says `"maxLength": "20"`. What do the two CLIs do?',
-    a: 'Both stop with the same error: the entry must be an object whose maxLength is a non-negative number. (Once, Rust skipped it and TypeScript used it.)',
+  'pg-exit-error': {
+    q: 'Why is a non-zero exit from the profiled program an error, even though the exit hook wrote the JSON?',
+    a: 'A partial run’s sizes could mislead the planner, so both CLIs refuse to use them.',
   },
-  'pg-by-name': {
-    q: 'Two functions each build an array called `ps`, of 1000 and 10 elements. What does the profile say?',
-    a: 'One entry, `"ps": { "maxLength": 1000 }`, used for both collections. Profiles are keyed by name.',
-  },
-  'pg-cant': {
-    q: 'Name two kinds of program `viscosity profile` can’t profile.',
-    a: 'Any of: an ES module with `import` (run as CommonJS), a program that throws or exits non-zero, a Python file.',
+  'pg-literal': {
+    q: 'What does `instrument` make of `const ps = [{ x: 1 }, { x: 2 }];`?',
+    a: '`const ps = __vsc_track("ps", [{ x: 1 }, { x: 2 }]);`: the whole literal is wrapped, so its elements count towards the length.',
   },
 };
 
@@ -125,16 +121,28 @@ fn no_spans_no_change() {
     assert_eq!(instrument(src, &[]), src);
 }`,
     hints: [
-      'Copy the slice into a `Vec` (`spans.to_vec()`) so you can sort it, and `src` into a `String` (`to_string()`) so you can edit it.',
+      'Copy the slice into a `Vec` (`spans.to_vec()`) so you can sort it, and `src` into a `String` (`src.to_string()`) so you can edit it.',
       'Sort with `sort_by_key(|e| std::cmp::Reverse(e.0))`: the edit furthest into the text goes first, so it can’t move any span that is still to do.',
-      'In the loop, build the wrapper from `&out[start..end]`, then `out.replace_range(start..end, &w)`.',
+      'In the loop, build the wrapper from `&out[start..end]` with `format!("__vsc_track({:?}, {})", name, ...)`, then `out.replace_range(start..end, &w)`.',
     ],
-    walkthrough: `This is the loop of \`instrument\` in \`engine/rust/crates/cli/src/profile.rs\`.
+    walkthrough: `**How to think about it.** This is the edit loop of \`instrument\` in \`engine/rust/crates/cli/src/profile.rs\`. Try two spans by hand on \`const a = []; const b = [];\`: \`a\`'s \`[]\` is at bytes 10..12 and \`b\`'s at 23..25. Wrap \`a\` first and it becomes \`__vsc_track("a", [])\`, 18 bytes longer, so \`b\`'s \`[]\` is now at 41..43, and cutting at 23..25 would cut the wrong text. Wrap \`b\` first and \`a\`'s offsets haven't moved at all. So the whole exercise is "apply the edits from the end of the text backwards".
 
-- **Why last first.** After \`a\` becomes \`__vsc_track("a", [])\`, everything behind it has moved 18 bytes. An edit at offset 20 would now cut the wrong text, which is what the first wrong attempt does. Edits from the end only change text after every span still to come.
-- **Byte offsets.** oxc's spans are UTF-8 byte offsets, and a Rust \`String\` is sliced and edited by byte offsets, so \`replace_range\` cuts exactly at the span even after \`é🎉\` (six bytes). The TypeScript version slices its UTF-16 string by UTF-16 offsets, the same idea in its own units.
-- **Quoting.** The real code quotes with \`serde_json::to_string(name)\`. For ASCII names, \`{:?}\` gives the same text; for some other characters their escapes differ, and serde_json's are valid JavaScript.
-- \`insert_str\` instead of \`replace_range\` (the second wrong attempt) keeps the original span after the wrapper, so every array literal appears twice.`,
+**The solution, line by line.**
+
+- \`let mut edits = spans.to_vec();\` copies the slice into a vector we own, because a \`&[...]\` can't be sorted in place.
+- \`edits.sort_by_key(|e| std::cmp::Reverse(e.0));\` sorts by start, largest first: \`Reverse\` wraps the key so that the usual ascending sort comes out descending.
+- \`let mut out = src.to_string();\` makes an editable \`String\` from the \`&str\`.
+- \`for (start, end, name) in edits {\` takes each edit, the last one in the text first, destructuring the tuple.
+- \`let w = format!("__vsc_track({:?}, {})", name, &out[start..end]);\` builds the wrapper: \`{:?}\` prints the name with quotes (\`"ps"\`), and \`&out[start..end]\` is the span's text, sliced from \`out\` (nothing before or at this span has changed yet).
+- \`out.replace_range(start..end, &w);\` swaps the span for the wrapper, in place. The offsets are bytes, which is what \`String\` is indexed by; they come from oxc, so they are always at character boundaries.
+- \`out\` is returned.
+
+The real code quotes with \`serde_json::to_string(name)\` instead of \`{:?}\`: for ordinary names they give the same text, but for some characters their escapes differ, and serde_json's are always valid JavaScript.
+
+**Common wrong attempts.**
+
+- Editing front to back, in the order given: the first replacement makes the text longer, so every later \`(start, end)\` points at the wrong bytes.
+- Using \`insert_str(start, &w)\` instead of \`replace_range\`: the wrapper is added but the original span stays after it, so \`x=[]\` becomes \`x=__vsc_track("x", [])[]\`.`,
     wrong: [
       {
         code: `// Wraps each span src[start..end] (byte
@@ -222,20 +230,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which statement about a profile is true?',
+    q: 'Why does `profile` own its temporary directory through a `TempDir` value with a `Drop` impl?',
     options: [
-      { t: 'It holds per-field read counts', why: 'It holds only `maxLength` per name.' },
-      { t: 'It distinguishes two arrays called `ps` in different functions', why: 'It is keyed by name, so they share an entry, the larger length.' },
-      { t: 'Each length is read once, when the program exits', correct: true, why: 'The exit hook reads `a.length` of every tracked array and keeps the maximum per name.' },
-      { t: 'It can make a collection unsafe to transform', why: 'It is read after every safety check: it can only change the size threshold.' },
-    ],
-  },
-  {
-    q: 'The planner’s message with a profile is worded differently in the two engines, yet every test passes. Why?',
-    options: [
-      { t: 'The tests ignore explain text', why: 'Parity compares explain text byte for byte.' },
-      { t: 'No fixture was compiled with `--profile`, and the fuzzer didn’t pass one either', correct: true, why: 'Parity holds for the inputs and options that are tested, and only those.' },
-      { t: 'The wording is chosen at random', why: 'It is a fixed `format!` string with its parts in a different order.' },
+      { t: 'Because Rust has no function to delete a directory', why: '`fs::remove_dir_all` is exactly that function; `Drop` decides when it runs.' },
+      { t: 'So the directory is removed on every way out, including each early `?` and `return Err(...)`', correct: true, why: '`drop` runs when the guard goes out of scope, however the function ends.' },
+      { t: 'So node can delete it after the run', why: 'Node never touches it; the Rust process removes it.' },
     ],
   },
 ];

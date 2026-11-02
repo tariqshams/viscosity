@@ -5,6 +5,8 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 // line is real output from the author's experiment on 2026-10-31 (npm pack,
 // a scratch install with Node v22.23.4, and npm view), shortened to fit.
 // The fixes it led to are in the repository now (bin/, dist/, build.mjs).
+// The last step was re-checked against the public registry on 2026-11-02
+// (npm view, npm install into an empty folder, crates.io's API).
 const STAGES = ['pack', 'install', 'run', 'publish'];
 
 type State = { stage: number; ok: boolean[]; term: string[]; note: string };
@@ -17,7 +19,8 @@ const STATES: State[] = [
   { stage: 2, ok: [true, true, false, false], term: ['$ node build.mjs   # esbuild', '  dist/viscosity.mjs  1.0mb', '"bin": { "viscosity":', '  "bin/viscosity.mjs" }', '"files": ["bin", "dist"]'], note: 'The fix for both problems: a build step. Bundling compiles the TypeScript and pulls in the core, the front-ends, acorn, acorn-walk and sucrase, so the package has one JavaScript file, no runtime dependencies and no missing pieces.' },
   { stage: 2, ok: [true, true, false, false], term: ['$ npx viscosity explain a.js', '$ echo $?', '0', '# nothing printed at all'], note: 'Now it runs and prints nothing, successfully. cli.ts only calls main() when import.meta.url equals the script path in process.argv[1]. Through npm’s bin link, argv[1] is the link, not the real file, so the check fails silently.' },
   { stage: 2, ok: [true, true, true, false], term: ['// bin/viscosity.mjs', "import { main } from", "  '../dist/viscosity.mjs';", 'process.exit(', '  main(process.argv.slice(2)));', '$ npx viscosity explain a.js', 'ps (line 1) {x, vx} → struct of arrays'], note: 'A tiny entry file that always calls main() fixes it. The installed command now gives the same report as the repo’s. Three bugs, none visible from inside the repository.' },
-  { stage: 3, ok: [true, true, true, false], term: ['$ npm view viscosity description', "'A sass library for fluid containers", "that handle aspect ratios across", "device sizes'", '$ npm view @viscosity/cli', '404 Not Found'], note: 'On 2026-10-31, publishing hadn’t happened. The plain name viscosity already belongs to an unrelated Sass library, and no @viscosity package existed. A scoped package needs a matching npm organization and --access public. (Both were set up, and @viscosity/cli 0.0.1 was published on 2026-11-02.)' },
+  { stage: 3, ok: [true, true, true, false], term: ['$ npm view viscosity description', "'A sass library for fluid containers", "that handle aspect ratios across", "device sizes'", '$ npm view @viscosity/cli', '404 Not Found'], note: 'On 2026-10-31, publishing hadn’t happened. The plain name viscosity already belongs to an unrelated Sass library, and no @viscosity package existed. A scoped package needs a matching npm organization and --access public. The next step shows how that ended.' },
+  { stage: 3, ok: [true, true, true, true], term: ['$ npm view @viscosity/cli version', '0.0.1', '$ npm install @viscosity/cli', '$ npx viscosity --version', 'viscosity 0.0.1', '# also on crates.io: six crates, 0.0.1'], note: 'On 2026-11-02 the release script published @viscosity/cli and @viscosity/wasm to npm, and six Rust crates to crates.io, all at version 0.0.1. Installed from the public registry into an empty folder, the command reports its version and gives the same explain output as the repository.' },
 ];
 
 export default function ShipSteps() {
@@ -36,7 +39,7 @@ export default function ShipSteps() {
             <g key={name}>
               <Box x={x} y={6} w={bw} h={40} r={6} fill={on ? tok('brand', 0.12) : ok ? tok('safe', 0.12) : tok('panel')} stroke={on ? tok('brand') : col}>
                 <T x={x + bw / 2} y={20} size={12} weight={700} anchor="middle">{name}</T>
-                <T x={x + bw / 2} y={36} size={10} anchor="middle" fill={ok ? tok('safe') : on ? tok('danger') : tok('muted')}>{ok ? 'works' : on ? 'broken' : 'not yet'}</T>
+                <T x={x + bw / 2} y={36} size={11} anchor="middle" fill={ok ? tok('safe') : on ? tok('danger') : tok('muted')}>{ok ? 'works' : on ? 'broken' : 'not yet'}</T>
               </Box>
             </g>
           );

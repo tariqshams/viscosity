@@ -1,27 +1,31 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 318: who checks a read. Safe indexing compares the index with
-// the length first (and panics); a raw-pointer read checks nothing, so
-// the programmer's SAFETY argument is the only check. Reading past the
-// end through a raw pointer is undefined behaviour (Rust Reference,
-// "Behavior considered undefined"); the "?" slot is illustrative.
+// Chapter 318: who checks a read. Indexing and get compare the index
+// with the length (and panic, or return None); get_unchecked, an unsafe
+// fn, does not check in a release build, so the caller's SAFETY argument
+// is the only check. Reading past the end is undefined behaviour (Rust
+// Reference, "Behavior considered undefined"). The outcomes quoted in the
+// notes were observed with rustc 1.97.0 on x86-64 Linux: a debug build
+// aborted with "unsafe precondition(s) violated"; release builds printed
+// garbage (index from black_box) or died with "Illegal instruction"
+// (constant index). The "?" slot is illustrative.
 const CODE = `let xs = [1.5, 2.5, 4.0];
-xs[2]
 xs[3]
-unsafe { *p.add(2) }
-unsafe { *p.add(3) }`;
+xs.get(3)
+unsafe { *xs.get_unchecked(2) }
+unsafe { *xs.get_unchecked(3) }`;
 
 type Who = 'rust' | 'you' | 'nobody' | 'forbid';
 type S = { line: number | null; i: number | null; check: string | null; ok: boolean | null; who: Who; out: string; note: string };
 
 const STATES: S[] = [
-  { line: 0, i: null, check: null, ok: null, who: 'rust', out: '', note: 'Three f64s, 8 bytes each, side by side. p = xs.as_ptr() points at the first. The slot after the end belongs to something else, or to nothing.' },
-  { line: 1, i: 2, check: '2 < 3', ok: true, who: 'rust', out: '4', note: 'Safe indexing compares the index with the length first. 2 < 3, so the read happens.' },
-  { line: 2, i: 3, check: '3 < 3', ok: false, who: 'rust', out: 'panic', note: 'Here the check fails, so Rust panics before touching memory. Loud, but nothing was read or corrupted.' },
-  { line: 3, i: 2, check: null, ok: true, who: 'you', out: '4', note: 'Through a raw pointer there is no check at all. The read is right only because you made sure 2 < 3 before writing it: that promise goes in a SAFETY comment.' },
-  { line: 4, i: 3, check: null, ok: false, who: 'nobody', out: '??', note: 'Break the promise and the read goes past the end. This is undefined behaviour: it may print junk, crash, or be “optimized” into something else. No panic warns you.' },
-  { line: null, i: null, check: null, ok: null, who: 'forbid', out: '', note: 'With #![forbid(unsafe_code)] the last two lines don’t compile at all. drip-rs can only write the first two kinds of read.' },
+  { line: 0, i: null, check: null, ok: null, who: 'rust', out: '', note: 'Three f64s, 8 bytes each, side by side. The slot after the end belongs to something else, or to nothing.' },
+  { line: 1, i: 3, check: '3 < 3', ok: false, who: 'rust', out: 'panic', note: 'Indexing compares the index with the length first. 3 < 3 is false, so Rust panics before touching memory: loud, but nothing wrong was read.' },
+  { line: 2, i: 3, check: '3 < 3', ok: false, who: 'rust', out: 'None', note: 'get makes the same check and returns None instead of panicking, so the caller decides what to do.' },
+  { line: 3, i: 2, check: null, ok: true, who: 'you', out: '4', note: 'get_unchecked is an unsafe fn: in a release build it makes no check at all. The read is right only because you made sure 2 < 3 first; that promise goes in a SAFETY comment.' },
+  { line: 4, i: 3, check: null, ok: false, who: 'nobody', out: '??', note: 'Break the promise and the read goes past the end: undefined behaviour. A debug build here aborted with “unsafe precondition(s) violated”, an optional check; release builds printed junk like -186027976, or died with “Illegal instruction”.' },
+  { line: null, i: null, check: null, ok: null, who: 'forbid', out: '', note: 'With #![forbid(unsafe_code)] at the top of the crate, the last two lines do not compile at all. drip-rs can only write the first two kinds of read.' },
 ];
 
 const VALS = ['1.5', '2.5', '4.0', '?'];
@@ -53,7 +57,7 @@ export default function UncheckedSteps() {
                 stroke={col ? tok(col) : tok('line')}>
                 <T x={x + 42} y={50} size={13} mono anchor="middle" fill={past ? tok('muted') : undefined}>{v}</T>
               </Box>
-              <T x={x + 42} y={82} size={10} mono anchor="middle" fill={tok('muted')}>{past ? 'past the end' : `[${k}]`}</T>
+              <T x={x + 42} y={82} size={11} mono anchor="middle" fill={tok('muted')}>{past ? 'past the end' : `[${k}]`}</T>
             </g>
           );
         })}

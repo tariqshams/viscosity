@@ -1,0 +1,323 @@
+---
+n: 316
+split_of: 316
+day: 79
+part: XI
+title: 'Padding and repr'
+tagline: 'A u8 and a u32 hold five bytes of data and take eight. The three extra bytes are padding; where they go, how field order changes them, and how #[repr] lets you pin a layout down is what makes drip-rs’s values 16 bytes.'
+objectives:
+  - Work out where padding goes in a struct, and why a size is a multiple of its alignment.
+  - Explain why the default representation may reorder fields, and what that saves.
+  - Say what repr(C), repr(u8), repr(align) and repr(packed) promise, and when you need each.
+  - Read drip-rs’s 16-byte Value and its hash table’s columns byte by byte.
+introduces: [padding, repr]
+uses: [size-of, alignment, rust, rust-functions, scalar-types, struct, enum, option, vec, rust-generics, arena, typed-index, byte, memory, address, pointer, contiguous, cache-line, spatial-locality, tagged-value, value-representation, float64, opcode, chunk, hash-table, aos-vs-soa, webassembly, linear-memory]
+sources: [rustref-type-layout, rust-std-size-of, rust-std-option]
+---
+import PadSteps from '../../../components/diagrams/ch316b/PadSteps';
+import ValueLayout from '../../../components/diagrams/ch316b/ValueLayout';
+
+## Five bytes in eight
+
+*Memory layout in Rust* ended on a puzzle: a `(u8, u32)` holds one
+byte and four bytes, five in all, yet `size_of` says 8. You already
+know half the answer, since the `u32` has alignment 4 and so may not
+start at address 1; this chapter is the other half, the bytes that
+fill the gap, and the attribute that lets you decide the layout
+yourself.
+
+<Analogy title="chapters that start on a right-hand page">
+Many printed books start every chapter on a right-hand page, so when a
+chapter ends on a right-hand page, the printer leaves the next page
+blank. Nothing is printed there; it exists only so the next chapter
+starts where it must. Those blank pages are padding: a `u32` "starts on
+a right-hand page" (a multiple of 4), so the three bytes after a `u8`
+are left blank.
+<span slot="breaks">A printer does it for looks, and keeps the
+chapters in the author's order; the compiler does it because the
+hardware wants aligned values, and (unless you say otherwise) it may
+move fields around to need fewer blank pages.</span>
+</Analogy>
+
+<Analogy title="a wedding hall with tables of eight">
+A family of eight must sit at one table, together. If two guests have
+already sat down at table one, the family goes to table two, and six
+chairs at table one stay empty. The hall is also booked in whole
+tables, so a party of seventeen pays for twenty-four chairs.
+<span slot="breaks">Latecomers could fill empty chairs; padding bytes
+are never used for anything, and safe Rust cannot even read what is in
+them.</span>
+</Analogy>
+
+The second picture has both kinds of padding in it. Step through the
+compiler laying out a `u8`, an `f64` and another `u8`:
+
+<PadSteps client:visible />
+
+The first gap (the six empty chairs) puts the `f64` at a multiple of
+8. The second, at the end, is the hall booked in whole tables: the
+struct's size must be a multiple of its alignment, so that in an array
+the *next* struct's `f64` is aligned too.
+
+<Examples of="padding">
+
+```text
+# rustc -Zprint-type-sizes (trimmed)
+`TokC`: 12 bytes, alignment: 4 bytes
+    field `.kind`: 1 bytes
+    padding: 3 bytes
+    field `.start`: 4 bytes
+    field `.len`: 2 bytes
+    end padding: 2 bytes
+```
+
+```rust
+struct R3 { a: u8, b: f64, c: u8 }
+#[repr(C)]
+struct C3 { a: u8, b: f64, c: u8 }
+// size_of::<R3>() 16, b@0 a@8 c@9
+// size_of::<C3>() 24, a@0 b@8 c@16
+```
+
+```text
+# the same flag on drip-rs (trimmed)
+`value::Value`: 16 bytes, alignment: 8
+    discriminant: 1 bytes
+    variant `Number`: 15 bytes
+        padding: 7 bytes
+        field `.0`: 8 bytes, alignment: 8
+    variant `String`: 11 bytes
+        padding: 3 bytes
+        field `.0`: 8 bytes, alignment: 4
+    variant `Bool`: 1 bytes
+```
+
+</Examples>
+
+<Figure takeaway="A Value is a tag byte, padding up to its payload's alignment, and the payload; the biggest payload sets the size." caption="drip-rs's Value, drawn from that report: 16 bytes, aligned to 8. Five of its eleven variants shown; the other handles sit like List's.">
+  <ValueLayout />
+</Figure>
+
+The first is rustc's own report for a token-like struct marked
+`#[repr(C)]` (`kind: u8, start: u32, len: u16`), printed by the
+nightly-only flag `-Zprint-type-sizes`, which the book ran with rustc
+1.97: one byte of `kind`, three of padding so `start` lands on 4, two
+of `len`, and two more at the end to reach 12, a multiple of 4. The
+second is the diagram's struct, twice. With `#[repr(C)]` it is 24
+bytes, of which 14 are padding; without it, rustc 1.97 put `b` first
+and packed `a` and `c` behind it, and `offset_of!` reported 16 bytes
+(the token struct, likewise, shrank from 12 to 8). The third is the
+real thing, drip-rs's `Value`, drawn below: the tag-and-payload layout
+of *Sum types in memory*, with a one-byte tag and each variant's
+payload at its own alignment after it. A `Number`'s `f64` needs
+offset 8, so seven bytes of padding come first; a `String` holds a
+`StrRef` (a 4-byte handle and a 4-byte hash, aligned to 4) at offset 4,
+filling bytes 4 to 11; a `Bool` sits right after the tag. The biggest
+variant ends at byte 16, and 16 is a multiple of 8, so that is the
+size. That is also why drip-rs can store each string's hash inside the
+value for free: those bytes were there anyway.
+
+<Callout kind="definition">
+**Padding** is bytes the compiler leaves unused inside a type: before
+a field, so that it starts at a multiple of its alignment, and at the
+end, so that the size is a multiple of the type's alignment and the
+next element of an array is aligned too<Cite id="rustref-type-layout" />.
+</Callout>
+
+<Formal title="The repr(C) layout rule">
+
+```text
+off₁ = 0
+offᵢ = up(offᵢ₋₁ + sizeᵢ₋₁, alignᵢ)
+A    = max(align₁ … alignₙ)
+size = up(offₙ + sizeₙ, A)
+up(n, a) = ⌈n / a⌉ × a
+```
+
+<span slot="read">The first field goes at offset 0. Each later field
+goes at the end of the one before it, rounded up to the next multiple
+of its own alignment. The struct's alignment A is the largest field
+alignment, and its size is the end of the last field rounded up to a
+multiple of A. "up of n and a" means the first multiple of a that is
+at least n: the align_up of the last chapter's exercise.</span>
+</Formal>
+
+<Prompts ids={['pad-what', 'tail-pad', 'reorder', 'pad-value']} />
+
+## Choosing a layout: repr
+
+Rust's default layout, the one with no attribute, promises very
+little: each field is aligned and fields do not overlap, and that is
+all, so the order you write is not the order you get, and it may
+change between compiler versions<Cite id="rustref-type-layout" />. That
+freedom is what let rustc shrink `R3`. However, sometimes another
+program reads your bytes: a C library expecting a C struct, a
+WebAssembly host reading linear memory, a file format with fixed
+offsets. Then you need a promise, and `#[repr(...)]` is how you ask
+for one.
+
+<Analogy title="a printed form">
+A tax office's printed form puts every box at a fixed spot, so a
+scanning machine can find "date of birth" without reading the rest.
+Your own notes on the same facts can be arranged however is neatest.
+`#[repr(C)]` is the printed form; the default representation is your
+notes.
+<span slot="breaks">A form's layout helps people too; `repr(C)` only
+helps other programs, and fixing the offsets does not make a Rust
+`String` field mean anything to C.</span>
+</Analogy>
+
+<Analogy title="shipping containers">
+Containers have their corner fittings in exactly the same places, so
+any crane in any port can lift any of them; the contents are each
+shipper's business. A `repr` is that standard for a type's outside:
+offsets and sizes others can rely on.
+<span slot="breaks">Every container is the same size; each `repr(C)`
+struct has its own layout, computed by a rule, and both sides must
+apply the same rule to the same fields.</span>
+</Analogy>
+
+<Examples of="repr">
+
+```rust
+#[repr(C)]
+struct TokC {
+    kind: u8, start: u32, len: u16,
+}
+// 12 bytes, in this order, always
+```
+
+```rust
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpCode {
+    Const,
+    None,
+    True,
+    // ...
+}
+```
+
+```rust
+#[repr(align(64))]
+struct Line { x: f64 }
+// size_of 64, align_of 64
+
+#[repr(C, packed)]
+struct K3 { a: u8, b: f64, c: u8 }
+// size_of 10, align_of 1
+```
+
+</Examples>
+
+The first fixes `TokC`'s layout to C's rule, declaration order with
+the padding from the formula: 12 bytes, and the same 12 bytes a C
+compiler would produce, which is the point. The second is from
+drip-rs's `chunk.rs` (trimmed): on an enum whose variants carry no
+data, `#[repr(u8)]` makes the tag exactly one `u8`, so each opcode is
+the byte that encodes it and writing one into a chunk is `op as u8`,
+which costs nothing; the numbering is declaration order, matching the
+TypeScript VM's opcode table. The third shows the two modifiers:
+`align(64)` raises a type's alignment, so each `Line` starts its own
+cache line (useful when two threads would otherwise fight over one
+line), and `packed` removes the padding, leaving fields misaligned.
+
+That last one has a sharp edge, and rustc guards it:
+
+```rust
+let k = K3 { a: 1, b: 2.5, c: 3 };
+let r = &k.b;
+// error[E0793]: reference to field of
+//   packed struct is unaligned
+// = note: creating a misaligned
+//   reference is undefined behavior
+let b = k.b; // fine: a copy, 2.5
+```
+
+A reference promises an aligned value, and `k.b` sits at offset 1, so
+rustc 1.97 refuses to make one (the message above is its own, trimmed);
+copying the field out into a local, as the last line does, is allowed,
+because the compiler then reads it byte by byte.
+
+<Callout kind="definition">
+A **`#[repr(...)]`** attribute chooses a type's **representation**,
+which decides its layout. The default (`Rust`) guarantees only aligned,
+non-overlapping fields. `repr(C)` lays fields out in declaration order
+by C's rule, so the layout is fixed. A primitive representation such
+as `repr(u8)` makes a field-less enum exactly that integer type.
+`align(N)` raises the alignment to N; `packed` lowers it, removing
+padding<Cite id="rustref-type-layout" />.
+</Callout>
+
+<OtherLanguages title="The same 24-byte struct">
+
+```rust
+#[repr(C)]
+struct C3 { a: u8, b: f64, c: u8 }
+// size_of::<C3>() == 24
+```
+
+```c
+struct C3 {
+    uint8_t a; double b; uint8_t c;
+};
+/* sizeof(struct C3) == 24 (gcc 13) */
+```
+
+```ts
+// No structs in memory; lay it out by
+// hand in an ArrayBuffer, as Part II did:
+const buf = new ArrayBuffer(24);
+const v = new DataView(buf);
+v.setUint8(0, 1);          // a
+v.setFloat64(8, 2.5, true); // b
+v.setUint8(16, 3);         // c
+```
+
+</OtherLanguages>
+
+Rust with `repr(C)` and C agree byte for byte, which is what lets the
+two share memory. TypeScript has no structs in memory at all; to get
+the same bytes you choose the offsets yourself in an `ArrayBuffer`, as
+*Memory is one long array* did, and nothing checks your arithmetic.
+
+<Prompts ids={['repr-c', 'repr-u8', 'packed-ref']} />
+
+<Callout kind="engine" label="Under the hood">
+drip-rs's hash table keeps its keys and values in two `Vec`s,
+`keys: Vec<Option<StrRef>>` and `values: Vec<Value>`, and layout shows
+what that buys. A key is 12 bytes (an 8-byte `StrRef` and a 4-byte
+tag, since every `u32` handle is valid and there is no niche) and a
+value 16, so the two columns cost 28 bytes per slot, while one
+`Vec<(Option<StrRef>, Value)>` would cost 32, rounded up to the
+pair's alignment of 8 (all three sizes measured with rustc 1.97). And
+probing past occupied slots reads only the 12-byte keys, five to a
+cache line. It is *AoS vs SoA, measured* again, chosen by hand; the
+next chapter does the same for particles.
+</Callout>
+
+<Prompts ids={['table-soa']} />
+
+## Your turn
+
+The core exercise is the formula above, checked against the compiler;
+the second shows what reordering buys.
+
+<Exercise id="cLayout" />
+
+<Exercise id="tightLayout" />
+
+## What you learned
+
+- **Padding** fills the gap before a misaligned field and the gap
+  after the last one, so the size is a multiple of the alignment.
+- The default representation may **reorder** fields to need less
+  padding (16 bytes rather than 24), but promises no order.
+- **`#[repr(C)]`** fixes declaration order by C's rule;
+  **`#[repr(u8)]`** makes an enum one byte; `align` and `packed` raise
+  or lower alignment, and a reference to a packed field is error E0793.
+- drip-rs's `Value` is a tag, padding and a payload: 16 bytes.
+
+Next: struct of arrays, written by hand.
+
+<Quiz />

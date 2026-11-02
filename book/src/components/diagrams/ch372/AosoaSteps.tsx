@@ -51,13 +51,13 @@ export default function AosoaSteps() {
                 <Box key={c} x={10 + c * cw + k * 4} y={top + r * ch} w={cw - 2} h={ch - 4} r={2}
                   fill={on ? tok(FC[k], 0.55) : filled ? tok(FC[k], 0.15) : tok('panel')}
                   stroke={on ? tok('ink') : tok(FC[k], 0.6)} dash={!filled}>
-                  <T x={10 + c * cw + k * 4 + (cw - 2) / 2} y={top + r * ch + (ch - 4) / 2} size={rows > 3 ? 8.5 : 10} mono anchor="middle" fill={filled ? undefined : tok('muted')}>
+                  <T x={10 + c * cw + k * 4 + (cw - 2) / 2} y={top + r * ch + (ch - 4) / 2} size={11} mono anchor="middle" fill={filled ? undefined : tok('muted')}>
                     {filled ? `${fieldName(k)}${i}` : rows > 3 && r >= ROWS ? '' : slot}
                   </T>
                 </Box>
               );
             })}
-            <T x={396} y={top + r * ch + (ch - 4) / 2} size={9} anchor="end" fill={tok('muted')}>{rows > 3 ? '' : `block ${r}`}</T>
+            <T x={396} y={top + r * ch + (ch - 4) / 2} size={11} anchor="end" fill={tok('muted')}>{rows > 3 ? '' : `block ${r}`}</T>
           </g>
         ))}
         {st.formula && (

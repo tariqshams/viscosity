@@ -76,6 +76,7 @@ export default {
     } },
     { n: 240, title: 'Drip to RISC-V, end to end', introduces: {
       'native-pipeline': 'source to native code through every stage',
+      'isa-simulator': 'a program that runs machine instructions in software, one at a time',
     } },
     { n: 241, title: 'Real back ends: LLVM, clang and rustc', introduces: {
       'llvm-ir': 'LLVM’s typed SSA IR',

@@ -62,7 +62,7 @@ export default function ArenaSteps() {
           const col = st.bad === 'panic' && target ? tok('danger') : st.bad === 'wrong' && target ? tok('warn') : target ? tok('brand') : tok('line');
           return (
             <g key={i}>
-              <T x={sx(i) + 30} y={32} size={10} mono anchor="middle" fill={tok('muted')}>{i}</T>
+              <T x={sx(i) + 30} y={32} size={11} mono anchor="middle" fill={tok('muted')}>{i}</T>
               <Box x={sx(i)} y={40} w={60} h={36} r={4} fill={target ? tok('brand', 0.12) : tok('panel')} stroke={exists ? col : tok('line')} dash={!exists} opacity={exists ? 1 : 0.4}>
                 <T x={sx(i) + 30} y={58} size={13} mono anchor="middle" fill={v ? tok('ink') : tok('muted')}>
                   {exists ? (v ? `Some(${v})` : 'None') : ''}

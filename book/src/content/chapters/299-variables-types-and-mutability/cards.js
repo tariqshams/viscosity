@@ -4,7 +4,7 @@
 export const prompts = {
   'vr-let-const': {
     q: 'Which TypeScript keyword behaves like Rust’s plain `let`?',
-    a: '`const`: the variable can’t be assigned again.',
+    a: '`const`: the variable cannot be assigned again.',
   },
   'vr-mut-let': {
     q: 'How do you write TypeScript’s `let count = 0;` in Rust, if `count` will change?',
@@ -12,156 +12,114 @@ export const prompts = {
   },
   'vr-deep': {
     q: 'In TypeScript you can `push` onto a `const` array. Can you push onto a Rust `Vec` bound with plain `let`?',
-    a: 'No. Rust’s immutability covers the value itself, so you need `let mut`.',
+    a: 'No. Rust’s immutability covers the value itself, so you need `let mut` (rustc reports E0596).',
+  },
+  'vr-unused-mut': {
+    q: 'You write `let mut x = 5;` and never change `x`. What does rustc do?',
+    a: 'It compiles, with a warning: “variable does not need to be mutable”.',
   },
   'vr-shadow': {
     q: 'What does `let x = x * 10;` do when `x` already exists?',
     a: 'It shadows `x`: it makes a new variable called `x` from the old value. The old variable is not changed.',
   },
-  'vr-default': {
-    q: 'What types does Rust infer for `let n = 5;` and `let f = 2.5;`?',
-    a: '`i32` and `f64`.',
+  'vr-shadow-type': {
+    q: 'Why may a shadowing `let` change a name’s type, when assigning to a `mut` variable may not?',
+    a: 'Shadowing makes a new variable, which can have any type. Assignment puts a new value into the same variable, whose type is fixed.',
   },
-  'vr-usize': {
-    q: 'Which integer type does Rust use for indexes and lengths?',
-    a: '`usize`: unsigned, and as wide as an address on the machine.',
+  'vr-shadow-scope': {
+    q: 'An inner block does `let x = x * 10;`. After the block’s `}`, what does `x` mean?',
+    a: 'The outer `x` again, with its old value: the shadow lasts only until the end of its block.',
   },
-  'vr-char': {
-    q: 'How many bytes is a Rust `char`, and what does it hold?',
-    a: 'Four bytes, holding one Unicode scalar value.',
-  },
-  'vr-int-div': {
-    q: 'What is `7 / 2` in Rust, with no type annotations?',
-    a: '`3`. Both are `i32`, and integer division cuts toward zero.',
-  },
-  'vr-as': {
-    q: 'How do you add an `i32` called `a` to an `f64` called `b`?',
-    a: 'Convert explicitly: `a as f64 + b`. Rust never converts between number types silently.',
-  },
-  'vr-overflow': {
-    q: 'A `u8` holding 255 gets `+ 1`. What happens in a debug build, and in a release build?',
-    a: 'Debug: the program panics (“attempt to add with overflow”). Release: it wraps to 0. Either way, it’s a bug unless you used `wrapping_add`.',
+  'vr-const': {
+    q: 'Name two ways a Rust `const` differs from an immutable `let`.',
+    a: 'Any two of: its type must be written; its value must be known at compile time; it can never be `mut`; it may be declared outside every function.',
   },
 };
 
-export const examples = {
-  types: {
-    title: 'Numbers with types',
-    lang: 'rust',
-    code: `fn main() {
-    let a: i32 = 7;
-    let b: f64 = 2.0;
-    println!("{}", a / 2);
-    println!("{}", a as f64 / b);
-    println!("{}", -7 / 2);
-
-    let big: i32 = 300;
-    println!("{}", big as u8);
-
-    let r: u8 = 255;
-    println!("{}", r.wrapping_add(1));
-    println!("{}", u8::MAX);
-    println!("{}", i32::MAX);
-
-    let mut n = 0;
-    n += 1;
-    let n = n * 10;
-    println!("{n}");
-}`,
-  },
-};
+export const examples = {};
 
 export const exercises = {
-  mean: {
+  'sum-to': {
     lang: 'rust',
-    title: 'The mean, without losing the half',
-    prompt: `A benchmark harness adds up its run times in whole milliseconds (an \`i32\`) and counts its runs (another \`i32\`). Write \`mean(total, count)\` so it returns the mean as an \`f64\`, **keeping the fraction**: \`mean(7, 2)\` is \`3.5\`.`,
-    starter: `fn mean(total: i32, count: i32) -> f64 {
-    todo!()
+    title: 'Make the counter count',
+    prompt: `This function should add up the whole numbers from 1 to \`n\` (so \`sum_to(4)\` is 1 + 2 + 3 + 4 = 10), but it does not compile. Read what rustc would say, and fix it by changing **only** how the variables are declared.`,
+    starter: `fn sum_to(n: i64) -> i64 {
+    let total = 0;
+    let i = 1;
+    while i <= n {
+        total += i;
+        i += 1;
+    }
+    return total;
 }`,
-    solution: `fn mean(total: i32, count: i32) -> f64 {
-    return total as f64 / count as f64;
+    solution: `fn sum_to(n: i64) -> i64 {
+    let mut total = 0;
+    let mut i = 1;
+    while i <= n {
+        total += i;
+        i += 1;
+    }
+    return total;
 }`,
     tests: `#[test]
-fn seven_over_two_is_three_and_a_half() {
-    assert_eq!(mean(7, 2), 3.5);
+fn one_to_four_is_ten() {
+    assert_eq!(sum_to(4), 10);
 }
 
 #[test]
-fn exact_division() {
-    assert_eq!(mean(9, 3), 3.0);
+fn zero_is_zero() {
+    assert_eq!(sum_to(0), 0);
 }
 
 #[test]
-fn a_third() {
-    let m = mean(1, 3);
-    assert!((m - 0.333333).abs() < 1e-5);
+fn one_to_a_hundred() {
+    assert_eq!(sum_to(100), 5050);
 }`,
     hints: [
-      'The answer must be an `f64`, but both inputs are `i32`. Something has to convert them.',
-      '`as f64` converts a value. Where you put it matters.',
-      'If you divide first, `7 / 2` is already `3` before any conversion. Convert both numbers, then divide.',
+      'Which variables does the loop change? Look for `+=`.',
+      'Both `total` and `i` are changed inside the loop, and Rust’s plain `let` is like TypeScript’s `const`.',
+      'Declare both with `let mut`: `let mut total = 0;` and `let mut i = 1;`. `n` is only read, so it needs nothing.',
     ],
-    walkthrough: `Two Rust rules meet here.
+    walkthrough: `**How to think about it.** Start from the compiler’s point of view: which names are given a new value after their \`let\`? In this function that is any variable on the left of a \`+=\`. rustc would report E0384, “cannot assign twice to immutable variable”, for each of them, with a \`help:\` line pointing at the \`let\` to change. The loop itself (\`while i <= n\`, no brackets round the condition, braces always) is already right.
 
-- **No silent conversions.** \`total / count\` is an \`i32\`, and the function promises an \`f64\`, so it doesn't compile. You have to write \`as f64\` somewhere.
-- **Integer division truncates.** \`(total / count) as f64\` compiles, but by the time \`as\` runs, \`7 / 2\` has already become \`3\`, so you get \`3.0\`.
+**The solution, line by line.**
 
-So convert *first*: \`total as f64 / count as f64\`. \`as\` binds tighter than \`/\`, so this reads as \`(total as f64) / (count as f64)\`: a float divided by a float, which keeps the half.
+- \`fn sum_to(n: i64) -> i64 {\` takes a whole number \`n\` and returns one. \`n\` is only read, so it stays immutable.
+- \`let mut total = 0;\` starts the running sum at 0. It changes on every pass, so it needs \`mut\`. Its type is worked out from how it is used: it is added to \`i\` and returned as an \`i64\`, so it is an \`i64\`.
+- \`let mut i = 1;\` is the counter, also changed on every pass.
+- \`while i <= n {\` repeats while the counter has not passed \`n\`. For \`n = 0\` the condition is false at once, the body never runs, and the answer is 0.
+- \`total += i;\` adds the counter to the sum. This is the line that needs \`total\` to be \`mut\`.
+- \`i += 1;\` moves the counter on. Forget it and the loop never ends.
+- \`return total;\` sends the sum back: 10 for \`n = 4\`, 5050 for \`n = 100\`.
 
-In TypeScript every number is already a float, so this bug can't happen there. In Rust it is one of the first you'll meet. The fix is always the same: decide where the conversion goes.`,
+**Common wrong attempts.**
+
+- Making only \`total\` mutable: \`i += 1\` is then still an assignment to an immutable variable, and the program still does not compile. Every variable that changes needs its own \`mut\`.
+- “Fixing” it with shadowing, \`let total = total + i;\` inside the loop. That compiles (once \`i\` is \`mut\`), but it makes a *new* \`total\` inside the loop body each time round, which disappears at the loop’s \`}\`. The outer \`total\` is never changed, so the function returns 0. rustc even warns that the inner \`total\` is never used.`,
     wrong: [
       {
-        code: `fn mean(total: i32, count: i32) -> f64 {
-    return (total / count) as f64;
+        code: `fn sum_to(n: i64) -> i64 {
+    let mut total = 0;
+    let i = 1;
+    while i <= n {
+        total += i;
+        i += 1;
+    }
+    return total;
 }`,
-        why: 'This divides two integers first, so `mean(7, 2)` is `3.0`: the half is gone before `as` runs.',
+        why: '`i` changes too (`i += 1`), so it also needs `mut`. This still fails with E0384.',
       },
       {
-        code: `fn mean(total: i32, count: i32) -> f64 {
-    return total / count;
+        code: `fn sum_to(n: i64) -> i64 {
+    let total = 0;
+    let mut i = 1;
+    while i <= n {
+        let total = total + i;
+        i += 1;
+    }
+    return total;
 }`,
-        why: 'This doesn’t compile: `total / count` is an `i32`, and the function must return an `f64`. Rust won’t convert for you.',
-      },
-    ],
-  },
-  'byte-counter': {
-    optional: true,
-    lang: 'rust',
-    title: 'A counter that wraps like a byte',
-    prompt: `Drip bytecode is a list of \`u8\`s. Write \`next(x)\`, which returns \`x + 1\` as a \`u8\`, except that \`next(255)\` must be \`0\` (wrap around, like a one-byte counter), in debug **and** release builds.`,
-    starter: `fn next(x: u8) -> u8 {
-    todo!()
-}`,
-    solution: `fn next(x: u8) -> u8 {
-    return x.wrapping_add(1);
-}`,
-    tests: `#[test]
-fn counts_up() {
-    assert_eq!(next(0), 1);
-    assert_eq!(next(41), 42);
-}
-
-#[test]
-fn wraps_at_255() {
-    assert_eq!(next(255), 0);
-}`,
-    hints: [
-      'Try the obvious `x + 1` first, and look at which test fails and why.',
-      'Tests are debug builds, and debug builds check for overflow.',
-      'Integers have methods that wrap on purpose: `wrapping_add`.',
-    ],
-    walkthrough: `\`x + 1\` passes \`counts_up\` and fails \`wraps_at_255\`: the test panics with “attempt to add with overflow”, because tests run as debug builds, and debug builds check every addition.
-
-\`x.wrapping_add(1)\` says what you mean: wrap around on overflow, in every kind of build. 255 plus one becomes 0.
-
-That's the Rust habit to take away. If the wrap is a bug, debug builds catch it for you. If the wrap is the point, ask for it by name.`,
-    wrong: [
-      {
-        code: `fn next(x: u8) -> u8 {
-    return x + 1;
-}`,
-        why: 'Fine for 0 to 254, but `next(255)` overflows, and the debug build panics instead of wrapping.',
+        why: 'The inner `let total` shadows the outer one only until the loop body’s `}`, so the outer `total` stays 0 and every call returns 0.',
       },
     ],
   },
@@ -175,9 +133,9 @@ let total = 0;
 total += 5;
 \`\`\``,
     options: [
-      { t: 'Yes, `total` becomes 5', why: 'In TypeScript, `let` would allow this, but Rust’s `let` is like `const`.' },
-      { t: 'Yes, but it prints a warning', why: 'It’s an error, not a warning: E0384, “cannot assign twice to immutable variable”.' },
-      { t: 'No; it needs `let mut total = 0;`', correct: true, why: 'Without `mut`, the binding can’t be changed.' },
+      { t: 'Yes, `total` becomes 5', why: 'In TypeScript `let` would allow this, but Rust’s `let` is like `const`.' },
+      { t: 'Yes, but it prints a warning', why: 'It is an error, not a warning: E0384, “cannot assign twice to immutable variable”.' },
+      { t: 'No; it needs `let mut total = 0;`', correct: true, why: 'Without `mut`, the binding cannot be changed.' },
       { t: 'No; Rust has no `+=`', why: 'Rust has `+=`. The problem is the missing `mut`.' },
     ],
   },
@@ -197,39 +155,41 @@ println!("{x}");
     ],
   },
   {
-    q: 'Which type would you use for an index into a `Vec`?',
+    q: `Why does this fail, when the shadowing version would not?
+\`\`\`rust
+let mut n = "5";
+n = 5;
+\`\`\``,
     options: [
-      { t: '`i32`', why: 'Indexes can’t be negative, and Rust indexes with `usize`.' },
-      { t: '`f64`', why: 'An index is a whole number; Rust won’t index with a float.' },
-      { t: '`u8`', why: 'That only reaches 255.' },
-      { t: '`usize`', correct: true, why: 'Unsigned and as wide as an address: big enough for any index the machine can reach.' },
+      { t: '`n` needs to be declared without `mut`', why: 'Without `mut` the assignment would fail for a different reason (E0384).' },
+      { t: 'Assignment keeps the variable’s type, and `n` holds text, not a number', correct: true, why: 'rustc reports E0308, “expected `&str`, found integer”. A second `let n = 5;` would make a new variable instead.' },
+      { t: 'Numbers can never be assigned in Rust', why: 'They can, to a `mut` variable of a number type.' },
+      { t: 'It compiles, and `n` becomes 5', why: 'Rust never changes a variable’s type behind your back.' },
     ],
   },
   {
-    q: 'What is `-7 / 2` in Rust (both `i32`)?',
+    q: `What does this print?
+\`\`\`rust
+let x = 1;
+{
+    let x = 2;
+}
+println!("{x}");
+\`\`\``,
     options: [
-      { t: '`-3.5`', why: 'That’s TypeScript’s answer. Integer division gives an integer.' },
-      { t: '`-4`', why: 'Rust cuts toward zero, not downward.' },
-      { t: '`-3`', correct: true, why: 'Integer division truncates toward zero.' },
-      { t: 'A compile error', why: 'Dividing two `i32`s is fine.' },
+      { t: '`2`', why: 'The inner `x` is a different variable, and it ended at the `}`.' },
+      { t: 'A compile error: `x` declared twice', why: 'Shadowing is allowed, inside a block or not.' },
+      { t: 'Nothing: `x` was dropped', why: 'The outer `x` lives until the end of the outer block.' },
+      { t: '`1`', correct: true, why: 'The shadow lasted only until the end of its block; the outer `x` was never changed.' },
     ],
   },
   {
-    q: 'A `u8` variable holds 255 and your code adds 1. You run the tests (a debug build). What happens?',
+    q: 'Which line is a valid Rust constant?',
     options: [
-      { t: 'It becomes 256', why: 'A `u8` can’t hold 256.' },
-      { t: 'The program panics: attempt to add with overflow', correct: true, why: 'Debug builds check integer arithmetic. A release build would wrap to 0.' },
-      { t: 'It becomes 0 silently', why: 'That’s what a release build does. Debug builds check.' },
-      { t: 'The compiler always rejects it', why: 'Only when it can see the overflow at compile time. Usually the value comes from elsewhere, so the check happens at run time.' },
-    ],
-  },
-  {
-    q: 'Why doesn’t `let a: i32 = 1; let b: f64 = 2.5; a + b` compile?',
-    options: [
-      { t: 'Rust can’t add numbers of two different types without an explicit `as`', correct: true, why: 'rustc says “cannot add `f64` to `i32`”. Write `a as f64 + b`.' },
-      { t: '`2.5` is not a valid `f64`', why: '`2.5` is a perfectly good `f64`.' },
-      { t: '`i32` can’t be added at all', why: '`i32 + i32` is fine.' },
-      { t: 'Variables need `mut` to be added', why: 'Reading a variable never needs `mut`; only changing it does.' },
+      { t: '`const max = 256;`', why: 'A `const` must have its type written out.' },
+      { t: '`const mut MAX: usize = 256;`', why: 'A `const` can never be `mut`.' },
+      { t: '`const MAX_SLOTS: usize = 256;`', correct: true, why: 'Type written, value known at compile time, name in capitals by habit. This one is from the Rust Drip compiler.' },
+      { t: '`let const MAX = 256;`', why: '`const` replaces `let`; it is not added to it.' },
     ],
   },
 ];

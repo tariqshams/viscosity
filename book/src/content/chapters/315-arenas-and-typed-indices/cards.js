@@ -74,6 +74,10 @@ export const prompts = {
     q: 'What does drip-rs’s `Arena::insert` do before pushing a new slot?',
     a: 'It pops the free list, and if a freed slot is there, puts the object in it and returns that slot’s handle.',
   },
+  'arena-cycle': {
+    q: 'Why can two arena objects point at each other without leaking?',
+    a: 'Neither owns the other: each holds only a number, and the arena owns both, so whoever runs the arena (the collector) decides when they go.',
+  },
   stale: {
     q: 'An object is freed, its slot is reused, and an old handle to it is used. What happens?',
     a: 'It reads the new object in that slot: the wrong object, but no crash and no undefined behaviour.',
@@ -81,22 +85,6 @@ export const prompts = {
   'poison-mode': {
     q: 'Why do drip-rs’s debug and stress modes never reuse a freed slot?',
     a: 'Then a stale handle finds `None` and panics with “use after free”, so a missing GC root fails loudly at the exact use.',
-  },
-  'typed-index': {
-    q: 'Why wrap a slot number in a type such as `struct NodeId(u32)` instead of using a bare `usize`?',
-    a: 'So the compiler rejects using one kind of index where another is expected, such as a block id for a value.',
-  },
-  phantom: {
-    q: 'What does the `PhantomData<fn() -> T>` field in drip-rs’s `Gc<T>` do?',
-    a: 'It takes no space but makes the handle’s type mention `T`, so a `Gc<ObjClass>` and a `Gc<ObjClosure>` are different types.',
-  },
-  'gc-size': {
-    q: 'How big is a drip-rs `Gc<T>`, and is it `Copy`?',
-    a: '4 bytes (a `u32`), and yes: copying a handle copies a number and creates no owner.',
-  },
-  'derive-bound': {
-    q: 'Why does drip-rs write `impl<T> Copy for Gc<T>` by hand instead of `#[derive(Clone, Copy)]`?',
-    a: 'The derive would require `T: Clone` and `T: Copy`, but the handle is copyable whatever `T` is.',
   },
   'copy-out': {
     q: 'You need data from one arena object to change another. What is the usual pattern?',
@@ -106,104 +94,62 @@ export const prompts = {
     q: 'Where does the TypeScript VM keep each object’s mark bit, and where does drip-rs?',
     a: 'TypeScript: an `isMarked` field in every object. drip-rs: a separate bitmap, one `Vec<bool>` per arena, built fresh each collection.',
   },
+  'arena-sweep': {
+    q: 'How does drip-rs’s sweep find every object, without a linked list of them?',
+    a: 'It walks each arena’s slots, since an arena already holds every object of its kind, and frees the live ones that are not marked.',
+  },
 };
 
 export const examples = {
-  'typed-handles': {
+  'arena-cycle': {
     lang: 'rust',
-    title: 'Typed handles into arenas',
-    code: `use std::marker::PhantomData;
-use std::mem::size_of;
-use std::ops::{Index, IndexMut};
-
-// Adapted from drip-rs's object.rs.
-struct Gc<T> {
-    index: u32,
-    marker: PhantomData<fn() -> T>,
+    title: 'A cycle that is only numbers',
+    code: `// Objects refer to each other by slot
+// number, so a cycle is two numbers.
+struct Node {
+    name: &'static str,
+    other: Option<usize>,
 }
 
-impl<T> Clone for Gc<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<T> Copy for Gc<T> {}
+type Arena = Vec<Option<Node>>;
 
-struct Arena<T> {
-    slots: Vec<Option<T>>,
-}
-
-impl<T> Arena<T> {
-    fn insert(&mut self, t: T)
-        -> Gc<T> {
-        self.slots.push(Some(t));
-        let i = self.slots.len() - 1;
-        Gc {
-            index: i as u32,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T> Index<Gc<T>> for Arena<T> {
-    type Output = T;
-    fn index(&self, h: Gc<T>) -> &T {
-        let i = h.index as usize;
-        match &self.slots[i] {
-            Some(t) => t,
-            None => panic!("freed"),
-        }
-    }
-}
-
-impl<T> IndexMut<Gc<T>> for Arena<T> {
-    fn index_mut(&mut self, h: Gc<T>)
-        -> &mut T {
-        let i = h.index as usize;
-        match &mut self.slots[i] {
-            Some(t) => t,
-            None => panic!("freed"),
-        }
-    }
-}
-
-struct Class {
-    name: String,
-}
-struct Instance {
-    class: Gc<Class>,
-    hp: f64,
+fn get(arena: &Arena, i: usize)
+    -> &Node {
+    arena[i].as_ref().expect("freed")
 }
 
 fn main() {
-    let mut classes =
-        Arena { slots: Vec::new() };
-    let mut insts =
-        Arena { slots: Vec::new() };
-    let k = classes.insert(Class {
-        name: "Ship".to_string(),
-    });
-    let a = insts.insert(Instance {
-        class: k,
-        hp: 10.0,
-    });
-    let b = insts.insert(Instance {
-        class: k,
-        hp: 4.0,
-    });
-    // a.heal(b), then a.heal(a): copy
-    // the number out, then write.
-    for other in [b, a] {
-        let hp = insts[other].hp;
-        insts[a].hp += hp / 2.0;
+    let mut arena: Arena = Vec::new();
+    let mut free = Vec::new();
+    // a (slot 0) and b (slot 1) point
+    // at each other.
+    arena.push(Some(Node {
+        name: "a",
+        other: Some(1),
+    }));
+    arena.push(Some(Node {
+        name: "b",
+        other: Some(0),
+    }));
+    // Follow a's link: copy a number.
+    let j = get(&arena, 0)
+        .other
+        .unwrap();
+    let n = get(&arena, j).name;
+    println!("a -> {n}");
+    // Free both: no counts, no leak.
+    for i in [0, 1] {
+        arena[i] = None;
+        free.push(i);
     }
-    let c = insts[a].class;
-    println!("{} instance, hp {}",
-        classes[c].name, insts[a].hp);
-    println!("handle size: {} bytes",
-        size_of::<Gc<Class>>());
-    // Uncomment for E0308:
-    // let oops = &insts[k];
+    // A new object reuses a freed slot.
+    let s = free.pop().unwrap();
+    arena[s] = Some(Node {
+        name: "c",
+        other: None,
+    });
+    let n = get(&arena, s).name;
+    println!("slot {s}: {n}");
 }`,
   },
 };
@@ -268,13 +214,29 @@ fn removing_twice_frees_once() {
       'In `remove`, `self.slots[i].take()` swaps the slot’s contents for `None` and gives you what was there.',
       'Push the index onto `free` only if `take()` returned `Some`; otherwise one slot could be handed out twice.',
     ],
-    walkthrough: `This is \`Arena::insert\` and \`Arena::remove\` from drip-rs’s \`object.rs\`, with a plain \`Id\` instead of \`Gc<T>\`.
+    walkthrough: `**How to think about it.** An arena has two jobs: hand out a slot for a new object, and take an object back. The free list is a stack of slot numbers that are empty right now. So \`insert\` should ask "is there an empty slot I can reuse?" before growing the \`Vec\`, and \`remove\` should empty the slot and remember its number, but only if there was something in it.
 
-- **\`insert\`** checks the free list first. \`self.free.pop()\` gives the most recently freed slot; the object goes into it and that slot’s number is the new handle. Only when nothing is free does it \`push\` a new slot, whose index is \`len - 1\`.
-- **\`remove\`** uses \`Option::take\`, which leaves \`None\` behind and returns the old contents. That one call both frees the object (the arena no longer owns it; the caller does, and drops it) and marks the slot empty, so \`get\` returns \`None\`.
-- **The guard** \`if t.is_some()\` matters. Without it, removing twice puts the same index on the free list twice, and two later inserts get the same slot: two live handles to one place. The last test catches exactly that.
+**The solution, line by line.**
 
-In drip-rs, \`remove\` takes one more argument, \`reuse\`. The stress and debug modes pass \`false\`, so a freed slot is never reused and a stale handle panics.`,
+- \`let f = self.free.pop();\` takes the most recently freed slot number, if there is one; \`pop\` returns an \`Option<u32>\`.
+- \`if let Some(i) = f {\` runs its block only when there was a free slot.
+- \`let i = i as usize;\` turns the stored \`u32\` into a \`usize\`, the type \`Vec\` indexes with.
+- \`self.slots[i] = Some(t);\` puts the new object into the empty slot (the arena now owns it), and \`return Id(i as u32);\` hands back that slot's number.
+- \`self.slots.push(Some(t));\` is reached only when nothing was free: a new slot at the end.
+- \`Id(self.slots.len() as u32 - 1)\`: after the push, the new slot's index is the length minus one.
+- In \`remove\`, \`let t = self.slots[i].take();\`: \`Option::take\` leaves \`None\` in the slot and returns what was there. That one call both frees the object from the arena (the caller now owns it, and drops it) and marks the slot empty, so \`get\` returns \`None\`.
+- \`if t.is_some() { self.free.push(id.0); }\` remembers the slot as free, but only if it really held something.
+- \`t\` returns the removed object, or \`None\` if the slot was already empty.
+
+**Why the guard matters.** Without \`if t.is_some()\`, removing the same id twice puts its number on the free list twice, and two later inserts both get that slot: two live ids for one place, with the second object silently replacing the first. The last test catches exactly that.
+
+**Common wrong attempts.**
+
+- Never looking at the free list in \`insert\`: freed slots are never reused and the arena only grows. (That is drip-rs's "poison" test mode by accident, not a reusing arena.)
+- Pushing onto \`free\` before checking what \`take\` returned: the double-free bug above.
+- Returning \`Id(self.slots.len() as u32)\` after the push: one too high, so the id points past the end.
+
+In drip-rs, \`remove\` takes one more argument, \`reuse\`. The debug and stress modes pass \`false\`, so a freed slot is never reused and a stale handle panics with "use after free" at the exact place it is used.`,
     wrong: [
       {
         code: `${HEAD}
@@ -354,11 +316,26 @@ fn three_nodes() {
       'In `sum`, keep a cursor `at: Option<Id>` and loop with `while let Some(id) = at`.',
       'Inside the loop, read the node, add its value, and move the cursor to its `next`.',
     ],
-    walkthrough: `\`push_front\` doesn’t move or link anything in memory: the new node just stores the old head’s number in \`next\`, and its own number becomes the new head.
+    walkthrough: `**How to think about it.** A linked list with \`Box\` makes each node own the next one, which makes inserting and walking awkward in Rust. With an arena, every node lives in one \`Vec\`, and "next" is just the *number* of the next node. Adding to the front means: make a node whose \`next\` is the old head's number, and the new node's own number is the new head. Walking means: start at the head's number and keep reading the node at that number until there is no next.
 
-\`sum\` walks the list with a cursor of type \`Option<Id>\`. \`while let Some(id) = at\` runs until a node’s \`next\` is \`None\`. Because \`Id\` is \`Copy\`, \`at = n.next\` copies a number; no borrow of the old node is kept.
+**The solution, line by line.**
 
-This is pointer chasing (chapter 54) with numbers instead of addresses. The borrow checker is happy because only \`nodes\` is ever borrowed, never a node by itself.`,
+- \`let n = Node { val, next: head };\` makes the new node; \`val\` is shorthand for \`val: val\`, and \`next\` holds the old head's id (or \`None\` for an empty list).
+- \`nodes.push(n);\` moves it into the arena.
+- \`Id(nodes.len() as u32 - 1)\` returns the new node's slot number: it is the new head.
+- In \`sum\`, \`let mut total = 0;\` and \`let mut at = head;\` start a running total and a cursor of type \`Option<Id>\`.
+- \`while let Some(id) = at {\` keeps going while the cursor points at a node.
+- \`let n = &nodes[id.0 as usize];\` borrows the node at that slot; \`total += n.val;\` adds its value.
+- \`at = n.next;\` moves the cursor. \`Id\` is \`Copy\`, so this copies a number; no borrow of the old node is kept, and the borrow checker is happy because only \`nodes\` is ever borrowed.
+- \`total\` is returned at the end.
+
+This is the pointer chasing of a linked list, with numbers instead of addresses.
+
+**Common wrong attempts.**
+
+- Setting \`next: None\` in \`push_front\`: every node becomes a list of one, and \`sum\` from the head only sees the last value pushed.
+- Returning \`Id(nodes.len() as u32)\`: one past the new node.
+- Looping with \`loop\` and \`unwrap()\` on \`at\`: the last node's \`next\` is \`None\`, so \`unwrap\` panics instead of stopping.`,
     wrong: [
       {
         code: `${LIST}
@@ -388,52 +365,45 @@ fn sum(nodes: &[Node],
 
 export const quiz = [
   {
-    q: 'In drip-rs, who owns an `ObjInstance`?',
+    q: 'Why does drip-rs keep its objects in arenas instead of `Rc<RefCell<..>>`?',
     options: [
-      { t: 'Every value that refers to it, through reference counting', why: 'That is `Rc`. drip-rs’s values hold `Gc` handles, which own nothing.' },
-      { t: 'Its class', why: 'An instance refers to its class by handle; the class doesn’t own it.' },
-      { t: 'The heap’s `instances` arena', correct: true, why: 'Each kind of object has one arena that owns all of them. The collector decides when a slot is freed.' },
+      { t: 'Arenas are always faster', why: 'Speed is not the reason given; ownership and the collector are.' },
+      { t: 'The heap owns every object, so cycles cannot leak and the collector decides when objects die', correct: true, why: 'Objects hold numbers, not owners; nothing is reference counted.' },
+      { t: 'Rust forbids `Rc` in libraries', why: 'It doesn’t; drip-rs itself uses `Rc<Chunk>`.' },
+      { t: 'Arenas let it use `unsafe` code', why: 'drip-rs forbids `unsafe` entirely.' },
     ],
   },
   {
-    q: 'Why is `Gc<T>` generic instead of one `Handle(u32)` type for every object?',
+    q: 'An arena has slots `[A, None, C]` and free list `[1]`. What does `insert(D)` return?',
     options: [
-      { t: 'So that a closure handle can’t be used to index the classes arena: that is a compile error', correct: true, why: '`classes[c]` with `c: Gc<ObjClosure>` gives E0308, mismatched types.' },
-      { t: 'Generic types are faster at run time', why: 'Every `Gc<T>` is the same 4 bytes and compiles to the same code; the benefit is checking, not speed.' },
-      { t: 'It stores the object’s type tag inside the handle', why: '`PhantomData` takes no space. The type exists only at compile time.' },
-      { t: 'Rust doesn’t allow non-generic newtypes', why: 'engine/rust’s `ValueId(u32)` and `BlockId(u32)` are non-generic newtypes.' },
+      { t: 'Slot 3, at the end', why: 'Only if the free list were empty.' },
+      { t: 'Slot 1, the freed one', correct: true, why: '`insert` pops the free list first, so D refills the hole.' },
+      { t: 'Slot 0', why: 'Slot 0 holds A.' },
     ],
   },
   {
-    q: '`let src = &insts[1]; let dst = &mut insts[0]; dst.hp += src.hp;` What does Rust say?',
+    q: 'An old handle points at a slot that was freed and then reused. In a release run with reuse on, what does reading it give?',
     options: [
-      { t: 'It compiles: they are different elements', why: 'Indexing borrows the whole `Vec`, so the borrow checker sees two borrows of `insts`.' },
-      { t: 'It compiles but panics at run time', why: 'There is no `RefCell` here. Plain borrows are checked at compile time.' },
-      { t: 'E0502: `insts` is borrowed as mutable while also borrowed as immutable', correct: true, why: 'Copy `insts[1].hp` into a local first, then write `insts[0]`.' },
+      { t: 'A crash', why: 'The slot holds a valid object, just not the one you meant.' },
+      { t: 'Undefined behaviour, as with a dangling pointer in C', why: 'Safe Rust: the Vec index is checked, the memory is valid.' },
+      { t: 'A compile error', why: 'Handles are numbers; the compiler can’t know one is stale.' },
+      { t: 'The new object that moved into the slot', correct: true, why: 'Wrong but safe, which is why test modes turn reuse off.' },
     ],
   },
   {
-    q: 'A handle points at a freed slot that has since been reused. In drip-rs’s normal mode, using it…',
+    q: '`let src = &insts[1]; let dst = &mut insts[0]; dst.hp += src.hp;` fails with E0502. What is the usual fix?',
     options: [
-      { t: '…is undefined behaviour, as in C', why: 'drip-rs has no `unsafe` code; the worst case is a wrong but valid object.' },
-      { t: '…reads whichever object now lives in that slot', correct: true, why: 'Which is why the test suites turn reuse off: then the slot stays `None` and the use panics.' },
-      { t: '…is caught by the borrow checker', why: 'Handles are plain numbers; the compiler can’t know which slots are live.' },
+      { t: 'Wrap each instance in a `RefCell`', why: 'That moves the check to run time, where it can panic.' },
+      { t: 'Copy the number out first: `let hp = insts[1].hp; insts[0].hp += hp;`', correct: true, why: 'The shared borrow ends at the semicolon, so the mutable one is allowed.' },
+      { t: 'Use `unsafe` to borrow both', why: 'Not needed, and drip-rs forbids it.' },
     ],
   },
   {
-    q: 'How does drip-rs’s sweep find every object?',
+    q: 'How does drip-rs’s sweep visit every object?',
     options: [
-      { t: 'It follows a `next` pointer through a linked list of all objects', why: 'That is the TypeScript VM (and clox). drip-rs has no object list.' },
-      { t: 'It walks each arena’s slots, freeing the live ones whose mark bit is false', correct: true, why: 'The arenas already list every object, so no list is needed.' },
-      { t: 'It asks Rust to drop everything unreachable', why: 'Rust has no tracing collector; drip-rs is the collector.' },
-    ],
-  },
-  {
-    q: 'Why does drip-rs keep its mark bits in a separate `Marks` value instead of in each object?',
-    options: [
-      { t: 'Marking writes bits while tracing reads objects; keeping them apart means the two never need a borrow of the heap at the same time', correct: true, why: 'This is the reason `gc.rs` gives. It takes the bitmap out of the heap with `std::mem::take` while it fills it in.' },
-      { t: 'Bits outside the objects are required by `#![forbid(unsafe_code)]`', why: 'An `is_marked` field would be perfectly safe; it would just fight the borrow checker.' },
-      { t: 'To save memory', why: 'It uses a `Vec<bool>`, one byte per slot. The motive is borrowing, not space.' },
+      { t: 'By walking each arena’s slots', correct: true, why: 'An arena already holds every object of its kind, so no `next` list is needed.' },
+      { t: 'By following a `next` pointer stored in every object', why: 'That is the TypeScript VM’s object list.' },
+      { t: 'By asking each `Rc` for its count', why: 'There are no counts; the objects are not reference counted.' },
     ],
   },
 ];

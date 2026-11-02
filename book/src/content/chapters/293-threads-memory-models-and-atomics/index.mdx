@@ -1,0 +1,258 @@
+---
+n: 293
+day: 74
+part: X
+title: 'Threads, memory models and atomics'
+tagline: 'Two threads, two variables, four instructions, and an answer that no ordering of those instructions can give. It happened 63 thousand times in a million runs on this book’s machine; this chapter explains why, and what a language must promise about it.'
+objectives:
+  - Define a data race, and say what C++, Rust, Go, Java and JavaScript make of one.
+  - Explain sequential consistency, and why real compilers and processors do not give it for free.
+  - Run the store-buffering and message-passing litmus tests in a small model checker, under SC and under x86's store buffers.
+  - Recognise a compiler reordering and a hardware reordering in real gcc output and real measurements.
+introduces: [data-race, memory-model]
+uses: [cpu, cpu-cache, register, pipeline, instruction-scheduling, licm, loop-invariant, event-loop, promise, coroutine, green-thread, arraybuffer, typed-array, recursion, set, object, array, function, test]
+sources: [rust-book-borrowing, cxx-draft-races, go-memory-model, ecma262-memory-model, lamport1979, sewell2010x86tso, rust-std-atomic, mdn-atomics, node-worker-threads]
+---
+import StoreBufferSteps from '../../../components/diagrams/ch293/StoreBufferSteps';
+import LitmusTable from '../../../components/diagrams/ch293/LitmusTable';
+
+## Four instructions, one impossible answer
+
+Until now every program in this book has run on one thread: even async
+code (chapter 41) takes turns on a single event loop, and the green
+threads of chapter 283 are scheduled one at a time. Real **threads** run
+at the same moment on different cores and share the same memory. Here
+is the smallest program that shows what that means: `x` and `y` start
+at 0, and two threads run at once.
+
+```text
+thread 1        thread 2
+x = 1           y = 1
+r1 = y          r2 = x
+```
+
+Try every order of the four steps by hand: whichever store happens first
+comes before the other thread's load, so at least one of `r1` and `r2`
+must be 1. However, written in C with two pthreads and run a million
+times on this book's machine (an x86 Intel Xeon), the result was:
+
+```text
+r1 == 0 && r2 == 0: 63177 of 1000000
+```
+
+The same test in Node 22, with two `worker_threads` sharing an
+`Int32Array` over a `SharedArrayBuffer`<Cite id="node-worker-threads" />,
+gave `15118 of 200000`. This test is called **store buffering** (SB),
+and it is one of a handful of tiny programs, **litmus tests**, that
+people use to pin down what a machine does.
+
+## Data races
+
+Both runs contain a **data race**: two threads touch the same location,
+at least one of them writes, and nothing orders the two accesses. The
+Rust book gives the same three conditions<Cite id="rust-book-borrowing" />,
+and C++ makes it precise: two conflicting actions in different threads,
+at least one not atomic, "and neither happens before the other", and
+"any such data race results in undefined
+behavior"<Cite id="cxx-draft-races" />.
+
+<Analogy title="two people editing one paper form">
+Two clerks fill in the same form at the same desk, one writing a new
+address while the other copies the old one onto an envelope. If they
+take turns, either answer is fine; if they work at once, the envelope
+may get half of each address.
+<span slot="breaks">Clerks can see each other's pens. Threads cannot;
+worse, as the next section shows, each one may not even see the other's
+finished writing until later.</span>
+</Analogy>
+
+<Analogy title="a shared kitchen whiteboard">
+Flatmates keep a shopping list on the fridge. If two of them rub out
+and rewrite the same line at the same moment, the list ends up with a
+mix of both, or with one change lost.
+<span slot="breaks">A whiteboard shows every change at once to
+everyone in the kitchen; a processor's memory does not, and that delay
+is where the impossible answer above came from.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **data race** is a pair of accesses to the same memory location, from
+different threads, at least one of them a write, that are not ordered
+by any synchronisation (a lock, or atomic operations). C, C++ and Rust
+make a data race undefined behaviour; Go, Java and JavaScript instead
+limit what a racy read may return.
+</Callout>
+
+<Examples of="data-race">
+
+```js
+// worker A          // worker B
+m[0] = m[0] + 1;     m[0] = m[0] + 1;
+// both may read 0: one increment lost
+```
+
+```c
+int done; int data;
+// thread 1: data = 42; done = 1;
+// thread 2: while (!done) {} use(data);
+```
+
+```js
+Atomics.add(m, 0, 1); // in both workers
+// no race: the adds are atomic
+```
+
+</Examples>
+
+In the first, two workers increment the same `Int32Array` slot with
+ordinary reads and writes; both may read 0 and both write 1, losing an
+increment. The second is the classic flag: `done` and `data` are plain
+variables written and read in different threads, so both are races, and
+the next section shows what gcc makes of it. The third is the fix for
+the first: `Atomics.add` reads, adds and writes as one indivisible
+step<Cite id="mdn-atomics" />, so no update is lost and there is no race.
+
+<Prompts ids={['th-shared', 'dr-what', 'dr-ub']} />
+
+## Who reorders, and why
+
+The simplest promise a machine could make is **sequential consistency**
+(SC), defined by Lamport in 1979<Cite id="lamport1979" />: every run
+behaves as if the threads' steps were shuffled together into one order,
+each thread's own steps staying in program order, and each read sees
+the latest write before it in that order. Nothing real gives SC for
+free, because both the compiler and the processor reorder memory
+operations to go faster, and those reorderings are invisible to one
+thread alone.
+
+**The processor.** An x86 core does not wait for a store to reach
+memory: it parks it in a private **store buffer** and runs on, and a
+later load reads memory (or its own buffer) at once. That model, x86-TSO,
+was written down precisely by Sewell and colleagues<Cite id="sewell2010x86tso" />:
+
+<StoreBufferSteps client:visible />
+
+A **fence** stops it: in the C test, a `seq_cst` fence between the store
+and the load (gcc emits `lock orq $0, (%rsp)`, which waits for the
+buffer to drain) brought the count to `0 of 1000000`. Weakly ordered
+processors such as Arm reorder more: a thread may see one write of
+another thread but not an earlier one<Cite id="rust-std-atomic" />.
+
+**The compiler.** Here is the flag loop from the examples, compiled by
+gcc 13 at `-O2` (trimmed):
+
+```text
+wait_then_read:
+    movl  flag(%rip), %eax
+    testl %eax, %eax
+    jne   .L2
+.L3:
+    jmp   .L3        # loop forever
+.L2:
+    movl  data(%rip), %eax
+```
+
+`flag` is read once, before the loop, and if it was 0 the loop spins
+forever on `.L3`. This is loop-invariant code motion (chapter 213), and
+it is correct for one thread: nothing in the loop changes `flag`.
+Another thread changing it would be a data race, which the compiler may
+assume never happens.
+
+<Callout kind="definition">
+A **memory model** is the part of a language (or processor) definition
+that says which values each read in a multithreaded program may return;
+equivalently, which reorderings of memory operations other threads may
+observe. Sequential consistency is the strongest common model;
+**x86-TSO** adds store buffers; weaker models (Arm, and the C++ model's
+relaxed atomics) allow more.
+</Callout>
+
+<Formal title="Sequential consistency">
+
+```text
+SC(P) = { result(σ) |
+          σ ∈ interleavings(T₁, …, Tₙ) }
+```
+
+<span slot="read">The results a program P may produce under sequential
+consistency are exactly the results of running, against one shared
+memory, some interleaving σ of its threads' instruction lists T₁ to Tₙ
+(each list kept in its own order). Any result outside this set is a
+reordering the model must explain.</span>
+</Formal>
+
+<Figure takeaway="Each litmus test isolates one reordering; a memory model is, in effect, its answers to all of them." caption="Store buffering (SB) and message passing (MP), and whether their surprising outcome can happen.">
+  <LitmusTable />
+</Figure>
+
+The model checker below runs litmus tests by brute force: from each
+state it tries every possible next step (a thread running its next
+instruction, or, under TSO, a buffered store reaching memory), and
+collects the registers at every end. Run it, then add an MP test with a
+fence, or invent a test of your own:
+
+<Run id="litmus" />
+
+`check` keeps, for each path, every thread's position (`pcs`), its
+store buffer (`bufs`), memory and registers. Under `'sc'` a store
+writes memory at once; under `'tso'` it joins the end of the thread's
+buffer, and a separate step moves the oldest buffered store to memory.
+A load reads the newest matching store in its own buffer, else memory;
+a fence may only run when its buffer is empty. It confirms the table: SB
+gains `r1=0 r2=0` under TSO and loses it again with fences, and MP never
+shows `r1=1 r2=0`, because a TSO buffer drains in order.
+
+<Examples of="memory-model">
+
+```text
+C, C++, Rust:  a race is undefined
+Java, Go:      a racy read sees some
+               value that was written
+JavaScript:    "no undefined behaviour"
+```
+
+```text
+x86 (TSO):  a load may pass an
+            earlier store, nothing else
+Arm:        loads and stores may pass
+            each other more freely
+```
+
+```text
+DRF-SC: no data races ⇒ the program
+behaves sequentially consistently
+```
+
+</Examples>
+
+The first compares languages. In C and C++ a racy program has no
+meaning at all<Cite id="cxx-draft-races" />, and Rust inherits that for
+`unsafe` code<Cite id="rust-std-atomic" />. Go's memory model says a
+racy read "must observe a value actually written", which makes Go "more
+like Java or JavaScript ... and less like C and
+C++"<Cite id="go-memory-model" />; the ECMAScript specification says
+racy shared memory "may appear sequentially inconsistent", but "there
+is no undefined behaviour"<Cite id="ecma262-memory-model" />. The
+second compares processors. The third is the bargain every one of these
+languages offers: write a program with no data races, and it behaves
+as if it were sequentially consistent, which C++, Go and JavaScript all
+state in these words<Cite id="cxx-draft-races" /><Cite id="go-memory-model" />.
+Keeping that bargain needs atomic operations and the ordering they
+create, the subject of the next chapter.
+
+<Prompts ids={['sc-what', 'mm-what', 'mm-sb', 'mm-tso', 'mm-fence', 'mm-hoist', 'mm-mp']} />
+
+## Your turn
+
+<Exercise id="interleave" />
+
+## What you learned
+
+- A **data race** is two unordered accesses to one location from
+  different threads, one a write; C, C++ and Rust make it undefined.
+- **Sequential consistency** is "some interleaving"; compilers (hoisting
+  loads) and processors (store buffers) break it for racy code.
+- A **memory model** says which reorderings are visible; **litmus
+  tests** such as SB and MP pin it down, and fences restore order.
+
+<Quiz />

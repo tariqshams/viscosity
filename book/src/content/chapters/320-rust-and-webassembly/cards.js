@@ -44,45 +44,41 @@ const BOUNDS = `${SIGB}
 `;
 
 export const prompts = {
-  'wasm-target': {
-    q: 'Which target does Rust compile to for the browser, without an operating system?',
-    a: '`wasm32-unknown-unknown`.',
-  },
   'numbers-only': {
     q: 'Why can’t a WebAssembly export take a `&str` directly?',
-    a: 'WebAssembly functions take and return only numbers. A string has to be copied into linear memory and passed as a pointer and a length.',
+    a: 'WebAssembly functions take and return only numbers. A string has to be copied into linear memory and passed as an address and a length.',
   },
   'bindgen-what': {
     q: 'What are the two halves of wasm-bindgen?',
-    a: 'A Rust attribute, `#[wasm_bindgen]`, that marks what to export, and a CLI that reads the `.wasm` and writes JavaScript glue and `.d.ts` types.',
+    a: 'A Rust attribute, `#[wasm_bindgen]`, that marks what to export, and a command-line tool that reads the `.wasm` and writes JavaScript glue and `.d.ts` types.',
+  },
+  'npm-package': {
+    q: 'Where does engine/rust’s WebAssembly build end up?',
+    a: 'On npm as `@viscosity/wasm` (0.0.1), for Node and browsers, and in this book’s Playground, which runs it in a worker when you pick the Rust engine.',
   },
   'str-copy': {
-    q: 'When JS passes a string to a wasm-bindgen function taking `&str`, what happens?',
-    a: 'The glue allocates space in linear memory and copies the string in as UTF-8 with `TextEncoder`.',
+    q: 'When JavaScript passes a string to a wasm-bindgen function taking `&str`, what happens?',
+    a: 'The glue reserves space with the module’s own allocator and copies the string into linear memory as UTF-8, then passes its address and length.',
   },
-  'surrogate': {
-    q: 'A JS string contains an unpaired surrogate. What does Rust receive as `&str`?',
-    a: 'The string with that unit replaced by U+FFFD, so it differs from the JS string.',
-  },
-  'output-handle': {
-    q: 'What does the JS `Output` object returned by `compile` actually hold?',
-    a: 'A pointer (`__wbg_ptr`) to the Rust `Output` in linear memory. Its `code` getter copies the string out on each read.',
-  },
-  'free': {
-    q: 'Why does the generated `Output` class have a `free()` method?',
-    a: 'The Rust value lives in linear memory, which JavaScript’s collector doesn’t manage. `free()` drops it; a FinalizationRegistry is only a fallback.',
+  surrogate: {
+    q: 'A JavaScript string contains an unpaired surrogate. What does Rust receive as `&str`?',
+    a: 'The string with that unit replaced by U+FFFD, so it differs from the JavaScript string.',
   },
   'result-throw': {
-    q: 'An exported wasm-bindgen function returns `Err(JsError)`. What does the JS caller see?',
+    q: 'An exported wasm-bindgen function returns `Err(JsError)`. What does the JavaScript caller see?',
     a: 'An exception: the glue throws a JavaScript `Error` with the message.',
   },
-  'parity-wasm': {
-    q: 'How many of engine/rust’s fixtures did the WebAssembly build reproduce when this chapter ran it from Node?',
-    a: 'All 122: code and explain text byte-identical to the TypeScript engine’s.',
+  'output-handle': {
+    q: 'What does the JavaScript `Output` object returned by `compile` actually hold?',
+    a: 'An address (`__wbg_ptr`) of the Rust `Output` in linear memory. Its `code` getter copies the string out on every read.',
   },
-  'refresh-view': {
-    q: 'Why does the glue re-create its `Uint8Array` view of memory when its `byteLength` is 0?',
-    a: 'Growing the memory detaches the old `ArrayBuffer`, so old views become empty (chapter 270).',
+  free: {
+    q: 'Why does the generated `Output` class have a `free()` method?',
+    a: 'The Rust value lives in linear memory, which JavaScript’s collector cannot see into. `free()` drops it now; a FinalizationRegistry is only a late fallback.',
+  },
+  'parity-wasm': {
+    q: 'What happened when this chapter compiled the 40 JavaScript corpus programs with the published `@viscosity/wasm` from Node?',
+    a: 'Every `code` and `explain` text matched the TypeScript CLI’s output byte for byte.',
   },
 };
 
@@ -181,17 +177,26 @@ fn mode_is_checked_first() {
       '`BAD_MODE.to_string()` turns the message into the `String` the signature asks for.',
       'In `options`, `let m = parse_mode(mode)?;` returns the error at once if there is one. Do the same for bounds, then `Ok((m, b))`.',
     ],
-    walkthrough: `This is the part of \`compile_with\` in \`engine/rust/crates/wasm/src/lib.rs\` that runs before the compiler does, with \`String\` in place of \`JsError\` so it can run outside a browser.
+    walkthrough: `**How to think about it.** JavaScript hands the crate's \`compileWith\` plain strings: \`"auto"\`, \`"opt-in"\`, \`"check"\`, or anything a caller mistypes. The job is to turn each string into a typed value (an enum with exactly the allowed variants) or into an error message, at the boundary, once. Each parser is a \`match\` with one arm per allowed spelling and a catch-all arm for everything else; \`options\` then runs the two parsers in a fixed order and lets \`?\` stop at the first failure.
 
-\`\`\`rust
-let m = parse_mode(mode)?;
-let b = parse_bounds(bounds)?;
-Ok((m, b))
-\`\`\`
+**The solution, line by line.**
 
-The order matters: with two bad options, the caller hears about the mode, because \`?\` returns at the first \`Err\`. The real crate does the same with two \`match\`es and an early \`return Err(JsError::new(...))\`.
+- \`fn parse_mode(s: &str) -> Result<Mode, String> {\` borrows the string and promises either a \`Mode\` or an error message.
+- \`    match s {\` compares the string with each pattern in turn; string literals are allowed as patterns.
+- \`        "auto" => Ok(Mode::Auto),\` and \`        "opt-in" => Ok(Mode::OptIn),\` are the two accepted spellings.
+- \`        _ => Err(BAD_MODE.to_string()),\` catches everything else (\`"fast"\`, \`"optin"\`, \`""\`) and returns the crate's exact message; \`to_string()\` turns the \`&str\` constant into the owned \`String\` the signature asks for.
+- \`parse_bounds\` has the same shape, with \`"check"\` and \`"assume"\`.
+- \`fn options(mode: &str, bounds: &str) -> Result<(Mode, Bounds), String> {\` returns both values as a tuple, or the first error.
+- \`    let m = parse_mode(mode)?;\` either unwraps the \`Ok\` into \`m\` or returns the \`Err\` from \`options\` at once, so the bounds are never looked at.
+- \`    let b = parse_bounds(bounds)?;\` does the same for the bounds.
+- \`    Ok((m, b))\` wraps both in \`Ok\`.
 
-Why parse at all, instead of passing strings into the compiler? Because past this point everything is typed. \`Mode\` has exactly two values, so no code further in can meet \`"optin"\` and do something odd with it. The boundary is where the loosely typed world of JavaScript strings gets checked, once. In JavaScript, the \`Err\` turns into a thrown \`Error\` with this message.`,
+The order matters: with two bad options, the caller hears about the mode, which is what the real crate does (its \`options\` function matches the mode first and returns early with \`return Err(...)\`; the exported function then turns that \`String\` into a \`JsError\`, so JavaScript sees a thrown \`Error\` with the same message). Why parse at all, instead of passing strings into the compiler? Because past this point everything is typed: \`Mode\` has exactly two values, so no code further in can meet \`"optin"\` and do something odd with it.
+
+**Common wrong attempts.**
+
+- Parsing the bounds first reports the wrong error when both options are bad; the \`mode_is_checked_first\` test catches it.
+- Writing \`_ => Ok(Mode::OptIn)\` (anything that is not \`"auto"\` means opt-in) silently accepts typos such as \`"optin"\` or \`"fast"\`. Reject what you do not recognise.`,
     wrong: [
       {
         code: `${TYPES}
@@ -235,15 +240,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Each call to `compile` copies the source into linear memory. Why doesn’t the glue just hand Rust the JS string?',
-    options: [
-      { t: 'WebAssembly can only exchange numbers, and Rust needs UTF-8 bytes in its own memory', correct: true, why: 'So the glue encodes the string into memory the module owns and passes a pointer and a length.' },
-      { t: 'To make the call faster', why: 'Copying costs time. It is needed, not an optimization.' },
-      { t: 'Because JS strings are immutable', why: 'Rust only reads a `&str`, so immutability isn’t the issue; where the bytes live, and their encoding, is.' },
-      { t: 'It does hand over the JS string; the copy is a debug feature', why: 'The generated `passStringToWasm0` always copies, through `TextEncoder`.' },
-    ],
-  },
-  {
     q: 'You read `r.code` ten times in a loop. What happens each time?',
     options: [
       { t: 'The same JS string is returned from a cache', why: 'The getter has no cache: it calls into Rust every time.' },
@@ -271,8 +267,8 @@ export const quiz = [
   {
     q: 'What does the WebAssembly build of Viscosity produce?',
     options: [
-      { t: 'WebAssembly versions of your loops', why: 'Chapter 270: emitting loops as WebAssembly is a design, not code.' },
-      { t: 'The same JavaScript and explain text as the TypeScript engine, from a compiler that itself runs as WebAssembly', correct: true, why: 'Its output matched all 122 fixtures in this chapter’s run.' },
+      { t: 'WebAssembly versions of your loops', why: '*WebAssembly as a target* discussed emitting loops as WebAssembly; Viscosity still emits JavaScript (or Python).' },
+      { t: 'The same JavaScript and explain text as the TypeScript engine, from a compiler that itself runs as WebAssembly', correct: true, why: 'In this chapter’s run, the published package matched the TypeScript CLI on all 40 JavaScript corpus programs. It is what the Playground’s Rust switch runs.' },
       { t: 'Rust source code', why: 'Viscosity is JavaScript in, JavaScript out, whichever engine runs it.' },
     ],
   },

@@ -1,0 +1,240 @@
+---
+n: 372
+split_of: 372
+day: 93
+part: XIII
+title: 'Block sizes and typed columns in Rust'
+tagline: 'Four is fine and six is not, and until both engines learned it, a block size of a billion compiled into a program that could not start. Then the other split Part VIII promised, hot and cold, which the port does in a simpler way than its name suggests: by type.'
+objectives:
+  - Follow the planner’s block-size rungs in Rust, and predict the verdict for any aosoa(...) annotation.
+  - Explain why the same rule is checked in three places, and what went wrong before there was an upper limit.
+  - Say precisely what Viscosity’s typed/plain column split is, and what a split by heat would need.
+  - Implement the block-size check, messages included, with tests.
+introduces: []
+uses: [rust-aosoa, viscosity-rs, rust-soa-codegen, rust-cost-model, rust-access-pass, aosoa, block-size, hot-cold-split, field-affinity, annotation, column-storage, typed-array, bit-ops, option, match, rust-closure, rust-iterator, vec, cross-implementation-tests]
+sources: [rust-std-is-power-of-two, ecma262-signed-right-shift]
+---
+import BlockRungSteps from '../../../components/diagrams/ch372b/BlockRungSteps';
+import TypedPlain from '../../../components/diagrams/ch372b/TypedPlain';
+
+## Four is fine, six is not
+
+*AoSoA and hot/cold in Rust* showed that the emitter finds an AoSoA
+slot with a shift and a mask, which only works when the block size is a
+power of two. So something has to refuse the others. Put `aosoa(6)`
+above the `{x, y, vx}` program of that chapter, and the Rust CLI says
+(I ran it here, release build, rustc 1.97; wrapped):
+
+```
+ps (line 2) {x, y, vx} → kept as array
+  of objects
+  · annotated aosoa(6), but the block
+    size must be a power of two (2, 4, 8,
+    16, ...)
+```
+
+The same happens for `aosoa(0)`, `aosoa(1)`, `aosoa(3)`, `aosoa(x)`
+and `aosoa()`, while `aosoa(4)`, `aosoa(65536)` and a bare `aosoa`
+(which means blocks of 8) are accepted; the TypeScript CLI printed the
+same bytes for every one of them. This chapter reads where that rule
+lives, why it also has an upper end, and then the port's other split of
+a record's fields.
+
+<Analogy title="a prescription checked twice">
+A doctor writes a dose, the pharmacist checks it against the safe
+range before filling it, and the label printer refuses a dose it cannot
+print. The patient should only ever meet the first refusal; the later
+checks are there so that a slip upstream shows up as a refusal, never
+as the wrong pills.
+<span slot="breaks">A pharmacist can phone the doctor and agree a
+different dose; the planner never adjusts what was written, it refuses
+it and says why, quoting the annotation as you wrote it.</span>
+</Analogy>
+
+<Analogy title="sorting laundry by fabric">
+You can sort a wash by fabric (wool here, cotton there) or by how often
+you wear things. Sorting by fabric is easy to get right, because the
+label tells you; sorting by use needs a record of what you wore.
+<span slot="breaks">You can re-sort the laundry every week; a column's
+kind is fixed when the program is compiled, from a proof about every
+value the field could ever hold.</span>
+</Analogy>
+
+## The rungs that refuse
+
+The rule is two rungs of `plan_one` in `crates/core/src/plan.rs`, run
+only for an `aosoa` annotation, right after the safety rung of *The
+cost model in Rust*. Step through them on six annotations:
+
+<BlockRungSteps client:visible />
+
+The parser (`parse_annotation`, in `crates/frontend-js/src/lib.rs`)
+hands the planner two fields: `block_text`, whatever was written
+between the brackets (`None` if there were no brackets), and
+`block_size`, that text as a number when it is made only of digits. The
+`match` turns the pair into `b`, an `Option<u64>`. If something was
+written but it isn't a whole number, `b` is `None`; otherwise it is the
+number, or 8 when nothing was written. Then `is_some_and(|b| b >
+MAX_BLOCK_SIZE)` is true only for a number above the limit, and
+`!b.is_some_and(|b| b >= 2 && b.is_power_of_two())` is true for `None`
+and for every number that isn't a power of two from 2 up. `1` needs
+the `b >= 2`, because 1 is 2⁰ and so `1.is_power_of_two()` is
+true<Cite id="rust-std-is-power-of-two" />.
+
+<Formal title="Accepted block sizes">
+
+```text
+accept(B) ⇔ B = 2^s for some
+            whole s with 1 ≤ s ≤ 16
+```
+
+<span slot="read">A block size B is accepted exactly when it is 2 to
+the power s for a whole number s from 1 to 16: that is 2, 4, 8, and so
+on up to 65536, and nothing else.</span>
+</Formal>
+
+The same rule is checked twice more, downstream. `container_class` in
+`emit.rs` returns `CompileError("AoSoA block size must be a power of
+two")` if `log2_exact` gives `None`, and the `slot` closure then calls
+`log2_exact(b).expect("checked by container_class")`. Because the
+planner refuses first, neither can fire for a program the CLI compiles;
+they are there so that a mistake in one place shows up as an error
+rather than as wrong arithmetic in your program.
+
+<Prompts ids={['ao-refuse-1', 'ao-text-none', 'ao-three-places']} />
+
+## Why there is an upper limit
+
+When the Rust chapters were first written, there was no rule at the
+top end, in either engine. Both accepted `aosoa(1073741824)`, which is
+2³⁰. The constructor then asked for `new Float64Array(2³¹ * 3)`, and
+node stopped with `RangeError: Array buffer allocation failed` for a
+program whose original runs fine. From 2³² up the arithmetic would have
+been wrong as well, because JavaScript takes the count of a shift
+modulo 32<Cite id="ecma262-signed-right-shift" />, so `i >> 32` is `i`.
+And at 2⁶⁴ the two engines disagreed: the port parses the digits as an
+`f64` and converts with `as u64`, which saturates at the largest `u64`
+(the comment in `parse_annotation` says so), and refused the result,
+while the reference accepted it. One limit closes all three holes, and
+both engines now have it, checked before the power-of-two rule (from
+`plan.rs`, rewrapped):
+
+```rust
+/// The largest AoSoA block size (2^16).
+/// Larger blocks gain nothing, cost a
+/// lot of memory per block, and break the
+/// shift arithmetic from 2^32 up.
+pub const MAX_BLOCK_SIZE: u64 = 65536;
+```
+
+so the old annotation now gets `annotated aosoa(1073741824), but the
+block size must be at most 65536`. The corpus program
+`tests/extra/aosoa_block_sizes.js` holds these cases, and the parity
+test compares both engines on it.
+
+<Examples of="rust-aosoa">
+
+```
+// @viscosity aosoa(3)
+  · annotated aosoa(3), but the block
+    size must be a power of two …
+```
+
+```
+// @viscosity aosoa(131072)
+  · annotated aosoa(131072), but the
+    block size must be at most 65536
+```
+
+```
+// @viscosity aosoa(4)  on {x, name}
+  · annotated aosoa, but fields name
+    may hold non-numbers
+```
+
+</Examples>
+
+All three are the Rust CLI's reasons for a two- or three-field program
+with a loop. Three isn't a power of two. 131072 is 2¹⁷, a power of
+two but over the limit, and the limit is checked first. And the third
+is one more AoSoA rung: every field shares the one `Float64Array`
+`data`, so a record with a string field has nowhere to keep it, and the
+planner refuses with the names of the fields that may hold something
+else.
+
+<Prompts ids={['ao-huge', 'ao-numeric-only']} />
+
+## Hot and cold, by type
+
+*Hot/cold splitting* described splitting a record into **hot** fields,
+used by the busy loops, and **cold** ones, so the busy loops read less
+memory. The port has a split too, but it is by **type**, not by heat.
+`describe` in `plan.rs` partitions the fields (rewrapped):
+
+```rust
+let (typed, generic): (Vec<&str>,
+    Vec<&str>) = c.fields.iter()
+    .map(String::as_str)
+    .partition(|f| {
+        c.numeric_fields.contains(*f)
+    });
+```
+
+`partition` walks an iterator once and splits it into two collections,
+those for which the closure is true and those for which it is false.
+`container_class` makes the same split when it writes the constructor:
+`new Float64Array(cap)` for each field proven always a number, `[]` for
+the rest. The corpus program `mixed_columns.js` has records `{ id, hp,
+x, tag }`, and explain says (wrapped):
+
+```
+  · typed Float64Array columns for hp, x;
+    plain array columns for id, tag (may
+    hold non-numbers)
+```
+
+<Figure caption="The columns of mixed_columns.js: the busy loop touches hp, x and tag, but only the numeric fields get typed arrays." takeaway="Viscosity chooses a column's kind by type, never by how often it is used.">
+  <TypedPlain />
+</Figure>
+
+`tag` is read in the hottest loop and still gets a plain column, and a
+numeric field that no loop touched would still get a typed one. So the
+honest name for this split is "typed and plain", not "hot and cold".
+What would a real split by heat need? The access tables of *Access
+patterns in Rust* already record, for each loop, which fields it
+touches together (*Hot/cold splitting* called this **field
+affinity**), but
+nothing in `plan.rs` reads them for grouping. And since every field
+already has a column of its own, grouping would only matter where
+fields share storage: in AoSoA's blocks, which today put every field in
+every block.
+
+<Callout kind="definition">
+The **block-size rungs** of `plan_one` accept an `aosoa(B)` annotation
+only when **`B` is a power of two from 2 to 65536** (`MAX_BLOCK_SIZE`)
+and every field is numeric, refusing anything else with a reason that
+quotes what was written; `emit.rs` checks the power of two again. The
+port's **typed/plain split** gives each field a `Float64Array` column
+when it is proven always a number and a plain array otherwise, chosen
+by type alone.
+</Callout>
+
+<Prompts ids={['ao-type-not-heat', 'ao-partition', 'ao-affinity']} />
+
+## Your turn
+
+<Exercise id="blockCheck" />
+
+## What you learned
+
+- The planner refuses an `aosoa` block size that is **not a power of
+  two**, is **below 2**, is **above 65536**, or was written but is **not
+  a whole number**; a bare `aosoa` means **8**.
+- The rule is checked **three times** (planner, `container_class`,
+  `slot`), so a slip upstream becomes an error, not wrong arithmetic.
+- The upper limit closed three holes at once: an allocation failure,
+  shift counts taken **modulo 32**, and the engines disagreeing at 2⁶⁴.
+- Viscosity's "hot/cold" split is **by type**: typed columns for proven
+  numbers, **plain** columns for everything else.
+
+<Quiz />

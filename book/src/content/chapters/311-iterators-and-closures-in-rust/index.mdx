@@ -3,274 +3,277 @@ n: 311
 day: 78
 part: XI
 title: 'Iterators and closures in Rust'
-tagline: 'Rust has map, filter and arrow functions too, but a chain of them builds no arrays: each element is pulled through every stage before the next one starts. And a closure is a small struct holding what it captured, which is why Rust sorts closures into three kinds.'
+tagline: 'Rust has arrow functions too, written with bars. Each one is a small value that carries exactly the variables it uses, borrowed or moved in, and that is why Rust sorts closures into three kinds.'
 objectives:
-  - Write closures, and explain how Rust's capturing differs from JavaScript's.
-  - Tell Fn, FnMut and FnOnce apart, and use them as bounds on parameters.
-  - Translate JavaScript array chains into iterator adapters, and explain what laziness means.
-  - Read the closures and iterators in drip-rs's test runner, its hash table and its collector.
-introduces: [rust-iterator, rust-closure]
-uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, borrow, shared-vs-mutable, borrow-checker, slice, struct, impl, self-receiver, option, vec, trait, trait-bound, rust-generics, monomorphization, lifetime, closure, arrow-function, map-filter-reduce, higher-order-function, callback, for-of, captured-environment, environment-lifetime, upvalue, closed-upvalue, inlining, hash-table, interning, garbage-collection, aos-vs-soa, test-corpus]
-sources: [klabnik2026, rustref-closure-types, rust-std-iter]
+  - Write closures with and without type annotations, and pass them to functions.
+  - Say how a closure captures each variable (shared borrow, mutable borrow or move), and when to write move.
+  - Tell Fn, FnMut and FnOnce apart, and pick the right one as a parameter bound.
+  - Read and fix E0596, E0373 and E0382 when they come from a closure.
+introduces: [rust-closure]
+uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, string-vs-str, struct, impl, option, vec, trait, trait-bound, rust-generics, monomorphization, lifetime, lifetime-annotation, closure, arrow-function, map-filter-reduce, higher-order-function, callback, captured-environment, upvalue, closed-upvalue, closure-conversion, inlining, hash-table, garbage-collection, test-corpus]
+sources: [klabnik2026, rustref-closure-types, rust-book-closures]
 ---
-import LazySteps from '../../../components/diagrams/ch311/LazySteps';
+import CaptureSteps from '../../../components/diagrams/ch311/CaptureSteps';
+import FnLadder from '../../../components/diagrams/ch311/FnLadder';
 
-## The same chain, a different machine
+## Arrow functions, with bars
 
-With chapter 9's array methods, summing the positions of the live
-particles looks like this:
-
-```js
-const total = ps
-  .filter((p) => p.alive)
-  .map((p) => p.x)
-  .reduce((a, b) => a + b, 0);
-```
-
-`filter` builds a new array, `map` another, and `reduce` walks the
-second. In Rust:
+In *Other ways to loop: map, filter, reduce and while* you passed small
+functions to array methods, `xs.filter((p) => p.alive)`, and in
+*Closures: functions that remember* you saw that such a function can
+use variables from the place it was written. Rust has the same tool,
+with a different spelling:
 
 ```rust
-let total: f64 = ps
-    .iter()
-    .filter(|p| p.alive)
-    .map(|p| p.x)
-    .sum();
+let limit = 2.0;
+let fast = |vx: f64| vx > limit;
+println!("{}", fast(3.5)); // true
 ```
 
-It reads almost the same, but builds no arrays at all. Two ideas make
-that work: closures, the `|p| ...` bits, and iterators, the chain they
-plug into.
+`|vx: f64| vx > limit` is a **closure**: the parameters go between two
+bars instead of brackets, and the body follows, here a single
+expression (for several statements, use a `{ }` block whose last line
+is the value). It *uses* `limit`, a variable from outside. Calling it
+looks like calling any function.
 
-## Closures
+How does a closure hold on to `limit`? In TypeScript the engine keeps
+the whole surrounding environment alive for the closure (the
+*captured environment* of *Closures in Drip*), and the garbage
+collector sorts out the rest. Rust has no collector, so a closure must
+follow the ownership rules like everything else: for each variable it
+uses, it either **borrows** it or **moves** it in.
 
-`|p| p.alive` is a **closure**, Rust's arrow function. Parameters go
-between the bars, and the body is one expression or a `{ }` block.
-Types are usually inferred, but you may write them:
-`|a: f64, b: f64| -> f64 { a + b }`.
+<Analogy title="packing a lunchbox">
+A TypeScript closure is like being allowed back into the kitchen
+whenever you are hungry: the whole kitchen stays open for you. A Rust
+closure packs a lunchbox instead. It takes exactly the things its body
+needs, and for each one it packs either a note saying where to find it
+(a borrow) or the thing itself (a move), then leaves with the box.
+<span slot="breaks">A lunchbox is packed when you leave; a closure's
+"box" is filled when the closure is created, but a borrowed item is
+still the original, so changes to it show up on both sides.</span>
+</Analogy>
 
-Like a JavaScript closure (chapter 11), it can use variables from where
-it was written. Here is a tick counter:
+That lunchbox is real. The Rust Reference describes a closure as a
+value of a unique, unnamed type, "approximately equivalent to a struct
+which contains the captured values"<Cite id="rustref-closure-types" />.
+So `fast` is roughly `struct Fast<'a> { limit: &'a f64 }` with a call
+method, which is exactly the *closure conversion* of *Closure conversion
+and lambda lifting*, done for you by the compiler.
+
+## Borrow, mutably borrow, or move
+
+A closure borrows each variable only as strongly as its body needs: a
+shared borrow if it only reads, a mutable borrow if it changes the
+variable, and a move if it gives the value away<Cite id="rust-book-closures" />.
+Step through a counter, first borrowing and then with `move`:
+
+<CaptureSteps client:visible />
+
+<Analogy title="a library book, a shared notebook, a gift">
+Lending someone a library book to read is a shared borrow: you both
+know where it is and nobody writes in it. Lending them the shared
+notebook to write in is a mutable borrow: nobody else may touch it
+until they hand it back. Giving them the book to keep is a move.
+<span slot="breaks">With `move` on a number, the closure gets a copy and
+you keep the original, which no gift does; that is because small
+values like `i32` are `Copy`, as *Ownership* explained.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **closure** in Rust is an anonymous function written
+`|params| body` that can **capture** variables from where it is
+written. Each closure has its own unique type, roughly a struct of its
+captures. By default each capture is a shared borrow, a mutable borrow
+or a move, whichever the body needs; writing **`move`** before the bars
+makes every capture a move<Cite id="rust-book-closures" />.
+</Callout>
+
+<Examples of="rust-closure">
+
+```rust
+let add = |a, b| a + b;
+println!("{}", add(2, 3)); // 5
+```
 
 ```rust
 let mut count = 0;
-let mut tick = || {
-    count += 1;
-    count
-};
+let mut tick = || count += 1;
 tick();
-tick();
+tick(); // count is now 2
 ```
 
-Leave out the second `mut` and Rust 1.97 refuses with E0596: "calling
-`tick` requires mutable binding due to mutable borrow of `count`". The
-closure holds a `&mut` borrow of `count`, so calling it changes
-something, and Rust wants that visible at `let mut`.
+```rust
+// drip-rs's collector (gc.rs):
+self.interned.retain_keys(|s| {
+    marks.strings[s.handle.index()]
+});
+```
 
-<Callout kind="intuition">
-A JavaScript closure keeps a thread to the whole page of variables it
-was made on. A Rust closure packs a lunchbox: it takes exactly the
-variables it uses, each one either borrowed or moved in, and goes on
-its way with the lunchbox under its arm.
-</Callout>
+</Examples>
 
-The lunchbox is real. The Rust Reference describes a closure as roughly
-a struct holding its captures, plus a call method<Cite id="rustref-closure-types" />:
-`tick` is about `struct Tick<'a> { count: &'a mut i32 }`. That explains
-the next error. Chapter 11's `makeCounter` returned a
-closure, and JavaScript kept the variable alive for it. In Rust:
+The first captures nothing: the types of `a` and `b` are inferred from
+the call, so `add(2, 3)` is `5`. The second changes `count`, so the
+closure holds a mutable borrow, and the binding needs `let mut`
+(calling it changes something). The third is real: after marking, the
+collector of *Reclaiming memory: mark and sweep* removes every interned
+string nobody marked. `retain_keys` calls the closure once per key,
+`s`, and keeps the key when it returns `true`; the closure only *reads*
+`marks`, a variable of the function around it, so it borrows it shared.
+
+Forget the second `mut`, or try to return a borrowing closure, and the
+errors say what to add (rustc 1.97, trimmed):
+
+```text
+error[E0596]: cannot borrow `tick` as
+  mutable, as it is not declared as
+  mutable
+  calling `tick` requires mutable
+  binding due to mutable borrow of `count`
+help: consider changing this to be
+  mutable: let mut tick
+```
 
 ```rust
 fn make_counter() -> impl FnMut() -> u32 {
     let mut count = 0;
-    || {
-        count += 1;
-        count
-    }
+    || { count += 1; count } // E0373
 }
 ```
 
-(`impl FnMut() -> u32` means "some closure type that can be called
-like this"; its real name can't be written.) Rust 1.97 (trimmed):
-
-```
+```text
 error[E0373]: closure may outlive the
   current function, but it borrows
-  `count`, which is owned by the
-  current function
+  `count`, which is owned by the current
+  function
+help: to force the closure to take
+  ownership of `count` ..., use the
+  `move` keyword
 ```
 
-The lunchbox holds a *borrow* of `count`, which dies when the function
-returns: chapter 310's dangling reference again. The compiler's help
-line suggests `move || { ... }`, which moves `count` into the closure
-itself. That is chapter 156's closed upvalue, done at compile time.
+`impl FnMut() -> u32` means "some closure type that can be called like
+this", since a closure's own type has no name you can write. The
+closure borrows `count`, a local that dies when `make_counter` returns,
+which is *Lifetimes*' dangling reference again; `move || { ... }`
+fixes it by putting `count` inside the closure, the compile-time twin
+of *Closing upvalues: a fresh variable every pass*.
+
+<Prompts ids={['clo-syntax', 'clo-capture', 'clo-mut', 'clo-move', 'clo-struct']} />
+
+## Fn, FnMut and FnOnce
+
+What a closure does with its captures decides how often it may be
+called, and three standard traits (from *Traits*) name the answer:
+
+<Figure takeaway="Every Fn is an FnMut, and every FnMut is an FnOnce." caption="The traits nest. A closure that only reads can be used where any of the three is wanted; one that moves a capture out can only be called once.">
+  <FnLadder />
+</Figure>
+
+- **`FnOnce`**: can be called at least once. A closure that moves a
+  captured value *out* (returns it, or drops it) is only this, because
+  after one call there is nothing left to give.
+- **`FnMut`**: can be called many times, and may change its captures.
+- **`Fn`**: can be called many times, and only reads its captures.
+
+Call a closure that gives its capture away twice, and rustc explains
+exactly why not:
+
+```rust
+let name = String::from("drip");
+let take = move || name;
+let a = take();
+let b = take(); // E0382
+```
+
+```text
+error[E0382]: use of moved value: `take`
+note: closure cannot be invoked more
+  than once because it moves the
+  variable `name` out of its environment
+```
+
+A function that *takes* a closure picks the weakest bound it can live
+with. drip-rs's corpus runner takes `select: impl Fn(&str) -> bool` and
+only asks it questions; the hash table's `retain_keys` takes
+`impl FnMut(StrRef) -> bool`, so callers may pass a closure that counts
+as it goes; engine/rust's resolver has
+`with_block_scope(..., f: impl FnOnce(...))`, which calls `f` exactly
+once, between entering a scope and leaving it. Because each closure has
+its own type, such a parameter is generic in disguise, so
+*monomorphization* (from *Generics and trait bounds*) makes one copy per
+closure and the call can be inlined.
 
 <Callout kind="definition">
-A **closure** in Rust is an anonymous function written `|params| body`
-that can capture variables from its scope. Each closure has its own
-unique type, roughly a struct of its captures. By default a capture is
-a shared borrow, a mutable borrow, or a move, whichever the body needs;
-**`move`** forces every capture to be moved in<Cite id="klabnik2026" />.
+The **Fn traits** say how a closure may be called. **`FnOnce`** takes
+the closure by value and may be called once; **`FnMut`** needs mutable
+access and may be called repeatedly; **`Fn`** needs only shared access.
+The compiler implements each one the body allows; ordinary functions
+implement all three, so a function's name can be passed wherever a
+closure is wanted<Cite id="klabnik2026" />.
 </Callout>
 
-<Prompts ids={['clo-syntax', 'clo-mut', 'clo-move']} />
+<Formal title="The traits nest">
 
-## Fn, FnMut, FnOnce
+```text
+Fn ⊂ FnMut ⊂ FnOnce
+c : Fn     ⟹  c : FnMut  ⟹  c : FnOnce
+```
 
-What a closure *does* with its lunchbox decides how often you may call
-it, and the three standard traits name the answer<Cite id="klabnik2026" />:
+<span slot="read">The set of Fn closures is inside the set of FnMut
+closures, which is inside the set of FnOnce closures. Read the second
+line as: if closure c is Fn, then it is also FnMut, and therefore also
+FnOnce. So a parameter bounded by FnOnce accepts any closure at all,
+and one bounded by Fn accepts the fewest.</span>
+</Formal>
 
-- **`FnOnce`**: callable at least once. A closure that moves a capture
-  *out* (returns it, drops it) is only this, because after one call the
-  lunchbox is empty. Call `let take = move || name;` twice and you get
-  E0382, with the note "closure cannot be invoked more than once".
-- **`FnMut`**: callable many times, may change its captures. `tick`.
-- **`Fn`**: callable many times, only reads its captures. `|p| p.alive`.
+<OtherLanguages title="A counter that remembers">
 
-Every `Fn` is also an `FnMut`, and every `FnMut` an `FnOnce`. A function
-taking a closure picks the bound it needs. drip-rs's test runner takes
-`select: impl Fn(&str) -> bool` and calls it once per program. Its hash
-table's `retain_keys` takes `impl FnMut(StrRef) -> bool`; the collector
-passes `|s| marks.strings[s.handle.index()]` to drop unmarked strings.
-engine/rust's resolver has `with_block_scope(..., f: impl FnOnce(...))`,
-which calls `f` once, between pushing a scope and restoring the outer
-one.
+```rust
+fn make_counter()
+    -> impl FnMut() -> u32 {
+    let mut n = 0;
+    move || { n += 1; n }
+}
+let mut c = make_counter();
+c(); c(); // 1, then 2
+```
 
-Because each closure has its own type, a bound like `impl Fn(&str) ->
-bool` is a generic parameter in disguise: chapter 309's
-monomorphization makes one copy per closure type, so the compiler is
-free to inline the call.
+```ts
+function makeCounter(): () => number {
+  let n = 0;
+  return () => ++n;
+}
+const c = makeCounter();
+c(); c(); // 1, then 2
+```
 
-<Callout kind="definition">
-The **Fn traits** describe how a closure may be called. **`FnOnce`**
-takes the closure by value and can be called once; **`FnMut`** needs
-`&mut` access and can be called repeatedly; **`Fn`** needs only `&`
-access. The compiler implements whichever ones a closure's body allows,
-and a plain function's name can be passed wherever one is wanted.
-</Callout>
+</OtherLanguages>
+
+They behave the same, but the machinery differs. TypeScript keeps `n`
+alive in a captured environment for as long as `c` exists, and any
+function may change it; Rust makes you say `move` (so `n` lives inside
+the closure value), `let mut c` (calling it changes it) and `FnMut`
+(the caller may call it many times).
+
+<Run id="closure-kinds" />
 
 <Prompts ids={['fn-traits', 'fn-once', 'fn-bound']} />
 
-## The Iterator trait
-
-An iterator is anything with a `next` method that hands out items until
-it runs out. Its trait is tiny (trimmed from the standard library):
-
-```rust
-trait Iterator {
-    type Item;
-    fn next(&mut self)
-        -> Option<Self::Item>;
-}
-```
-
-`Item` is the type it yields, an associated type like `Extra` in
-chapter 309. `next` returns `Some(item)` or, at the end, `None`. Every
-other method of the trait is built on `next`.
-
-Chapter 306 promised to explain `for`. It is sugar for this trait: the
-loop calls `into_iter()` on what you give it, then `next()` until
-`None`<Cite id="rust-std-iter" />. What you hand it decides what you get:
-
-```rust
-for x in &v { }      // &T: v.iter()
-for x in &mut v { }  // &mut T: v.iter_mut()
-for x in v { }       // T: moves v in
-```
-
-The last one consumes `v`: chapter 301's move, applied to a loop.
-
-## Adapters, and laziness
-
-Methods that take an iterator and return a new one are **adapters**.
-Most of JavaScript's array methods have one, called on `xs.iter()`:
-
-```
-JavaScript          Rust, on xs.iter()
-xs.map(f)           .map(f)
-xs.filter(f)        .filter(f)
-xs.reduce(f, a)     .fold(a, f)
-xs.find(f)          .find(f)
-xs.some(f)          .any(f)
-xs.every(f)         .all(f)
-xs.forEach(f)       .for_each(f)
-xs.entries()        .enumerate()
-```
-
-plus some JavaScript lacks, such as `.zip(ys)`, which walks two
-sequences side by side, and `.sum()`. `collect()` builds a `Vec` (or a
-`HashMap`), with the type written on the `let`.
-
-The big difference is **laziness**. An adapter does nothing when you
-call it. It wraps the iterator in a new struct, and work happens only
-when something at the end, `sum`, `collect`, a `for` loop, starts
-calling `next`<Cite id="rust-std-iter" />. Then each element travels the
-whole chain before the next one starts:
-
-<LazySteps client:visible />
-
-Run it, with a `println!` in each closure, and watch the order:
-
-<Run id="lazy-trace" />
-
-Forget the consumer and nothing happens at all; Rust 1.97 warns that
-"iterators are lazy and do nothing unless consumed".
-
-<Callout kind="definition">
-An **iterator** implements the `Iterator` trait: an `Item` type and
-`fn next(&mut self) -> Option<Self::Item>`. **Adapters** (`map`,
-`filter`, `zip`, ...) wrap an iterator in another, lazily; **consumers**
-(`sum`, `collect`, `count`, `for`) call `next` until `None`. The Rust
-book calls iterators a zero-cost abstraction: they compile to roughly
-the code you would write by hand with a loop<Cite id="klabnik2026" />.
-</Callout>
-
-<Prompts ids={['it-trait', 'it-for', 'it-lazy', 'it-js']} />
-
-<Callout kind="engine" label="Under the hood">
-drip-rs's hash table is struct-of-arrays: a `keys` column and a
-`values` column (chapter 146's open addressing, laid out the chapter 59
-way). Its `iter` walks both columns at once:
-
-```rust
-pub fn iter(&self)
-    -> impl Iterator<Item = (StrRef, Value)>
-    + '_ {
-    self.keys
-        .iter()
-        .zip(&self.values)
-        .filter_map(|(key, value)| {
-            key.map(|k| (k, *value))
-        })
-}
-```
-
-`zip` pairs slot *i* of each column, and `filter_map` skips empty slots
-(`None` keys) while unpacking the full ones. The `+ '_` is chapter 310
-again: the returned iterator borrows the table, and that says so. When
-the table grows, `grow` re-inserts everything with
-`for (key, value) in self.iter()`. The corpus runner is the same style:
-it lists `.drip` files with `read_dir(...).map(...).collect()`, then
-picks the tests with two `.filter` calls.
-</Callout>
-
 ## Your turn
 
-<Exercise id="aliveCounter" />
-
-<Exercise id="wordsIter" />
+<Exercise id="counters" />
 
 ## What you learned
 
-- A **closure** is `|params| body`. It captures what it uses by borrow
-  or by move, like a struct of captures; `move` forces moves, which a
-  returned closure needs.
+- A **closure** is `|params| body`. It captures each variable it uses
+  by shared borrow, mutable borrow or move, as weakly as the body
+  allows; `move` forces moves, which a returned closure needs.
+- Each closure is a value of its own unnamed type, roughly a struct of
+  its captures: closure conversion, done by the compiler.
 - **`Fn`** only reads, **`FnMut`** changes its captures, **`FnOnce`**
-  may be called once. Functions choose one as a bound.
-- An **iterator** has `next() -> Option<Item>`. `for` calls it, through
-  `into_iter`: `&v`, `&mut v` and `v` give `&T`, `&mut T` and `T`.
-- **Adapters** like `map`, `filter` and `zip` are **lazy**. Nothing
-  runs until a consumer pulls, and then each item goes through every
-  stage, with no arrays in between.
+  may be called once, and they nest. Functions pick one as a bound.
+
+Next: iterators, the chains of `map` and `filter` that closures plug
+into, and why they build no arrays.
 
 <Quiz />

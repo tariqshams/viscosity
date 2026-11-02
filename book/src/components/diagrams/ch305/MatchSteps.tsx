@@ -8,22 +8,22 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 // refuses the match as non-exhaustive.
 
 const FULL = `let n = match v {
-    Value::Nil => 0.0,
+    Value::None => 0.0,
     Value::Bool(true) => 1.0,
     Value::Bool(false) => 0.0,
     Value::Number(x) => x,
 };`;
 
 const MISSING = `let n = match v {
-    Value::Nil => 0.0,
+    Value::None => 0.0,
     Value::Bool(true) => 1.0,
     Value::Number(x) => x,
 };`;
 
-type V = { tag: 'Nil' | 'Bool' | 'Number'; payload?: string };
+type V = { tag: 'None' | 'Bool' | 'Number'; payload?: string };
 type Pat = { tag: V['tag']; payload?: string; bind?: string };
 const ARMS: Pat[] = [
-  { tag: 'Nil' }, { tag: 'Bool', payload: 'true' }, { tag: 'Bool', payload: 'false' }, { tag: 'Number', bind: 'x' },
+  { tag: 'None' }, { tag: 'Bool', payload: 'true' }, { tag: 'Bool', payload: 'false' }, { tag: 'Number', bind: 'x' },
 ];
 
 type S = {
@@ -36,7 +36,7 @@ const FALSE: V = { tag: 'Bool', payload: 'false' };
 
 const STATES: S[] = [
   { code: FULL, v: NUM, arm: null, note: 'v holds Value::Number(2.5): the variant Number, carrying the payload 2.5. The match will try its arms from the top.' },
-  { code: FULL, v: NUM, arm: 0, tagOk: false, note: 'Arm 1: is v the Nil variant? No. The variants differ, so this arm is skipped without looking any further.' },
+  { code: FULL, v: NUM, arm: 0, tagOk: false, note: 'Arm 1: is v the None variant? No. The variants differ, so this arm is skipped without looking any further.' },
   { code: FULL, v: NUM, arm: 1, tagOk: false, note: 'Arm 2 wants Bool(true). v isn’t a Bool at all. Skip.' },
   { code: FULL, v: NUM, arm: 2, tagOk: false, note: 'Arm 3 wants Bool(false). Still the wrong variant. Skip.' },
   { code: FULL, v: NUM, arm: 3, tagOk: true, payOk: true, result: 'x = 2.5, so n = 2.5', note: 'Arm 4: Number(x). The variant fits, and x is a name, which fits any payload. x is bound to 2.5 and the arm’s value, x, becomes the value of the whole match.' },
@@ -78,13 +78,13 @@ export default function MatchSteps() {
             <Box x={220} y={26} w={74} h={34} r={4} fill={tok('brand', 0.1)} stroke={tok('brand')}>
               <T x={257} y={43} size={13} mono weight={700} anchor="middle">{pat.tag}</T>
             </Box>
-            {pat.tag !== 'Nil' && (
+            {pat.tag !== 'None' && (
               <Box x={296} y={26} w={60} h={34} r={4} stroke={tok('brand')} dash={!!pat.bind}>
                 <T x={326} y={43} size={13} mono anchor="middle">{pat.payload ?? pat.bind}</T>
               </Box>
             )}
             <T x={160} y={43} size={18} weight={700} anchor="middle" fill={mc(st.tagOk)}>{mark(st.tagOk)}</T>
-            {st.tagOk && pat.tag !== 'Nil' && (
+            {st.tagOk && pat.tag !== 'None' && (
               <T x={370} y={43} size={18} weight={700} anchor="middle" fill={mc(st.payOk)}>{mark(st.payOk)}</T>
             )}
             <T x={10} y={82} size={12} fill={tok('muted')}>

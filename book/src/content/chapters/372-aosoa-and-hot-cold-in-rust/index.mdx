@@ -3,21 +3,28 @@ n: 372
 day: 93
 part: XIII
 title: 'AoSoA and hot/cold in Rust'
-tagline: 'An aosoa(4) annotation turns every field access into a shift, a multiply and a mask, which is why the planner insists on a power of two. And the port’s “hot/cold” split is honestly something simpler: typed columns for numbers, plain ones for the rest.'
+tagline: 'An aosoa(4) annotation stores every field of every element in one Float64Array, in blocks, and turns each field access into a shift, a multiply and a mask. Here is the arithmetic, the code emit.rs writes for it, and the one-line Rust function that makes the shift possible.'
 objectives:
   - Derive the AoSoA slot of field k of element i, and match it to the code emit.rs writes.
-  - Explain why the planner refuses block sizes that aren’t powers of two, and where the check lives in Rust.
-  - Describe the upper limit on block sizes, and what went wrong before both engines checked it.
-  - Say precisely what Viscosity’s typed/plain split is, and what a split by heat would need.
+  - Explain why a power-of-two block size turns division and remainder into a shift and a mask.
+  - Read the slot closure in emit.rs, and say when it inlines the arithmetic and when it calls a helper.
+  - Implement the slot computation in Rust, with tests.
 introduces: [rust-aosoa]
-uses: [viscosity-rs, rust-soa-codegen, rust-cost-model, rust-access-pass, aosoa, block-size, hot-cold-split, field-affinity, annotation, column-storage, typed-array, bit-ops, simd, option, match, rust-closure, rust-iterator, vec, cross-implementation-tests, ieee754]
+uses: [viscosity-rs, rust-soa-codegen, rust-cost-model, rust-access-pass, aosoa, block-size, annotation, column-storage, typed-array, bit-ops, simd, option, match, rust-closure, rust-iterator, vec, cross-implementation-tests, ieee754]
 sources: [rust-std-is-power-of-two, ecma262-signed-right-shift, ispcdocs]
 ---
 import AosoaSteps from '../../../components/diagrams/ch372/AosoaSteps';
+import ShiftMask from '../../../components/diagrams/ch372/ShiftMask';
 
-## Four is fine, six is not
+## Blocks of four
 
-Put an annotation above a collection of `{x, y, vx}` records:
+A struct of arrays puts each field in its own array, so a loop over `x`
+and `vx` reads two arrays that may sit far apart in memory. *When SoA
+loses: materialization and AoSoA* described the middle way, an **array
+of structs of arrays** (AoSoA): small blocks of elements, and inside
+each block the values of one field side by side. Viscosity builds it
+only when you ask, with an annotation, because *AoSoA code generation*
+measured that V8 rarely rewards it. Here is a request:
 
 ```js
 // @viscosity aosoa(4)
@@ -28,42 +35,72 @@ for (let i = 0; i < ps.length; i++)
   ps[i].x += ps[i].vx;
 ```
 
-`viscosity explain` (release build, rustc 1.97) answers
-`ps (line 2) {x, y, vx} → AoSoA, blocks of 4`. Change the 4 to a 6, and
-it refuses (wrapped):
+`viscosity explain` (I ran the release build here, rustc 1.97) answers
+`ps (line 2) {x, y, vx} → AoSoA, blocks of 4`. This chapter reads how
+the Rust emitter lays that out and writes the arithmetic that finds a
+field; the next one, *Block sizes and typed columns in Rust*, reads the
+rules about which block sizes are allowed, and the port's other split,
+by type.
 
-```
-ps (line 2) {x, y, vx} → kept as array
-  of objects
-  · annotated aosoa(6), but the block
-    size must be a power of two (2, 4, 8,
-    16, ...)
-```
+<Analogy title="egg boxes on a shelf">
+Three hens lay one egg a day each, and you pack them in boxes that
+hold four days: a row for the first hen's four eggs, a row for the
+second's, a row for the third's. To find hen 2's egg from day 13, you
+count whole boxes (13 ÷ 4 = 3 boxes along), go to her row, and step to
+place 1 in it.
+<span slot="breaks">A shelf of boxes is fixed; the array grows, by
+copying into one twice as long. That moves nothing, because an egg's
+place depends only on its day and its hen, never on how many boxes
+there are.</span>
+</Analogy>
 
-The same happens for 0, 1 and 3. Chapter 260 built this layout in
-TypeScript and measured that V8 rarely rewards it. This chapter reads
-the Rust that writes it, finds out why 6 is refused, and ends with the
-other split from Part VIII, hot and cold, which the port does in a
-simpler way than its name suggests.
-
-<Callout kind="intuition">
-Egg cartons hold the eggs of four hens, in rows: four eggs from the
-first hen, then four from the second. To find hen 2's egg from day 6,
-you count cartons, then rows, then places in the row. If every carton
-holds a round number of eggs, the counting is quick.
-</Callout>
+<Analogy title="a week of eight days">
+With seven-day weeks, "which week and which weekday is day 45?" needs
+a division. If weeks had eight days and you wrote day numbers in base
+8, the answer would be the digits themselves: `55` in base 8 is week
+5, day 5.
+<span slot="breaks">Nobody counts days in base 8; a computer counts
+everything in base 2, which is why blocks of 2, 4, 8 or 16 make the
+digits do the work, and blocks of 6 don't.</span>
+</Analogy>
 
 ## The slot of a field
 
 With `F` fields and blocks of `B` elements, one `Float64Array` named
-`data` holds everything. Block `i / B` starts at `(i / B) * F * B`.
-Inside it, field `k` has its own run of `B` slots starting at `k * B`,
-and element `i` sits at lane `i % B` of that run. When `B` is `2` to the
-power `sh`, `i / B` is `i >> sh` and `i % B` is `i & (B - 1)`:
+`data` holds everything. Block number `i / B` (rounded down) starts at
+slot `(i / B) * F * B`. Inside it, field `k` has its own run of `B`
+slots starting at `k * B`, and element `i` sits at lane `i % B` of that
+run. Step through it for the program above, where `F = 3` and `B = 4`:
 
 <AosoaSteps client:visible />
 
-For the program above the emitter writes (wrapped):
+When `B` is 2 to the power `sh`, dividing by `B` and rounding down is
+shifting `i` right by `sh` bits, and the remainder is the low `sh` bits,
+which `i & (B - 1)` keeps: in binary, the block and the lane are simply
+two parts of the same number.
+
+<Figure caption="Element 13 with blocks of 4: the top bits are the block, the bottom two bits the lane. Blocks of 6 have no such split." takeaway="A power-of-two block size makes the block and the lane two pieces of the index's bits.">
+  <ShiftMask />
+</Figure>
+
+<Formal title="The AoSoA slot">
+
+```text
+B = 2^sh,  B ≥ 2
+slot(i, k) = (i >> sh) · F·B
+           + k · B
+           + (i & (B − 1))
+```
+
+<span slot="read">The block size B is 2 to the power sh, and at least
+2. Field k of element i is at: i shifted right by sh (the block number)
+times F times B (the slots in one block), plus k times B (where field
+k's run starts inside the block), plus i with all but its low sh bits
+cleared (the lane).</span>
+</Formal>
+
+For the program above, the emitter writes this `push` (from the
+release CLI's output, reformatted):
 
 ```js
 push(v0, v1, v2) {
@@ -77,18 +114,20 @@ push(v0, v1, v2) {
 }
 ```
 
-and rewrites the loop body `ps[i].x += ps[i].vx` to (wrapped):
+`b` is the slot of field 0 of the new element `n`, so the three values
+go to `b + 0`, `b + 4` and `b + 8`, one run of four further each. The
+constructor rounds the capacity up to whole blocks
+(`Math.ceil(cap / 4) * 4`), so the last block's runs always fit, and
+`grow()` copies the old array into the front of one twice as long with
+`set`; since a slot depends only on `i` and `k`, never on the capacity,
+growing moves nothing. And the loop body `ps[i].x += ps[i].vx` becomes
+(wrapped):
 
 ```js
 ps.data[((i) >> 2) * 12 + 0 + ((i) & 3)]
   += ps.data[((i) >> 2) * 12 + 8
     + ((i) & 3)];
 ```
-
-The constructor rounds the capacity up to whole blocks
-(`Math.ceil(cap / 4) * 4`), and `grow()` copies the old array into the
-front of a bigger one. Slots depend on `i` and `k`, never on the
-capacity, so growing moves nothing.
 
 <Run id="layout-play" />
 
@@ -97,19 +136,20 @@ capacity, so growing moves nothing.
 ## The arithmetic in Rust
 
 `emit.rs` builds that text in a closure, `slot`, which every rewritten
-access calls (adapted):
+access calls. Its AoSoA half (rewrapped):
 
 ```rust
 let sh = log2_exact(b)
     .expect("checked by container_class");
 let bf = b as f64;
-let stride = js_number(nf * bf);
-let off = js_number(k as f64 * bf);
-let mask = js_number(bf - 1.0);
+let (stride, off, mask) = (
+    js_number(nf * bf),
+    js_number(k as f64 * bf),
+    js_number(bf - 1.0),
+);
 let at = if simple_idx {
-    format!("(({idx}) >> {sh}) * \
-        {stride} + {off} + \
-        (({idx}) & {mask})")
+    format!("(({idx}) >> {sh}) * {stride} \
+        + {off} + (({idx}) & {mask})")
 } else {
     need_aosoa = true;
     format!("__vsc_aosoa({idx}, {sh}, \
@@ -118,15 +158,16 @@ let at = if simple_idx {
 format!("{arr}.data[{at}]")
 ```
 
-A simple index (an identifier or a literal, already proven or assumed
-in bounds) is repeated twice in place. Anything else, such as a call to
-`__vsc_bc`, must run once, so it goes through the helper
-`__vsc_aosoa(i, sh, stride, off, mask)` instead, as in
-`ps.data[__vsc_aosoa(__vsc_bc(ps, 10, 'y', false), 2, 12, 4, 3)]`.
-The constants are computed as `f64` and printed by `js_number`, so the
-text matches what the TypeScript reference computes with its doubles.
-
-And `log2_exact` is one line:
+The three constants are computed as `f64` and printed by `js_number`,
+which formats a number the way JavaScript prints it, so the text is
+byte for byte what the TypeScript reference computes with its doubles.
+The inline form writes the index twice, so it is used only for a
+**simple** index (an identifier or a literal, already proven or assumed
+in bounds), which is safe to repeat. Anything else, such as a call to
+`__vsc_bc`, must run exactly once, so it is passed to a helper instead,
+`__vsc_aosoa(i, sh, stride, off, mask)`, and `need_aosoa` makes sure the
+helper is added to the prelude. The shift comes from a one-line
+function:
 
 ```rust
 fn log2_exact(b: u64) -> Option<u32> {
@@ -135,95 +176,64 @@ fn log2_exact(b: u64) -> Option<u32> {
 }
 ```
 
-`is_power_of_two` checks that exactly one bit is set, and
-`trailing_zeros` counts the zeros below it, which is the shift<Cite id="rust-std-is-power-of-two" />.
+`is_power_of_two` is true when exactly one bit of `b` is set, and
+`trailing_zeros` counts the zero bits below it, which is the
+shift<Cite id="rust-std-is-power-of-two" />: `8` is `0b1000`, so
+`Some(3)`, and `6` is `0b110`, so `None`. `bool::then` runs the closure
+only when the test is true. The reference computes the same thing as
+`Math.log2(b)`, checked with `Number.isInteger`.
 
-<Prompts ids={['ao-simple', 'ao-log2']} />
+<Examples of="rust-aosoa">
 
-## Who refuses six?
-
-Three places know the rule. The planner refuses first, with the message
-above: `!(b >= 2 && b.is_power_of_two())` (chapter 370). `1` is a power
-of two, `2⁰`, so it needs the extra `b >= 2`. `container_class` checks
-again and returns a `CompileError`, and `slot` then relies on it with
-`expect`. Because the planner went first, neither of those can fire for
-a program the CLI compiles. They are there so a mistake in one place
-shows up as an error, not as wrong arithmetic.
-
-When this chapter was first written, there was no rule at the other
-end. Both engines accepted `aosoa(1073741824)`, which is 2³⁰. The
-constructor then asked for `new Float64Array(2³¹ * 2)`, and node
-reported `RangeError: Array buffer allocation failed` for a program
-whose original runs fine. From `2³²` up, the arithmetic would be wrong
-as well, because JavaScript takes shift counts modulo
-32<Cite id="ecma262-signed-right-shift" />: `i >> 32` is `i`. At `2⁶⁴`
-the engines even disagreed: the port stored block sizes as `u64`, which
-saturates, and refused the result, while the reference accepted it. A
-real limit closes all three, and both engines now have one, 2¹⁶
-(`MAX_BLOCK_SIZE` in Rust), checked before the power-of-two rule:
-
-```
-  · annotated aosoa(1073741824), but the
-    block size must be at most 65536
+```js
+const b = (n >> 2) * 12 + (n & 3);
+// push: field 0 of new element n
 ```
 
-A size that isn't a whole number, such as `aosoa(x)`, is refused too,
-quoted as written, instead of quietly becoming the default 8.
+```js
+ps.data[((i) >> 2) * 12 + 8
+  + ((i) & 3)]
+// vx (k = 2) of a proven index i
+```
+
+```js
+ps.data[__vsc_aosoa(
+  __vsc_bc(ps, 10, 'y', false),
+  2, 12, 4, 3)]
+// y (k = 1) of ps[10], not proven
+```
+
+</Examples>
+
+All three are from the Rust CLI's output for the program above, with
+`console.log(ps[10].y)` added at the end. The first is the push: block
+`n >> 2`, lane `n & 3`, field 0. The second is the inline form for a
+proven index: stride 12, offset `2 × 4 = 8` for `vx`, mask 3. The third
+is a constant index outside any loop, which isn't proven, so the index
+is a `__vsc_bc` call, and the arithmetic moves into `__vsc_aosoa` with
+shift 2, stride 12, offset 4 and mask 3; node prints `20` for both the
+original and the compiled program.
 
 <Callout kind="definition">
 **AoSoA in Rust** stores a collection of `F` numeric fields in one
-`Float64Array`, `data`, in **blocks** of `B` elements, field-major
-inside each block. Field `k` of element `i` is at
-**`(i >> sh) * F·B + k·B + (i & (B − 1))`**, with `sh = log2 B`. The
-planner accepts `aosoa(B)` only when **`B ≥ 2` and `B` is a power of
-two**, at most 65536, and every field may only hold numbers.
+`Float64Array`, `data`, in **blocks** of `B = 2^sh` elements, field-major
+inside each block, and puts field `k` of element `i` at **`(i >> sh) *
+F·B + k·B + (i & (B − 1))`**. The `slot` closure in `emit.rs` writes
+that inline for a **simple** index, and through **`__vsc_aosoa`** for
+any other; `log2_exact` gives `sh` with `is_power_of_two` and
+`trailing_zeros`.
 </Callout>
 
-<Prompts ids={['ao-refuse-1', 'ao-huge']} />
-
-## Hot and cold, by type
-
-Chapter 261 described splitting a record into hot fields, used by the
-busy loops, and cold ones. The port has a split too. It is by **type**,
-not by heat. `describe` in `plan.rs` partitions the fields:
-
-```rust
-let (typed, generic): (Vec<&str>, Vec<_>) =
-    c.fields.iter().map(String::as_str)
-        .partition(|f| {
-            c.numeric_fields.contains(*f)
-        });
-```
-
-and `container_class` gives the first group `Float64Array` columns and
-the second plain arrays. In `mixed_columns.js` explain says (wrapped):
-
-```
-  · typed Float64Array columns for hp, x;
-    plain array columns for id, tag (may
-    hold non-numbers)
-```
-
-`tag` is read in the hottest loop and still gets a plain column, and a
-numeric field that no loop reads still gets a typed one. AoSoA has no
-plain part at all: its one `data` array is a `Float64Array`, so an
-annotation on records with a string field is refused:
-`annotated aosoa, but fields name may hold non-numbers`.
-
-What would a real split by heat need? The access tables of chapter 369
-already list, per loop, which fields are touched together. Nothing in
-`plan.rs` reads them for grouping today. Since every field already has
-its own column, grouping only matters where fields share storage: in
-AoSoA's blocks.
-
-<Prompts ids={['ao-type-not-heat', 'ao-numeric-only']} />
+<Prompts ids={['ao-simple', 'ao-log2', 'ao-js-number', 'ao-shift-why']} />
 
 <Callout kind="engine" label="Under the hood">
 ISPC builds this layout into its language: an `soa<8>` type stores 8
 values of each field in turn, and indexing it does the same block, lane
 and offset arithmetic<Cite id="ispcdocs" />. There the block matches the
 SIMD lanes, so one load fills a register. JavaScript has no such loads,
-which is why Viscosity keeps AoSoA behind an annotation.
+which is why Viscosity keeps AoSoA behind an annotation. (And
+JavaScript's `>>` takes its shift count modulo 32<Cite id="ecma262-signed-right-shift" />,
+which the next chapter shows matters for huge blocks.)
 </Callout>
 
 ## Your turn
@@ -233,12 +243,11 @@ which is why Viscosity keeps AoSoA behind an annotation.
 ## What you learned
 
 - AoSoA puts field `k` of element `i` at **`(i >> sh) * F·B + k·B +
-  (i & (B − 1))`**, in one `Float64Array`.
-- A **power of two** turns division and remainder into a **shift** and a
-  **mask**. `log2_exact` is `is_power_of_two` then `trailing_zeros`.
-- The **planner** refuses other sizes, `1`, and **huge** powers of two
-  (above 65536), which once failed at run time.
-- Viscosity's "hot/cold" split is **by type**: typed columns for proven
-  numbers, **plain** columns for the rest.
+  (i & (B − 1))`**, in one `Float64Array`, and growing moves nothing.
+- A **power of two** turns division and remainder into a **shift** and
+  a **mask**; `log2_exact` is `is_power_of_two` then `trailing_zeros`.
+- The `slot` closure inlines the arithmetic for a **simple** index and
+  calls **`__vsc_aosoa`** otherwise, so an index with effects runs once;
+  `js_number` keeps the constants byte-identical to the reference's.
 
 <Quiz />

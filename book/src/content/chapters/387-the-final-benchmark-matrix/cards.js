@@ -47,6 +47,10 @@ export const prompts = {
     q: 'Why shouldn’t `e2e-node-2026-10-31` be compared cell by cell with the matrix?',
     a: 'It predates the late-store fix (heat’s compiled code changed since), and it used a different method: Node only, median of 3.',
   },
+  'drip-old': {
+    q: 'Why should the matrix’s Drip section not be read as a measurement of the Drip this book teaches?',
+    a: 'It was copied from results of 2026-10-31, before Drip was redesigned; the redesigned Drip’s own run (2026-11-02) has different programs and different ratios.',
+  },
   startup: {
     q: 'Run once per file, the Rust CLI beats the TS CLI by a much bigger ratio than the in-process comparison shows. Why?',
     a: 'Start-up: each TS CLI run starts Node and loads a 1 MB bundle, which takes far longer than compiling. In one warm process, only the engines are compared.',
@@ -141,12 +145,26 @@ fn nothing_to_average_is_none() {
       'Add up `(a / b).ln()` and count the rows you used. Adding logarithms is multiplying the ratios, without the product overflowing.',
       'At the end, no rows means `None`. Otherwise `Some((sum / n as f64).exp())`.',
     ],
-    walkthrough: `This is \`geo\` in \`engine/ts/packages/bench/src/matrix.ts\`, in Rust, together with the filtering the matrix does before calling it.
+    walkthrough: `**How to think about it.** This is \`geo\` from \`engine/ts/packages/bench/src/matrix.ts\`, in Rust, together with the filtering the matrix does before it calls \`geo\`. Split the job in two: first decide which rows count at all, then average what is left. A row counts only if it has both times (a failed run has no time, so there is no ratio to take) and is not a fixed-time row (\`zoo_batch\` runs for a set time on every implementation, so its time ratio is always about 1 and says nothing about speed). Then average the ratios the geometric way.
 
-- **Why geometric.** Speed-ups are ratios. A program 2× faster and another 2× slower should average to “no change”, 1×. The arithmetic mean of 2 and 0.5 is 1.25; the geometric mean is 1. (The test \`a_loss_cancels_a_win\` checks exactly that.)
-- **Why logarithms.** \`ln(a·b) = ln a + ln b\`, so the mean of the logs is the log of the n-th root of the product. Summing logs also avoids a huge or tiny product.
-- **Why skip, not substitute.** A failed run has no time. Replacing it with 1.0 invents a 1× (or worse) result and drags the mean. The matrix shows such rows in a footnote and leaves them out of the mean.
-- **Why fixed-time rows go.** \`zoo_batch\` runs for ten seconds on every implementation; what differs is how much it gets done. Its time ratio is always about 1, which says nothing about speed.`,
+Why geometric? Speed-ups are ratios, and ratios multiply. A program that gets 2× faster and another that gets 2× slower should average to "no change", 1×; the ordinary mean of 2 and 0.5 is 1.25, which wrongly reports a gain, while the geometric mean is exactly 1 (the test \`a_loss_cancels_a_win\` checks this). And why logarithms? Because \`ln(a × b) = ln a + ln b\`: the mean of the logs is the log of the n-th root of the product, so \`exp\` of that mean is the geometric mean, computed without ever forming a product that could grow huge or tiny.
+
+**The solution, line by line.**
+
+- \`fn geomean(rs: &[Row]) -> Option<f64> {\` borrows a slice of rows and returns \`None\` when there is nothing to average, rather than inventing a number.
+- \`let mut logs = 0.0;\` is the running sum of logarithms, and \`let mut n = 0;\` counts the rows that were used.
+- \`for r in rs {\` visits each row by reference.
+- \`if r.fixed { continue; }\` skips fixed-time rows before looking at their times.
+- \`if let (Some(a), Some(b)) = (r.old, r.new) {\` builds a tuple of the two \`Option\`s and matches only when both are \`Some\`, binding the times to \`a\` and \`b\`; a row with a missing time simply does not match, so it is skipped with no extra code.
+- \`logs += (a / b).ln();\` adds the log of this row's speed-up (old over new), and \`n += 1;\` counts it.
+- \`if n == 0 { return None; }\` handles the empty case; dividing by zero would give \`NaN\`.
+- \`Some((logs / n as f64).exp())\` is the mean of the logs, turned back into a ratio with \`exp\`. \`n as f64\` converts the count, because Rust never mixes integers and floats silently.
+
+**Common wrong attempts.**
+
+- The ordinary average of the ratios. It is pulled up by big wins and barely moved by losses, so a 2× gain and a 2× loss look like a 1.25× gain.
+- Treating a failed run as a ratio of 1 (or 0). That invents a result the machine never measured and drags the mean; the matrix footnotes such rows and leaves them out.
+- Forgetting the fixed-time rows. \`zoo_batch\`'s ratio is always about 1, so including it quietly pulls every mean towards "no change".`,
     wrong: [
       {
         code: `${PRE}
@@ -257,7 +275,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the drip geometric mean leave out `string_equality`?',
+    q: 'Why does the matrix’s Drip geometric mean (a record of Drip before its redesign) leave out `string_equality`?',
     options: [
       { t: 'It was too slow to measure', why: 'The tree-walker ran it. The two VMs refuse it.' },
       { t: 'Both VMs stop with “Too many constants in one chunk”, so there is no ratio', correct: true, why: 'A failed cell has no speed-up; the matrix footnotes it and skips it.' },

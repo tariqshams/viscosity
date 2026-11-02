@@ -3,201 +3,215 @@ n: 382
 day: 96
 part: XIII
 title: 'Diagnostics'
-tagline: 'One of the CLI’s messages pointed at the exact code; two of them didn’t say where at all. Follow a position from oxc to the caret, read the CLI’s errors and exit codes, and compute the missing position yourself.'
+tagline: 'A compiler that refuses your code owes you the place, not only the reason. Follow one position from oxc’s parser through the IR to the carets under your code, and see what makes a message a diagnostic.'
 objectives:
-  - Say what makes a message a diagnostic, using rustc’s structure as the model.
-  - Trace a source position from oxc’s span through SourceRef and bail to the caret.
-  - Predict the CLI’s message, help text and exit status for a failure.
-  - Compute acorn’s line and column from a byte offset, and explain each unit.
+  - Say what makes a message a diagnostic, using rustc’s parts as the model.
+  - Trace a source position from oxc’s span through SourceRef and the bailout site to the caret.
+  - Explain why a frame is only as good as the span it was given, using the for...of case.
+  - Draw the caret line under a span, tabs and all, in Rust.
 introduces: [diagnostic]
 uses: [viscosity-rs, rust-explain, oxc, ir-arena, source-location, syntax-error, bailout, optimization-report, enum, match, result, error-enum, string-vs-str, char-code, byte, cargo-test, escape-analysis, cross-implementation-tests]
-sources: [rustc-dev-guide-diagnostics, rust-std-exitcode, acorn]
+sources: [rustc-dev-guide-diagnostics]
 ---
 import SpanSteps from '../../../components/diagrams/ch382/SpanSteps';
+import DiagnosticParts from '../../../components/diagrams/ch382/DiagnosticParts';
 
 ## Three messages
 
 Here are three things the Rust CLI printed for me (release build,
-rustc 1.97). The first, for a six-line program (wrapped):
+rustc 1.97), for three small files. The first is a six-line program
+whose sixth line starts with a tab (wrapped):
 
 ```
 $ viscosity explain --frames k.js
-ps (line 1) {x} → kept as array of objects
+ps (line 1) {x, y} → kept as array of
+  objects
   · unsafe: line 6: an element is used by
     push
     6 | 	if (ps[i].x > 3) keep.push(ps[i]);
       | 	                           ^^^^^
 ```
 
-The second, for a file holding `const ps = [;`, and the third, for a
-file that doesn't exist, are as the CLI printed them when this chapter
-was first written (wrapped):
+The second is for a file that holds only `const ps = [;`, and the third
+for a file that does not exist:
 
 ```
 $ viscosity explain bad.js
-viscosity: SyntaxError: Unexpected token
+viscosity: Unexpected token (1:12)
 $ viscosity explain nope.js
-viscosity: No such file or directory (os
-  error 2)
+viscosity: cannot read nope.js: No such
+  file or directory (os error 2)
 ```
 
-The first tells you what and where, down to the character. The second
-tells you what, but not where. The third doesn't even say which file.
-The TypeScript CLI printed `Unexpected token (1:12)` and
-`ENOENT: no such file or directory, open 'nope.js'` for the same two.
-Both gaps are closed now; the last section shows how.
+All three say *what* went wrong and *where*. The first is the richest:
+it names the collection, gives the reason, and draws the line of code
+with **carets** (`^`) under the exact five characters it is about,
+`ps[i]`, because pushing an element of `ps` into another array means
+Viscosity can no longer move that element into columns. The second
+gives a line and a column, 1 and 12. The third names the file. It was
+not always so: when this chapter was first written, the second printed
+`viscosity: SyntaxError: Unexpected token` with no position, and the
+third `viscosity: No such file or directory (os error 2)` with no file
+name, which is a puzzle when you passed ten files. (The TypeScript CLI
+now prints the same second message; for the third it prints Node's
+wording, `ENOENT: no such file or directory, open 'nope.js'`.) The next
+chapter, *Lines and columns*, follows how the position came back; this
+one is about what such a message is made of, and how the first one is
+drawn.
 
-<Callout kind="intuition">
-"Your car is making a noise" is a complaint. "The front left brake
-squeals when you stop" is a diagnosis: it names the part, so you can
-go and look.
-</Callout>
+<Analogy title="a car at the garage">
+"Your car is making a noise" is a complaint. "The front left brake pad
+squeals when you stop, because it is worn to the metal" is a diagnosis:
+it names the part and the reason, so you know where to look and what to
+do.
+<span slot="breaks">A mechanic can only guess at what you heard; a
+compiler knows the exact characters it was reading when it gave up, so
+a diagnostic can be precise to the character, not only to the part.</span>
+</Analogy>
+
+<Analogy title="directions to a café">
+"The café is somewhere in town" is true and useless. "The café on Mill
+Street, third door past the bakery" gets you there, and a sketch of the
+street with an arrow is better still.
+<span slot="breaks">A street stays put; a file changes between runs, so
+a position is only right for the exact text that was compiled, which is
+why tools quote the line of code itself rather than only its
+number.</span>
+</Analogy>
+
+<Prompts ids={['dg-missing', 'dg-why-place']} />
 
 ## What a diagnostic has
 
-rustc's own guide lists the parts of an error: a **level** (`error`,
-`warning`), an optional **code** such as `E0308`, a **message** that
-makes sense on its own, and a window with the file, line and column of
-the **primary span**, the code itself, and labels under the spans
-<Cite id="rustc-dev-guide-diagnostics" />. Viscosity's frames have the
-message, a line, the code and carets. They have no level, no code and
-no file name. Its syntax errors had only a message.
+rustc's own developer guide lists the parts of an error
+message<Cite id="rustc-dev-guide-diagnostics" />: a **level** such as
+`error` or `warning`; an optional **code** such as `E0308`; a
+**message** that makes sense on its own; and a window onto the code,
+with the file, line and column where the **primary span** begins (a
+**span** is a stretch of the source, from one position to another), the
+code itself, and **labels** under the spans. Here is a real one from
+rustc next to Viscosity's frame:
+
+<Figure caption="Top: rustc 1.97 on a line that gives a string to an i32 (trimmed). Bottom: the Rust Viscosity CLI on k.js." takeaway="Viscosity’s frames have a message, a line, the code and a span; no level, code, file name or column.">
+  <DiagnosticParts />
+</Figure>
+
+rustc says it is an `error`, gives it the code `E0308` (whose long
+explanation `rustc --explain E0308` prints), and points at `e.rs`, line
+2, column 18, with a label under the carets that says what it expected.
+Viscosity's frame has the message, the line number, the line of code and
+the carets. It has no level (every reason is a refusal to optimize, not
+an error in your program), no code, no file name (the file is printed
+once, above, when there are several) and no column.
 
 <Callout kind="definition">
 A **diagnostic** is a compiler message tied to the source: a
-**message** that stands on its own, plus a **span** (where it starts
-and ends) that a tool turns into a file, a line, a column and a picture
-of the code. A message without a span is just an error.
+**message** that makes sense on its own, plus a **span**, the stretch of
+source it is about, given by where it starts and ends. A tool turns the
+span into a file, a line, a column and a picture of the code. A message
+without a span is only an error message.
 </Callout>
 
-<Prompts ids={['dg-parts', 'dg-missing']} />
+<Formal title="A diagnostic as data">
+
+```text
+span = [start, end)    byte offsets
+diag = (level?, code?, message, span)
+line(p) = 1 + #line breaks before p
+```
+
+<span slot="read">A span runs from the byte offset start up to, but not
+including, end (the square bracket includes, the round one excludes). A
+diagnostic is a message and a span, with a level and a code that may be
+missing (the question marks). The line of a position p is one more than
+the number of line breaks that come before it.</span>
+</Formal>
+
+The same parts, small enough to run: a level, a made-up code, a message
+and a span, laid out the way rustc lays one out.
+
+<Run id="render-diag" />
+
+`render` finds where the span's line starts (just after the last `\n`
+before it) and ends (the next `\n`), counts the line breaks before the
+span to get the line number, takes the column as the distance from the
+line start plus one, and pads the caret line with that many spaces. It
+prints `error[V001]`, then ` --> k.js:2:11`, then line 2 and five carets
+under `ps[1]`.
+
+<Prompts ids={['dg-parts', 'dg-span']} />
 
 ## From a span to a caret
 
-Chapter 373 drew the frame. Here is where its numbers come from, for
-the `ps[i]` in the first message:
+*explain in Rust* drew the frame; here is where its numbers come from.
+oxc, the parser, gives every node of the syntax tree a `Span`, its start
+and end as byte offsets, and nothing else. During lowering, the
+JavaScript plugin turns that span into a `SourceRef` and attaches it to
+the VIR instruction it makes (`Lowerer::src` in
+`crates/frontend-js/src/lower.rs`, rewrapped):
+
+```rust
+fn src(&self, span: Span) -> SourceRef {
+    SourceRef {
+        node: NodeRef(0),
+        start: span.start,
+        end: span.end,
+        line: self.lines.line(span.start),
+    }
+}
+```
+
+It copies the start and end, and works out the line once, with the
+plugin's `LineIndex` (the next chapter opens it up). `node` points back
+at the syntax node when an emitter needs it; `NodeRef(0)` means "none".
+Step through the journey of the second `ps[i]` on line 6:
 
 <SpanSteps client:visible />
 
-Three facts to notice. The position is made once, during lowering
-(`Lowerer::src` in `lower.rs`), and then rides along on the instruction;
-no later pass touches it. The line in the message and the frame come
-from the same `SourceRef`, so they can't disagree. And a frame is only
-as good as its span. For `for (const p of ps) keep.push(p);`, the
-element `p` was made by the `for...of` statement, so its `SourceRef` is
-the whole statement, and both engines underline the whole line:
+Three facts to notice. The position is made once, at lowering, and then
+rides along on the instruction; no later pass changes it. The "line 6"
+in the message and the frame under it come from the same `SourceRef`,
+so they cannot disagree. And a frame is only as good as its span.
+
+<Examples of="diagnostic">
+
+```
+  · unsafe: line 6: an element is used by
+    push
+    6 | 	if (ps[i].x > 3) keep.push(ps[i]);
+      | 	                           ^^^^^
+```
 
 ```
     5 | for (const p of ps) keep.push(p);
       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-Correct, and useless. `tests/extra/frames_columns.js` holds the
-opposite, carefully pointed cases: tabs, emoji before the span, CRLF,
-U+2028 and a span over two lines. Its `.frames.txt` fixture is the
-TypeScript output, and `parity.rs` checks the Rust output against it
-byte for byte.
-
-<Prompts ids={['dg-once', 'dg-same-line', 'dg-forof']} />
-
-## The CLI's own messages
-
-Failures in `crates/cli/src/main.rs` are one of two kinds (adapted):
-
-```rust
-/// Only a usage error (the command line
-/// itself was wrong) gets the help text.
-enum CliError {
-    Usage(String),
-    Other(String),
-}
+```
+viscosity: Unexpected token (1:12)
 ```
 
-and `main` turns them into text and an exit status:
+</Examples>
 
-```rust
-match run(&argv, &mut out, &mut err) {
-    Ok(true) => ExitCode::SUCCESS,
-    Ok(false) => ExitCode::FAILURE,
-    Err(CliError::Usage(e)) => {
-        let _ = write!(err,
-            "viscosity: {e}\n\n{HELP}");
-        ExitCode::FAILURE
-    }
-    Err(CliError::Other(e)) => {
-        let _ = writeln!(err,
-            "viscosity: {e}");
-        ExitCode::FAILURE
-    }
-}
-```
+The first is the good case: the span is the member expression `ps[i]`,
+so the five carets sit under exactly that, and the tab at the start of
+the line is copied into the caret line, so the carets line up however
+wide your terminal draws a tab. The second is the same refusal for
+`for (const p of ps) keep.push(p);`: here the element `p` was made by
+the `for...of` statement itself, so its `SourceRef` is the whole
+statement, and both engines underline the whole line. It is correct,
+and nearly useless. The third is a syntax error: the message and a
+position, `(1:12)`, which is line 1 and column 12 counted from 0 (the
+`;` that should have been a value), but no picture of the code.
 
-`ExitCode::SUCCESS` and `FAILURE` are the standard library's canonical
-codes<Cite id="rust-std-exitcode" />: 0 and 1 here. The same shape,
-small enough to run:
+`tests/extra/frames_columns.js` holds the opposite of the `for...of`
+case: carefully pointed spans after tabs and accented letters and
+emoji, CRLF and U+2028 line breaks, spans over several lines, and
+trailing blanks. Its `.frames.txt` fixture is the
+TypeScript engine's output, and the parity test checks the Rust output
+against it byte for byte.
 
-<Run id="cli-errors" />
-
-What the real CLI did for me:
-
-```
-command                  exit  help?
-explain a.js             0
-explain --colour a.js    1     yes
-explain --jobs 0 a.js    1     yes
-explain                  1     yes
-explain bad.js           1     no
-explain nope.js          1     no
-explain a.js nope.js     1     no
-```
-
-`Ok(false)` is the multi-file case: each failing file is reported as
-`viscosity: nope.js: No such file or directory (os error 2)` while the
-others are still printed, and the status is 1 at the end. There the
-file name is present, because the loop adds it.
-
-The rule "help only for usage errors" matters. A syntax error followed
-by thirty lines of options buries the one line you need, and suggests
-that you typed the command wrong when the problem is in your file.
-
-<Prompts ids={['dg-usage', 'dg-exit', 'dg-multi']} />
-
-## Where the position went
-
-oxc knows where the syntax error is. Its parser builds it as
-`OxcDiagnostic::error("Unexpected token").with_label(span)`, and the
-label holds the span. But `OxcDiagnostic`'s `Display` prints only the
-message (I read both in the oxc 0.156 sources), and the plugin wrote
-`format!("SyntaxError: {e}")`. The span was dropped on the floor.
-
-To print what acorn prints, `(1:12)`, the plugin needs the label's
-start and one more function: from a byte offset to acorn's line
-(counted from 1, at the same line breaks as `LineIndex`) and column
-(from 0, in UTF-16 units: for `const s = "🎉"; [;` acorn<Cite id="acorn" />
-says `(1:17)`, though that `;` is byte 19). That's your exercise, and
-it is what the port does now, in `syntax_error` (adapted):
-
-```rust
-match e.labels.first() {
-    Some(l) => {
-        let ix = LineIndex::new(src);
-        let (line, col) =
-            ix.line_column(src, l.offset());
-        CompileError(format!(
-            "{e} ({line}:{col})"))
-    }
-    None => CompileError(e.to_string()),
-}
-```
-
-Both CLIs print `viscosity: Unexpected token (1:12)` for `bad.js`
-now, with no `SyntaxError: ` prefix in either. The words can still
-differ, since oxc writes its own messages, and so can the position of
-an early error that oxc anchors on another token (chapter 360). The
-file name came back the simple way: a single missing file now gives
-`cannot read nope.js: No such file or directory (os error 2)`.
-
-<Prompts ids={['dg-oxc-label', 'dg-acorn-col']} />
+<Prompts ids={['dg-once', 'dg-same-line', 'dg-forof', 'dg-tab']} />
 
 <Callout kind="engine" label="Under the hood">
 rustc's guide asks two things of a diagnostic that Viscosity could
@@ -205,24 +219,28 @@ copy. A primary span should make sense even if it were the only thing
 shown, say as an underline in an editor. And when a longer explanation
 would say more than the message, the error gets a code, whose
 explanation `--explain` prints<Cite id="rustc-dev-guide-diagnostics" />.
-Viscosity's `unsafe:` reasons are stable, so they could carry codes. Its
-`for...of` frames fail the first test: nobody chose that span, so you
-get whichever one was attached.
+Viscosity's `unsafe:` reasons are stable sentences, so they could carry
+codes. Its `for...of` frames fail the first test: nobody chose that
+span; the element has the span of the statement that made it.
+The CLI's own errors (a bad option, a missing file) are a different
+kind of message again, and Part XIV's *A command-line interface* reads
+how it tells them apart.
 </Callout>
 
 ## Your turn
 
-<Exercise id="acornLineCol" />
+<Exercise id="caretLine" />
 
 ## What you learned
 
-- A **diagnostic** is a message plus a **span**; rustc adds a level, a
-  code and labels.
-- A position is made **once**, at lowering, as a `SourceRef`, and both
-  the message's line and the frame come from it.
-- The CLI has two failure kinds: **usage** errors (help text) and
-  **other** errors (one line); the exit status is 0 or 1.
-- oxc's span was once **dropped** from syntax errors; now it becomes
-  acorn's `(line:col)`, whose column counts **UTF-16 units**.
+- A **diagnostic** is a message plus a **span**; rustc adds a
+  **level**, a **code** and **labels**.
+- oxc gives byte-offset **spans**; lowering turns each into a
+  `SourceRef` **once**, and both the message's line and the frame come
+  from it.
+- A frame is only as precise as its span: the `for...of` element gets
+  the whole statement.
+- The caret line copies **tabs** and turns every other character before
+  the span into one space.
 
 <Quiz />

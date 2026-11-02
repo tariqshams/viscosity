@@ -1,0 +1,283 @@
+---
+n: 226
+day: 57
+part: VII
+title: 'Machine code and assembly'
+tagline: 'The middle end leaves us holding an IR, and a processor cannot read an IR. This chapter opens up what it can read (32-bit numbers, one per instruction) and the text we write those numbers as, and follows one small function, the running example of this part, from Drip down to bytes.'
+objectives:
+  - Say what machine code is, and decode a RISC-V instruction from its bits.
+  - Read a short RISC-V assembly listing, including labels and pseudoinstructions such as li, mv, j and ret.
+  - Follow one function, the running example of this part, from Drip through IR to RISC-V machine code.
+  - Encode and decode an instruction with shifts and masks.
+introduces: [machine-code, assembly-language]
+uses: [cpu, register, memory, address, byte, bit, binary, bit-ops, bytecode, opcode, virtual-machine, dispatch-loop, disassembler, instruction-pointer, ir, lowering, three-address-code, ssa, phi-node, cfg, basic-block, compiler, interpreter, compiler-pipeline, typed-drip, induction-variable, function, while-loop, test]
+sources: [riscv-isa-unpriv, riscv-asm-manual, riscv-psabi]
+---
+import EncodeSteps from '../../../components/diagrams/ch226/EncodeSteps';
+import JourneyFigure from '../../../components/diagrams/ch226/JourneyFigure';
+
+{/*
+PART VII RUNNING EXAMPLE, reused in chapters 226-241. Drip:
+fn sumsq(n) { let s = 0; let i = 0;
+  while i < n { s += i * i; i += 1; } return s; }
+print sumsq(4);   # 14
+VIR (real printFunc output for the JS version, empty b3 merged):
+b0: %0 = param; %1 = const 0; %2 = const 0; br b1
+b1 (preds b0 b2): %6 = phi %1, %8 (s); %3 = phi %2, %10 (i);
+  %5 = binop < %3, %0; condbr %5, b2, b4
+b2: %7 = binop * %3, %3; %8 = binop + %6, %7; %9 = const 1;
+  %10 = binop + %3, %9; br b1
+b4: return %6
+RV64IM target (n in a0): see the listing in this chapter.
+*/}
+
+## Who reads the IR?
+
+The middle end left us a program in SSA form, cleaned by a dozen
+passes; however, nothing can run that IR as it stands. In Part IV a
+virtual machine ran Drip's bytecode, but the VM was itself a program,
+and at the bottom of the pile is a processor that reads only numbers.
+This part goes the last mile, from IR to those numbers, for a real
+chip family called **RISC-V**. (To be plain: Viscosity has no native
+back end. It is a source-to-source compiler, JavaScript in and faster
+JavaScript out, and it leaves machine code to V8; this part is the
+general craft, and chapter 240 puts the pieces together for Drip.)
+
+We will follow one small function all the way down, the sum of the
+squares below `n`:
+
+```drip
+fn sumsq(n) {
+  let s = 0;
+  let i = 0;
+  while i < n {
+    s += i * i;
+    i += 1;
+  }
+  return s;
+}
+print sumsq(4);   # 0+1+4+9 = 14
+```
+
+Written in JavaScript and lowered by Viscosity's front end, it becomes
+this VIR (the real `printFunc` output, with one empty block merged
+away, so that b2 jumps straight back to b1):
+
+```text
+func sumsq(%0):
+  b0:
+    %0 = param
+    %1 = const 0
+    %2 = const 0
+    br b1
+  b1:  ; preds b0 b2
+    %6 = phi %1, %8      ; s
+    %3 = phi %2, %10     ; i
+    %5 = binop < %3, %0
+    condbr %5, b2, b4
+  b2:  ; preds b1
+    %7 = binop * %3, %3
+    %8 = binop + %6, %7
+    %9 = const 1
+    %10 = binop + %3, %9
+    br b1
+  b4:  ; preds b1
+    return %6
+```
+
+`%0` is `n`, the phi `%6` is `s` and the phi `%3` is `i`; b1 tests
+`i < n`, b2 is the loop body and b4 returns `s`. (Drip's numbers are
+64-bit floats; in this part we treat `sumsq`'s values as 64-bit whole
+numbers, as a typed Drip from chapter 124 could prove, because floats
+use a separate set of registers and the ideas carry over unchanged.)
+By the end of the part, this is what we want to produce:
+
+```text
+sumsq:                  # n arrives in a0
+    li   t0, 0          # s = 0
+    li   t1, 0          # i = 0
+loop:
+    bge  t1, a0, done   # leave if i >= n
+    mul  t2, t1, t1     # t2 = i * i
+    add  t0, t0, t2     # s = s + t2
+    addi t1, t1, 1      # i = i + 1
+    j    loop
+done:
+    mv   a0, t0         # result in a0
+    ret
+```
+
+The names `a0`, `t0`, `t1` and `t2` are **registers** (chapter 50),
+agreed nicknames for four of RISC-V's 32 registers, `x0` to `x31`:
+`a0` holds `n` on the way in and the answer on the way out, `t0` holds
+`s`, `t1` holds `i` and `t2` holds `i * i`. The later chapters of this
+part fill in the steps of the journey below; this one is about the
+last two rows.
+
+<Figure takeaway="One Drip statement, four forms: each step down is a stage of the back end." caption="The statement s += i * i on its way down. Choosing the instructions and the registers is the subject of most of this part; the assembler, which turns text into bytes, gets its own chapter.">
+  <JourneyFigure />
+</Figure>
+
+## Machine code: instructions as numbers
+
+Assemble that listing (with LLVM's assembler) and this is all that is
+left of it:
+
+```text
+93 02 00 00 13 03 00 00 63 5a a3 00
+b3 03 63 02 b3 82 72 00 13 03 13 00
+6f f0 1f ff 13 85 02 00 67 80 00 00
+```
+
+Each pair of characters is one byte written in **hexadecimal** (base
+16, where the digits run 0 to 9 and then a to f, so two digits cover
+the 256 values a byte can hold: `13` is 1×16 + 3 = 19). Every
+instruction is exactly four bytes, 32 bits, in the listing's order:
+`93 02 00 00` is `li t0, 0`, the next four are `li t1, 0`, and the last
+four, `67 80 00 00`, are `ret`. Those 36 bytes are the whole function
+as far as the processor is concerned; there are no names in them, no
+`s`, no `i` and no `loop`.
+
+<Analogy title="a player piano roll">
+A player piano reads a paper roll punched with holes; each row of holes
+says which keys to press, and the piano presses them, with no idea it
+is playing a waltz. Machine code is the roll: rows of bits, and a
+processor that does what each row says.
+<span slot="breaks">A roll only moves forward, while a processor can
+jump back to an earlier row (that is how loops work), and an
+instruction can read and change memory, which a piano roll never
+does.</span>
+</Analogy>
+
+Step through how the processor reads one instruction,
+`addi a0, a0, 1` (add 1 to register `a0`):
+
+<EncodeSteps client:visible />
+
+The **opcode** in the lowest seven bits says which format the rest
+follows, so decoding is a few shifts and masks (chapter 34's bit
+operations), done in hardware by chapter 50's fetch, decode and
+execute loop, with no dispatch loop or interpreter in between.
+
+<Callout kind="definition">
+**Machine code** is a program in the form a processor executes
+directly: a sequence of instructions, each a fixed pattern of bits
+whose fields (opcode, registers, constants) the processor decodes and
+carries out. In the RISC-V base set every instruction is 32 bits, and
+the register fields `rs1`, `rs2` and `rd` sit in the same positions in
+every format<Cite id="riscv-isa-unpriv" />. Instructions are stored
+little-endian, lowest byte first<Cite id="riscv-psabi" />.
+</Callout>
+
+<Formal title="Two RISC-V instruction formats">
+
+```text
+bits    R-type   I-type
+31-25   funct7   imm[11:5]
+24-20   rs2      imm[4:0]
+19-15   rs1      rs1
+14-12   funct3   funct3
+11-7    rd       rd
+6-0     opcode   opcode
+rd  = (w >> 7)  & 0x1f
+rs1 = (w >> 15) & 0x1f
+imm = w >> 20      (keeping the sign)
+```
+
+<span slot="read">Reading down from bit 31: an R-type instruction
+(two registers in, like add) has funct7, the source registers rs2 and
+rs1, funct3, the destination rd and the opcode. An I-type instruction
+(a register and a constant, like addi) puts a 12-bit immediate where
+funct7 and rs2 were. To read rd from the word w, shift w right by 7 and
+keep the lowest five bits (0x1f is five ones); the immediate is the top
+12 bits, shifted so that a 1 in bit 31 still means negative.</span>
+</Formal>
+
+<Prompts ids={['mc-what', 'vm-vs-cpu', 'byte-order', 'opcode-field']} />
+
+## Assembly language: machine code you can read
+
+Nobody writes those numbers by hand. We write **assembly language**,
+and an *assembler* (chapter 238 builds one) turns each line into its
+bits. In the `sumsq` listing, a line is an operation name and its
+operands, destination first: `add t0, t0, t2` means "t0 becomes t0 + t2", and
+`addi t1, t1, 1` adds the constant (the **immediate**) 1. A name
+ending in a colon, such as `loop:`, is a **label**, a name for the
+address of the next instruction, so `j loop` can say where to go
+without anyone counting bytes; the assembler worked out that `loop` is
+at offset 8. Everything after `#` is a comment.
+
+Some lines are **pseudoinstructions**: convenient spellings the
+assembler expands into real instructions<Cite id="riscv-asm-manual" />.
+`li t0, 0` ("load immediate") is really `addi t0, x0, 0`; `mv a0, t0`
+is `addi a0, t0, 0`; `j loop` is `jal x0, loop`; and `ret` is
+`jalr x0, 0(ra)`, a jump to the address held in `ra` (chapter 228 is
+about that one).
+
+<Analogy title="Morse code and its letters">
+A telegraph line carries only dots and dashes, but operators think and
+write in letters; each letter stands for exactly one pattern, and
+turning one into the other is a mechanical job. Assembly is the
+letters; machine code is the dots and dashes.
+<span slot="breaks">Morse has no labels and no shorthands, while an
+assembler also turns names like loop into addresses and expands a
+pseudoinstruction such as call into two real instructions.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Assembly language** is a textual form of machine code: one line per
+instruction (or per pseudoinstruction, which the assembler expands
+into a fixed short sequence), with readable operation names, register
+names, labels for addresses and comments. An **assembler** translates
+it to machine code; a **disassembler** goes the other way.
+</Callout>
+
+<Examples of="machine-code assembly-language">
+
+```text
+addi a0, a0, 1   ->  13 05 15 00
+```
+
+```text
+add  a0, a0, a1  ->  33 05 b5 00
+sub  a0, a0, a1  ->  33 05 b5 40
+```
+
+```text
+ret  =  jalr x0, 0(ra)  ->  67 80 00 00
+```
+
+</Examples>
+
+All three were checked with LLVM's assembler, `llvm-mc`. The first is
+the instruction from the diagram. In the second, `add` and `sub`
+differ in one bit of funct7, bit 30, so only the last byte changes,
+from `00` to `40`. The third ends every function in this part: `ret`
+is `jalr`, "jump to the address in `ra` plus 0, and save the return
+address in `x0`", which throws it away. Pull the fields out yourself:
+
+<Run id="decode" />
+
+<Prompts ids={['asm-what', 'label-what', 'pseudo-what', 'ret-is']} />
+
+## Your turn
+
+<Exercise id="encode-addi" />
+
+<Exercise id="decode-i" />
+
+## What you learned
+
+- **Machine code** is the bytes a processor runs: on RISC-V, one
+  32-bit word per instruction, with an **opcode** and fixed fields for
+  registers and **immediates**, stored lowest byte first.
+- **Assembly language** writes it as text, with labels and
+  **pseudoinstructions** (`li`, `mv`, `j`, `ret`) that the assembler
+  expands.
+- The running example, `sumsq`, goes from Drip to VIR to RISC-V; the
+  rest of the part fills in each step.
+
+Next: the agreement that makes those bytes mean the same thing on
+every chip, and a tour of RISC-V itself.
+
+<Quiz />

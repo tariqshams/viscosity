@@ -3,210 +3,273 @@ n: 370
 day: 93
 part: XIII
 title: 'The cost model in Rust'
-tagline: 'The planner is one Rust function with a ladder of early returns, an Option for the size, and a list of reasons in plain English. Reading it closely turned up a sentence the Rust engine worded differently from the reference, in a case no fixture covered.'
+tagline: 'The planner is one Rust function with a ladder of early returns: safety first, then annotations and modes, then the questions of cost. Reading it rung by rung tells you every word explain will print, and why the order of the rungs is itself a decision.'
 objectives:
   - Walk plan_one in plan.rs rung by rung, and say what each early return records.
-  - Explain how a measured size, an estimate, an upper bound and an unknown size reach the threshold.
-  - Describe a parity bug the threshold message had, and why the fixtures missed it.
-  - Implement the bottom of the ladder, reasons included, with tests.
+  - Explain why the port turns the reference’s push-and-continue into a function with early returns, and what the keep closure does.
+  - Say why safety comes first, why annotations skip the cost rungs, and why a collection with bailouts gets one reason per bailout.
+  - Implement the top of the ladder, reasons included, with tests.
 introduces: [rust-cost-model]
-uses: [viscosity-rs, rust-access-pass, plugin-trait, cross-implementation-tests, cost-model, bailout, annotation, pgo, optimization-report, aosoa, block-size, option, enum, match, struct, impl, rust-closure, rust-iterator, string-vs-str, vec, hashmap, ieee754, test-corpus, fuzzing]
+uses: [viscosity-rs, rust-access-pass, plugin-trait, cross-implementation-tests, cost-model, bailout, annotation, optimization-report, option, enum, match, struct, impl, rust-closure, rust-iterator, string-vs-str, vec, hashmap]
 sources: [rust-std-option-or, rust-std-is-power-of-two]
 ---
-import SizeRungSteps from '../../../components/diagrams/ch370/SizeRungSteps';
+import LadderSteps from '../../../components/diagrams/ch370/LadderSteps';
+import ContinueReturn from '../../../components/diagrams/ch370/ContinueReturn';
 
-## Same collection, three verdicts
+## Four programs, four refusals
 
-This program pushes inside an `if`:
+The analyses have done their work: for every collection the Rust engine
+now knows whether the rewrite is safe, which fields are numbers, which
+loops touch which fields, and roughly how big it will be (*Access
+patterns in Rust*). Someone still has to decide, and say why. Here are
+the first reason lines the Rust CLI printed (I ran `viscosity explain`
+here, release build, rustc 1.97) for four small programs, each kept as
+an array of objects for a different reason:
+
+```
+unsafe: line 6: an element is used by push
+opt-in mode: not annotated
+no field is provably numeric, so there are
+  no typed columns to gain
+no loop reads or writes its fields, so a
+  new layout cannot pay off
+```
+
+The first program pushes an element of `ps` into another array, the
+second was compiled with `--mode opt-in`, the third stores only strings,
+and the fourth reads one field once, outside any loop. All four
+sentences come from one function, `plan_one` in
+`crates/core/src/plan.rs`, which ports the planner of *The cost model*.
+It is short enough to read top to bottom, and the order of its tests
+turns out to matter as much as the tests themselves.
+
+<Analogy title="a pilot's pre-flight checklist">
+Before take-off a pilot works down a printed checklist in a fixed
+order: fuel, controls, instruments, weather. The first item that fails
+stops the flight, and the reason is written in the log; a plane that
+passes every item flies, and the log records what was checked.
+<span slot="breaks">A pilot who finds a problem gets it fixed and starts
+the list again; the planner never fixes anything, it only writes down
+the first reason and moves on to the next collection.</span>
+</Analogy>
+
+<Analogy title="passport control">
+An officer checks your passport, then your visa, then asks why you are
+travelling, always in that order, and stops at the first problem. A
+diplomatic pass lets you skip the questions about your trip, but never
+the check that the passport is genuine.
+<span slot="breaks">An officer can use judgement and wave someone
+through; every rung of the planner is a plain test on the analysis's
+facts, and two runs on the same program always give the same answer, in
+the same words.</span>
+</Analogy>
+
+The diplomatic pass is the annotation: a `// @viscosity soa` comment
+skips the cost questions, but never the safety one. Step down the
+ladder with six programs and watch where each one leaves it:
+
+<LadderSteps client:visible />
+
+## From continue to return
+
+The TypeScript `plan()` is one loop over the collections, and each
+refusal in it is `out.push(keep(...)); continue;`. The port keeps the
+loop but moves its body into a function of its own:
+
+```rust
+pub fn plan(a: &Analysis, opts: PlanOptions)
+    -> Plan {
+    let mut out = Vec::new();
+    for c in &a.collections {
+        out.push(plan_one(a, c, &opts));
+    }
+    Plan { collections: out, options: opts }
+}
+```
+
+`plan` takes the options by value (so the finished `Plan` can own them)
+and lends `plan_one` a shared reference to them, `&opts`, once per
+collection. Inside `plan_one`, every refusal becomes an early `return`,
+which is the Rust way to say "this collection is decided; stop here":
+
+<Figure caption="The same planner in both engines, condensed: a refusal ends one turn of the TypeScript loop with continue, and ends the call to plan_one with return." takeaway="An early return in a function per item is the Rust shape of push-and-continue.">
+  <ContinueReturn />
+</Figure>
+
+Every rung builds its answer with one closure, defined at the top of
+`plan_one` (rewrapped):
+
+```rust
+let keep = |reasons: Vec<String>|
+    CollectionPlan {
+        collection: c.clone(),
+        layout: Layout::Aos,
+        block_size: 0,
+        reasons,
+    };
+```
+
+A **closure** is a small unnamed function that can use the variables
+around it (*Iterators and closures in Rust*); this one borrows `c` and
+builds the plan for "leave it alone": layout `Aos`, no block size, and
+whatever reasons it is handed (`reasons,` is shorthand for `reasons:
+reasons`). The reference's `keep` takes its reasons as `...reasons`, a
+list of any length; Rust closures can't do that, so the port passes one
+`Vec<String>`. There is a second difference: the TypeScript plan holds
+`collection: c`, a reference to the analysis's own object, while the
+Rust plan holds `c.clone()`, a copy. A `CollectionPlan` that borrowed
+from the `Analysis` would need a lifetime tying the two together; a
+copy lets the plan live on its own, at the price of copying each
+collection's facts once.
+
+<Prompts ids={['cm-rs-return', 'cm-rs-keep', 'cm-rs-clone']} />
+
+## Safety first, one reason each
+
+The first rung is the only one that can produce more than one reason:
+
+```rust
+if !c.bailouts.is_empty() {
+    return keep(c.bailouts.iter()
+        .map(|b| format!("unsafe: {b}"))
+        .collect());
+}
+```
+
+`iter()` walks the bailout messages, `map` turns each into an `unsafe:
+` reason, and `collect` gathers them into the `Vec<String>` that `keep`
+wants (Rust works out the type from `keep`'s parameter). So a collection
+with three bailouts gets exactly three reasons, in order. That
+one-to-one match is relied on later: `viscosity explain --frames` (in
+*Code frames in Rust*) pairs reason *k* with bailout *k*'s place in the
+source. And it comes first because no other answer is worth giving
+about a rewrite that could change what the program prints: an
+annotation, a size or a loop doesn't matter if the layout change could
+be seen.
+
+The annotation rungs come next. An `aosoa(N)` annotation has its block
+size checked (only powers of two from 2 to 65536 are
+accepted<Cite id="rust-std-is-power-of-two" />, for reasons *AoSoA and
+hot/cold in Rust* explains), and then any annotation returns at
+once: `aos` keeps the collection, and `soa` or `aosoa(N)` transforms it
+with the reason `annotated @viscosity soa at line 1` followed by the
+usual description. That return happens before the cost rungs, so an
+annotated collection is transformed even when it looks too small to
+pay off, which is the point of annotating it. After that come opt-in
+mode (`opt-in mode: not annotated`) and Python without
+`--python-auto`, and then the first two questions of cost (strings
+elided with `…`):
+
+```rust
+if c.numeric_fields.is_empty() {
+    return keep(vec![
+        "no field is … to gain".into()]);
+}
+if !c.loops.iter().any(|l| l.depth > 0) {
+    return keep(vec![
+        "no loop reads … pay off".into()]);
+}
+```
+
+With no field proven numeric, every column would be a plain array, and
+there are no `Float64Array` columns to gain. With no loop table of depth
+1 or more (the depth-0 table holds accesses outside every loop), no loop
+would get faster. `.into()` turns the `&str` literal into the `String`
+the `Vec` holds. The last rung, the size threshold, is the subject of
+the next chapter, *Sizes and thresholds in Rust*; a collection that
+passes it too becomes `Layout::Soa`.
+
+<Formal title="The ladder as a first match">
+
+```text
+plan(c) = Aos(unsafe: b₁, …, unsafe: bₙ)
+                         if n > 0
+        = follow(ann)    if annotated
+        = Aos(rᵢ)        if rung i refuses
+        = Soa(describe(c))   otherwise
+```
+
+<span slot="read">The plan of a collection c is decided by the first
+line whose condition holds, read from the top: if c has n bailouts b1 to
+bn, keep it with one unsafe reason per bailout; otherwise, if it is
+annotated, follow the annotation; otherwise, if some later rung i
+refuses, keep it with that rung's reason; and only if nothing refuses,
+store it as a struct of arrays, with the description of what it
+gains.</span>
+</Formal>
+
+<Examples of="rust-cost-model">
 
 ```js
 const ps = [];
 for (let i = 0; i < 100; i++)
-  if (i % 4 === 0) ps.push({ x: i });
+  ps.push({ name: 'p' + i });
 for (let i = 0; i < ps.length; i++)
-  ps[i].x += 1;
+  ps[i].name += '!';
+// no field is provably numeric, …
 ```
 
-Here is what the Rust CLI decides, by default, with a higher threshold,
-and with a profile from `viscosity profile` (rustc 1.97 release build;
-first two lines of each, wrapped):
-
-```
-$ viscosity explain l1.js
-ps (line 1) {x} → struct of arrays
-  · loop at line 4 in <module>() …
-$ viscosity explain l1.js --min-size 200
-ps (line 1) {x} → kept as array of objects
-  · at most 100 elements: below the
-    200-element threshold, where …
-$ viscosity explain l1.js --profile p.json
-ps (line 1) {x} → kept as array of objects
-  · about 25 elements (measured): below
-    the 64-element threshold, where …
+```js
+const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i });
+console.log(ps[3].x);
+// no loop reads or writes its fields, …
 ```
 
-Chapter 254 built this ladder in TypeScript. In Rust it is one function,
-`plan_one` in `crates/core/src/plan.rs`, and the details of how it is
-written decide every word of those lines.
-
-<Callout kind="intuition">
-A loan officer works down a checklist. The first box that fails ends the
-interview, and the reason goes on the letter. An applicant who passes
-every box gets the loan, with a note of what was checked.
-</Callout>
-
-## From continue to return
-
-The TypeScript `plan()` is one loop over collections, and each refusal
-is `out.push(keep(...)); continue;`. The port moves the body into its own
-function, so each refusal is an early `return`:
-
-```rust
-fn plan_one(
-    a: &Analysis,
-    c: &Collection,
-    opts: &PlanOptions,
-) -> CollectionPlan {
-    let keep = |reasons: Vec<String>| {
-        CollectionPlan {
-            collection: c.clone(),
-            layout: Layout::Aos,
-            block_size: 0,
-            reasons,
-        }
-    };
-    if !c.bailouts.is_empty() {
-        return keep(c.bailouts.iter()
-            .map(|b| format!("unsafe: {b}"))
-            .collect());
-    }
-    // ... the other rungs ...
-}
+```js
+const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i });
+const keep = [];
+for (let i = 0; i < ps.length; i++)
+  if (ps[i].x > 3) keep.push(ps[i]);
+console.log(ps, keep.length);
+// unsafe: the array is passed to a
+//   method call at line 7
+// unsafe: line 6: an element is used
+//   by push
 ```
 
-`keep` is a closure that borrows `c` and builds the plan for "leave it
-alone". Every rung below is the same shape: test, then `return keep(...)`
-with the reason. A collection with bailouts gets exactly one reason per
-bailout. `explain --frames` relies on that: it pairs the k-th reason with
-the k-th bailout's source position.
+</Examples>
 
-The annotation rungs come next. Two refusals look inside an
-`aosoa(N)` annotation (chapter 372 explains them):
-
-```rust
-let b = ann.block_size.unwrap_or(8);
-if !(b >= 2 && b.is_power_of_two()) {
-    return keep(vec![format!(
-        "annotated aosoa({}), but …",
-        js_number(b as f64))]);
-}
-```
-
-`is_power_of_two` is true exactly when the number is 2 to some power<Cite id="rust-std-is-power-of-two" />,
-which includes 1, so `b >= 2` rules that out separately. Then come opt-in
-mode, Python without `--python-auto`, no numeric field, and no loop. Each
-is three lines, and each reason string is meant to match the
-reference's word for word.
-
-<Prompts ids={['cm-rs-return', 'cm-rs-keep', 'cm-rs-one-per-bailout', 'cm-rs-pow2']} />
-
-## The size rung
-
-Now the only rung with arithmetic. Step through it on the program
-above, under all three option sets:
-
-<SizeRungSteps client:visible />
-
-The code, adapted (the long message is shortened):
-
-```rust
-let measured = opts.profile.as_ref()
-    .and_then(|p| p.get(&c.name))
-    .copied();
-let size = measured.or(c.size_estimate);
-if let Some(size) = size {
-    if size < opts.min_size {
-        let word = if measured.is_none()
-            && c.size_is_upper_bound
-            { "at most" } else { "about" };
-        let m = if measured.is_some()
-            { " (measured)" } else { "" };
-        return keep(vec![format!(
-            "{word} {} elements{m}: …",
-            js_number(size))]);
-    }
-}
-```
-
-`Option::or` keeps the first value if there is one<Cite id="rust-std-option-or" />,
-so a measurement always wins over the estimate. `if let Some(size)` makes
-the unknown case explicit: no size, no refusal. The planner bets that a
-collection it can't count may be large. A maximum is compared as if it
-were the size, so "at most 100" passes a threshold of 64 even though the
-program holds 25. A maximum *below* the threshold is a safe refusal,
-since the real size can only be smaller.
-
-The comparison is plain `f64` `<`. That has one odd consequence, in
-both engines: a `min_size` of `NaN` makes every comparison false, so
-the threshold silently disappears. Both CLIs once let `--min-size abc`
-through as `Number("abc")`, which is `NaN`. Now both refuse it with
-`--min-size must be a non-negative number`; only a program calling the
-library can still pass `NaN`. Try it:
-
-<Run id="size-rung" />
+The comments are the Rust CLI's reasons, the same bytes the TypeScript
+CLI prints. The first program is safe and has a hot loop, but its only
+field holds strings, so it stops at the numeric rung. The second has a
+numeric field, but its one read is outside every loop, so it stops one
+rung later. The third has two problems, and gets two reasons in the order the analysis found
+them: `console.log(ps, ...)` hands the whole array to a function the
+compiler can't see into, and `keep.push(ps[i])` lets an element escape
+into another array.
 
 <Callout kind="definition">
-The **cost model in Rust** is `plan_one` in `plan.rs`: a **ladder of
-early returns**. Safety first (one `unsafe:` reason per bailout), then
-annotations, opt-in mode and Python, then the cost rules: some field
-numeric, some loop touching a field, and a size not **below
-`min_size`**. The size is the **measured** one if a profile has it, else
-the **estimate** (`Option::or`). An **unknown** size passes. A collection
-that passes every rung becomes SoA, and `describe` lists its **reasons**.
+The **cost model in Rust** is `plan_one` in `plan.rs`, called by `plan`
+once per collection: a **ladder of early returns**, each built by the
+**`keep` closure**. Safety comes first, with **one `unsafe:` reason per
+bailout**; then annotations, which skip the cost rungs; then opt-in mode
+and Python; then the cost rungs (**some field numeric**, **some loop of
+depth ≥ 1**, and the size threshold). A collection that passes every
+rung becomes `Layout::Soa`, with reasons from `describe`.
 </Callout>
 
-<Prompts ids={['cm-rs-or', 'cm-rs-unknown', 'cm-rs-max', 'cm-rs-nan']} />
-
-## A sentence the fixtures never saw
-
-When I first wrote this chapter, the profiled line in Rust read
-`about 25 (measured) elements: below`. The format string was
-`"{} {}{} elements: below …"`, so the third placeholder,
-" (measured)", landed before the word "elements". The TypeScript
-reference writes `${size} elements${...}`: same decision, different
-text. Why did nothing catch it? The 186 parity fixtures then compiled
-every program with default options and with `--bounds assume`, never
-with `--profile`, and the fuzzer passed no profile either. Parity holds
-only for what is tested. The fix moved the placeholder and added the
-missing tests: four profile fixtures beside today's 190 parity pairs,
-and random profiles in the fuzzer.
-
-<Prompts ids={['cm-rs-bug']} />
-
-<Callout kind="engine" label="Under the hood">
-The options are typed. `Mode` and `Bounds` are enums with
-`#[derive(Default)]` and a `#[default]` variant, and `PlanOptions`
-implements `Default` by hand: auto mode, `min_size: 64.0`, bounds
-checks on, no annotations, no profile, no `python_auto`. Where the
-reference's `compile()` ignores an option passed as `undefined`, Rust
-has no such value: the README lists that as one of the few things the
-port doesn't reproduce.
-</Callout>
+<Prompts ids={['cm-rs-one-per-bailout', 'cm-rs-order', 'cm-rs-annot-skip', 'cm-rs-depth', 'cm-rs-opt-in']} />
 
 ## Your turn
 
-<Exercise id="planBottom" />
+<Exercise id="planTop" />
 
 ## What you learned
 
-- `plan_one` is a **ladder of early returns**, each through a `keep`
-  closure that records the reason.
-- **One reason per bailout** lets `--frames` pair reasons with
-  positions.
-- The size is **`measured.or(estimate)`**. An **unknown** size passes,
-  a **maximum** is treated as the size, and `NaN` disables the
-  threshold.
-- Byte parity covers **what the fixtures exercise**. The threshold
-  message with a profile differs between the engines.
+- `plan` calls **`plan_one`** once per collection; each refusal is an
+  **early `return`** where the reference writes `push` and `continue`.
+- The **`keep` closure** builds a kept plan from a `Vec<String>` of
+  reasons; plans hold a **clone** of their collection, so they don't
+  borrow from the analysis.
+- **Safety is the first rung**, with **one reason per bailout**, which
+  `--frames` relies on. **Annotations** come next and skip the cost
+  rungs, but never safety.
+- The cost rungs refuse a collection with **no numeric field** or **no
+  loop of depth ≥ 1**, and then, in the next chapter, one that is too
+  small.
 
 <Quiz />

@@ -1,25 +1,29 @@
 // Chapter 225 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
+  'oracle-what': {
+    q: 'What is a test oracle, and why is it the hard part of testing a compiler?',
+    a: 'Whatever tells you the right answer; for a compiler the answer is a whole program’s behaviour, too much to write out by hand for many programs.',
+  },
+  'golden-what': {
+    q: 'What is a golden test? Give one in this repository.',
+    a: 'A stored output, checked once, that every later run must match: the Drip corpus’s `# expect:` lines, or the Rust port’s fixtures generated from the TypeScript engine.',
+  },
   'dt-oracle': {
     q: 'In Viscosity’s differential test, what plays the role of the expected answer?',
     a: 'The original program: whatever it prints and throws, the compiled program must print and throw too.',
   },
   'dt-errors': {
     q: 'Why does the differential test compare errors, not only printed output?',
-    a: 'A compiled program that prints 0 where the original threw a TypeError has changed behaviour, even if every printed line matches up to there.',
-  },
-  'dt-fresh': {
-    q: 'Why does each version run in a brand-new VM context?',
-    a: 'So neither run can see globals or state left by the other: each outcome depends only on its own code.',
+    a: 'A compiled program that prints 0 where the original threw a TypeError has changed behaviour, even if every line printed before that matches.',
   },
   'dt-header': {
     q: 'Why does each corpus file also state the layout Viscosity should choose?',
-    a: 'A compiler that never transforms anything passes every behaviour check. The header catches a lost optimization.',
+    a: 'A compiler that never transforms anything passes every behaviour check; the header catches a lost optimization.',
   },
-  'dt-parsers': {
-    q: 'What does the mini-parser test compare?',
-    a: 'The compiled code and explanation from the hand-written parser against those from acorn: they must be byte-identical.',
+  'meta-what': {
+    q: 'What does a metamorphic test change, and what does it check?',
+    a: 'It changes the input in a way that must not change the answer (shuffle before sorting, delete code that did not run), and checks the answer stays the same.',
   },
   'rt-what': {
     q: 'What is round-trip testing?',
@@ -27,93 +31,39 @@ export const prompts = {
   },
   'rt-identity': {
     q: 'What is Viscosity’s round-trip identity test?',
-    a: 'A program with nothing to transform must come out of `compile` byte-for-byte unchanged, comments included.',
-  },
-  'drip-gc': {
-    q: 'What does stress GC mode do, and what bug does it expose?',
-    a: 'It collects on every allocation, so an object that isn’t reachable from the roots is freed at once and its use fails.',
-  },
-  'fuzz-what': {
-    q: 'What is fuzzing?',
-    a: 'Generating large numbers of random inputs (for a compiler, random programs) to find bugs no written test covers.',
-  },
-  'fuzz-seed': {
-    q: 'Why should a fuzzer’s random generator be seeded?',
-    a: 'So a failing program can be generated again exactly, to debug it and to keep it as a test.',
-  },
-  'fuzz-valid': {
-    q: 'Why is a disagreement on an invalid random program worthless?',
-    a: 'If the program has undefined or nondeterministic behaviour, two correct implementations may legitimately differ.',
+    a: 'A program with nothing to transform must come out of `compile` byte for byte unchanged, comments included.',
   },
 };
 
 export const examples = {
-  fuzz: {
-    title: 'A tiny differential fuzzer',
-    code: `// Seeded randomness: one seed always
-// gives the same programs, so a failure
-// can be reproduced exactly.
-let seed = 7;
-function rand(k) {
-  seed = (seed * 16807) % 2147483647;
-  return seed % k;
+  oracles: {
+    title: 'Three oracles for a sort',
+    code: `function fast(xs) {
+  return [...xs].sort((a, b) => a - b);
 }
+function slow(xs) {
+  const ys = [...xs];
+  const n = ys.length;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      if (ys[j] < ys[i])
+        [ys[i], ys[j]] = [ys[j], ys[i]];
+  return ys;
+}
+const text = (v) => JSON.stringify(v);
+const same = (a, b) =>
+  text(a) === text(b);
+const xs = [5, 3, 9, 1, 3];
 
-// A random expression over x: a number,
-// 'x', or [op, left, right].
-function gen(d) {
-  const r = rand(4);
-  if (d === 0 || r === 0) {
-    return rand(4);
-  }
-  if (r === 1) return 'x';
-  const op = ['+', '-', '*'][rand(3)];
-  return [op, gen(d - 1), gen(d - 1)];
-}
-
-function run(e, x) {
-  if (e === 'x') return x;
-  if (typeof e === 'number') return e;
-  const a = run(e[1], x);
-  const b = run(e[2], x);
-  if (e[0] === '+') return a + b;
-  if (e[0] === '-') return a - b;
-  return a * b;
-}
-
-// The "optimizer": algebraic rules.
-function fold(e) {
-  if (!Array.isArray(e)) return e;
-  const op = e[0];
-  const a = fold(e[1]);
-  const b = fold(e[2]);
-  const na = typeof a === 'number';
-  const nb = typeof b === 'number';
-  if (na && nb) return run([op, a, b]);
-  const zero = a === 0 || b === 0;
-  if (op === '*' && zero) return 0;
-  if (op !== '*' && a === 0) return b;
-  if (op !== '*' && b === 0) return a;
-  return [op, a, b];
-}
-
-let bad = false;
-for (let t = 1; t <= 2000; t++) {
-  const e = gen(3);
-  const x = rand(10);
-  const want = run(e, x);
-  const got = run(fold(e), x);
-  if (got !== want) {
-    console.log('program', t, 'x =', x);
-    console.log(JSON.stringify(e));
-    console.log('want', want);
-    console.log('got', got);
-    bad = true;
-    break;
-  }
-}
-if (!bad) console.log('2000 agreed');
-// Find the wrong rule and fix it.`,
+// Differential: two implementations.
+console.log(same(fast(xs), slow(xs)));
+// Metamorphic: reversing the input
+// must not change the sorted result.
+const rev = [...xs].reverse();
+console.log(same(fast(xs), fast(rev)));
+// Round trip: out to text and back.
+const back = JSON.parse(text(xs));
+console.log(same(back, xs));`,
   },
 };
 
@@ -177,18 +127,30 @@ test('different messages: disagree', () => {
   expect(diffTest(f, g, (i) => 'p' + i, 5)).toBe('p0');
 });`,
     hints: [
+      'What should happen when `f(x)` throws? Make “what happened” a value you can compare.',
       'Write a helper `outcome(fn, x)` that calls `fn(x)` inside `try`, returning `[\'ok\', value]`, or `[\'err\', message]` from `catch`.',
       'Two outcomes agree when both parts are `===`: the kind (`ok`/`err`) and the value or message.',
       'Return `x`, the input, as soon as they disagree, so the failure can be reproduced.',
     ],
-    walkthrough: `This is \`runIsolated\` plus \`toEqual\` from Viscosity’s differential test, reduced to one function call.
+    walkthrough: `**How to think about it.** This is \`runIsolated\` plus \`toEqual\` from Viscosity’s differential test, shrunk to one function call. The starter compares only what \`f\` and \`g\` return, which breaks in two ways: if one of them throws, the starter itself crashes instead of reporting a difference; and if both throw, it cannot tell whether they threw the *same* thing. The fix is to turn "what happened" into a value first (a returned value or an error message, with a label saying which), and only then compare.
 
-- **Errors are results too.** The starter compares only return values. If \`f\` throws, the starter crashes; if both throw, it can’t tell whether they threw the same thing. Wrapping each call in \`try\`/\`catch\` turns “what happened” into a value you can compare.
-- **Compare kind and payload.** \`['ok', 0]\` and \`['err', 'out of bounds']\` must disagree, which is exactly the \`--bounds assume\` bug: one version returned a value where the other threw.
-- **Return the input.** The input is what you need to reproduce and debug the failure, and to keep it as a new corpus test.
-- **\`gen(i)\` makes inputs.** Here it can be a counter or a seeded random generator. Feeding it a seed is what turns this into a fuzzer.
+**The solution, line by line.**
 
-The real test compares a list of printed lines and an error string with \`toEqual\`, but the idea is the same.`,
+- \`function outcome(fn, x) {\` runs one implementation on one input and describes what happened.
+- \`try { return ['ok', fn(x)]; }\` labels a normal return as \`'ok'\`, with the value.
+- \`catch (e) { return ['err', e.message]; }\` labels a throw as \`'err'\`, with the error’s message, so two different errors can be told apart.
+- \`for (let i = 0; i < n; i++) {\` tries \`n\` inputs.
+- \`const x = gen(i);\` makes the input for this round (a counter, or a seeded random generator).
+- \`const a = outcome(f, x); const b = outcome(g, x);\` runs both versions on the same input.
+- \`const same = a[0] === b[0] && a[1] === b[1];\` agrees only if both the kind and the value or message are equal.
+- \`if (!same) return x;\` returns the input itself, which is what you need to reproduce the bug and keep it as a new test.
+- \`return undefined;\` after the loop means every input agreed.
+
+**Common wrong attempts.**
+
+- Wrapping both calls in a single \`try\`: when only \`f\` throws, the \`catch\` swallows it and the disagreement is never reported.
+- Replacing every error by the same word: then a \`TypeError\` and a \`RangeError\` agree, though Viscosity’s test insists on the same message.
+- Returning \`true\` or \`i\` instead of \`x\`: the caller then has to regenerate the input to see it.`,
     wrong: [
       {
         code: `function diffTest(f, g, gen, n) {
@@ -228,80 +190,6 @@ function diffTest(f, g, gen, n) {
       },
     ],
   },
-  shrink: {
-    optional: true,
-    title: 'Shrink a failing input',
-    prompt:
-      'A fuzzer found an array `xs` for which `fails(xs)` is `true`. Write `shrink(xs, fails)`: repeatedly try removing **one element** at a time, keeping any removal after which `fails` is still `true`, until no single removal still fails. Return the smaller array. Don’t change `xs` itself.',
-    starter: `function shrink(xs, fails) {
-  // your code here
-  return xs;
-}
-
-// Fails whenever 3 and 5 are both in.
-const fails = (ys) =>
-  ys.includes(3) && ys.includes(5);
-console.log(
-  shrink([1, 3, 8, 5, 2], fails));`,
-    solution: `function shrink(xs, fails) {
-  let ys = xs;
-  let progress = true;
-  while (progress) {
-    progress = false;
-    for (const i of ys.keys()) {
-      const t = [...ys.slice(0, i),
-        ...ys.slice(i + 1)];
-      if (fails(t)) {
-        ys = t;
-        progress = true;
-        break;
-      }
-    }
-  }
-  return ys;
-}`,
-    tests: `const both = (ys) => ys.includes(3) && ys.includes(5);
-test('keeps only what matters', () => {
-  expect(shrink([1, 3, 8, 5, 2], both)).toEqual([3, 5]);
-});
-test('a single culprit', () => {
-  const f = (ys) => ys.some((y) => y < 0);
-  expect(shrink([4, 9, -1, 7], f)).toEqual([-1]);
-});
-test('a length bug', () => {
-  const f = (ys) => ys.length >= 2;
-  expect(shrink([7, 7, 7, 7], f).length).toBe(2);
-});
-test('does not change the input', () => {
-  const xs = [1, 3, 5];
-  shrink(xs, both);
-  expect(xs).toEqual([1, 3, 5]);
-});`,
-    hints: [
-      'Build a candidate without element `i`: `[...ys.slice(0, i), ...ys.slice(i + 1)]`.',
-      'If the candidate still fails, keep it as the new current array and start scanning again.',
-      'Stop when a full scan finds no removal that still fails.',
-    ],
-    walkthrough: `Fuzzers find failures that are big and noisy: the program in the fuzzing example has a dozen nodes, but the bug needs only \`0 - x\`. Shrinking finds the small version.
-
-- **Keep the failure.** A removal is only accepted if \`fails\` is still true. So every step keeps a failing input, just a smaller one.
-- **Scan until stuck.** After a successful removal, other elements may now be removable too, so scan again. When a whole scan removes nothing, every remaining element is needed: the result is *1-minimal*.
-- **Don’t mutate.** \`slice\` and spread build new arrays, so the caller’s input survives, which matters when you want to save the original failure too.
-
-Real reducers work on program trees rather than flat lists, and try removing big chunks before single elements, but the loop is the same: shrink while it still fails.`,
-    wrong: [
-      {
-        code: `function shrink(xs, fails) {
-  const out = [];
-  for (const x of xs) {
-    if (fails([x])) out.push(x);
-  }
-  return out;
-}`,
-        why: 'It tests each element alone. A failure that needs two elements together (3 *and* 5) never fails on its own, so this returns `[]`, which doesn’t fail at all.',
-      },
-    ],
-  },
 };
 
 export const quiz = [
@@ -333,30 +221,21 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which is a round-trip test?',
+    q: 'Which is a metamorphic test?',
     options: [
-      { t: 'Running a program under two compilers', why: 'That is differential testing.' },
-      { t: 'Checking a sort against a slow sort', why: 'Also differential: two implementations of one thing.' },
-      { t: 'Parsing a program, printing the tree, parsing again, and comparing the trees', correct: true, why: 'Two opposite operations must undo each other.' },
-      { t: 'Running the corpus under stress GC', why: 'That stresses the collector; nothing is undone.' },
+      { t: 'Running a program under two compilers and comparing', why: 'That is differential testing: two implementations.' },
+      { t: 'Comparing an output with one stored last month', why: 'That is a golden test.' },
+      { t: 'Deleting code that did not run on an input, and checking the program still behaves the same on that input', correct: true, why: 'One implementation, a change that must not change the answer: that is the EMI method.' },
+      { t: 'Parsing, printing and parsing again', why: 'That is a round trip.' },
     ],
   },
   {
-    q: 'What is true of fuzzing in this repository?',
+    q: 'A printer drops the brackets in `(1 + 2) * 3`. Which test catches it most directly?',
     options: [
-      { t: 'Viscosity runs Csmith on every build', why: 'Csmith generates C programs, and the repository uses no fuzzer.' },
-      { t: 'It isn’t implemented yet; the tests are a hand-built corpus, parser equivalence, a round trip and the Drip corpus', correct: true, why: 'Fuzzing is the next step, taught here at toy size.' },
-      { t: 'The Drip corpus is randomly generated', why: 'Its programs are hand-written, with `// expect:` comments.' },
-      { t: 'Test262 is run against the compiled code', why: 'Test262 is JavaScript’s conformance suite; Viscosity doesn’t run it.' },
-    ],
-  },
-  {
-    q: 'Why does Csmith take care to generate C programs free of undefined behaviour?',
-    options: [
-      { t: 'To make them compile faster', why: 'Speed is not the reason.' },
-      { t: 'So they are shorter', why: 'Avoiding undefined behaviour usually makes programs longer, not shorter.' },
-      { t: 'Because C compilers reject undefined behaviour', why: 'They usually accept it silently; that is what makes it dangerous.' },
-      { t: 'With undefined behaviour, two correct compilers may legitimately disagree, so a difference would prove nothing', correct: true, why: 'Differential testing needs programs that have one right answer.' },
+      { t: 'A golden test of the parser alone', why: 'The parser is fine; the printer is wrong.' },
+      { t: 'A round trip: parse, print, parse, and compare the trees', correct: true, why: 'Printed as `1 + 2 * 3`, it parses to a different tree.' },
+      { t: 'Stress GC', why: 'That tests the garbage collector.' },
+      { t: 'Test262', why: 'Test262 tests a JavaScript engine against the specification, not this printer.' },
     ],
   },
 ];

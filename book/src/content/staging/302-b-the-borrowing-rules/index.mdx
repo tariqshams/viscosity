@@ -1,0 +1,307 @@
+---
+n: 302
+split_of: 302
+day: 76
+part: XI
+title: 'The borrowing rules'
+tagline: 'Many readers, or one writer, never both. One rule, checked by the compiler, turns Track A’s hardest problem (aliasing) into an error message with three labelled lines.'
+objectives:
+  - State the many-readers-or-one-writer rule, and say why a pointer into a growing list needs it.
+  - Say where a borrow ends, and use that to fix a borrow error by reordering code.
+  - Read E0502, E0499, E0505 and E0597 and name the three points each one marks.
+  - Explain what the rule lets a compiler assume, and connect it to the borrow checker in miniature.
+introduces: [shared-vs-mutable, borrow-checker]
+uses: [rust, let-mut, scalar-types, rust-functions, expression-oriented, ownership, move, drop, borrow, reference, aliasing, mutation, alias-analysis, points-to, pointer, function, parameter, typescript, static-analysis, garbage-collection, virtual-machine, stack-machine, borrow-checking-algorithm, data-race, test]
+sources: [rust-book-borrowing, rust-error-codes, rustc-dev-guide-borrowck, rustref-ub, klabnik2026]
+---
+import BorrowSteps from '../../../components/diagrams/ch302b/BorrowSteps';
+import ConflictGrid from '../../../components/diagrams/ch302b/ConflictGrid';
+
+## A pointer into a growing list
+
+Here is a bug that every C programmer has written at least once, in
+Rust:
+
+```rust
+let mut xs = vec![1, 2, 3];
+let first = &xs[0];
+xs.push(4);
+println!("{first}");
+```
+
+`first` points at the first element, inside the `Vec`'s heap buffer.
+Then `push` adds a fourth element; if the buffer is full, the `Vec`
+asks for a bigger one, copies the elements across and frees the old
+buffer, so `first` would now point at freed memory. (This is the exact
+danger *A borrow checker in miniature* opened with.) In TypeScript the
+collector keeps whatever `first` refers to alive, so the question never
+comes up; in C the program compiles and misbehaves, sometimes. rustc
+refuses it:
+
+```text
+error[E0502]: cannot borrow `xs` as
+  mutable because it is also borrowed
+  as immutable
+3 |     let first = &xs[0];
+  |                  -- immutable borrow
+  |                     occurs here
+4 |     xs.push(4);
+  |     ^^^^^^^^^^ mutable borrow
+  |                occurs here
+5 |     println!("{first}");
+  |                ----- immutable borrow
+  |                      later used here
+```
+
+The fix is to stop needing `first` across the `push`: print it first,
+or copy the number out (`let first = xs[0];`, an `i32`, which is Copy).
+
+## Many readers or one writer
+
+The rule behind that error is short. At any moment, a value may have
+*either* any number of shared references, *or* exactly one mutable
+reference, never both<Cite id="rust-book-borrowing" />.
+
+<Analogy title="a whiteboard in a meeting">
+Any number of people can read a whiteboard at once. When someone picks
+up the pen to rewrite it, everyone else has to stop reading until they
+put the pen down, or they will copy half of the old version and half of
+the new one into their notes.
+<span slot="breaks">In a meeting, people agree to wait out of
+politeness; in Rust, the compiler proves before the program runs that
+nobody reads while the pen is up, so there is no waiting at run
+time at all.</span>
+</Analogy>
+
+<Analogy title="a single-track railway">
+On a single-track line, trains running the same way can follow each
+other, but a train going the other way may only enter the section when
+it holds the one token for that section, and while it holds the token
+no other train may be on the track. The token is a `&mut`.
+<span slot="breaks">Followers on a railway still keep their distance;
+any number of shared borrows may read the same value at the very same
+moment, since reading changes nothing.</span>
+</Analogy>
+
+Step through it. Green arrows read, the amber one writes, and the bars
+underneath show how long each borrow lives:
+
+<BorrowSteps client:visible />
+
+The surprise for most people is the step where the readers' bars stop.
+The borrows `a` and `b` do not last until the closing brace; they end
+at their **last use**, so `w` may start straight after the
+`println!`<Cite id="rust-book-borrowing" />. (How rustc works out "last
+use" is the subject of *Non-lexical lifetimes and region inference*.)
+
+<Figure takeaway="Reading next to readers is the only overlap allowed; everything else is a compile error." caption="What a program may do while an earlier borrow of s is still live (will be used again). Each cross is the error rustc 1.97 reports.">
+  <ConflictGrid />
+</Figure>
+
+<Examples of="shared-vs-mutable">
+
+```rust
+let s = String::from("vm");
+let r1 = &s;
+let r2 = &s;
+println!("{r1} {r2}"); // two readers
+```
+
+```rust
+let mut s = String::from("tea");
+let r = &s;
+println!("{r}");  // r's last use
+let w = &mut s;   // so this is fine
+w.push_str("pot");
+```
+
+```rust
+let mut n = 1;
+let a = &mut n;
+*a += 1;          // a's last use
+let b = &mut n;   // a new writer
+*b += 1;          // n is now 3
+```
+
+</Examples>
+
+The first has two shared borrows alive at once, which is always fine.
+The second is the reorder that fixes most borrow errors: the reader is
+finished before the writer starts. The third has two mutable borrows of
+the same variable, which is fine because they never overlap: `a` is
+used for the last time before `b` is made.
+
+<Callout kind="definition">
+The **borrowing rule** (shared versus mutable): at any point in the
+program, a value may have *either* any number of live shared references
+`&T`, *or* exactly one live mutable reference `&mut T`, and never both.
+A borrow is live from where it is made to the last place it is used.
+</Callout>
+
+<Formal title="The rule at one point">
+
+```text
+for every value v and program point p:
+  writers(v, p) = 0
+  ∨ (writers(v, p) = 1 ∧ readers(v, p) = 0)
+```
+
+<span slot="read">For every value and every point in the program: either
+nobody is borrowing the value mutably there (and any number may be
+reading it), or exactly one borrower is, and then nobody is reading it
+through a shared borrow. "Live" decides who counts at a point: a borrow
+counts only between where it is made and where it is last used.</span>
+</Formal>
+
+<Prompts ids={['rule', 'last-use', 'grow-danger']} />
+
+## The borrow checker
+
+The part of the compiler that enforces the rule is the **borrow
+checker**, and its errors all have the same three-point shape: where the
+first borrow started, where the clashing access happened, and where the
+first borrow was still needed. Read them as three marks on one timeline,
+and the fix is to stop those marks overlapping.
+
+<Examples of="borrow-checker">
+
+```rust
+let mut n = 1;
+let a = &mut n;
+let b = &mut n;   // broken: E0499
+*a += 1;
+```
+
+```rust
+let s = String::from("vm");
+let r = &s;
+let t = s;        // broken: E0505
+println!("{r}");
+```
+
+```rust
+let r;
+{
+    let s = String::from("vm");
+    r = &s;       // broken: E0597
+}
+println!("{r}");
+```
+
+<Run id="borrow-clash" />
+
+</Examples>
+
+The first makes a second writer while the first is still needed later,
+which rustc reports as E0499, "cannot borrow `n` as mutable more than
+once at a time", with the labels "first mutable borrow occurs here",
+"second mutable borrow occurs here" and "first borrow later used here";
+the fix is to finish with `a` before making `b`. The second moves `s`
+while `r` still borrows it: E0505, "cannot move out of `s` because it is
+borrowed". The third keeps a reference to `s` after `s` was dropped at
+its block's end, so the reference would dangle: E0597, "`s` does not
+live long enough", "`s` dropped here while still borrowed". That last
+one is the second half of the rules of references: a reference must
+always point at a value that is still alive<Cite id="rust-book-borrowing" />.
+The runnable one is the clash from the diagram; move the `println!`
+above `let w` and it compiles.
+
+<Callout kind="pitfall">
+The `^^^^` marks the clashing access, but that line is often fine. The
+real problem can be the *later* use of the first borrow, the third mark.
+Look at all three labels before you change anything.
+</Callout>
+
+<OtherLanguages title="Hold on to the first element, then grow the list">
+
+```rust
+let mut xs = vec![1, 2, 3];
+let first = &xs[0];
+xs.push(4);           // rejected: E0502
+println!("{first}");
+```
+
+```ts
+const xs = [1, 2, 3];
+const first = xs[0];  // a copy of 1
+xs.push(4);
+console.log(first);   // 1
+```
+
+```c
+int *xs = malloc(3 * sizeof(int));
+int *first = &xs[0];
+xs = realloc(xs, 4 * sizeof(int));
+printf("%d\n", *first); /* may read
+                           freed memory */
+```
+
+```python
+xs = [1, 2, 3]
+first = xs[0]   # the number 1
+xs.append(4)
+print(first)    # 1
+```
+
+</OtherLanguages>
+
+TypeScript and Python never hand you a pointer into the array's storage,
+so there is nothing to dangle (and the collector or the counts keep
+objects alive). C hands you exactly such a pointer and lets `realloc`
+move the storage out from under it. Rust hands you the pointer too,
+because it is fast, and then refuses any program in which the storage
+could move while you hold it.
+
+<Callout kind="definition">
+The **borrow checker** is a static analysis inside the Rust compiler. It
+works out where every borrow starts and where it is last used, and
+rejects any program in which a value is written, moved or dropped while
+another borrow of it is live, or in which a reference outlives its
+value. It runs at compile time, so the program it accepts has nothing
+left to check while it runs<Cite id="rust-error-codes" />.
+</Callout>
+
+<Prompts ids={['checker-when', 'e0502-fix', 'e0499-what', 'e0597-why']} />
+
+<Callout kind="engine" label="Under the hood">
+You have built this. *A borrow checker in miniature* kept a ledger of
+loans, checked every access against the live ones and reported the same
+five errors; rustc's real checker does that on its MIR, with liveness
+deciding when a loan ends<Cite id="rustc-dev-guide-borrowck" />. The rule also pays the optimizer. The Rust
+Reference lists breaking it as undefined behaviour: while a `&mut T` is
+live, no other pointer may read or write that memory, and memory behind
+a live `&T` must not change<Cite id="rustref-ub" />. Because a correct
+program cannot break those rules, the compiler may assume them, which is
+the very fact that *Alias analysis* had to work hard (and often fail)
+to prove for JavaScript. The same rule rules out data races, as *Threads,
+memory models and atomics* defined them<Cite id="klabnik2026" />.
+
+The Rust Drip VM leans on it in `vm.rs`: before it collects garbage it
+builds a `VmRoots` value holding shared borrows of its stack, its call
+frames and its globals, and hands it to the collector, which can read
+every root while those `&` borrows guarantee that nothing changes them.
+</Callout>
+
+<Prompts ids={['noalias']} />
+
+## Your turn
+
+<Exercise id="pushGetFirst" />
+
+## What you learned
+
+- The rule: **many readers or one writer**, never both at once. A
+  borrow lives from where it is made to its **last use**.
+- The rule is what makes a pointer into a growing list safe: the list
+  cannot grow while the pointer is live (E0502).
+- The **borrow checker** enforces it at compile time, along with "no
+  move while borrowed" (E0505) and "no reference outlives its value"
+  (E0597). Its errors mark three points; reorder so they stop
+  overlapping.
+- A `&mut` is a promise of no aliases, the very fact Viscosity had to
+  prove for itself in TypeScript.
+
+Next: slices, a reference to *part* of an array or a string, which is
+how the Rust Drip scanner reads its source without copying a byte.
+
+<Quiz />

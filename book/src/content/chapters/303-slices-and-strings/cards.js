@@ -3,51 +3,39 @@
 export const prompts = {
   'slice-what': {
     q: 'What is a slice, in one line?',
-    a: 'A borrowed view of a run of elements in someone else’s array or string.',
+    a: 'A borrowed view of a run of elements in someone else’s array, `Vec` or string.',
   },
   'slice-parts': {
     q: 'What two things does a slice hold?',
-    a: 'A pointer to its first element and a length.',
+    a: 'A pointer to its first element and a length (16 bytes on a 64-bit machine).',
   },
   'range-end': {
-    q: 'Which elements does `&a[1..4]` cover?',
-    a: 'Indices 1, 2 and 3. The end of a range is not included.',
+    q: 'Which elements does `&a[1..4]` cover? And `&a[1..=4]`?',
+    a: '`1..4`: indices 1, 2 and 3 (the end is left out). `1..=4`: indices 1 to 4, end included.',
   },
   'range-open': {
     q: 'What do `&a[..2]`, `&a[3..]` and `&a[..]` mean?',
     a: 'From the start to 2; from 3 to the end; the whole thing.',
   },
-  'slice-bounds': {
-    q: 'What happens if a slice range runs past the end, like `&a[2..9]` on six elements?',
-    a: 'The program stops at run time with “range end index 9 out of range”. Slices are always bounds-checked.',
-  },
   'slice-param': {
     q: 'Why write `fn sum(xs: &[i32])` rather than taking an array of a fixed size?',
-    a: 'A `&[i32]` accepts a whole array or any part of one, of any length.',
+    a: 'A `&[i32]` accepts a whole array, a `Vec`, or any part of either, of any length.',
   },
-  'string-owns': {
-    q: 'Which owns its text and can grow: `String` or `&str`?',
-    a: '`String`. A `&str` only borrows text that lives somewhere else.',
+  'slice-mut': {
+    q: 'What does passing `&mut a[1..3]` to a function let it do?',
+    a: 'Change elements 1 and 2 of `a`, and nothing else.',
   },
-  'literal-type': {
-    q: 'What is the type of the literal `"print"`?',
-    a: '`&str`: a slice of text stored in the compiled program.',
+  'slice-bounds': {
+    q: 'What happens if a slice range runs past the end, like `&a[2..9]` on six elements?',
+    a: 'The program panics while running: “range end index 9 out of range for slice of length 6”.',
   },
-  'str-param': {
-    q: 'Why do Rust functions usually take `&str` rather than `&String`?',
-    a: 'A `&str` parameter accepts literals, slices and (borrowed) `String`s.',
+  'slice-amp': {
+    q: 'Why does `let s = a[0..2];` (no `&`) not compile?',
+    a: 'A slice on its own has no size known at compile time, so it can only be reached through a reference: `&a[0..2]` (E0277).',
   },
-  'to-owned': {
-    q: 'How do you turn a `&str` into a `String`, and what does it cost?',
-    a: '`String::from(x)` or `x.to_string()`. It copies the bytes into a new allocation.',
-  },
-  'byte-len': {
-    q: 'What does `"héllo".len()` return, and why?',
-    a: '6. `len` counts UTF-8 bytes, and `é` takes two.',
-  },
-  'slice-clear': {
-    q: 'You hold `let word = &s[0..3];` and call `s.clear()`, then use `word`. What happens?',
-    a: 'It doesn’t compile: `clear` needs a mutable borrow of `s` while `word` still borrows it.',
+  'slice-borrow': {
+    q: 'You hold `let part = &v[..2];` and call `v.push(9)`, then use `part`. What happens?',
+    a: 'It does not compile (E0502): `push` needs a mutable borrow of `v` while `part` still borrows it.',
   },
 };
 
@@ -72,142 +60,18 @@ fn main() {
     println!("mid {}", sum(mid));
     println!("all {}", sum(&a));
     println!("tail {}", sum(&a[3..]));
-}`,
-  },
-  lexemes: {
-    lang: 'rust',
-    title: 'Lexemes without copying',
-    code: `fn lexeme(
-    src: &str,
-    start: usize,
-    end: usize,
-) -> &str {
-    &src[start..end]
-}
-
-fn main() {
-    let s = String::from("let x = 10;");
-    let name = lexeme(&s, 4, 5);
-    let num = lexeme(&s, 8, 10);
-    println!("{name} and {num}");
-
-    let lit = "print";
-    println!("{}", lexeme(lit, 0, 2));
-
-    let mut own = String::from(name);
-    own.push_str("_2");
-    println!("{own} {}", own.len());
+    let v = vec![1, 2, 3];
+    println!("vec {}", sum(&v));
 }`,
   },
 };
 
 export const exercises = {
-  takeIdent: {
-    lang: 'rust',
-    title: 'Cut an identifier out of the source',
-    prompt:
-      'Write `take_ident(src)`, which returns the identifier at the very start of `src`: the longest run of ASCII letters, digits and `_` (use the `is_ident` helper). Return a **slice of `src`**, not a new `String`. If `src` starts with anything else, return an empty slice.',
-    starter: `fn is_ident(c: u8) -> bool {
-    c.is_ascii_alphanumeric()
-        || c == b'_'
-}
-
-fn take_ident(src: &str) -> &str {
-    // your code here
-    ""
-}`,
-    solution: `fn is_ident(c: u8) -> bool {
-    c.is_ascii_alphanumeric()
-        || c == b'_'
-}
-
-fn take_ident(src: &str) -> &str {
-    let b = src.as_bytes();
-    let mut i = 0;
-    while i < b.len() && is_ident(b[i])
-    {
-        i += 1;
-    }
-    &src[..i]
-}`,
-    tests: `#[test]
-fn stops_at_a_space() {
-    assert_eq!(take_ident("count = 1"), "count");
-}
-#[test]
-fn digits_and_underscores_count() {
-    assert_eq!(take_ident("x_1+y"), "x_1");
-}
-#[test]
-fn empty_when_no_identifier() {
-    assert_eq!(take_ident("+1"), "");
-    assert_eq!(take_ident(""), "");
-}
-#[test]
-fn the_whole_string_can_match() {
-    assert_eq!(take_ident("abc"), "abc");
-}
-#[test]
-fn borrows_instead_of_copying() {
-    let s = String::from("hi there");
-    let w = take_ident(&s);
-    assert_eq!(w.as_ptr(), s.as_ptr());
-}`,
-    hints: [
-      '`src.as_bytes()` gives you the text as a `&[u8]`, so `b[i]` is one byte. Drip’s identifiers are ASCII, so a byte is a character.',
-      'Walk an index `i` forward while `i < b.len()` and `is_ident(b[i])`. Check the length first, or `b[i]` runs off the end.',
-      'When the loop stops, `i` is one past the last identifier byte. Return `&src[..i]`.',
-    ],
-    walkthrough: `This is the Rust scanner’s \`identifier()\` in miniature.
-
-- **Look at bytes.** \`let b = src.as_bytes();\` is a \`&[u8]\` view of the same text, also borrowed, also free. The companion scanner keeps exactly such a \`bytes: &[u8]\` beside its \`source: &str\`.
-- **Walk forward.** \`while i < b.len() && is_ident(b[i])\`. \`&&\` stops early, so \`b[i]\` is only read while \`i\` is in range.
-- **Slice, don't copy.** \`&src[..i]\` is a window on the caller's text. If nothing matched, \`i\` is 0 and \`&src[..0]\` is the empty slice \`""\`.
-
-The last test is the interesting one. \`w.as_ptr()\` is the address of the slice’s first byte, and it equals the address of \`s\`’s first byte: the result points into the source. A version that built a new \`String\` couldn’t even return it as \`&str\` here, because the new string would be dropped at the end of the function.
-
-Why must \`i\` stop on a character boundary? Slicing \`&str\` in the middle of a multi-byte character stops the program. Since this loop only steps over ASCII bytes, it always stops on a boundary.`,
-    wrong: [
-      {
-        code: `fn is_ident(c: u8) -> bool {
-    c.is_ascii_alphabetic()
-}
-
-fn take_ident(src: &str) -> &str {
-    let b = src.as_bytes();
-    let mut i = 0;
-    while i < b.len() && is_ident(b[i])
-    {
-        i += 1;
-    }
-    &src[..i]
-}`,
-        why: 'Letters only: `x_1` is cut short to `x`. Identifiers may contain digits and `_` after the first character.',
-      },
-      {
-        code: `fn is_ident(c: u8) -> bool {
-    c.is_ascii_alphanumeric()
-        || c == b'_'
-}
-
-fn take_ident(src: &str) -> &str {
-    let b = src.as_bytes();
-    let mut i = 0;
-    while is_ident(b[i]) {
-        i += 1;
-    }
-    &src[..i]
-}`,
-        why: 'Without `i < b.len()` the loop reads past the end when the whole string is an identifier, and indexing out of bounds stops the program.',
-      },
-    ],
-  },
   sumColumn: {
     lang: 'rust',
-    optional: true,
     title: 'Sum part of a column',
     prompt:
-      'A struct-of-arrays layout keeps every particle’s `x` in one array. Write `sum_range(xs, from, to)` that adds up `xs[from..to]` by **slicing first**, then summing the slice.',
+      'A struct-of-arrays layout keeps every particle’s `x` in one array. Write `sum_range(xs, from, to)`, which adds up the elements `from` (included) to `to` (left out) by **slicing first**, then summing the slice. An empty range sums to `0.0`.',
     starter: `fn sum_range(
     xs: &[f64],
     from: usize,
@@ -245,12 +109,29 @@ fn whole_column() {
     assert_eq!(sum_range(&xs, 0, 3), 1.0);
 }`,
     hints: [
-      '`let part = &xs[from..to];` is the window you need.',
-      'Loop `i` from 0 while `i < part.len()`, adding `part[i]`.',
+      'Cut out the window first: `let part = &xs[from..to];`. Now the rest of the function only needs to sum a slice.',
+      'Loop `i` from 0 while `i < part.len()`, adding `part[i]` to a running total that starts at `0.0`.',
+      'The total must be an `f64`, so start it at `0.0`, not `0`. End the function with the total and no semicolon.',
     ],
-    walkthrough: `Slicing first means the loop doesn't need to know about \`from\` and \`to\` at all. It just sums a slice, from 0 to \`part.len()\`. That's the usual Rust shape: cut out the part you want, then hand the slice to code that works on any slice.
+    walkthrough: `**How to think about it.** Split the job in two: first choose *which* elements (that is what a slice is for), then add them up (a loop that works on any slice). Once you have \`part = &xs[from..to]\`, the loop never needs to know about \`from\` and \`to\` at all; it just sums \`part\` from index 0 to \`part.len()\`. That is the usual Rust shape: cut out the part you want, then hand the slice to code that works on any slice.
 
-A common slip is \`to + 1\` or \`<=\`. Ranges exclude their end, so \`&xs[1..3]\` is elements 1 and 2.`,
+**The solution, line by line.**
+
+- \`fn sum_range(xs: &[f64], from: usize, to: usize) -> f64 {\` (split over lines to fit) borrows a column of floats and takes two indices, which are \`usize\` like every index.
+- \`let part = &xs[from..to];\` makes a view of the elements \`from\` up to, but not including, \`to\`. Nothing is copied: \`part\` is a pointer and a length into the caller’s array. For \`sum_range(&xs, 1, 3)\` it covers \`xs[1]\` and \`xs[2]\`, which are 2.0 and 3.0.
+- \`let mut t = 0.0;\` starts the total. The \`.0\` makes it an \`f64\`; a plain \`0\` would be an integer, and \`t += part[i]\` would then add an \`f64\` to an integer, which Rust refuses.
+- \`let mut i = 0;\` is the index into \`part\`, inferred as \`usize\` because it is compared with \`part.len()\` and used to index.
+- \`while i < part.len() {\` repeats once per element. For the empty range \`1..1\`, \`part.len()\` is 0 and the body never runs.
+- \`t += part[i];\` adds the element; every access is bounds-checked, and the loop condition keeps \`i\` in range.
+- \`i += 1;\` moves on.
+- \`}\` closes the loop.
+- \`t\` with no semicolon is the body’s last expression, so it is returned: 5.0 for the first test.
+
+**Common wrong attempts.**
+
+- \`while i <= part.len() - 1\`: for an empty range \`part.len() - 1\` would be \`0 - 1\`, and \`usize\` cannot go below zero, so in a debug build the subtraction panics with “attempt to subtract with overflow”. Use \`i < part.len()\`.
+- \`&xs[from..to + 1]\`: ranges already leave the end out, so this adds one element too many (and panics when \`to\` is the length).
+- \`let mut t = 0;\`: an integer total, so \`t += part[i]\` does not compile (“cannot add-assign \`f64\` to \`{integer}\`”).`,
     wrong: [
       {
         code: `fn sum_range(
@@ -267,7 +148,24 @@ A common slip is \`to + 1\` or \`<=\`. Ranges exclude their end, so \`&xs[1..3]\
     }
     t
 }`,
-        why: 'For an empty range `part.len() - 1` underflows: `usize` can’t go below zero, so in a debug build the subtraction stops the program. Use `i < part.len()`.',
+        why: 'For an empty range `part.len() - 1` underflows: `usize` cannot go below zero, so in a debug build the subtraction stops the program. Use `i < part.len()`.',
+      },
+      {
+        code: `fn sum_range(
+    xs: &[f64],
+    from: usize,
+    to: usize,
+) -> f64 {
+    let part = &xs[from..to + 1];
+    let mut t = 0.0;
+    let mut i = 0;
+    while i < part.len() {
+        t += part[i];
+        i += 1;
+    }
+    t
+}`,
+        why: 'Ranges already leave out their end, so `to + 1` adds one element too many (and panics when `to` is the length).',
       },
     ],
   },
@@ -278,7 +176,7 @@ export const quiz = [
     q: '`let a = [5, 6, 7, 8];` What is `&a[1..3]`?',
     options: [
       { t: 'The elements 6 and 7', correct: true, why: 'Index 1 up to, but not including, index 3.' },
-      { t: 'The elements 6, 7 and 8', why: 'That would be `&a[1..]` or `&a[1..4]`: the end is excluded.' },
+      { t: 'The elements 6, 7 and 8', why: 'That would be `&a[1..]` or `&a[1..4]`: the end is left out.' },
       { t: 'A new array holding 6 and 7', why: 'A slice copies nothing. It is a view into `a`.' },
       { t: 'The elements 5, 6 and 7', why: 'Indices start at 0, so index 1 is 6.' },
     ],
@@ -287,48 +185,42 @@ export const quiz = [
     q: 'What is stored in a `&[i32]` slice value?',
     options: [
       { t: 'A copy of every element in the range', why: 'Slices never copy their elements.' },
-      { t: 'Just a pointer to the first element', why: 'Without a length, nobody would know where the slice ends.' },
-      { t: 'A pointer to the first element and a length', correct: true, why: 'That’s why a slice is twice the size of a plain reference.' },
-    ],
-  },
-  {
-    q: 'Which function signature accepts `"lit"`, `&my_string` and `&my_string[2..]` all three?',
-    options: [
-      { t: '`fn f(s: String)`', why: 'That takes ownership of a `String`, and a literal isn’t one.' },
-      { t: '`fn f(s: &String)`', why: 'A literal or a slice is a `&str`, not a `&String`.' },
-      { t: '`fn f(s: &mut str)`', why: 'Literals are read-only, so you can’t get a `&mut` to one.' },
-      { t: '`fn f(s: &str)`', correct: true, why: 'Literals and slices are `&str`, and a `&String` is turned into a `&str` for you.' },
+      { t: 'Only a pointer to the first element', why: 'Without a length, nobody would know where the slice ends, or check accesses.' },
+      { t: 'A pointer to the first element and a length', correct: true, why: 'That is why a slice is 16 bytes, twice the size of a plain reference.' },
+      { t: 'The start and end indices, and the name of the array', why: 'A slice does not know which variable it came from; it holds an address and a length.' },
     ],
   },
   {
     q: `Does this compile?
-\`\`\`
-let mut s = String::from("let x;");
-let word = &s[0..3];
-s.push_str(" y");
-println!("{word}");
+\`\`\`rust
+let mut v = vec![1, 2, 3];
+let part = &v[..2];
+v.push(9);
+println!("{:?}", part);
 \`\`\``,
     options: [
-      { t: 'Yes, and it prints `let`', why: '`word` borrows `s`, and pushing needs a mutable borrow while `word` is still used.' },
-      { t: 'No: it borrows `s` mutably while `word` still borrows it', correct: true, why: 'This is E0502 from chapter 302. Growing `s` could move its bytes and leave `word` pointing at freed memory.' },
-      { t: 'Yes, but it prints `let x; y`', why: '`word` is a fixed window of three bytes, and anyway this doesn’t compile.' },
+      { t: 'Yes, and it prints `[1, 2]`', why: '`part` borrows `v`, and pushing needs a mutable borrow while `part` is still used.' },
+      { t: 'Yes, but it prints `[1, 2, 9]`', why: 'A slice is a fixed window, and anyway this does not compile.' },
+      { t: 'No: it borrows `v` mutably while `part` still borrows it (E0502)', correct: true, why: 'Growing `v` could move its elements and leave `part` pointing at freed memory.' },
+      { t: 'No: you cannot slice a `Vec`', why: 'You can; a `Vec` slices exactly like an array.' },
     ],
   },
   {
-    q: 'In `let lit = "print";`, where do the five bytes live?',
+    q: 'What happens with `let a = [1, 2, 3]; let s = &a[1..5];`?',
     options: [
-      { t: 'On the heap, owned by `lit`', why: 'Only a `String` owns heap text. `lit` is a `&str`.' },
-      { t: 'In the compiled program itself; `lit` borrows them', correct: true, why: 'String literals are slices of text stored in the binary, which is why they can’t be changed.' },
-      { t: 'They are copied into `lit` byte by byte', why: '`lit` holds a pointer and a length, not the bytes.' },
+      { t: '`s` is `[2, 3]`, silently trimmed', why: 'Rust never trims a range for you.' },
+      { t: 'The program panics: range end index 5 out of range for slice of length 3', correct: true, why: 'Slicing is bounds-checked, and an index past the end stops the program.' },
+      { t: 'It reads whatever is in memory after the array', why: 'That is what C might do. Rust checks.' },
+      { t: '`s` is empty', why: 'An out-of-range slice is an error, not an empty slice.' },
     ],
   },
   {
-    q: 'Why does the Rust Drip scanner make each lexeme a `&str` slice of the source?',
+    q: '`fn zero(xs: &mut [i32])` sets every element of `xs` to 0. After `let mut a = [1, 2, 3, 4]; zero(&mut a[2..]);`, what is `a`?',
     options: [
-      { t: 'Because Rust has no way to make new strings', why: '`String::from` makes one. It just costs an allocation.' },
-      { t: 'So the tokens can be changed in place', why: 'A `&str` is read-only.' },
-      { t: 'It makes scanning faster by skipping UTF-8 checks', why: 'The scanner still has to look at every byte.' },
-      { t: 'A slice is a pointer and a length into text that already exists, so scanning allocates nothing', correct: true, why: 'The companion scanner’s own comment says scanning never allocates for this reason.' },
+      { t: '`[0, 0, 0, 0]`', why: 'Only the part that was lent can be changed.' },
+      { t: '`[1, 2, 3, 4]`', why: 'The function changed the elements through the mutable slice.' },
+      { t: '`[0, 0, 3, 4]`', why: '`2..` is from index 2 to the end, not the first two.' },
+      { t: '`[1, 2, 0, 0]`', correct: true, why: 'The mutable slice covers indices 2 and 3, so only those become 0.' },
     ],
   },
 ];

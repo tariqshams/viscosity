@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 307: a Vec<f64> growing. The stack part is (ptr, len, cap), as
+// A Vec<f64> growing. The stack part is (ptr, len, cap), as
 // in the std docs' picture of a Vec. The capacities 0, 4, 8 are what
 // rustc 1.97 printed on this book's machine; Vec guarantees no particular
 // growth strategy.
@@ -26,12 +26,12 @@ const CELL = 34;
 function Buffer({ x, y, cap, len, freed, label }: { x: number; y: number; cap: number; len: number; freed?: boolean; label: string }) {
   return (
     <g opacity={freed ? 0.55 : 1}>
-      <T x={x} y={y - 10} size={10} fill={tok('muted')}>{label}</T>
+      <T x={x} y={y - 10} size={11} fill={tok('muted')}>{label}</T>
       {Array.from({ length: cap }, (_, k) => (
         <Box key={k} x={x + k * CELL} y={y} w={CELL - 2} h={28} r={3}
           fill={k < len && !freed ? tok('f1', 0.22) : 'transparent'}
           stroke={freed ? tok('danger') : k < len ? tok('f1') : tok('line')} dash={freed || k >= len}>
-          <T x={x + k * CELL + 16} y={y + 14} size={10} mono anchor="middle">{k < len ? `${k + 1}.0` : ''}</T>
+          <T x={x + k * CELL + 16} y={y + 14} size={11} mono anchor="middle">{k < len ? `${k + 1}.0` : ''}</T>
         </Box>
       ))}
     </g>
@@ -48,14 +48,14 @@ export default function VecSteps() {
         <T x={8} y={14} size={11} weight={700} fill={tok('brand')}>stack: v</T>
         {['ptr', 'len', 'cap'].map((f, k) => (
           <Box key={f} x={8 + k * 62} y={24} w={58} h={34} r={3} fill={tok('panel')} stroke={tok('ink', 0.5)}>
-            <T x={37 + k * 62} y={34} size={9} anchor="middle" fill={tok('muted')}>{f}</T>
+            <T x={37 + k * 62} y={34} size={11} anchor="middle" fill={tok('muted')}>{f}</T>
             <T x={37 + k * 62} y={49} size={12} mono anchor="middle">{f === 'ptr' ? (st.cap ? '●' : '–') : f === 'len' ? st.len : st.cap}</T>
           </Box>
         ))}
         {st.first && (
           <g>
             <Box x={210} y={24} w={70} h={34} r={3} stroke={st.first === 'old' && st.oldFreed ? tok('danger') : tok('ink', 0.5)} dash={st.first === 'none'}>
-              <T x={245} y={34} size={9} anchor="middle" fill={tok('muted')}>first</T>
+              <T x={245} y={34} size={11} anchor="middle" fill={tok('muted')}>first</T>
               <T x={245} y={49} size={12} mono anchor="middle">{st.first === 'none' ? '✕' : '●'}</T>
             </Box>
             {st.first === 'old' && <Arrow x1={245} y1={58} x2={st.oldFreed ? 300 : 24} y2={st.oldFreed ? 162 : 98} color={st.oldFreed ? tok('danger') : tok('ink', 0.7)} bend={st.oldFreed ? 0 : -0.3} />}

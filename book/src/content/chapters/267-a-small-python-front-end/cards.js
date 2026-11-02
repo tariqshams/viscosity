@@ -21,25 +21,17 @@ export const prompts = {
     q: 'Why does a line end inside `( ... )` produce no NEWLINE token?',
     a: 'Inside brackets, lines join into one logical line, so the tokenizer tracks bracket depth and ignores line ends and indentation while it is above 0.',
   },
-  'ps-what': {
-    q: 'What is Viscosity’s Python subset?',
-    a: 'The part of Python its parser accepts: functions, dataclasses, lists, for/while/if, assignment, arithmetic and calls.',
+  'it-eof': {
+    q: 'At the end of the file the stack is `[0, 4, 8]`. What does the tokenizer emit before EOF?',
+    a: 'Two DEDENTs, one for each width above 0, so every open block is closed.',
   },
-  'ps-fail': {
-    q: 'What does Viscosity do with a file that uses a list comprehension?',
-    a: 'The parser refuses it, the plugin returns an empty module, and the file is emitted exactly as it was.',
+  'it-cpython': {
+    q: 'Which part finds an *unexpected* indent (an INDENT where no block may start): the tokenizer or the parser?',
+    a: 'The parser: the tokenizer only compares widths, and whether a block may start there is a question of grammar.',
   },
-  'ps-chain': {
-    q: 'Why does the parser refuse `a < b < c` instead of parsing it as two `<`?',
-    a: 'In Python it means `a < b and b < c`. Parsing it like JavaScript’s `(a < b) < c` would build the wrong tree.',
-  },
-  'pp-block': {
-    q: 'In Python’s block rule, which tokens play the part of `{` and `}`?',
-    a: 'INDENT and DEDENT (after the `:` and a NEWLINE).',
-  },
-  'pp-elif': {
-    q: 'How does Viscosity’s parser handle `elif`?',
-    a: 'It rewrites the `elif` token to `if` and parses a nested `if` as the `else` branch.',
+  'it-tab': {
+    q: 'How wide is a tab in Viscosity’s tokenizer?',
+    a: 'It moves the width on to the next multiple of 8 (so a tab after 3 spaces reaches 8).',
   },
 };
 
@@ -88,113 +80,7 @@ console.log(indents(src).join('\\n'));`,
 };
 
 export const exercises = {
-  nest: {
-    title: 'Parse blocks from INDENT and DEDENT',
-    prompt:
-      'Now the parser’s side. `toks` is a list of tokens: each line’s text (like `\'for p in ps:\'`), plus `\'INDENT\'` and `\'DEDENT\'`. Write `nest(toks)` that returns the block structure as nested arrays: a line that ends with `:` is followed by an array holding its block. For example `[\'if x:\', \'INDENT\', \'y = 1\', \'DEDENT\', \'z = 2\']` gives `[\'if x:\', [\'y = 1\'], \'z = 2\']`. Throw an `Error` with message `\'expected an indented block\'` if a `:` line is not followed by INDENT, and `\'unexpected indent\'` if an INDENT follows any other line.',
-    starter: `function nest(toks) {
-  return toks;
-}`,
-    solution: `function nest(toks) {
-  let i = 0;
-  function block() {
-    const out = [];
-    while (i < toks.length &&
-           toks[i] !== 'DEDENT') {
-      const t = toks[i++];
-      if (t === 'INDENT') {
-        throw new Error(
-          'unexpected indent');
-      }
-      out.push(t);
-      if (t.endsWith(':')) {
-        if (toks[i] !== 'INDENT') {
-          const m = 'expected an ' +
-            'indented block';
-          throw new Error(m);
-        }
-        i++;
-        out.push(block());
-        i++;
-      }
-    }
-    return out;
-  }
-  return block();
-}`,
-    tests: `test('a flat program', () => {
-  expect(nest(['a = 1', 'b = 2'])).toEqual(['a = 1', 'b = 2']);
-});
-test('one block', () => {
-  expect(nest(['if x:', 'INDENT', 'y = 1', 'DEDENT', 'z = 2'])).toEqual(['if x:', ['y = 1'], 'z = 2']);
-});
-test('nested blocks closed by two DEDENTs', () => {
-  const t = ['def f(ps):', 'INDENT', 'for p in ps:', 'INDENT', 'p.x += 1', 'DEDENT', 'DEDENT', 'f(qs)'];
-  expect(nest(t)).toEqual(['def f(ps):', ['for p in ps:', ['p.x += 1']], 'f(qs)']);
-});
-test('a block that continues after an inner one', () => {
-  const t = ['for p in ps:', 'INDENT', 'if p.x:', 'INDENT', 'n += 1', 'DEDENT', 'p.x = 0', 'DEDENT'];
-  expect(nest(t)).toEqual(['for p in ps:', ['if p.x:', ['n += 1'], 'p.x = 0']]);
-});
-function message(f) {
-  try { f(); } catch (e) { return e.message; }
-  return 'no error';
-}
-test('a colon needs a block', () => {
-  expect(message(() => nest(['if x:', 'y = 1']))).toBe('expected an indented block');
-});
-test('an indent needs a colon', () => {
-  expect(message(() => nest(['a = 1', 'INDENT', 'b = 2', 'DEDENT']))).toBe('unexpected indent');
-});`,
-    hints: [
-      'Use one index `i` shared by a recursive helper `block()`. `block()` reads lines until it sees `DEDENT` (or runs out) and returns them as an array.',
-      'After pushing a line that ends with `:`, expect `INDENT`, skip it, and push the result of calling `block()` again for the inner block.',
-      'When the inner `block()` returns, the current token is its `DEDENT`: skip it with `i++` so the outer block can carry on.',
-    ],
-    walkthrough: `This is \`block()\` from \`parser.ts\`, with lines in place of statements.
-
-- **INDENT and DEDENT are braces.** \`block()\` is the body between them. It stops at \`DEDENT\` without consuming it, so whoever opened the block can check it closed and skip it. Two DEDENTs in a row close two blocks: each \`block()\` call returns, and its caller skips one.
-- **The colon is a promise.** In Python every compound statement (\`if\`, \`for\`, \`def\`, ...) ends its header with \`:\` and must have a block. That is why a missing INDENT after \`:\` is an error, and an INDENT after anything else is too.
-- **Which component finds which error.** The tokenizer (the Run example above) only knows widths, so it catches widths that match no open block. Whether an indent is *allowed* here is grammar, so the parser catches it. CPython divides the work the same way.
-
-The real parser does the same with \`peek()\` and \`p++\`, and also accepts \`if x: y = 1\` on one line.`,
-    wrong: [
-      {
-        code: `function nest(toks) {
-  let i = 0;
-  function block() {
-    const out = [];
-    while (i < toks.length &&
-           toks[i] !== 'DEDENT') {
-      const t = toks[i++];
-      out.push(t);
-      if (t.endsWith(':')) {
-        i++;
-        out.push(block());
-      }
-    }
-    return out;
-  }
-  return block();
-}`,
-        why: 'It never skips the DEDENT that ends an inner block, so the outer block stops there too: `z = 2` after an `if` is lost. It also checks for neither error.',
-      },
-      {
-        code: `function nest(toks) {
-  const out = [];
-  for (const t of toks) {
-    if (t === 'INDENT' ||
-        t === 'DEDENT') continue;
-    out.push(t);
-  }
-  return out;
-}`,
-        why: 'Dropping INDENT and DEDENT throws away the structure: the parser can no longer tell which lines are inside the loop. That information is the whole point of the tokens.',
-      },
-    ],
-  },
   logicalLines: {
-    optional: true,
     title: 'Logical lines inside brackets',
     prompt:
       'Write `logicalLines(src)`. Split `src` into physical lines and join the ones that are inside brackets `( [ {` into one logical line. A continuation line is trimmed and added after a single space. Skip blank lines. A logical line keeps the indentation of its first physical line. (Ignore strings and comments: assume brackets only appear as brackets.) Make sure the line after a bracket that closes on a continuation line still starts a new logical line.',
@@ -243,11 +129,32 @@ test('nested brackets', () => {
       'For each physical line, add it to `cur` (trimmed, after a space, if it is a continuation), then update `depth` from its characters.',
       'When `depth` is back to 0 at the end of a physical line, the logical line is complete: push `cur` and start a new one.',
     ],
-    walkthrough: `This is the job of the tokenizer’s \`depth\` counter, done on whole lines.
+    walkthrough: `**How to think about it.** Do the third test by hand first. The source is \`xs = [1,\` then \`      2]\` then \`print(xs)\`. After the first physical line one bracket is open, so the statement is not finished; after the second, the bracket is closed, so the logical line \`xs = [1, 2]\` is complete; the third line is a statement of its own. So the decision "is this logical line finished?" can only be made *after* reading a whole physical line and counting its brackets, and the thing that decides it is the bracket depth, never the line end. That gives the plan: keep a running \`depth\` and a string \`cur\` for the logical line being built; add each physical line to \`cur\`; update \`depth\`; and when \`depth\` is back to 0, the logical line is finished.
 
-- **Depth decides, not indentation.** While \`depth > 0\`, a line’s leading spaces mean nothing, so the continuation is trimmed. Only the first physical line’s indentation is kept, because that is the one the indentation stack will measure.
-- **The end of a logical line is decided *after* reading a physical line.** Here a logical line ends exactly when a physical line ends with \`depth === 0\`. The bug described in the chapter (since fixed) came from deciding with a flag that was set while depth was still above 0: the closing \`]\` brought depth back to 0, but the flag said “we are at the start of a line”, so the real line end was taken for a blank line.
-- **Blank lines** are ignored in both places: Python’s reference says blank logical lines produce no NEWLINE, and blank continuation lines are allowed inside brackets.`,
+**The solution, line by line.**
+
+- \`function logicalLines(src) {\` takes the whole source as one string.
+- \`  const out = [];\` will hold the finished logical lines.
+- \`  let cur = '';\` is the logical line being built.
+- \`  let depth = 0;\` counts brackets that are open right now.
+- \`  for (const raw of src.split('\\n')) {\` visits each physical line.
+- \`    const line = depth > 0\` and \`      ? raw.trim() : raw;\` trim a line only if it is a continuation (a bracket is still open from before), because a continuation's leading spaces mean nothing; the first physical line keeps its indentation, which the indentation stack will measure.
+- \`    if (!line.trim()) continue;\` skips blank lines, both between statements and inside brackets.
+- \`    cur += (cur ? ' ' : '') + line;\` appends the line, with one space in front if something is already there.
+- \`    for (const c of line) {\` walks the characters of this line;
+- \`      if ('([{'.includes(c)) depth++;\` counts an opening bracket;
+- \`      if (')]}'.includes(c)) depth--;\` counts a closing one.
+- \`    if (depth === 0) {\` asks the only question that matters, after the whole physical line has been read.
+- \`      out.push(cur);\` and \`      cur = '';\` finish the logical line and start a new one.
+- \`  return out;\` returns them.
+
+For the nested test, \`a = f([1,\` leaves depth 2, \`  2],\` brings it to 1, and \`  3)\` to 0, so the three physical lines become \`a = f([1, 2], 3)\`, and \`b = 0\` starts afresh.
+
+**Common wrong attempts.**
+
+- Gluing continuation lines on untrimmed and without a space: their indentation lands in the middle of the logical line.
+- Splitting on line ends and ignoring brackets: a call over two lines becomes two half-statements, neither of which parses.
+- Deciding "a new line starts here" with a flag set while a bracket was still open: that is exactly the bug the chapter describes, where the line end after a closing bracket was mistaken for a blank line.`,
     wrong: [
       {
         code: `function logicalLines(src) {
@@ -313,30 +220,21 @@ export const quiz = [
     ],
   },
   {
-    q: 'A file uses `d = {}` once, far from any list. What does Viscosity output?',
-    options: [
-      { t: 'The file with the dict line removed', why: 'Viscosity never deletes code.' },
-      { t: 'A transformed file, skipping that line', why: 'Partial transformation would be unsafe: the parser stopped, so nothing in the file was analysed.' },
-      { t: 'An error, and no output', why: 'The plugin catches its own syntax error and carries on.' },
-      { t: 'The file exactly as it was', correct: true, why: 'Dict literals are outside the subset; the plugin returns an empty module and `emit` returns the source unchanged.' },
-    ],
-  },
-  {
-    q: 'Python prints `False` for `1 < 3 < 2`. JavaScript prints `true`. Why?',
-    options: [
-      { t: 'JavaScript compares numbers as strings', why: 'Both compare numbers numerically.' },
-      { t: 'Python chains comparisons: `1 < 3 and 3 < 2`. JavaScript computes `(1 < 3) < 2`, i.e. `true < 2`', correct: true, why: 'Same spelling, different meaning: which is why Viscosity refuses chained comparisons rather than parse them as JavaScript would.' },
-      { t: 'Python evaluates right to left', why: 'It evaluates left to right; the difference is chaining.' },
-      { t: 'It is a bug in one of them', why: 'Both behave exactly as their language definitions say.' },
-    ],
-  },
-  {
     q: 'Before it was fixed, the real tokenizer dropped a NEWLINE after a bracket that closed on a continuation line. What was the effect?',
     options: [
       { t: 'The program was mis-transformed and printed different output', why: 'The parser stopped with “expected end of line”, so the file was not transformed at all.' },
       { t: 'Python itself rejects such files', why: 'They are perfectly good Python.' },
       { t: 'The file was left untouched: safe, but a missed opportunity', correct: true, why: 'Failing closed protected correctness; the cost was that many real files were skipped. `multiline_call.py` now pins the fix.' },
       { t: 'Only the bracketed line was skipped', why: 'A syntax error stops the whole file.' },
+    ],
+  },
+  {
+    q: 'With the stack `[0, 4]`, which of these lines is an inconsistent-indentation error?',
+    options: [
+      { t: 'A line with 8 spaces', why: 'Wider than the top: it pushes 8 and emits one INDENT.' },
+      { t: 'A line with 0 spaces', why: 'Pop 4 (one DEDENT); the top is 0, which matches.' },
+      { t: 'A line with 2 spaces', correct: true, why: 'Pop 4; the top is 0, and 2 matches no open block.' },
+      { t: 'A line with 4 spaces', why: 'It matches the top exactly, so no token is emitted at all.' },
     ],
   },
 ];

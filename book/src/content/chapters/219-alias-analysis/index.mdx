@@ -3,198 +3,228 @@ n: 219
 day: 55
 part: VI
 title: 'Alias analysis'
-tagline: 'Chapter 7 showed that two names can share one object. A compiler that wants to change how objects are stored has to know, for every name, which objects it might be sharing. When it can’t tell, it must assume the worst.'
+tagline: 'Before a compiler moves, merges or deletes a single read from memory, it has to know whether two names might be talking about the same object. When it cannot tell, it must assume they are; this chapter is about telling.'
 objectives:
-  - Compute points-to sets for simple assignments, and use them to decide whether two references may alias.
-  - Distinguish must-alias, may-alias and no-alias answers, and say which one an optimizer may act on.
-  - Explain Viscosity's alias reasoning, which trusts only references it can follow and bails out on every other use.
-  - Predict which uses of an element (a store, a call, `===`, a closure, a phi) stop Viscosity changing an array's layout.
-introduces: [alias-analysis, points-to]
-uses: [reference, aliasing, identity, mutation, closure, captured-environment, array-of-objects, push, index, aos-vs-soa, materialization, ssa, phi-node, dataflow, fixpoint, lattice, inlining, call-graph, natural-loop, loop-invariant, induction-variable, comparison, object, property, array, function, call, parameter, console-log, set]
-sources: [llvm-alias-analysis, llvm-passes, makor2022]
+  - Say what alias analysis decides, and give the three answers it can return (must, may, no).
+  - Explain why a wrong “no” breaks a program while a wrong “may” only costs speed.
+  - Use the cheap answers compilers rely on first (separate allocations, and types) and say why JavaScript gives types so little to work with.
+  - Predict which uses of an element stop Viscosity changing an array's layout, and why each one is an alias it cannot follow.
+introduces: [alias-analysis]
+uses: [reference, aliasing, identity, mutation, object, property, function, call, parameter, closure, captured-environment, callback, array-of-objects, push, index, aos-vs-soa, ssa, phi-node, typescript, type-erasure, unsound-by-design, speculation, deoptimization, static-analysis, licm, inlining, call-graph]
+sources: [llvm-alias-analysis, llvm-passes, diwan1998, llvm-langref-tbaa, makor2022]
 ---
+import MayMustNo from '../../../components/diagrams/ch219/MayMustNo';
 import AliasSteps from '../../../components/diagrams/ch219/AliasSteps';
 import Playground from '../../../components/playground/Playground';
 
-## Chapter 7, at compiler scale
+## One read the compiler would love to skip
 
-Here is the puzzle from chapter 7, grown up:
+Here is a function a compiler would like to make faster:
 
 ```js
-const ps = [];
-for (let i = 0; i < 100; i++) {
-  ps.push({ x: i });
+function f(a, b) {
+  a.x = 1;
+  b.x = 2;
+  return a.x;
 }
-const p = ps[3];
-p.x = 42;
-const keep = [];
-keep.push(p);
-keep[0].x = 7;
-for (let i = 0; i < ps.length; i++) {
-  ps[i].x += 1;
-}
-console.log(ps[3].x);
 ```
 
-It prints `8`. `keep[0]` and `ps[3]` are the same object, so the `7`
-written through `keep` is what the final loop increments. Delete the
-three lines that mention `keep`, and it prints `43`, and Viscosity turns
-`ps` into a struct of arrays. With them, it refuses:
+Line 2 puts `1` into `a.x` and line 3 puts `2` into `b.x`; line 4 reads
+`a.x` back. It is very tempting to replace that last read with the
+number `1`, since we wrote `1` there a moment ago, and reading memory is
+far slower than using a number we already have. However, that is only
+right if `a` and `b` are different objects. Call `f(o, o)` and both
+names lead to the same object, so line 3 overwrites the `1`, and the
+true answer is `2`. Try both calls:
 
-```text
-ps (line 1) {x} → kept as array of objects
-  · unsafe: line 5: an element is used by
-    push at line 8
-```
+<Run id="twoWays" />
 
-Not because the loop got harder. Because one element now has a second
-name that Viscosity can't keep track of.
+Chapter 7 called this **aliasing**: two names for one object. A
+compiler has to settle it for every pair of names, before the program
+runs, and never get it wrong in the dangerous direction.
+
+<Analogy title="two names on one letterbox">
+A house has one letterbox, and on it are two names: "A. Shah" and "the
+Shah family". A letter addressed to either name lands in the same box,
+so if you post a parcel to one and then ask the other "has anything
+arrived?", the answer is yes. From the envelopes alone, however, you
+cannot tell whether two names share a box; you need to know where the
+people live.
+<span slot="breaks">Names on a letterbox are fixed and printed; in a
+program, which object a name leads to can change from one run to the
+next, and even from one moment to the next.</span>
+</Analogy>
+
+<Analogy title="two links to one shared document">
+Someone sends you a link to a shared document, and someone else sends
+you a second, different-looking link. If both links open the same
+document, an edit made through one shows up through the other; if they
+open two copies, the edits never meet. The links are the references,
+the document is the object.
+<span slot="breaks">You can open both links and look; a compiler
+cannot run the program to look, so it has to reason about every run at
+once from the text alone.</span>
+</Analogy>
 
 <Prompts ids={['alias-what']} />
 
-## Who might point at what?
+## Must, may and no
 
-<Callout kind="intuition">
-Give every name in the program a list of the houses its address card
-*might* lead to. If two names' lists share a house, they might be
-aliases. If the lists don't overlap, a change made through one name can
-never be seen through the other.
-</Callout>
+An **alias analysis** takes two references and answers one of three
+things: they **must** alias (on every run they lead to the same
+object), they **may** alias (on some run they might), or they do **no**t
+alias (on no run do they ever share an object).
 
-That list is a **points-to set**. A program can create millions of
-objects, so the analysis names them by where they are created: every
-object made by the `{ x: i }` on line 3 is the one abstract object
-“line 3”, however many times the loop runs.
+<Figure takeaway="Must and no are facts a compiler can act on; may means keep both possibilities." caption="Must: p and q always reach o1. May: q reaches o1 on some runs and o2 on others. No: p and q never share an object.">
+  <MayMustNo />
+</Figure>
 
-The rules for simple assignments are short:
-
-```text
-a = {}    (site o1)  o1 is in pts(a)
-b = a                pts(b) ⊇ pts(a)
-a.f = b   for each o in pts(a):
-                     pts(o.f) ⊇ pts(b)
-c = a.f   for each o in pts(a):
-                     pts(c) ⊇ pts(o.f)
-```
-
-Apply them over and over until no set grows: a fixpoint, as in chapter
-195. For example:
+<Examples of="alias-analysis">
 
 ```js
-const a = { x: 1 };  // site o1
-const b = { x: 2 };  // site o2
-let c = a;
-if (flag) c = b;
+const a = { x: 1 };
+const b = a;   // b must alias a
 ```
 
-`pts(a) = {o1}`, `pts(b) = {o2}`, `pts(c) = {o1, o2}`. So `c` *may*
-alias `a` and *may* alias `b`, but `a` and `b` can never alias: their
-sets don't overlap.
+```js
+const a = { x: 1 };
+const b = { x: 2 };
+const c = flag ? a : b;
+// c may alias a, may alias b;
+// a and b: no alias
+```
+
+```js
+ps.push(ps[0]);
+// now ps[0] and ps[last] must alias
+```
+
+</Examples>
+
+In the first, `b` is a copy of the arrow in `a`, so on every run they
+are one object: must alias. In the second, `a` and `b` are two separate
+`{ ... }` expressions, each of which makes a brand-new object, so they
+can never be the same object; `c` takes one or the other depending on
+`flag` (a condition the compiler cannot predict), so it may alias
+either. The third is the realistic surprise: two slots of one array are
+usually different objects, but nothing stops a program putting the same
+object in twice, so a compiler that wants "no" for two slots must prove
+that nothing ever did.
 
 <Callout kind="definition">
 **Alias analysis** decides, for two references, whether they **must**
-point at the same object, **may** point at the same object, or
-**never** do. A reference's **points-to set** is the set of abstract
-objects (usually allocation sites) it may point at. Two references may
-alias if their points-to sets intersect. LLVM's alias analysis
-interface returns exactly these kinds of answers: `MustAlias`,
-`MayAlias` and `NoAlias` (plus `PartialAlias` for overlapping
-memory)<Cite id="llvm-alias-analysis" />.
+refer to the same object on every run, **may** refer to the same object
+on some run, or **never** do. LLVM's alias analysis interface returns
+exactly these kinds of answers, `MustAlias`, `MayAlias` and `NoAlias`
+(plus `PartialAlias`, for memory that overlaps only in part)<Cite id="llvm-alias-analysis" />.
 </Callout>
 
-An optimizer may act on “must” and “no”. “May” means it has to keep
-both possibilities alive, which usually means doing nothing clever. The
-whole game of alias analysis is turning as many “may” answers as
-possible into “must” or “no”, without ever being wrong.
+<Formal title="The three answers">
 
-<Prompts ids={['points-to-what', 'alloc-site', 'may-alias-test', 'must-may-no']} />
+```text
+must(p, q) ⇔ ∀ run : p = q
+may(p, q)  ⇔ ∃ run : p = q
+no(p, q)   ⇔ ¬ may(p, q)
+```
 
-## Why `keep.push(p)` is fatal
+<span slot="read">p and q must alias exactly when, for every run of
+the program (the upside-down A, "for all"), they refer to the same
+object at that point. They may alias when there exists (the backwards
+E) at least one run where they do. They do not alias when it is not
+true (the hook-shaped sign, "not") that they may.</span>
+</Formal>
 
-Step through the program from the top of the chapter as a graph of
-arrows:
+Here is the asymmetry that shapes this part of the book.
+A wrong "may" (when the truth is "no") only skips an optimization. A
+wrong "no" makes `f` return `1` when the program should return `2`: a
+wrong answer, the one thing a compiler must never give. So a **sound** alias analysis (one that
+is never wrong in the dangerous direction) says "may" whenever it is
+unsure, and the whole craft is turning as many "may" answers as
+possible into "must" or "no" without ever lying.
+
+<Prompts ids={['must-may-no', 'wrong-no']} />
+
+## The cheap answers come first
+
+Real compilers start with facts that need no searching at all. LLVM's
+basic alias analysis, for instance, "knows" that distinct globals, stack
+allocations and heap allocations can never alias, and that different
+fields of a structure do not alias<Cite id="llvm-alias-analysis" />; the
+`licm` pass then uses alias analysis to decide whether a load inside a
+loop can be hoisted out of it (chapter 213)<Cite id="llvm-passes" />.
+That is the second example above: two separate allocations are two
+objects, full stop.
+
+The next cheap answer comes from types. In Java or C, a reference to a
+`Point` and a reference to a `String` can never lead to the same
+object, because no object is both; so the compiler can answer "no"
+from the declared types alone. This is **type-based alias analysis**
+(TBAA), studied in detail by Diwan, McKinley and Moss<Cite id="diwan1998" />.
+LLVM's own IR has no types on memory, so front ends attach the source
+language's types as metadata, which "can be used to implement C/C++
+strict type aliasing rules"<Cite id="llvm-langref-tbaa" />.
+
+JavaScript takes both of these away. `function f(a, b)` can receive any
+two objects, or the same one twice; a TypeScript annotation like
+`a: Point` is erased before the program runs (chapter 28) and is unsound
+by design (chapter 133), so a compiler that trusted it could be lied to.
+Closures, callbacks and `o[k]` (any property at all) add more ways for
+an arrow to travel unseen. A JIT copes by checking its guesses at run time and
+deoptimizing when one fails; a tool that compiles ahead of time, like
+Viscosity, has no such safety net, so it has to prove its answers.
+
+<Prompts ids={['tbaa-what', 'js-no-tbaa']} />
+
+## Viscosity's version of the question
+
+Viscosity asks alias analysis one big question: can it turn an array of
+objects into a struct of arrays without anybody noticing? The program
+in the stepper fills `ps` with 100 records, writes `42` through
+`p = ps[3]`, pushes `p` into a second array `keep`, writes `7` through
+`keep[0]`, then adds 1 to every `x` and prints `ps[3].x`. It prints `8`,
+because `keep[0]` and `ps[3]` must alias. Without the `keep` lines it
+prints `43`, and Viscosity rewrites `ps` as columns; with them, it
+refuses, saying `an element is used by push at line 8`. Step through
+why:
 
 <AliasSteps client:visible />
 
-The problem in the last step is general. In struct-of-arrays form an
-element *is not an object any more*: it is a position in some columns.
-Any reference to it that survives the transformation needs to become an
-index. Viscosity can make that change only for references it can see
-and rewrite. Here is what it does with `const p = ps[3]` when there is
-no `keep`:
+In struct-of-arrays form an element is not an object any more; it is a
+position in some columns. So every reference to an element must become
+an index, and Viscosity can only do that for references it can see and
+rewrite. Without `keep`, it turns `const p = ps[3]` into `const p = 3`,
+because `p` is an SSA value (chapter 191) that must alias element 3 and
+nothing else. An arrow stored inside `keep` is different: whatever reads
+`keep[0]` later expects an object, and there is none to give it.
 
-```js
-const p = 3;
-ps.x[__vsc_bc(ps, p, 'x', true)] = 42;
-```
-
-`p` became the number 3. That works because `p` is an SSA value whose
-target is known exactly: a must-alias of “element 3 of `ps`”. An arrow
-stored inside `keep` is different. Whatever reads `keep[0]` later
-expects an object, and there is none to give it.
-
-<Prompts ids={['element-not-object', 'ssa-alias-ok']} />
-
-## Viscosity's rule: account for every use
-
-Viscosity doesn't build general points-to sets. It asks a narrower
-question about each candidate array, with a deliberately simple answer.
-
-The references it understands are SSA values: loads of the array's own
-variable (even `const q = ps` is fine, since `q` is the same SSA value),
-the results of `ps[i]`, and parameters of known functions that every
-call site fills with this same array (chapter 209). For each of these it
-knows the points-to set exactly: \{this array\}, or \{an element of this
-array\}. Every *use* of such a value must be one it can rewrite: `.length`,
-`.push` of a fresh object literal, `ps[i]`, and reading or writing a
-field the records have. Anything else is a place where an arrow may leave
-its sight, so it is treated as a possible alias, and the array stays as
-it is.
-
-Here is what the engine says when one line is added after the `push`
-loop of a particle program (messages trimmed to the reason):
+So Viscosity asks something narrower and stricter than "may these two
+alias?": is every reference to this array, and to each element it hands
+out, one I can follow? Each of these lines, added after the `push` loop of a particle program, gets a
+"no" (messages trimmed to the reason):
 
 ```text
-const peek = () => keep.x;  (keep = ps[0])
+const keep = ps[0];
+const peek = () => keep.x;
   an element is stored in another
   variable (keep)
-const other = [ps[0]];
-  an element is put inside another array
 const box = { p: ps[0] };
   an element is put inside another object
-console.log(ps[0]);
-  an element is passed to a method call
 console.log(ps[0] === ps[1]);
   an element is compared or combined
   with "==="
 ```
 
-Each one is a different way of creating a second name:
+The closure `peek` captures `keep`, so `keep` lives in memory, not as
+an SSA value, and can be read at any time; anything that reaches `box`
+reaches the element; and `===` asks about identity, which needs a real
+object. Each is a second name Viscosity cannot follow, so it counts as
+a "may", and the array keeps its layout.
 
-- **A captured variable.** `keep` is read by a closure, so it is not an
-  SSA value but a variable living in memory, and the closure can read it
-  whenever it likes.
-- **Inside another object or array.** The arrow is now data. Anything
-  that reaches `other` or `box` reaches the element.
-- **Passed to code it doesn't model.** `console.log` could do anything
-  with the object, including keep it.
-- **Compared with `===`.** Identity needs an object. After the
-  transformation there is no object to compare.
-- **Merged in a phi.** `let p = ps[0]; if (c) p = ps[5];` makes `p` one
-  of two elements. Viscosity reports that “an element is merged with
-  other values” rather than tracking a reference that could be either.
+<Prompts ids={['element-not-object', 'ssa-alias-ok', 'captured-var']} />
 
-The same logic covers whole arrays passed to functions. In chapter 209,
-`total(xs)` was called with `a` and with `b`. In points-to terms,
-`pts(xs) = {a, b}`. Viscosity treats a parameter as the collection only
-when that set is exactly one array.
-
-<Prompts ids={['captured-var', 'identity-use', 'two-arrays']} />
-
-Try it in the real compiler. `peek` captures `keep`, so `ps` is kept as
-objects. Delete the `peek` line and print `keep.x` directly instead:
-`keep` becomes an index, and `ps` becomes a struct of arrays. Run both
-versions to see that they agree either way.
+Try it in the real compiler. Delete the `peek` line and print `keep.x`
+directly instead: `keep` becomes an index, and `ps` becomes a struct of
+arrays. Run both versions to see that they agree either way.
 
 <Playground client:visible title="A captured element" initial={`const ps = [];
 for (let i = 0; i < 1000; i++) {
@@ -208,44 +238,39 @@ for (let i = 0; i < ps.length; i++) {
 console.log(peek(), ps[1].x);`} />
 
 <Callout kind="engine" label="Under the hood">
-General-purpose compilers use alias analysis everywhere, mostly to move
-and delete memory operations. LLVM's simplest alias analysis, `basic-aa`,
-“implements identities (two different globals cannot alias, etc)”
-without any stateful analysis, and its loop-invariant code motion pass
-uses alias analysis to decide whether a load inside a loop can be
-hoisted (chapter 211)<Cite id="llvm-passes" />.
-
-Viscosity uses aliasing for a different decision: is it safe to
-change how an entire collection is stored? Research systems that switch
-JavaScript arrays to columnar storage automatically face the same
-requirement<Cite id="makor2022" />. Viscosity's answer is all or nothing
-per collection: one use it can't account for, and the whole array keeps
-its layout. That gives up some programs that a cleverer analysis could
-transform, and in exchange it is easy to check and never wrong in the
-direction that matters. The next chapter makes “an arrow leaves its
-sight” precise: escape analysis.
+General-purpose compilers ask alias questions pair by pair, mostly to
+move and delete loads and stores. Viscosity makes one larger decision
+per collection, all or nothing: one reference it cannot follow, and the
+whole array keeps its layout. That gives up some programs a cleverer
+analysis could transform; in exchange, it is easy to check and never
+wrong in the direction that matters. Research systems that switch
+JavaScript arrays to columnar storage face the same requirement, and
+they make the switch at run time instead<Cite id="makor2022" />. The
+next chapter builds the general machinery: points-to sets, computed by
+Andersen's and Steensgaard's analyses.
 </Callout>
 
 ## Your turn
 
-<Exercise id="pointsTo" />
+The first exercise is the core one; the second is extra practice.
 
-<Exercise id="fieldPointsTo" />
+<Exercise id="aliasKind" />
+
+<Exercise id="typeMayAlias" />
 
 ## What you learned
 
-- **Alias analysis** decides whether two references must, may or never
-  point at the same object. Optimizers can act on “must” and “no”; “may”
-  forces them to be careful.
-- A **points-to set** lists the abstract objects (allocation sites) a
-  reference may point at. Copies and field stores make sets grow, and the
-  rules are iterated to a fixpoint. Two references may alias if their
-  sets intersect.
-- In struct-of-arrays form an element is a position, not an object, so
-  every reference to it must be rewritable as an index.
-- Viscosity trusts only references it can follow (SSA values for the
-  array, its elements, and parameters every call fills with the same
-  array) and bails out on any other use: stored elsewhere, captured,
-  passed to unknown code, compared with `===`, or merged in a phi.
+- **Alias analysis** decides whether two references **must**, **may**
+  or **never** refer to the same object.
+- "Must" and "no" are facts a compiler can act on; "may" means it has
+  to keep both possibilities. A sound analysis says "may" when unsure,
+  because a wrong "no" changes what the program does.
+- Cheap answers come first: separate allocations never alias, and in
+  typed languages, references whose types share no object never alias
+  (**type-based alias analysis**).
+- JavaScript offers no trustworthy types for memory, so ahead-of-time
+  tools must prove more. Viscosity trusts only references it can follow
+  (SSA values for the array and its elements) and refuses on any other
+  use: stored elsewhere, captured, compared with `===`.
 
 <Quiz />

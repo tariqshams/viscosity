@@ -1,0 +1,311 @@
+---
+n: 327
+day: 82
+part: XI
+title: 'Async Rust'
+tagline: 'In TypeScript, calling an async function starts it. In Rust, calling one starts nothing: you get back a future, a small value that does its work only when something polls it. That one difference explains the whole design.'
+objectives:
+  - Say what a future is, and read the Future trait and its two Poll answers.
+  - Write an async fn, use .await inside it, and predict when its body runs.
+  - Implement a small future by hand, including the wake that keeps it alive.
+  - Explain how an async fn becomes a state machine, linking back to Lowering async/await.
+introduces: [future, async-rust]
+uses: [rust, rust-functions, struct, impl, self-receiver, enum, match, trait, associated-type, rust-generics, trait-bound, rust-closure, rust-thread, promise, async-await, event-loop, async-lowering, state-machine-lowering, continuation]
+sources: [klabnik2026, rustref-await-expr, rustref-async-fn, rust-std-future, rust-std-thread, async-book]
+---
+import PollSteps from '../../../components/diagrams/ch327/PollSteps';
+import FutureStates from '../../../components/diagrams/ch327/FutureStates';
+
+## Ten thousand slow conversations
+
+A server talking to ten thousand clients spends nearly all of its time
+waiting, for requests, databases and replies. *Threads, Send and Sync*
+could give each client a thread; however, every Rust thread gets its
+own stack (2 MiB by default on the main platforms, says the standard
+library<Cite id="rust-std-thread" />), so ten thousand of them reserve
+about twenty gigabytes for sleeping. We want something cheaper: "the
+work left once this answer arrives" as a small value, so one thread can
+hold thousands and push each forward when it can move.
+
+That value is a **future**, and `async` and `.await` write futures
+that read like ordinary code. You met the compiler's side of this in
+*Lowering async/await*; here is the programmer's side.
+
+<Analogy title="a buzzer at a food court">
+You order, and instead of food you get a plastic buzzer. The buzzer is
+not your lunch; it is a promise of lunch that you can check on. You can
+hold three of them at once, from three counters, and sit down; when one
+buzzes, you go and collect.
+<span slot="breaks">The kitchen cooks whether you watch or not; a Rust
+future does nothing until someone asks it "are you done yet?", and
+only cooks during that question.</span>
+</Analogy>
+
+<Analogy title="a bookmark in a recipe book">
+A cook making three dishes at once keeps a bookmark in each recipe.
+They work on one until it says "simmer for ten minutes", leave the
+bookmark there, and pick up the next. Each bookmark is tiny, but it
+holds everything needed to carry on: which step, and what is already
+in the pan.
+<span slot="breaks">A cook decides for themselves when to come back.
+A future cannot remind anyone; it hands out a "wake me" handle, and
+something else (the executor, next chapter) does the coming back.</span>
+</Analogy>
+
+## A future is a value you can poll
+
+Here is the whole of the standard library's `Future` trait, minus its
+documentation<Cite id="rust-std-future" />:
+
+```rust
+pub trait Future {
+    type Output;
+    fn poll(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Self::Output>;
+}
+```
+
+`Output` is an associated type (from *Associated types and the
+standard traits*): the type of the answer. `poll` asks "are you done
+yet?", and an enum, `Poll`, holds the two answers: `Poll::Ready(value)`
+or `Poll::Pending`. The `cx` argument carries a **waker**, a handle the
+future uses to say "poll me again" once it can make progress; a future
+that answers `Pending` without arranging a wake is never asked again.
+`Pin<&mut Self>` is a mutable reference that also promises the future
+will not move in memory; the next chapter says why, and for now read it
+as `&mut self`.
+
+<Callout kind="definition">
+A **future** is a value that implements the `Future` trait: it
+represents work that may not be finished, and it makes progress only
+when its `poll` method is called. `poll` returns `Poll::Ready(output)`
+once, when it is done, or `Poll::Pending` after arranging, through the
+waker in its `Context`, to be polled again<Cite id="rust-std-future" />.
+</Callout>
+
+<Formal title="The two answers of poll">
+
+```text
+Poll<T>  =  Ready(T)  |  Pending
+poll : (Pin<&mut F>, &mut Context)
+         → Poll<F::Output>
+```
+
+<span slot="read">A Poll of T is either Ready holding a T, or Pending
+holding nothing. poll takes a pinned, mutable reference to some future
+F and a context, and gives back a Poll of F's output type.</span>
+</Formal>
+
+<Examples of="future">
+
+```rust
+let f = std::future::ready(5);
+// a future whose first poll is Ready(5)
+```
+
+```rust
+let f = async { 1 + 2 };
+// an async block: a future whose
+// Output is i32, and which has not run
+```
+
+```rust
+struct Countdown(u32);
+impl Future for Countdown {
+    type Output = ();
+    fn poll(mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>)
+        -> Poll<()> {
+        if self.0 == 0 {
+            return Poll::Ready(());
+        }
+        self.0 -= 1;
+        cx.waker().wake_by_ref();
+        Poll::Pending
+    }
+}
+```
+
+</Examples>
+
+The first is the simplest future there is: `std::future::ready(5)`
+answers `Ready(5)` the first time it is polled. The second is an
+**async block**, a future written inline, whose braces have not run
+yet. The third is written by hand, as in the exercise; its state is
+one number, and each poll checks it: at zero it answers `Ready(())` (`()` is
+Rust's "nothing interesting" value); otherwise it counts down, calls
+`wake_by_ref` on the waker to ask for another poll straight away, and
+answers `Pending`. So `Countdown(2)` answers `Pending`, `Pending`,
+`Ready`. Step through an executor driving it:
+
+<PollSteps client:visible />
+
+<Prompts ids={['future-what', 'poll-two', 'waker-why', 'pin-read']} />
+
+## async fn and .await
+
+Writing `poll` by hand everywhere would be miserable, so Rust writes
+it for you. Put `async` in front of `fn` and the function no
+longer returns its value directly; it returns a future of that value.
+Inside an async function (or block), `expr.await` polls another future
+and, whenever that future is `Pending`, makes the whole function answer
+`Pending` too, keeping its place<Cite id="rustref-await-expr" />.
+
+<Examples of="async-rust">
+
+```rust
+async fn two() -> u32 { 2 }
+// two() has type impl Future<Output = u32>
+```
+
+```rust
+async fn four() -> u32 {
+    let a = two().await;
+    a + two().await
+}
+```
+
+<Run id="lazy-sum" />
+
+</Examples>
+
+The first is the smallest async function: it returns `2`, but calling
+`two()` gives you a future whose output is a `u32`, not the number.
+The second awaits two such futures one after the other and adds the
+answers. The runnable one is the important one. Its `block_on` is the
+crudest possible driver (it polls in a loop, using `Waker::noop()`, a
+waker that does nothing, from the standard library<Cite id="rust-std-future" />);
+`sum` awaits `double(1)` and then `double(20)`. Run it: "made the
+future" prints *before* either "double runs" line, because calling
+`sum()` ran none of its body; then `got 42`.
+The Reference says it plainly: async functions "do no work when called:
+instead, they capture their arguments into a future"<Cite id="rustref-async-fn" />,
+and the body runs only when that future is polled.
+
+<OtherLanguages title="Does calling an async function start it?">
+
+```rust
+async fn hello() -> u32 {
+    println!("hello runs");
+    7
+}
+hello(); // prints nothing
+println!("after the call");
+```
+
+```ts
+async function hello() {
+  console.log('hello runs');
+  return 7;
+}
+hello(); // prints "hello runs" now
+console.log('after the call');
+```
+
+```python
+async def hello():
+    print("hello runs")
+    return 7
+c = hello()  # prints nothing
+print("after the call")
+```
+
+</OtherLanguages>
+
+This is the real difference, and the most common surprise for
+TypeScript programmers: there, a call runs the body straight away, up
+to the first `await`, so Node prints "hello runs" first. Rust and Python are **lazy**: the call only builds a
+paused value. Rust even warns you when you build one and throw it away
+(rustc 1.97, trimmed and wrapped to fit):
+
+```text
+warning: unused implementer of `Future`
+  that must be used
+6 |     hello();
+  = note: futures do nothing unless you
+    `.await` or poll them
+```
+
+That note is written on the trait itself, as a `#[must_use]`
+attribute<Cite id="rust-std-future" />. Two more mistakes, each with the
+first line of what rustc 1.97 says (wrapped):
+
+```rust
+fn main() {
+    let n = ready(5).await;
+}
+// error[E0728]: `await` is only allowed
+//   inside `async` functions and blocks
+
+async fn main() {}
+// error[E0752]: `main` function is not
+//   allowed to be `async`
+```
+
+`.await` needs an async context, because only an async body has a
+place to save its state when the inner future says `Pending`. And
+`main` cannot be async because nothing would poll it: Rust ships no
+built-in executor, so a program starts one itself (the Rust book's
+async chapter makes the same point<Cite id="klabnik2026" />). That is
+the next chapter.
+
+<Callout kind="definition">
+An **async fn** returns a future of its declared return type, and runs
+its body only when that future is polled. Inside an async fn or an
+**async block**, **`e.await`** polls the future `e`; when `e` is
+`Pending`, the enclosing future answers `Pending` and resumes at the
+same `.await` next time, and when `e` is `Ready(v)`, the expression's
+value is `v`<Cite id="rustref-await-expr" />.
+</Callout>
+
+<Prompts ids={['lazy', 'await-where', 'main-async']} />
+
+## What the compiler makes of it
+
+How can `sum` "keep its place"? Exactly as *Lowering async/await* and
+*Generators as state machines* described: the compiler turns the body
+into an enum, one variant per place it can be paused, holding the
+variables still needed after that point, and writes a `poll` that
+`match`es on it.
+
+<Figure takeaway="An async fn is an enum of the places it can pause, plus a poll that moves between them." caption="sum, cut at its two awaits. Only a, which lives across the second await, is saved in a variant.">
+  <FutureStates />
+</Figure>
+
+You can see the saved variables in the future's size. With rustc 1.97,
+`size_of_val(&double(1))` is 8 bytes (the argument plus a state
+number), `size_of_val(&sum())` is 16, and an async fn that keeps a
+1000-byte array across an `.await` makes a future of 1012 bytes. There
+is no heap allocation and no garbage collector: the future is an
+ordinary value, as big as its biggest pause.
+
+<Callout kind="engine" label="Under the hood">
+TypeScript's lowering needs an event loop to call each continuation.
+A Rust future needs nothing to exist: it waits in memory until polled,
+which is why Rust leaves the choice of executor to you, down to tiny
+ones for machines with no operating system<Cite id="async-book" />.
+</Callout>
+
+<Prompts ids={['state-enum']} />
+
+## Your turn
+
+<Exercise id="countdown" />
+
+## What you learned
+
+- A **future** is a value with a `poll` method that answers
+  `Ready(value)` or `Pending`; when `Pending`, it must arrange a wake.
+- An **async fn** returns a future and runs nothing until polled;
+  `.await`, allowed only in async code, polls another future and pauses
+  the caller while it is `Pending`.
+- Unlike a TypeScript promise, a Rust future is **lazy**, and the
+  compiler stores it as an enum of its pause points, with no heap and
+  no built-in executor.
+
+Next: the executor, the loop that does the polling, built from scratch
+and then in Tokio.
+
+<Quiz />

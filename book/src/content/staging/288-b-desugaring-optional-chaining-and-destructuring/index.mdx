@@ -1,0 +1,289 @@
+---
+n: 288
+split_of: 288
+day: 72
+part: X
+title: 'Desugaring optional chaining and destructuring'
+tagline: 'a?.b and const { x, y } = o are written in a few characters and run as a handful of plain tests and reads; compiling them for an older engine shows exactly which, and why every temporary is there.'
+objectives:
+  - Lower a?.b, a?.b.c and a?.() into plain tests, and say why each needs a temporary.
+  - Explain why a && a.b is not the same as a?.b.
+  - Lower object and array destructuring, with defaults and nesting, into plain reads.
+  - Read TypeScript’s downlevel output and V8’s bytecode for both features.
+introduces: [optional-chaining-lowering, destructuring-lowering]
+uses: [operator-overloading, desugaring, lowering, short-circuit, truthiness, undefined, object, property, dot-access, bracket-access, array, copy-spread, iterator-protocol, typescript, tsconfig, bytecode, ignition, temporary, function, call, this]
+sources: [mdn-optional-chaining, mdn-destructuring, ts-downlevel-iteration, ecma262, cpython-dis]
+---
+import ChainSteps from '../../../components/diagrams/ch288b/ChainSteps';
+import DestructureFigure from '../../../components/diagrams/ch288b/DestructureFigure';
+
+## A read that might not be there
+
+Reading a property of `undefined` is one of the commonest errors in
+JavaScript:
+
+```js
+const cfg = {};
+cfg.address.city;
+// TypeError: Cannot read properties
+//   of undefined (reading 'city')
+cfg.address?.city;   // undefined
+```
+
+The **optional chaining** operator `?.` reads a property like `.`,
+except that if the value on its left is `null` or `undefined` (together
+called *nullish*), the expression stops and gives `undefined` instead of
+throwing<Cite id="mdn-optional-chaining" />. It is a recent addition to
+the language, so a compiler that targets older engines (TypeScript with
+`--target ES2019`, for instance) must write the same meaning with plain
+tests. So must any engine, in the end: V8's bytecode has no `?.`
+instruction either.
+
+The obvious rewrite is wrong, which is a good place to start:
+
+```js
+const user = { score: 0 };
+user && user.score && user.score.toFixed(1);
+// 0     (&& stopped at the falsy 0)
+user?.score?.toFixed(1);
+// '0.0'
+```
+
+`&&` stops at anything falsy (chapter 102), including `0` and `''`, so
+the first line gives up on a perfectly good score; `?.` stops only at
+`null` and `undefined`. The rewrite also names `user` three times, which
+would run it three times if it were a call such as `getUser()`. A
+correct lowering tests for nullish exactly, and stores each value in a
+**temporary** so that it is worked out once:
+
+<ChainSteps client:visible />
+
+<Analogy title="a note passed along a row of seats">
+A note is passed from seat to seat to reach someone at the end of the
+row; if a seat is empty, the note comes straight back marked "nobody
+there", instead of falling on the floor.
+<span slot="breaks">`?.` stops only at an empty seat (`null` or
+`undefined`); a seat whose owner is asleep (the value `0`, or an empty
+string) still takes the note and passes it on, which is exactly where
+`&&` goes wrong.</span>
+</Analogy>
+
+<Analogy title="a treasure hunt">
+Each clue says where the next box is; if a box is missing, the hunt is
+over and you go home with nothing, rather than digging up the garden.
+<span slot="breaks">A hunt might send you somewhere else when a box is
+missing; `?.` never does, it only hands back `undefined` (supplying a
+fallback is the separate operator `??`).</span>
+</Analogy>
+
+<Callout kind="definition">
+**Optional-chaining lowering** rewrites `e?.p` as a test of a
+temporary: `(t = e) == null ? undefined : t.p`. The test `t == null`
+is true exactly when `t` is `null` or `undefined`. When the test
+succeeds the *rest of the chain* is skipped too, so `a?.b.c` becomes
+`(t = a) == null ? undefined : t.b.c`; and a call `o.m?.()` must keep
+`o` as `this`, so it becomes `t.call(o)`.
+</Callout>
+
+<Formal title="Lowering ?.">
+
+```text
+⟦e?.p R⟧  = (t = ⟦e⟧) == null
+              ? undefined : ⟦t.p R⟧
+⟦e?.[k] R⟧ = (t = ⟦e⟧) == null
+              ? undefined : ⟦t[k] R⟧
+where t is a fresh temporary and R is
+the rest of the chain
+```
+
+<span slot="read">The lowered form of e, then ?.p, then the rest of
+the chain R, stores the value of e in a fresh temporary t; if t is null
+or undefined the whole thing is undefined, and otherwise it is the
+lowered form of t.p followed by the same rest of the chain. Indexing
+with ?.[k] works the same way.</span>
+</Formal>
+
+<Examples of="optional-chaining-lowering">
+
+```text
+// tsc 5.9 --target ES2019:  a?.b.c
+a === null || a === void 0
+  ? void 0 : a.b.c
+```
+
+```text
+// a?.b?.()  (trimmed; _a is tsc's temp)
+(_a = a === null || a === void 0
+  ? void 0 : a.b) === null
+  || _a === void 0
+  ? void 0 : _a.call(a)
+```
+
+```text
+// Node 22: function get(a) { return a?.b }
+Ldar a0
+Mov a0, r0
+JumpIfUndefinedOrNull [8]  → @13
+GetNamedProperty r0, [0], [0]
+Jump [3]                   → @14
+@13: LdaUndefined
+@14: Return
+```
+
+</Examples>
+
+The first is TypeScript 5.9 lowering `a?.b.c` (real output, wrapped to
+fit): one test, `void 0` being a short way to write `undefined`, and
+`.b.c` inside the else branch, so the whole chain is skipped; because `a`
+is a plain variable, reading it twice is harmless, and tsc does so
+without a temporary. The second shows a call: `a.b` is stored in the temporary
+`_a` and tested, and the call is `_a.call(a)`, because a plain `_a()`
+would lose `a` as `this`. The third is V8's Ignition bytecode for `a?.b`
+(real output from `--print-bytecode`, with addresses removed): the
+parameter is copied to register `r0`, `JumpIfUndefinedOrNull` is the
+whole nullish test in one instruction, and either branch arrives at
+`Return` with the property or `undefined` in the accumulator.
+
+<Prompts ids={['oc-what', 'oc-and', 'oc-temp', 'oc-chain', 'oc-call']} />
+
+## Destructuring: a pattern of reads
+
+**Destructuring** takes values out of an object or array by writing
+the shape you expect on the left of `=`:
+`const { x, y = 1 } = o` makes `x` from `o.x` and `y` from `o.y`, using
+`1` if `o.y` is `undefined`<Cite id="mdn-destructuring" />. Underneath,
+it is nothing but reads, one per name:
+
+<Figure takeaway="A pattern is a list of reads, written as a shape." caption="Each name in the pattern becomes one const and one read from the source; a nested pattern reads through its key first.">
+  <DestructureFigure />
+</Figure>
+
+<Analogy title="unpacking against a packing list">
+A delivery comes with a list: "bolts to drawer 1, nuts to drawer 2,
+and from the small box inside, washers to drawer 3". You work down the
+list, and if the bolts are missing you use the spares you keep for
+that.
+<span slot="breaks">If the *small box* is missing, you can shrug;
+destructuring cannot, and `const { pos: { lat } } = {}` throws a
+`TypeError`, because reading `lat` from a missing `pos` is reading a
+property of `undefined`.</span>
+</Analogy>
+
+<Analogy title="copying details from an ID card onto a form">
+Name goes in box 1, date of birth in box 2: each box on the form names
+the detail it wants, and you copy each one across.
+<span slot="breaks">A form takes details in any order you like; array
+destructuring takes values strictly in order, by asking the right-hand
+side for its elements one at a time.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Destructuring lowering** turns a pattern into plain reads from a
+temporary holding the source: a name `x` becomes `x = t.x`; a default
+`x = d` becomes a read, then `x = v === undefined ? d : v` (so `d` is
+only evaluated when needed, and `null` does not trigger it); a nested
+pattern `k: pat` lowers `pat` against `t.k`. Array patterns read
+through the iterator protocol (chapter 39), not by index, so any
+iterable can be destructured<Cite id="mdn-destructuring" />.
+</Callout>
+
+<Formal title="Lowering a pattern">
+
+```text
+⟦const P = e⟧ = const t = ⟦e⟧; ⟦P ← t⟧
+⟦x ← t⟧       = const x = t.x
+⟦x = d ← t⟧   = const v = t.x;
+                const x = v === undefined
+                          ? ⟦d⟧ : v
+⟦k: P ← t⟧    = ⟦P ← t.k⟧
+```
+
+<span slot="read">Destructuring e with pattern P first stores e in a
+temporary t, then lowers the pattern against t. A plain name x reads
+t.x. A name with a default reads t.x into v and uses the default only
+when v is undefined. A key k with a nested pattern P lowers P against
+t.k, the value under that key.</span>
+</Formal>
+
+<Examples of="destructuring-lowering">
+
+```text
+// tsc 5.9 --target ES5
+const { x, y = 1 } = o;
+⇒ var x = o.x, _a = o.y,
+      y = _a === void 0 ? 1 : _a;
+const { pos: { lat }, ...rest } = o;
+⇒ var lat = o.pos.lat,
+      rest = __rest(o, ["pos"]);
+```
+
+```text
+// const [p, , q] = xs;
+// ES5:                 p = xs[0], q = xs[2]
+// ES5 + downlevelIteration:
+var _a = __read(xs, 3),
+    p = _a[0], q = _a[2];
+```
+
+```text
+// Node 22: const { x, y } = o; return x + y
+GetNamedProperty a0, [0], [0]
+Star0
+GetNamedProperty a0, [1], [2]
+Star1
+Ldar r1
+Add r0, [4]
+// Python 3.13:  a, b = t
+UNPACK_SEQUENCE 2
+```
+
+</Examples>
+
+The first is tsc's real ES5 output (wrapped): `x` is one read, `y` goes
+through the temporary `_a` and a test against `void 0`, a nested
+pattern reads `o.pos.lat` directly (so a missing `pos` throws, as the
+packing-list analogy warned), and a rest pattern calls a small helper,
+`__rest`, that copies every property not already taken. The second is
+the spot-the-difference: by default tsc lowers an *array* pattern to
+indexing, which is only right for arrays; with `downlevelIteration`,
+TypeScript emits "more compliant, but verbose and less performant"
+code<Cite id="ts-downlevel-iteration" />, here a helper `__read` that
+asks the iterator for three elements, so a `Set` or a generator works
+too. The third is what engines do with modern code directly: V8
+compiles `{ x, y }` to two ordinary property reads into registers, and
+Python's tuple unpacking is one instruction, `UNPACK_SEQUENCE 2`, that
+checks the length and pushes the elements<Cite id="cpython-dis" />.
+(The ECMAScript specification defines both features precisely, as the
+evaluation steps these lowerings imitate<Cite id="ecma262" />.)
+
+<Run id="lower-pattern" />
+
+`lower` walks the pattern: a plain name becomes one read, a pair
+`[name, default]` becomes a read into a temporary and a test, and a
+pair `[key, pattern]` recurses with the source extended by `.key`. It
+prints the four lines it generated, then runs them with `new Function`
+on `o = { x: 3, pos: { lat: 51.5 } }`, printing `[ 3, 1, 51.5 ]`: `y`
+fell back to its default because `o.y` is `undefined`.
+
+<Prompts ids={['ds-what', 'ds-default', 'ds-nested', 'ds-array']} />
+
+## Your turn
+
+<Exercise id="lower-chain" />
+
+## What you learned
+
+- **Optional chaining** lowers to `(t = e) == null ? undefined : …`:
+  a nullish test (never `&&`, which also stops at `0` and `''`), a
+  temporary so `e` runs once, the rest of the chain inside the branch,
+  and `t.call(o)` for method calls.
+- **Destructuring** lowers to one read per name from a temporary, a
+  `=== undefined` test per default, and a recursive lowering per
+  nested pattern; array patterns use the iterator protocol.
+- Engines do the same with bytecode: `JumpIfUndefinedOrNull`,
+  `GetNamedProperty`, `UNPACK_SEQUENCE`.
+
+Next: memory again, and the simplest way to know when an object can be
+freed: count the references to it.
+
+<Quiz />

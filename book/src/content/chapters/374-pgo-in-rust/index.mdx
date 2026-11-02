@@ -3,23 +3,27 @@ n: 374
 day: 94
 part: XIII
 title: 'PGO in Rust'
-tagline: 'The Rust engine profiles a JavaScript program by writing a slightly different JavaScript program and asking Node to run it. Eighty-two lines of Rust, a profile byte-identical to the TypeScript one, and some honest limits.'
+tagline: 'The Rust engine profiles a JavaScript program by writing a slightly different JavaScript program and asking Node to run it. Eighty-two lines of Rust, a profile byte-identical to the TypeScript one, and a temporary directory that tidies itself up.'
 objectives:
-  - Follow viscosity profile through profile.rs, from instrumenting to running node.
-  - Explain why the profile JSON is byte-identical to the TypeScript CLI's.
-  - Describe how --profile is read and where the planner uses it.
-  - State what a profile can't tell the planner, and which programs can't be profiled.
+  - Follow viscosity profile through profile.rs, from instrumenting the source to running node.
+  - Explain why the edits are applied last first, and why the profile JSON is byte-identical to the TypeScript CLI’s.
+  - Describe how std::process::Command runs node, and how a Drop guard removes the temporary directory on every way out.
+  - Implement the instrumenting loop, with tests.
 introduces: [rust-pgo]
-uses: [viscosity-rs, rust-cost-model, rust-collections-pass, plugin-trait, oxc, pgo, instrumentation, cost-model, collection-discovery, cross-implementation-tests, crate, cargo, option, result, question-mark, hashmap, vec, string-vs-str, slice, rust-closure, rust-iterator, cargo-test]
+uses: [viscosity-rs, rust-cost-model, rust-collections-pass, rust-access-pass, plugin-trait, oxc, pgo, instrumentation, cost-model, collection-discovery, cross-implementation-tests, crate, cargo, option, result, question-mark, vec, string-vs-str, slice, rust-closure, rust-iterator, cargo-test]
 sources: ['v8-maglev']
 ---
 import ProfileSteps from '../../../components/diagrams/ch374/ProfileSteps';
+import WrapOrder from '../../../components/diagrams/ch374/WrapOrder';
 
-## The same three commands
+## A size the analysis can't count
 
-Chapter 262 profiled this program with the TypeScript CLI. Its 20
-elements are pushed inside a function, so the analysis can't count
-them:
+*Access patterns in Rust* showed that a push inside a function makes a
+collection's size unknown, because the analysis doesn't count calls.
+*Profile-guided optimization* answered that in the TypeScript engine by
+running the program once and measuring. The Rust binary takes the same
+commands. Here is a program whose 20 elements are pushed inside a
+function:
 
 ```js
 const ps = [];
@@ -35,16 +39,13 @@ for (let f = 0; f < 100; f++) {
 console.log(ps[0].x);
 ```
 
-The Rust binary takes the same commands. A real session (release build,
-rustc 1.97, Node 22.23; long lines wrapped):
+and a real session with it (release build, rustc 1.97, Node 22.23;
+long lines wrapped, and the first report trimmed):
 
 ```
 $ viscosity explain spawn.js
 ps (line 1) {x, vx} → struct of arrays
-  · …
   · size unknown statically
-  · 2 of 3 element accesses proven in
-    bounds
 $ viscosity profile spawn.js -o p.json
 $ cat p.json
 {
@@ -61,72 +62,108 @@ ps (line 1) {x, vx} → kept as array of
     benefit is too small
 ```
 
-The decision flips, as it should, and every line matches the
-TypeScript CLI's (chapter 370 tells how the last one once didn't).
-The JSON file is byte-identical to the one the TypeScript CLI writes,
-too. The reason is worth a look.
+The decision flips, as it should, and every line matches the TypeScript
+CLI's. The JSON file is byte-identical to the one the TypeScript CLI
+writes too, and the reason is the most interesting thing in
+`crates/cli/src/profile.rs`.
 
-<Callout kind="intuition">
-To learn how full a stadium gets, you don't simulate the crowd. You
-hand the gatekeeper a clicker and read it when the gates close. The
-Rust engine doesn't run JavaScript. It hands Node a program with a
-clicker in it.
-</Callout>
+<Analogy title="a clicker at the stadium gate">
+To learn how full a stadium gets, you don't simulate the crowd; you
+hand the gatekeeper a clicker, and read it when the gates close.
+The Rust engine doesn't run JavaScript itself either. It hands Node a
+copy of the program with a clicker in it.
+<span slot="breaks">A clicker counts people as they pass; the profile
+reads each array's length once, when the program exits, which is its
+peak only because a collection Viscosity can transform never
+shrinks.</span>
+</Analogy>
+
+<Analogy title="a tailor's tape">
+A tailor doesn't guess your size from a photograph; they measure you
+once and cut the cloth to the numbers.
+<span slot="breaks">You might change size later, and the tailor would
+never know; a profile is one run with no input, so a program that
+behaves differently on other days gets the planner's decision for
+that one day (*Reading a profile in Rust* lists these limits).</span>
+</Analogy>
 
 ## Writing a program that counts
 
-From `crates/cli/src/profile.rs`, adapted:
+`instrument` in `profile.rs` turns the source into a program that
+records its own sizes. It starts the way the compiler does,
+`JsPlugin.lower(source)` and then `analyze`, so it finds exactly the
+collections the planner will later ask about (a syntax error becomes
+the `Err` string the CLI prints, through `map_err(...)?`). For each
+collection it takes the byte span of its initializer, such as `[]`,
+into a list of `(start, end, name)` edits, and then (rewrapped):
 
 ```rust
-pub fn instrument(
-    source: &str,
-) -> Result<String, String> {
-    let lowered = JsPlugin
-        .lower(source)
-        .map_err(|e| e.to_string())?;
-    let a = analyze(&lowered.module);
-    let mut edits: Vec<(u32, u32, &str)> =
-        a.collections.iter().map(|c| {
-            let m = &lowered.module;
-            let src = m.inst(c.init).src
-                .expect("has a source");
-            (src.start, src.end, &*c.name)
-        }).collect();
-    edits.sort_by_key(|e| Reverse(e.0));
-    let mut out = source.to_string();
-    for (start, end, name) in edits {
-        let (lo, hi) = (start as usize,
-            end as usize);
-        let q = serde_json::to_string(name)
-            .expect("strings serialize");
-        let w = format!(
-            "__vsc_track({q}, {})",
-            &out[lo..hi]);
-        out.replace_range(lo..hi, &w);
-    }
-    Ok(format!("{PRELUDE}{out}"))
+edits.sort_by_key(|e|
+    std::cmp::Reverse(e.0));
+let mut out = source.to_string();
+for (start, end, name) in edits {
+    let (start, end) =
+        (start as usize, end as usize);
+    let quoted = serde_json::
+        to_string(name)
+        .expect("strings serialize");
+    let wrapped = format!(
+        "__vsc_track({quoted}, {})",
+        &out[start..end]);
+    out.replace_range(start..end,
+        &wrapped);
 }
+Ok(format!("{PRELUDE}{out}"))
 ```
 
-It finds collections exactly as the compiler does (the plugin's `lower`,
-then `analyze`), takes each initializer's span, and wraps it. The edits
-are sorted by start, **last first** (`Reverse` flips the order), so
-replacing one span never moves the byte offsets of the spans still to
-come. `replace_range` edits the `String` in place, and the offsets are
-UTF-8 bytes from oxc, which is what `String` is indexed by. The name is
-quoted by `serde_json`, so it is a valid JavaScript string literal.
+The edits are sorted by start, **last first** (`Reverse` flips the
+order of a sort key), so replacing one span never moves the offsets of
+the spans still to come, the same idea as the emitter's edits in *SoA
+code generation in Rust*. `replace_range` edits the `String` in place,
+and the offsets are UTF-8 bytes from oxc, which is what a `String` is
+indexed by. The name is quoted with `serde_json`, so it is always a
+valid JavaScript string literal, and the wrapper keeps the original
+initializer as its second argument.
 
-`PRELUDE` is a Rust `&str` holding JavaScript, the TypeScript CLI's
-prelude character for character: `__vsc_track`, and an `exit` hook that
-writes `JSON.stringify(p, null, 2)`. So in both engines the JSON is
-written by Node, with the same code. That's why the files are
-identical. Rust never formats it.
+<Figure caption="instrument on a program with two collections: the later span is wrapped first, so the earlier one's offsets are still right." takeaway="Applying edits last first keeps every byte offset valid.">
+  <WrapOrder />
+</Figure>
+
+The `PRELUDE` that goes in front is a Rust `&str` holding JavaScript,
+the TypeScript CLI's prelude character for character:
+
+```js
+const __vsc_seen = [];
+function __vsc_track(name, arr) {
+  __vsc_seen.push([name, arr]);
+  return arr;
+}
+process.on('exit', () => {
+  const p = {};
+  for (const [n, a] of __vsc_seen)
+    p[n] = { maxLength: Math.max(
+      p[n]?.maxLength ?? 0, a.length) };
+  require('node:fs').writeFileSync(
+    process.env.VSC_PROFILE_OUT,
+    JSON.stringify(p, null, 2));
+});
+```
+
+(reformatted: the real prelude is seven lines). `__vsc_track` remembers
+each array under its name and hands it straight back, so the program
+runs exactly as before. When the process exits, the hook takes, for
+each name, the largest length of any array tracked under it, and writes
+the result as JSON with two-space indentation to the file named by the
+environment variable `VSC_PROFILE_OUT`. So in both engines the JSON is
+written by Node, with the same code; Rust never formats it, which is
+why the two files are identical.
 
 <Prompts ids={['pg-same-finder', 'pg-reverse', 'pg-node-writes']} />
 
-<ProfileSteps client:visible />
-
 ## Running node from Rust
+
+`profile(file)` writes the instrumented program to a temporary
+directory and runs it (rewrapped):
 
 ```rust
 let status = Command::new("node")
@@ -135,30 +172,26 @@ let status = Command::new("node")
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .status()
-    .map_err(|e| format!(
-        "could not run node (profiling \
-         needs Node.js on the PATH): \
-         {e}"))?;
-if !status.success() {
-    return Err(match status.code() {
-        Some(c) => format!(
-            "the profiled program \
-             failed (exit code {c})"),
-        None => "the profiled program \
-            failed (killed by a signal)"
-            .to_string(),
-    });
-}
+    .map_err(|e| format!("could not run \
+        node (profiling needs Node.js on \
+        the PATH): {e}"))?;
 ```
 
-`std::process::Command` builds a child process, `.status()` runs it and
-waits, and the program's output is thrown away (stderr still shows).
-The instrumented file is `instrumented.cjs` in a temporary directory,
-owned by a small guard value whose `Drop` deletes the directory on
-every way out of the function, error or not.
-The TypeScript CLI runs `process.execPath`, the very Node running it.
-The Rust binary has no Node of its own, so it looks `node` up on the
-`PATH`, and says so if that fails:
+`std::process::Command` builds a child process step by step: the
+program, its argument (the file `instrumented.cjs`), one environment
+variable, an empty stdin and a discarded stdout (stderr still shows, so
+you see the program's errors). `.status()` runs it, waits for it to
+finish, and returns its exit status, or an `Err` if `node` couldn't be
+started at all, which `map_err` turns into a helpful message. Then
+`if !status.success()` turns a non-zero exit into an error too, "the
+profiled program failed (exit code 1)", because a partial run's sizes
+could mislead the planner; `status.code()` is `None` when the process
+was killed by a signal rather than exiting, and that gets a message of
+its own. Only then does `profile` read the file the hook wrote, with
+`fs::read_to_string`, and return it. The
+TypeScript CLI runs `process.execPath`, the very Node running it; the
+Rust binary has no Node of its own, so it looks `node` up on the
+`PATH`:
 
 ```
 $ PATH=/nowhere viscosity profile spawn.js
@@ -167,87 +200,79 @@ needs Node.js on the PATH): No such file
 or directory (os error 2)
 ```
 
-<Prompts ids={['pg-command', 'pg-path']} />
-
-<Callout kind="definition">
-**PGO in Rust** is two halves. `viscosity profile` **instruments** the
-source (every candidate's initializer wrapped in `__vsc_track`, edits
-applied last-first), runs it with **`node`** through
-`std::process::Command`, and prints the JSON that the program's exit
-hook wrote. `--profile` reads that JSON into a
-`HashMap<String, f64>` of **`maxLength`** by name, which the planner
-prefers over its estimate.
-</Callout>
-
-## Reading it back
-
-`read_profile` in `main.rs` parses the file with `serde_json` into a
-`Value`, requires an object, and requires every entry to be an object
-with a finite, non-negative `maxLength` (adapted; `bad` stands for the
-error message):
+The temporary directory is owned by a small guard value:
 
 ```rust
-obj.iter().map(|(name, v)| {
-    let n = v.as_object()
-        .and_then(|e| e.get("maxLength"))
-        .and_then(Value::as_f64);
-    match n {
-        Some(n) if n.is_finite()
-            && n >= 0.0 =>
-            Ok((name.clone(), n)),
-        _ => Err(bad(name)),
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
     }
-}).collect()
+}
 ```
 
-Collecting an iterator of `Result`s into one `Result` stops at the
-first `Err`. The planner then looks up the collection's name, and a hit
-wins over the estimate (chapter 370). When this chapter was first
-written, the CLIs disagreed on hand-edited files: given
-`{"ps": {"maxLength": "20"}}`, Rust skipped the entry while TypeScript
-compared `"20" < 64` as JavaScript does and kept the array. Now both
-apply this one rule, with the same words:
-`the profile entry "ps" must be an object whose maxLength is a
-non-negative number`.
+`Drop` runs when the value goes out of scope, on every way out of
+`profile`: the normal return, an early `return Err(...)`, and every
+`?`. So the directory is removed whether node succeeded, failed, or
+never started, without a single clean-up line at each exit. Step through
+the whole round trip:
 
-<Prompts ids={['pg-filter-map', 'pg-strict']} />
+<ProfileSteps client:visible />
 
-## What a profile can't say
+<Formal title="What a profile records">
 
-The code is short enough to read its limits straight off it.
+```text
+profile(n) = max { a.length at exit
+                   | a tracked as n }
+```
 
-- **Keyed by name.** Give two functions each their own `ps`, one with
-  1000 elements and one with 10, and the profile has one entry,
-  `"ps": { "maxLength": 1000 }`. With it, the Rust CLI reports "about
-  1000 elements (measured by profiling)" for both.
-- **The length at exit.** The hook reads `a.length` once, at exit, and
-  takes the maximum over every array tracked under that name. For a
-  collection Viscosity can transform that is its peak, since it only
-  grows. Every tracked array also stays alive until exit, because
-  `__vsc_seen` holds it.
-- **One run, no input.** The program gets no arguments and an empty
-  stdin.
-- **Scripts only.** The file is run as CommonJS, so a program with
-  `import` fails ("Cannot use import statement outside a module"). A
-  program that throws is an error too, "the profiled program failed
-  (exit code 1)", even though its exit hook wrote the JSON: a partial
-  run's sizes could mislead the planner.
-- **JavaScript only.** `viscosity profile x.py` refuses, with the
-  reference's words: "profile runs JavaScript programs only; Python
-  profiling is not supported yet".
+<span slot="read">The profile's number for a name n is the largest
+length, read when the program exits, of all the arrays that were
+tracked under the name n.</span>
+</Formal>
 
-<Prompts ids={['pg-by-name', 'pg-cant']} />
+<Examples of="rust-pgo">
 
-<Callout kind="engine" label="Under the hood">
-What tests this? When this chapter was first written, `parity.rs`
-checked the Python refusal message and `multi_file.rs` that `profile`
-takes one file. No fixture ran `--profile`, and neither did the
-fuzzer, so the "about 20 (measured) elements" wording passed every
-test. Now four profile fixtures run through both the library and
-`--profile`, `profile_cli.rs` checks the file rule and the clean-up in
-both CLIs, and the fuzzer passes random profiles. Chapter 376 asks
-which layer of testing should have caught it first.
+```js
+const ps = __vsc_track("ps", []);
+```
+
+```js
+const ps = __vsc_track("ps",
+  [{ x: 1 }, { x: 2 }]);
+const qs = __vsc_track("qs", []);
+```
+
+```
+{
+  "ps": { "maxLength": 2 },
+  "qs": { "maxLength": 5 }
+}
+```
+
+</Examples>
+
+The first is the first line of the instrumented `spawn.js` after the
+prelude (I had the program print its own file to stderr to see it).
+The second is a program with an array literal and an empty array: the
+literal is wrapped whole, elements and all, so its two elements are
+counted. The third is that program's profile (shown more compactly
+than Node writes it): `ps` ended with its 2 elements and `qs` with the
+5 a loop pushed.
+
+<Callout kind="definition">
+**PGO in Rust** starts with `viscosity profile`: `instrument` finds the
+candidate collections as the compiler does, **wraps each initializer**
+in `__vsc_track(...)` with edits applied **last first**, and prepends a
+JavaScript **prelude** shared with the TypeScript CLI; `profile` runs
+the result with **`node`** through `std::process::Command`, with a
+**`Drop` guard** removing its temporary directory, and returns the JSON
+that the program's exit hook wrote, so the file is **byte-identical** in
+both engines.
 </Callout>
+
+<Prompts ids={['pg-command', 'pg-path', 'pg-drop', 'pg-exit-error', 'pg-literal']} />
 
 ## Your turn
 
@@ -259,11 +284,9 @@ which layer of testing should have caught it first.
   each initializer in `__vsc_track(...)`, applying edits **last first**
   so the byte offsets stay valid.
 - The JSON is written by **Node**, from a prelude copied from the
-  TypeScript CLI, so it is **byte-identical**. Rust only starts `node`
-  with `std::process::Command`.
-- `--profile` becomes a `HashMap<String, f64>`, under one rule both
-  CLIs share: every entry needs a non-negative `maxLength`.
-- Profiles are **keyed by name**, record the **length at exit**, and
-  need a CommonJS script that exits cleanly. Python isn't profiled.
+  TypeScript CLI, so it is **byte-identical**; Rust only starts `node`
+  with **`std::process::Command`** and checks its exit status.
+- A **`Drop`** guard removes the temporary directory on every way out of
+  `profile`, `?` included.
 
 <Quiz />

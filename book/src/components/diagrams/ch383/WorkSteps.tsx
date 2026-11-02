@@ -51,7 +51,7 @@ export default function WorkSteps() {
             <Box key={f} x={X0 + a * UNIT} y={45 + th * 34} w={w} h={26} r={3}
               fill={fin ? (bad ? tok('danger', 0.18) : tok('safe', 0.18)) : tok('warn', 0.18)}
               stroke={fin ? (bad ? tok('danger') : tok('safe')) : tok('warn')} dash={!fin}>
-              <T x={X0 + a * UNIT + 4} y={58 + th * 34} size={10} mono>{FILES[f]}</T>
+              <T x={X0 + a * UNIT + 4} y={58 + th * 34} size={11} mono>{FILES[f]}</T>
             </Box>
           );
         })}
@@ -64,8 +64,8 @@ export default function WorkSteps() {
             <Box key={f} x={10 + k * 64} y={178} w={58} h={30} r={3}
               fill={fin ? (bad ? tok('danger', 0.15) : tok('safe', 0.15)) : tok('panel')}
               stroke={fin ? (bad ? tok('danger') : tok('safe')) : tok('line')} dash={!fin}>
-              <T x={39 + k * 64} y={189} size={9} mono anchor="middle">{k}</T>
-              <T x={39 + k * 64} y={201} size={9.5} mono anchor="middle">{fin ? (bad ? 'Err' : 'Ok') : 'None'}</T>
+              <T x={39 + k * 64} y={189} size={11} mono anchor="middle">{k}</T>
+              <T x={39 + k * 64} y={201} size={11} mono anchor="middle">{fin ? (bad ? 'Err' : 'Ok') : 'None'}</T>
             </Box>
           );
         })}

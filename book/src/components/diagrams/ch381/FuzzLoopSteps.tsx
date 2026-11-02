@@ -44,7 +44,7 @@ export default function FuzzLoopSteps() {
     const b = BOX[k];
     return (
       <Box key={k} x={b.x} y={b.y} w={b.w} h={H} r={4} fill={on(k) ? tok('brand', 0.15) : tok('panel')} stroke={on(k) ? tok('brand') : tok('line')}>
-        <T x={b.x + b.w / 2} y={b.y + H / 2} size={10.5} mono anchor="middle">{b.label}</T>
+        <T x={b.x + b.w / 2} y={b.y + H / 2} size={11} mono anchor="middle">{b.label}</T>
       </Box>
     );
   };
@@ -59,13 +59,13 @@ export default function FuzzLoopSteps() {
         <Arrow x1={296} y1={48} x2={310} y2={48} color={grey} width={1.5} />
         <path d="M352,62 L352,96 L50,96 L50,64" fill="none" stroke={st.back ? tok('safe') : grey} strokeWidth={st.back ? 2.5 : 1.5} />
         <polygon points="50,62 46,70 54,70" fill={st.back ? tok('safe') : grey} />
-        <T x={200} y={108} size={10} anchor="middle" fill={st.back ? tok('safe') : tok('muted')}>yes: keep it (feedback)</T>
+        <T x={200} y={108} size={11} anchor="middle" fill={st.back ? tok('safe') : tok('muted')}>yes: keep it (feedback)</T>
         <Arrow x1={92} y1={174} x2={106} y2={174} color={grey} width={1.5} />
         <Arrow x1={192} y1={174} x2={206} y2={174} color={grey} width={1.5} />
         <Arrow x1={296} y1={174} x2={310} y2={174} color={grey} width={1.5} />
         <Arrow x1={352} y1={188} x2={262} y2={218} color={grey} width={1.5} />
         <Arrow x1={296} y1={234} x2={310} y2={234} color={grey} width={1.5} />
-        <T x={150} y={234} size={10} anchor="middle" fill={tok('muted')}>no feedback</T>
+        <T x={150} y={234} size={11} anchor="middle" fill={tok('muted')}>no feedback</T>
         {(Object.keys(BOX) as K[]).map(box)}
       </Svg>
     </StepFrame>

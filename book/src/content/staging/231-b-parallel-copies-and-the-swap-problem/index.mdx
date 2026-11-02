@@ -1,0 +1,208 @@
+---
+n: 231
+split_of: 231
+day: 58
+part: VII
+title: 'Parallel copies and the swap problem'
+tagline: 'All the phis of a block take their values at the same instant, so the copies that replace them must behave as if they did too. Written one after another in the wrong order they destroy each other; this chapter finds the right order, and the one spare register a cycle needs.'
+objectives:
+  - Explain why the copies for one block's phis form a parallel copy, and what that means.
+  - Show how naive copies break a swap, and why copy propagation sets up the swap problem.
+  - Turn any parallel copy into ordinary copies, by ordering chains and breaking cycles with a spare register.
+  - Write that algorithm in JavaScript and check it against the parallel meaning.
+introduces: [parallel-copy]
+uses: [ssa-destruction, lost-copy-problem, phi-node, ssa, cfg, basic-block, critical-edge, register, risc-v, assembly-language, bit-ops, array, object, while-loop, for-of, function, test]
+sources: [briggs1998, regalloc2, riscv-isa-unpriv]
+---
+import SwapFigure from '../../../components/diagrams/ch231b/SwapFigure';
+import SequenceSteps from '../../../components/diagrams/ch231b/SequenceSteps';
+
+## All at once
+
+Chapter 192 made a promise that we now have to keep: all the phis at
+the top of a block take their values *at the same moment*, as control
+crosses the edge, and none of them sees another's new value. Leaving
+SSA turns each phi into a copy at the end of the predecessor, so a
+block with two phis gets two copies on each incoming edge. In `sumsq`
+those two were harmless:
+
+```text
+b2: ...
+    s1 = s2
+    i1 = i2
+    j b1
+```
+
+Neither copy reads a name the other writes, so their order does not
+matter. Now take a loop that swaps two variables on every trip,
+`t = p; p = q; q = t;`. In SSA, after copy propagation has replaced
+`t` by what it copies (the same optimisation that set up the lost
+copy), the temporary is gone and the header's two phis read each
+other:
+
+```text
+b1:  ; preds b0 b2
+  p2 = φ(p0, q2)
+  q2 = φ(q0, p2)
+```
+
+On the back edge, `p2` must get the old `q2` and `q2` the old `p2`.
+Put the two copies at the end of b2 the naive way, `p2 = q2` and then
+`q2 = p2`, and the second copy reads the `p2` that the first one has
+just overwritten:
+
+<Figure takeaway="Two copies in a row cannot swap; three through a spare register can." caption="Left: with p = 5 and q = 6, p = q makes both 6, and q = p copies the 6 back: the 5 is gone. Right: saving p in a spare register t first keeps it, and q = t puts it in q.">
+  <SwapFigure />
+</Figure>
+
+This is the **swap problem**, the second of the two failures Briggs,
+Cooper, Harvey and Simpson found in naive phi removal after
+optimisation<Cite id="briggs1998" />. Unlike the lost copy, it has
+nothing to do with critical edges: b2 has a single successor, and the
+copies are in the right *place*. They are in the wrong *order*, and for
+a swap no order of two copies is right.
+
+<Analogy title="swapping two drinks between glasses">
+You have juice in one glass and milk in the other, and you want them
+the other way round. Pouring the juice into the milk glass ruins
+both. You need a third glass: pour the juice into it, the milk into
+the juice glass, and then the juice into the milk glass.
+<span slot="breaks">Pouring empties the glass; copying a register
+leaves the source as it was, so after `t = p` both hold the value.
+The third glass is the part that carries over: one spare register per
+cycle.</span>
+</Analogy>
+
+<Analogy title="swapping seats in a row of a theatre">
+Three friends want to move one seat to the right, the last one going
+round to the first seat. If everyone stands up at once and then sits
+down in their new seat, it works. If they move one at a time, the
+first to move finds their new seat still taken.
+<span slot="breaks">People can stand in the aisle and wait; a value
+can only wait somewhere if we give it a register, which is the spare
+register again. And standing up all at once is precisely what a
+processor cannot do: it runs one copy at a time.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **parallel copy**, written `(d1, ..., dn) := (s1, ..., sn)`, copies
+every source into its destination *at the same instant*: all the
+sources are read first, then all the destinations are written. The
+destinations are all different. The copies that replace the phis of
+one block, along one incoming edge, form a parallel copy.
+</Callout>
+
+<Formal title="What a parallel copy means">
+
+```text
+(d1, …, dn) := (s1, …, sn)
+  means  v_k := value of s_k, for all k
+  then   d_k := v_k,          for all k
+```
+
+<span slot="read">A parallel copy from sources s1 to sn into
+destinations d1 to dn first reads the value of every source into a
+temporary v1 to vn, for every k at once, and only then writes each
+v_k into its destination d_k. Nothing written can affect anything
+read, which is exactly the meaning of a block's phis.</span>
+</Formal>
+
+<Prompts ids={['swap-what', 'parallel-meaning', 'why-parallel', 'swap-not-critical']} />
+
+## One copy at a time
+
+A processor runs one copy at a time, so a compiler must turn each
+parallel copy into an ordinary sequence that has the same effect.
+The trick is to look at which copy may safely go *first*. A copy
+`d = s` destroys the old value of `d`, so it is safe as soon as no
+other copy still waiting needs to read `d`. Doing it may make another
+copy safe, and so on. If we get stuck, every waiting destination is
+still somebody's source, which means the waiting copies form one or
+more **cycles**, like the swap; then we save one value of the cycle in
+a spare register `t`, let the copy that wanted it read `t` instead,
+and carry on, because the cycle has become a chain.
+
+Step through it on `(a, b, c, d) := (b, c, a, a)`, a three-way
+rotation with one extra copy hanging off it:
+
+<SequenceSteps client:visible />
+
+<Examples of="parallel-copy">
+
+```text
+(p2, q2) := (q2, p2)
+  t  = p2
+  p2 = q2
+  q2 = t
+```
+
+```text
+(a, b) := (b, c)
+  a = b        ; first: nobody reads a
+  b = c
+```
+
+```text
+(s1, i1) := (s2, i2)   ; sumsq
+  s1 = s2
+  i1 = i2
+```
+
+</Examples>
+
+The first is the swap, a cycle of two: neither copy can go first, so
+`t` saves `p2`, and the cycle unrolls into three copies. The second is
+a chain with no cycle: `a = b` must come before `b = c`, because `b =
+c` would destroy the `b` that `a` still needs; written the other way
+round, `a` would end up holding `c`. The third is `sumsq`'s back edge,
+the common case in real code: no copy reads another's destination, so
+any order works and nothing extra is needed.
+
+Here is the algorithm in JavaScript, run on the same three kinds of
+parallel copy; it prints the copies it would write:
+
+<Run id="sequence" />
+
+How many copies come out? One per copy that goes in (minus any that
+copy a register to itself, which are dropped), plus one `t = ...` for
+each cycle. RISC-V has no instruction that swaps two registers
+<Cite id="riscv-isa-unpriv" />, so the spare register is the usual
+cure; when no register is free, a cycle of two can still be swapped
+with three exclusive-ors (`xor a, a, b`, `xor b, a, b`, `xor a, a, b`),
+a curiosity of bit operations that compilers seldom need.
+
+<Prompts ids={['safe-first', 'stuck-means-cycle', 'how-many', 'chain-order']} />
+
+<Callout kind="engine" label="Under the hood">
+Production allocators keep parallel copies as a first-class idea
+right up to the end, because the moves they insert between registers
+on an edge are parallel too. regalloc2 has a `ParallelMoves` type,
+"alloc-to-alloc moves that must happen in parallel -- i.e., all reads
+of sources semantically happen before all writes of destinations",
+which it resolves into ordinary moves "possibly using a scratch
+register if one is necessary"<Cite id="regalloc2" />: the same
+algorithm as this chapter, with registers and stack slots in place of
+names.
+</Callout>
+
+## Your turn
+
+<Exercise id="sequence" />
+
+## What you learned
+
+- The copies that replace one block's phis form a **parallel copy**,
+  `(d1, ..., dn) := (s1, ..., sn)`: all sources are read before any
+  destination is written.
+- Written naively, one after another, they can destroy each other;
+  for a swap, no order of two copies works. That is the **swap
+  problem**.
+- To sequence a parallel copy, repeatedly do a copy whose destination
+  nobody still reads; when only cycles remain, save one value in a
+  spare register and carry on. Each cycle costs one extra copy.
+
+Next: the code is out of SSA and full of virtual registers; to give
+them real ones, we need to know which of them are alive at the same
+time.
+
+<Quiz />

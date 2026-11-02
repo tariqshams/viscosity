@@ -16,9 +16,10 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 //   checks:    .github/workflows/ci.yml packs and installs @viscosity/cli,
 //              and runs cargo test and cargo package --workspace;
 //              packages/wasm/smoke.mjs is run by hand
-//   publish:   nothing was published when the chapter was written; on
-//              2026-11-02 scripts/release.sh --npm-only published both
-//              npm packages at 0.0.1. The crates wait for a crates.io token.
+//   publish:   nothing was published when the chapter was first written;
+//              on 2026-11-02 scripts/release.sh --npm-only published both
+//              npm packages at 0.0.1, and --crates-only the six crates
+//              (book/STATUS.md, engine/rust/README.md "Releasing").
 type Cell = { t: string; ok: 'yes' | 'no' | 'part' };
 type Row = { name: string; sub: string; cells: Cell[] };
 
@@ -30,7 +31,7 @@ const ROWS: Row[] = [
       { t: 'cargo package works', ok: 'yes' },
       { t: 'LICENSE in each', ok: 'yes' },
       { t: 'test + package, CI', ok: 'yes' },
-      { t: 'not yet: no token', ok: 'no' },
+      { t: 'six crates, 0.0.1', ok: 'yes' },
     ],
   },
   {
@@ -62,7 +63,7 @@ const STATES: { upto: number; note: string }[] = [
   { upto: 1, note: 'Building a package. Both npm packages have a build.mjs that npm runs as prepack. For the crates, cargo package --workspace packages all six. At first it stopped at once: the workspace’s own crates depended on each other by path only, and crates.io needs a version too.' },
   { upto: 2, note: 'Licences. Each npm package ships LICENSE and a THIRD_PARTY_LICENSES.txt with the full text of everything bundled into it. A packaged crate carries only the files in its own folder, so each crate folder now has a LICENSE (crates/vir had none at first).' },
   { upto: 3, note: 'Checks before a release. Every push packs @viscosity/cli, installs the tarball in an empty folder and runs it. CI also tests and packages the crates. @viscosity/wasm has the same kind of test in smoke.mjs, but CI doesn’t run it.' },
-  { upto: 4, note: 'Publishing. When this chapter was written, none of it was published: a crates.io version is permanent and an npm version can never be reused, so the first publish is a decision, and it is Tariq’s to make. On 2026-11-02 he published both npm packages at 0.0.1 with scripts/release.sh --npm-only. The crates follow when a crates.io token is added.' },
+  { upto: 4, note: 'Publishing. A crates.io version is permanent and an npm version can never be reused, so the first publish is a decision, and it was Tariq’s to make. On 2026-11-02 scripts/release.sh --npm-only published both npm packages at 0.0.1, and --crates-only then published the six crates, the last one on a second run.' },
 ];
 
 const mark = (ok: Cell['ok']) => (ok === 'yes' ? '✓' : ok === 'no' ? '✗' : '~');
@@ -78,7 +79,7 @@ export default function ReleaseSteps() {
     <StepFrame title="Three things to ship" steps={s} note={st.note}>
       <Svg w={400} h={top + ROWS.length * rowH} title="The Rust crates, @viscosity/cli and @viscosity/wasm, checked stage by stage for a release">
         {COLS.map((c, k) => (
-          <T key={c} x={L + 112 + k * 56} y={12} size={9} anchor="middle" weight={700}
+          <T key={c} x={L + 132 + k * 52} y={12} size={11} anchor="middle" weight={700}
             fill={k === st.upto ? tok('brand') : tok('muted')}>{c}</T>
         ))}
         {ROWS.map((r, i) => {
@@ -87,14 +88,14 @@ export default function ReleaseSteps() {
           return (
             <g key={r.name}>
               <T x={L} y={y + 8} size={11} weight={700} mono>{r.name}</T>
-              <T x={L} y={y + 24} size={9} fill={tok('muted')}>{r.sub}</T>
+              <T x={L} y={y + 24} size={11} fill={tok('muted')}>{r.sub}</T>
               {r.cells.map((c, k) => {
                 const on = k <= st.upto;
                 return (
-                  <Box key={k} x={L + 112 + k * 56 - 24} y={y} w={48} h={30} r={4}
+                  <Box key={k} x={L + 132 + k * 52 - 23} y={y} w={46} h={30} r={4}
                     fill={on ? tok(col(c.ok), 0.15) : tok('panel')}
                     stroke={k === st.upto ? tok(col(c.ok)) : tok('line')}>
-                    <T x={L + 112 + k * 56} y={y + 15} size={14} anchor="middle"
+                    <T x={L + 132 + k * 52} y={y + 15} size={14} anchor="middle"
                       fill={on ? tok(col(c.ok)) : tok('muted', 0.4)}>{on ? mark(c.ok) : '·'}</T>
                   </Box>
                 );

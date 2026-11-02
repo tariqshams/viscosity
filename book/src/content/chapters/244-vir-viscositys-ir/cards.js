@@ -28,26 +28,6 @@ export const prompts = {
     q: 'What kind of IR is VIR?',
     a: 'A language-neutral SSA IR: each function is a CFG of basic blocks, with phis joining values.',
   },
-  'vir-neutral': {
-    q: 'Python’s `P(1.0, 2.0)` (a dataclass) and JavaScript’s `{ x: 1, vx: 2 }` both lower to which VIR op?',
-    a: '`record.new`, with the field names in order.',
-  },
-  'rc-why': {
-    q: 'Why are records, collections and field accesses first-class instructions in VIR?',
-    a: 'They are exactly what the layout analyses ask about, so the facts can be read directly instead of recognised from lower-level patterns.',
-  },
-  'rc-length': {
-    q: 'How do both plugins lower `ps.length` (or Python’s `len(ps)`)?',
-    a: 'As `field.get .length`, which the analyses recognise on a collection.',
-  },
-  'op-what': {
-    q: 'What does a VIR `opaque` instruction mean?',
-    a: '“Might do anything with these arguments”: something the plugin doesn’t model. Its arguments escape and its result is unknown.',
-  },
-  'op-sound': {
-    q: 'Why does treating `opaque` as the worst case keep Viscosity correct?',
-    a: 'Uncertainty can only stop a rewrite, never cause a wrong one. A missed optimization is safe; a wrong layout change is not.',
-  },
   'ssa-vs-binding': {
     q: 'Why does a variable that a closure assigns stay a binding instead of becoming SSA values?',
     a: 'A call to the closure may change it at any time, which a phi can’t describe. Explicit `load`/`store` keep every read and write visible.',
@@ -56,9 +36,32 @@ export const prompts = {
     q: 'Which variables does the JavaScript plugin always make bindings, besides captured ones?',
     a: 'Module-level variables used by inner functions, variables assigned in `try` blocks, and every variable initialized with an array.',
   },
+  'phi-pick': {
+    q: 'Block `b3` has preds `b1 b2` and starts with `%4 = phi %2, %3`. Control enters `b3` from `b2`. What is `%4`?',
+    a: '`%3`: a phi’s arguments are in predecessor order, and it takes the one for the edge control came in by.',
+  },
   'ssa-cheap': {
     q: 'In the VIR for `let t = 0; … t = t + v`, why is there no store for `t`?',
     a: '`t` is an uncaptured local, so it is SSA: each assignment is just a new value, and phis join them where paths meet.',
+  },
+};
+
+export const examples = {
+  'phi-by-hand': {
+    title: 'A phi picks by the way you came in',
+    code: `// function pick(c), as VIR:
+// b0: condbr c, b1, b2
+// b1: %2 = 1   b2: %3 = 2
+// b3: %4 = phi %2, %3 (preds b1 b2)
+function pick(c) {
+  const v = {};
+  let from;
+  if (c) { v[2] = 1; from = 'b1'; }
+  else { v[3] = 2; from = 'b2'; }
+  v[4] = from === 'b1' ? v[2] : v[3];
+  return v[4];
+}
+console.log(pick(true), pick(false));`,
   },
 };
 
@@ -161,11 +164,32 @@ test('field.set has no id, strings are quoted', () => {
       'Switch on `i.op`. Only `field.set` leaves out the `%id = ` prefix; `const`, `binop` and the field ops each add one extra piece (`value`, `operator`, `.field`).',
       'In `printFunc`, collect lines in an array: the header, then for each block its label, its instructions and `term(b.term)`, each indented. Join with `\\n` at the end.',
     ],
-    walkthrough: `A printer is the first tool anyone writes for a new IR, because you can’t debug what you can’t see. Viscosity’s \`printFunc\` in \`vir.ts\` is this function with a few more cases.
+    walkthrough: `**How to think about it.** A printer is the first tool anyone writes for a new IR, because you cannot debug what you cannot see, and Viscosity's own \`printFunc\` in \`vir.ts\` is this function with a few more cases. Split the job in two: one small function, \`fmt\`, that turns *one instruction* into one line, and a loop in \`printFunc\` that walks blocks and lays the lines out. Most instructions print the same way, \`%id = op args\`; only a few carry an extra field, so a \`switch\` with a \`default\` is the natural shape.
 
-- **One case per op shape.** Most ops print as \`%id = op args\`. A few carry an extra field: \`const\` its value, \`binop\` its operator, the field ops their field name. \`JSON.stringify\` quotes strings, so \`const "hi"\` can’t be confused with a name.
-- **No id for field.set.** Every instruction has an id, but a store produces no value that anything could use. Printing \`%2 =\` would suggest otherwise. (The real printer does the same for \`store\`, which is why ids seem to skip.)
-- **The terminator last.** Each block ends in exactly one terminator, so print it after the instructions. The real printer also prints each block’s predecessors as a comment, \`; preds b0 b3\`, which helps when reading phis: a phi’s arguments are in predecessor order.`,
+**The solution, line by line.**
+
+- \`function fmt(i) {\` formats one instruction \`i\`.
+- \`  const a = i.args.map((x) => '%' + x)\` / \`    .join(', ');\` turns the argument ids \`[1, 3]\` into the text \`%1, %3\`, used by almost every case.
+- \`  const d = '%' + i.id + ' = ';\` is the "defines a value" prefix, for example \`%4 = \`.
+- \`    case 'const':\` / \`      return d + 'const ' +\` / \`        JSON.stringify(i.value);\` prints the constant; \`JSON.stringify\` puts quotes round strings, so \`const "hi"\` cannot be confused with a name, and prints \`0\` as \`0\`.
+- \`    case 'binop':\` / \`      return d + 'binop ' +\` / \`        i.operator + ' ' + a;\` adds the operator before the operands: \`%4 = binop > %1, %3\`.
+- \`    case 'field.get':\` / \`      return d + 'field.get ' + a +\` / \`        ' .' + i.field;\` adds the field name after the object: \`%2 = field.get %0 .x\`.
+- \`    case 'field.set':\` / \`      return 'field.set ' + a + ' .' +\` / \`        i.field;\` has **no** \`d\`: a store makes no value that anything could use, so printing \`%6 =\` would suggest otherwise (the real printer does the same for \`store\`, which is why ids in real listings seem to skip).
+- \`    default:\` / \`      return d + i.op + ' ' + a;\` covers \`phi\`, \`index.get\` and the rest.
+- \`function printFunc(f) {\` starts the listing.
+- \`  const ps = f.params.map(\` / \`    (p) => '%' + p);\` names the parameters, and \`  const out = ['func ' + f.name + '(' +\` / \`    ps.join(', ') + '):'];\` makes the header line.
+- \`  for (const b of f.blocks) {\` visits blocks in order; \`    out.push('  b' + b.id + ':');\` writes the label with two spaces.
+- \`    for (const i of b.insts)\` / \`      out.push('    ' + fmt(i));\` writes each instruction indented by four spaces.
+- \`    out.push('    ' + term(b.term));\` writes the terminator last, because every block ends in exactly one.
+- \`  return out.join('\\n');\` joins the lines.
+
+**Common wrong attempts.**
+
+- Printing \`%id = \` in front of \`field.set\` gives \`%6 = field.set %0, %5 .x\`, which the tests reject and which misleads a reader into looking for uses of \`%6\`.
+- Forgetting the terminator leaves blocks that seem to fall off their end; in a CFG nothing falls through, every block says where it goes.
+- Printing \`String(i.value)\` instead of \`JSON.stringify\` makes the string \`"x"\` look like a name \`x\`.
+
+The real printer also writes each block's predecessors as a comment, \`; preds b0 b3\`, which helps when reading phis, since a phi's arguments are in predecessor order.`,
     wrong: [
       {
         code: TERM + `
@@ -187,68 +211,6 @@ function printFunc(f) {
       },
     ],
   },
-  fieldsTouched: {
-    optional: true,
-    title: 'Which fields does the loop touch?',
-    prompt:
-      'Using the same instruction shape, write `fieldsTouched(insts, arr)`. `arr` is the id of a collection value. Find every `index.get` whose first argument is `arr`; its result is an element. Return the sorted, de-duplicated names of the fields read (`field.get`) or written (`field.set`) **on those elements** (the element is the first argument). Ignore field accesses on anything else.',
-    starter: `function fieldsTouched(insts, arr) {
-  // your code here
-  return [];
-}`,
-    solution: `function fieldsTouched(insts, arr) {
-  const els = new Set();
-  for (const i of insts)
-    if (i.op === 'index.get' &&
-        i.args[0] === arr)
-      els.add(i.id);
-  const fs = new Set();
-  for (const i of insts) {
-    const f = i.op === 'field.get' ||
-      i.op === 'field.set';
-    if (f && els.has(i.args[0]))
-      fs.add(i.field);
-  }
-  return [...fs].sort();
-}`,
-    tests: `const insts = [
-  { id: 13, op: 'index.get', args: [12, 7] },
-  { id: 14, op: 'field.get', args: [13], field: 'x' },
-  { id: 16, op: 'index.get', args: [15, 7] },
-  { id: 17, op: 'field.get', args: [16], field: 'vx' },
-  { id: 18, op: 'field.get', args: [99], field: 'log' },
-  { id: 19, op: 'field.set', args: [13, 17], field: 'x' },
-];
-test('fields of elements of %12', () => {
-  expect(fieldsTouched(insts, 12)).toEqual(['x']);
-});
-test('another collection', () => {
-  expect(fieldsTouched(insts, 15)).toEqual(['vx']);
-});
-test('not a collection', () => {
-  expect(fieldsTouched(insts, 99)).toEqual([]);
-});`,
-    hints: [
-      'Two passes: first collect the ids of elements (`index.get` on `arr`), then look at field accesses.',
-      'A field access counts only if its first argument is one of those element ids. Use a `Set` for both the elements and the field names.',
-    ],
-    walkthrough: `This is the core of Viscosity’s access-pattern analysis, made tiny, and it is only this short because VIR has first-class collection nodes. An element is “the result of an \`index.get\` on the collection”, and a field access is “a \`field.get\` or \`field.set\` whose object is an element”. No patterns to recognise, no syntax to look at.
-
-Two passes are enough here because an \`index.get\` always comes before the field accesses that use its result. The real analysis also follows elements through bindings and function parameters, and records the accesses per loop, using the natural loops of chapter 211, so the planner knows which loop touches what.`,
-    wrong: [
-      {
-        code: `function fieldsTouched(insts, arr) {
-  const fs = new Set();
-  for (const i of insts)
-    if (i.op === 'field.get' ||
-        i.op === 'field.set')
-      fs.add(i.field);
-  return [...fs].sort();
-}`,
-        why: 'This collects every field access in the function, including `console.log` and other collections’ fields. Only accesses on elements of `arr` count.',
-      },
-    ],
-  },
 };
 
 export const quiz = [
@@ -262,21 +224,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does VIR have `field.get` and `index.get` instead of a general “load from memory”?',
+    q: 'In VIR, block `b3` has predecessors `b1 b2` and starts with `%4 = phi %2, %3`. What does that phi mean?',
     options: [
-      { t: 'So the layout analyses can read “which element, which field” directly', correct: true, why: 'Those facts are the analyses’ whole subject. A lower-level IR would hide them behind patterns.' },
-      { t: 'Because JavaScript has no memory addresses', why: 'True, but VIR is chosen for its analyses, not only to match JavaScript.' },
-      { t: 'To make the program run faster', why: 'VIR is never run. It is only analysed.' },
-      { t: 'Because SSA requires it', why: 'SSA is about how values are defined, not which operations exist.' },
-    ],
-  },
-  {
-    q: 'A program uses a tagged template with an element: ``tag`${ps[0]}` ``. What happens?',
-    options: [
-      { t: 'Viscosity crashes: it can’t lower templates', why: 'It can lower anything: what it doesn’t model becomes opaque.' },
-      { t: 'The template is ignored, and `ps` becomes SoA', why: 'Ignoring a use would be unsound: it could observe the element.' },
-      { t: 'Viscosity rewrites the template to use columns', why: 'It doesn’t model templates, so it can’t rewrite them.' },
-      { t: 'It lowers to an `opaque` whose arguments include `ps`, so `ps` is kept and explain says why', correct: true, why: 'An opaque takes every variable its code mentions, and its arguments are treated as escaping: conservative soundness.' },
+      { t: 'Add `%2` and `%3`', why: 'A phi does no arithmetic; it chooses.' },
+      { t: '`%4` is `%2` when control came from `b1`, and `%3` when it came from `b2`', correct: true, why: 'Arguments are in predecessor order; the edge taken picks one.' },
+      { t: '`%4` is whichever of the two was defined last', why: 'Both are defined once; which applies depends on the path, not on time.' },
+      { t: 'Run both branches and keep the larger result', why: 'Only one branch runs; the phi names the value from the one that did.' },
     ],
   },
   {

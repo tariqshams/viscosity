@@ -3,23 +3,25 @@ n: 307
 day: 77
 part: XI
 title: 'Vec and HashMap'
-tagline: 'The two collections that hold almost everything in drip-rs and the Rust port of Viscosity: a growable array that owns its elements, and a hash table that owns its keys. The borrow checker finally pays rent here.'
+tagline: 'The collection that holds almost everything in drip-rs: a growable array that owns its elements, keeps them side by side, and is the place where the borrow checker finally pays its way.'
 objectives:
   - Create, grow, index and loop over a Vec, and say what its length, capacity and heap buffer are.
+  - Choose between v[i], which panics when out of range, and v.get(i), which returns an Option.
   - Explain why the compiler rejects a push while a reference into the Vec is alive.
-  - Count things with HashMap, using get and the entry API, and say why its order can't be relied on.
-  - Compare std's HashMap with drip-rs's own hash table from chapter 146.
-introduces: [vec, hashmap]
-uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, slice, string-vs-str, struct, enum, match, option, question-mark, array, push, map, for-of, hash-table, hash-function, open-addressing, load-factor, interning, capacity, amortized-growth, contiguous, stack-and-heap, pointer, virtual-machine, stack-machine, heap-object, mark-sweep, column-storage, ssa-construction, test, generic]
-sources: [klabnik2026, rust-std-vec, rust-std-hashmap, mdn-map]
+  - Pick the right loop, over &v, &mut v or v, for what the loop does.
+introduces: [vec]
+uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, slice, string-vs-str, struct, impl, self-receiver, enum, match, option, array, push, capacity, amortized-growth, contiguous, stack-and-heap, pointer, virtual-machine, stack-machine, column-storage, typescript]
+sources: [klabnik2026, rust-std-vec, rust-book-vectors]
 ---
 import VecSteps from '../../../components/diagrams/ch307/VecSteps';
+import LoopForms from '../../../components/diagrams/ch307/LoopForms';
 
 ## A column that grows
 
-In chapter 258 you taught Viscosity to grow a `Float64Array` column by
-hand: keep a length and a capacity, and when they meet, allocate a bigger
-array and copy. In Rust that bookkeeping comes built in:
+In *Growing collections* you taught Viscosity to grow a `Float64Array`
+column by hand: keep a length and a capacity, and when they meet,
+allocate a bigger array and copy everything across. Rust's standard
+library does that bookkeeping for you:
 
 ```rust
 let mut xs: Vec<f64> = Vec::new();
@@ -30,18 +32,33 @@ println!("{} {}", xs.len(), xs[0]);
 ```
 
 `Vec<f64>` reads "a vector of `f64`". Unlike a JavaScript array, every
-element has the same type, so the elements sit side by side in memory with
-no boxes: a `Vec<f64>` is laid out like a `Float64Array` that can grow.
-`vec![1.5, 2.5]` is shorthand for building one with those elements.
+element has the same type, so the elements sit side by side in memory
+with nothing in between: a `Vec<f64>` is laid out like a `Float64Array`
+that can grow.
 
-<Callout kind="intuition">
-A `Vec` is a ticket stub for a row of seats in a theatre. The stub (on
-the stack) says where the row starts, how many seats are taken and how
-many are reserved. The seats themselves are in the hall (the heap). When
-your group outgrows the row, the usher finds a longer row elsewhere and
-moves everyone. Your stub gets updated; anyone holding the old seat
-numbers is now pointing at empty chairs.
-</Callout>
+<Analogy title="a row of theatre seats">
+A `Vec` is a ticket stub for a row of seats. The stub, in your pocket
+(the stack), says where the row starts, how many seats your group has
+taken and how many are reserved. The seats themselves are in the hall
+(the heap). When the group outgrows the row, the usher finds a longer
+row elsewhere and moves everyone; your stub is updated, but anyone still
+holding an old seat number is now pointing at an empty chair.
+<span slot="breaks">An usher would tell the people holding old seat
+numbers; a computer does not, which is exactly why Rust refuses to let
+anyone hold an old seat number (a reference into the `Vec`) across a
+move.</span>
+</Analogy>
+
+<Analogy title="a train and its platform">
+A train adds carriages at the back, one at a time, and every carriage is
+the same size. While the platform is long enough nothing else changes;
+when it is not, the whole train moves to a longer platform, which takes
+a while, but happens rarely, because each new platform is about twice
+as long as the last.
+<span slot="breaks">A real train moves under its own power; a `Vec`'s
+move is a copy of every element into fresh memory, and the old memory is
+freed at once.</span>
+</Analogy>
 
 ## Length, capacity, buffer
 
@@ -51,155 +68,193 @@ contiguous block<Cite id="rust-std-vec" />. Step through some pushes:
 
 <VecSteps client:visible />
 
-The capacities in that diagram are real. On this machine, with Rust 1.97,
-pushing nine `f64`s one at a time printed capacities 4, 4, 4, 4, 8, 8, 8,
-8, 16. Don't build on those numbers: the docs say `Vec` guarantees no
-particular growth strategy, only that `push` is amortized O(1), which is
-the doubling argument from chapter 258. What it does guarantee is that
-`Vec::with_capacity(n)` allocates room for exactly `n`, and that a `Vec`
-never shrinks by itself<Cite id="rust-std-vec" />.
+The capacities in that diagram are real: on this machine, with Rust
+1.97, pushing nine `f64`s one at a time gave capacities 4, 4, 4, 4, 8,
+8, 8, 8, 16. Do not build on those numbers, however: the documentation
+promises no particular growth strategy, only that `push` takes amortized
+constant time (the doubling argument of *Growing collections*). What it
+does promise is that `Vec::with_capacity(n)` makes room for at least `n`
+elements, and that a `Vec` never shrinks by itself<Cite id="rust-std-vec" />.
 
 <Callout kind="definition">
-A **`Vec<T>`** is Rust's growable array. It owns a contiguous heap buffer
-of `T`s and records its **length** (elements in use) and **capacity**
-(room allocated). `push` appends, reallocating and moving the elements
-when the length would pass the capacity. When the `Vec` is dropped, its
-elements are dropped and the buffer is freed.
+A **`Vec<T>`** is Rust's growable array. It owns a contiguous heap
+buffer of `T`s and records its **length** (elements in use) and
+**capacity** (room allocated). `push` appends, reallocating and moving
+the elements when the length would pass the capacity. When the `Vec` is
+dropped, its elements are dropped and the buffer is freed.
 </Callout>
 
-<Prompts ids={['vec-three', 'vec-cap', 'vec-same-type']} />
+<Formal title="What a Vec keeps true">
 
-## Indexing, safely or not
+```text
+v = (ptr, len, cap)       len ≤ cap
+v[i] is an element  ⟺  0 ≤ i < len
+n pushes from empty: O(n) total work
+```
 
-`xs[5]` on a two-element `Vec` doesn't return `undefined`. It panics:
-`index out of bounds: the len is 2 but the index is 5`. If an index might
-be out of range, ask with `get`, which returns the `Option` from the last
-chapter: `xs.get(5)` is `None`, `xs.get(0)` is `Some(&1.5)`.
+<span slot="read">A Vec is three numbers: where its buffer is, how many
+elements are in use, and how many fit; the length is never more than the
+capacity. v[i] is a real element exactly when i is at least 0 and below
+the length. Because the capacity grows by a factor each time, n pushes
+cost work proportional to n in total, so each push is constant time on
+average ("amortized").</span>
+</Formal>
 
-Now the rule that surprises everyone once. This doesn't compile:
+<Examples of="vec">
+
+```rust
+let mut v = Vec::new();
+v.push(10);
+v.push(20);
+println!("{:?}", v); // [10, 20]
+```
+
+```rust
+let mut xs = vec![1.5, 2.5, 4.0];
+xs[0] = 9.0;
+let last = xs.pop();  // Some(4.0)
+xs.get(5);            // None
+```
+
+```rust
+// from companion/rust/src/chunk.rs
+pub struct Chunk {
+    pub code: Vec<u8>,
+    pub lines: Vec<usize>,
+    pub constants: Vec<Value>,
+}
+```
+
+</Examples>
+
+The first lets Rust work out the element type from the first push (an
+`i32`), and `{:?}` prints the whole `Vec`; `v.len()` would now be `2`. The second uses the `vec!`
+macro to build one with elements already in it; indexing reads and
+writes like an array, `pop` takes the last element off and returns an
+`Option`, since the `Vec` might be empty, and `get` is the polite
+reading of an index from *Option and Result*. The third is the Rust Drip
+compiler's bytecode: three `Vec`s growing in step, one byte of code, one
+line number and, now and then, one constant at a time.
+
+<Prompts ids={['vec-three', 'vec-cap', 'vec-same-type', 'vec-get']} />
+
+## The rule that pays its way
+
+Here is a program that every Rust programmer writes once. It looks
+harmless; rustc 1.97 refuses it:
 
 ```rust
 let mut v = vec![1.0, 2.0];
 let first = &v[0];
 v.push(3.0);
-println!("{}", first);
+println!("{}", first); // ✗
 ```
 
-Rust 1.97 says (trimmed):
-
-```
-error[E0502]: cannot borrow `v` as
-  mutable because it is also borrowed
-  as immutable
+```text
+error[E0502]: cannot borrow `v` as mutable
+  because it is also borrowed as immutable
 3 |     let first = &v[0];
   |                  - immutable borrow
+  |                    occurs here
 4 |     v.push(3.0);
   |     ^^^^^^^^^^^ mutable borrow
+  |                 occurs here
 5 |     println!("{}", first);
-  |              immutable borrow later
+  |                    ----- immutable
+  |              borrow later used here
 ```
 
-It is the shared-or-mutable rule from chapter 302, and the diagram shows
-why it matters here. If this `push` hit the capacity, the elements would
-move to a new buffer and `first` would point into freed memory.
-JavaScript never hands you a pointer into an array's storage, so it can't
-have this bug. Rust can hand you one, so it checks.
+It is the shared-or-mutable rule from *Borrowing*, and the diagram's
+last steps showed why it matters here: if this `push` hit the capacity,
+the elements would move to a new buffer and `first` would point into
+freed memory. Print `first` *before* the push, and the borrow has ended
+in time, so the same lines compile. JavaScript never hands you a pointer
+into an array's storage, so it cannot have this bug; C hands you one and
+does not check, so it has it all the time; Rust hands you one, and
+checks.
 
-<Prompts ids={['vec-get', 'vec-push-borrow']} />
+Reading past the end is the other mistake, and Rust stops the program
+rather than reading whatever memory is there:
 
-Looping uses borrows too. `for x in &v` lends you each element;
-`for x in &mut v` lends each one mutably, so `*x += 1.0` changes it in
-place; `for x in v` moves the elements out and uses the `Vec` up. A
-function that only reads should take a slice, `&[f64]`: a `&Vec<f64>`
-turns into one automatically.
+```text
+thread 'main' panicked at h3.rs:12:22:
+index out of bounds: the len is 1 but
+the index is 5
+```
+
+<Prompts ids={['vec-push-borrow', 'vec-oob']} />
+
+## Looping
+
+A loop over a `Vec` makes the same three choices a method makes about
+`self`:
+
+<Figure takeaway="Loop over &v to read, &mut v to change, v to use it up." caption="The three loops. The third moves the elements out, so v cannot be used after it; rustc's help for that mistake suggests writing &v.">
+  <LoopForms />
+</Figure>
+
+A function that only reads should take a slice, `&[f64]`, rather than
+`&Vec<f64>`: a `&Vec<f64>` turns into a slice automatically, and the
+function then also works on arrays and on parts of a `Vec`. Try all of
+it:
 
 <Run id="vec-play" />
 
-<Prompts ids={['vec-loops']} />
-
-## HashMap: counting with keys
-
-`HashMap<K, V>` maps keys of type `K` to values of type `V`. It isn't
-imported automatically, so you start with
-`use std::collections::HashMap;`. Here is a count of which fields a loop
-touches, the kind of fact Viscosity's analysis collects:
+<OtherLanguages title="A growable list of numbers">
 
 ```rust
-let used = ["x", "vx", "x", "y", "x"];
-let mut n: HashMap<&str, i32> =
-    HashMap::new();
-for f in used {
-    *n.entry(f).or_insert(0) += 1;
-}
-println!("{:?}", n.get("x"));
-// Some(3)
+let mut xs: Vec<f64> = vec![1.0, 2.0];
+xs.push(3.0);
+for x in &mut xs { *x *= 2.0; }
+println!("{:?}", xs.get(9)); // None
+println!("{}", xs[9]);       // panics
 ```
 
-`get` returns `Option<&V>`, since the key may be missing. `insert(k, v)`
-adds or replaces. The `entry` line is the counting idiom: `entry(f)`
-finds the slot for `f`, `or_insert(0)` fills it with `0` if it's empty,
-and either way hands back a mutable reference to the value, which `*...
-+= 1` increments. And ownership applies: inserting a `String` key moves
-it into the map, which owns it from then on.
+```ts
+const xs: number[] = [1, 2];
+xs.push(3);
+for (let i = 0; i < xs.length; i++)
+  xs[i] *= 2;
+console.log(xs[9]); // undefined
+xs.push('four' as any); // allowed
+```
 
-<Run id="map-play" />
+</OtherLanguages>
 
-<Callout kind="definition">
-A **`HashMap<K, V>`** is Rust's hash table. It owns its keys and values.
-`insert` adds or overwrites, `get` returns `Option<&V>`, and
-`entry(k).or_insert(v)` gives a mutable reference to the value for `k`,
-inserting `v` first if there was none. Its iteration order is arbitrary
-and can change from run to run.
-</Callout>
+They look alike, and both grow with `push`. The differences: a
+TypeScript array can be talked into holding anything (the engine then
+stores references, as *How JavaScript stores numbers and objects*
+showed), while a `Vec<f64>` holds only `f64`s, stored as raw 8-byte
+numbers; an out-of-range read gives `undefined` in TypeScript and a
+panic (or `None` from `get`) in Rust; and only Rust stops you holding a
+reference into the array while it grows.
 
-That last sentence is not a technicality. Running the example four times
-in a row and printing the whole map gave three different orders, among
-them `{"vx": 1, "y": 1, "x": 3}` and `{"y": 1, "vx": 1, "x": 3}`. A JavaScript
-`Map` iterates in insertion order<Cite id="mdn-map" />. The Rust port of
-Viscosity must make the same decisions as the TypeScript one, message
-for message, so where order matters it uses `IndexMap` from
-the `indexmap` crate, a hash map that remembers insertion order. One
-comment in `engine/rust/crates/core/src/builder.rs` explains why:
-the incomplete phis of SSA construction are filled in insertion order,
-which "decides value numbering and the order of instructions, exactly as
-in the TS reference".
-
-<Prompts ids={['map-get', 'map-entry', 'map-order']} />
+<Prompts ids={['vec-loops', 'vec-slice-param']} />
 
 <Callout kind="engine" label="Under the hood">
-std's `HashMap` is a Rust port of Google's SwissTable, using quadratic
-probing and SIMD lookup, and by default hashes keys with SipHash 1-3,
-randomly seeded, to resist attackers who choose keys that
-collide<Cite id="rust-std-hashmap" />. drip-rs doesn't use it for Drip's
-globals and fields. Its `table.rs` is chapter 146's table ported: linear
-probing over a power-of-two capacity, tombstones, and storage as a struct
-of arrays, `keys: Vec<Option<StrRef>>` beside `values: Vec<Value>`. Keys
-are interned strings whose handle carries the hash, so the table never
-runs a hash function at all. And `Vec` is everywhere in drip-rs: the
-value stack is a `Vec<Value>` created with
-`Vec::with_capacity`, and each kind of heap object lives in its own
-`Vec<Option<T>>`, addressed by index, with mark bits in a `Vec<bool>`.
-Chapter 315 turns that into a pattern.
+`Vec` is everywhere in drip-rs. The VM's value stack is a `Vec<Value>`,
+created with `Vec::with_capacity` so that it rarely needs to grow, and
+`push`, `pop` and `peek` are `Vec`'s own `push`, `pop` and indexing; its
+call frames are a `Vec<CallFrame>`. Each kind of heap object lives in
+its own `Vec`, addressed by index, which the chapter *Arenas and typed
+indices* turns into a pattern.
 </Callout>
-
-<Prompts ids={['drip-table']} />
 
 ## Your turn
 
-<Exercise id="countFields" />
-
-<Exercise id="hotFields" />
+<Exercise id="constants" />
 
 ## What you learned
 
 - A **`Vec<T>`** owns a contiguous heap buffer of `T`s, with a length and
-  a capacity. `push` grows it; only amortized O(1) growth is promised.
+  a capacity; `push` grows it, and only amortized constant-time growth
+  is promised.
 - `v[i]` panics when out of range; `v.get(i)` returns an `Option`.
-- You can't `push` while a reference into the `Vec` is alive, because the
-  buffer might move.
-- A **`HashMap<K, V>`** owns its keys and values; `get` returns
-  `Option<&V>`, and `entry(k).or_insert(v)` is the counting idiom.
-- Its iteration order is arbitrary. The Rust Viscosity uses `IndexMap`
-  where order reaches the output; drip-rs keeps its own SoA hash table.
+- You cannot `push` while a reference into the `Vec` is alive, because
+  the buffer might move.
+- Loop over `&v` to read, `&mut v` to change, `v` to use it up; take
+  `&[T]` in functions that only read.
+
+Next: `HashMap`, Rust's hash table, and why its order can't be trusted.
 
 <Quiz />
