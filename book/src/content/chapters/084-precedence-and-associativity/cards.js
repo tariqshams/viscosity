@@ -80,7 +80,7 @@ export const examples = {
   }
   function factor() {
     let left = unary();
-    while (at('*', '/')) {
+    while (at('*', '/', '%')) {
       const op = next();
       const right = unary();
       left = bin(left, op, right);
@@ -102,7 +102,7 @@ export const examples = {
     if (t === '(') {
       const e = equality();
       if (next() !== ')') {
-        throw new Error("Expect ')'");
+        throw new Error("expected ')'");
       }
       return { kind: 'group', e };
     }
@@ -110,11 +110,11 @@ export const examples = {
     if (t === 'false') {
       return lit(false);
     }
-    if (t === 'nil') return lit(null);
+    if (t === 'none') return lit(null);
     if (/^[0-9]/.test(t)) {
       return lit(Number(t));
     }
-    throw new Error('Expect expr');
+    throw new Error('expected expr');
   }
   const lit = (value) =>
     ({ kind: 'literal', value });
@@ -130,7 +130,7 @@ function show(e) {
   switch (e.kind) {
     case 'literal':
       return e.value === null
-        ? 'nil' : String(e.value);
+        ? 'none' : String(e.value);
     case 'group':
       return \`(group \${show(e.e)})\`;
     case 'unary':

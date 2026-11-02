@@ -8,10 +8,10 @@ export const prompts = {
   },
   'where-noticed': {
     q: 'A `;` is missing at the end of line 1, and line 2 starts with `print`. Where does Drip report the error?',
-    a: 'At line 2, at `\'print\'`: errors are reported at the token where the parser noticed the problem.',
+    a: 'On line 1: a missing `;` is reported on the line of the token before it, where the `;` belongs. The message still names the token found: `expected \';\' after the value, found \'print\'`.',
   },
   'at-end': {
-    q: 'When does a Drip syntax error say `Error at end` instead of naming a token?',
+    q: 'When does a Drip syntax error say `found end of file` instead of naming a token?',
     a: 'When the parser ran out of tokens: the token it was looking at is the end-of-file token.',
   },
   'recovery-goals': {
@@ -28,15 +28,15 @@ export const prompts = {
   },
   'sync-points': {
     q: 'Where does Drip’s `synchronize()` stop skipping?',
-    a: 'Just after a `;`, or just before a keyword that starts a statement (`let`, `fn`, `class`, `if`, `while`, `for`, `print`, `return`), or at the end of input.',
+    a: 'Just after a `;`, just before a keyword that starts a statement (`class`, `fn`, `let`, `for`, `if`, `while`, `print`, `return`, `break`, `continue`), at the `}` that closes the block it is in, or at the end of input.',
   },
   'skip-first': {
-    q: 'Why does `synchronize()` always skip one token before it starts checking?',
-    a: 'To guarantee progress. Without it, a bad token that looks like a statement start (say `print`) would make the parser stop on it, fail again, and loop forever.',
+    q: 'Why can Drip’s parser never get stuck, failing on the same token for ever?',
+    a: 'Every statement takes at least one token before `synchronize()` runs, so each round moves forward. (The exercise’s `sync`, which starts at the bad token, gets the same guarantee by skipping that token first.)',
   },
   'no-throw-target': {
-    q: 'Why does Drip report `Invalid assignment target.` without throwing a `ParseError`?',
-    a: 'The parser is not lost: it has parsed both sides and knows where it is, so there is nothing to recover from.',
+    q: 'For `a + b = 3;`, Drip reports `cannot assign to this expression`, yet skips nothing. Why?',
+    a: 'The parser is not lost: it carries on and takes the `;`, so when `synchronize()` runs, the previous token is already a `;` and it stops at once.',
   },
   'exit-65': {
     q: 'A Drip program has one syntax error on its last line. How many of its statements run?',
@@ -62,7 +62,7 @@ export const exercises = {
       'Write `sync(ts, i)`. `ts` is an array of lexemes, and `i` is the index of the token where a syntax error was found. Return the index where parsing should resume: skip the bad token first, then stop as soon as the **previous** token is `;`, or the **current** token is in `STARTS`. If you run off the end, return `ts.length`.',
     starter: `const STARTS = new Set(['class', 'fn',
   'let', 'for', 'if', 'while', 'print',
-  'return']);
+  'return', 'break', 'continue']);
 
 function sync(ts, i) {
   // your code here
@@ -70,7 +70,7 @@ function sync(ts, i) {
 }`,
     solution: `const STARTS = new Set(['class', 'fn',
   'let', 'for', 'if', 'while', 'print',
-  'return']);
+  'return', 'break', 'continue']);
 
 function sync(ts, i) {
   i++; // always skip the bad token
@@ -102,7 +102,7 @@ test('no safe point: the end', () => {
       'Then loop while `i < ts.length`. Inside, check the token before `i` for `;`, and the token at `i` for a statement keyword.',
       'If neither check returns, skip one more token with `i++`. After the loop, return `ts.length`.',
     ],
-    walkthrough: `This is the chapter's \`synchronize()\` with the token stream made explicit.
+    walkthrough: `This is a simplified \`synchronize()\` over an array of lexemes. One difference from the companion: here \`i\` is the bad token, not yet taken, so \`sync\` must skip it first to make progress. (The companion's parser has always taken at least one token of the statement by the time it synchronizes, so it can check straight away. It also stops at a \`}\` that closes the current block, which this version leaves out.)
 
 - **Skip first.** The error happened *at* \`ts[i]\`. Skipping it unconditionally means \`sync\` always moves forward, even if that token is \`print\`. In the first test, \`print\` (index 4) is where \`;\` was expected. Without the skip you would return 4, the parser would fail on the same token again, and you would loop forever.
 - **After a \`;\`.** \`ts[i - 1] === ';'\` means the token we just passed ended a statement, so \`ts[i]\` is a fresh start. In the second test the bad token *is* the \`;\`, so we stop right after it.
@@ -112,7 +112,7 @@ test('no safe point: the end', () => {
       {
         code: `const STARTS = new Set(['class', 'fn',
   'let', 'for', 'if', 'while', 'print',
-  'return']);
+  'return', 'break', 'continue']);
 
 function sync(ts, i) {
   while (i < ts.length) {
@@ -127,7 +127,7 @@ function sync(ts, i) {
       {
         code: `const STARTS = new Set(['class', 'fn',
   'let', 'for', 'if', 'while', 'print',
-  'return']);
+  'return', 'break', 'continue']);
 
 function sync(ts, i) {
   i++;
@@ -158,20 +158,22 @@ print n * 2;`,
     tests: `Hello, Drip
 10`,
     hints: [
-      'Drip reports two errors in one run, thanks to panic mode. The first is reported on line 2, but its cause is on line 1.',
+      'Drip reports two errors in one run, thanks to panic mode. The first is on line 1, and it names the token the parser found instead (`print`, on line 2).',
       'The second error says a `)` was expected. Where should the group close?',
     ],
     walkthrough: `Running the starter gives:
 
 \`\`\`
-[line 2] Error at 'print': Expect ';' after
-variable declaration.
-[line 3] Error at ';': Expect ')' after
-expression.
+line 1: expected ';' after the variable
+declaration, found 'print'
+line 3: expected ')' after the expression,
+found ';'
 \`\`\`
 
-- **The first error** names line 2, because that is where the parser noticed: it was still inside the \`let\` on line 1, wanting a \`;\`, and found \`print\`. The fix is a \`;\` at the end of line 1.
-- **The second error** is real and separate. After recovering, the parser skipped \`print "Hello, " + name;\` and resumed on line 3, where \`(2 + 3\` is never closed. Add the \`)\`.
+(Each error is one line; they are split here to fit.)
+
+- **The first error** is on line 1: the parser was still inside the \`let\`, wanting a \`;\`, and found \`print\` (on line 2) instead. Drip reports a missing \`;\` on the line where it belongs. The fix is a \`;\` at the end of line 1.
+- **The second error** is real and separate. After the first, \`synchronize()\` stopped at once, because \`print\` starts a statement, so line 2 was parsed normally; then on line 3, \`(2 + 3\` is never closed. Add the \`)\`.
 
 Notice that both errors came from one run, and neither was a fake. That is error recovery doing its job. Notice too that nothing printed: with any syntax error, Drip runs no statements.`,
     wrong: [
@@ -187,7 +189,7 @@ print n * 2;`,
 print "Hello, " + name;
 let n = (2 + 3);
 print n * 2;`,
-        why: 'Line 3 is fixed, but line 1 still lacks its `;`. The error is reported on line 2, which is easy to misread as a problem with the `print`.',
+        why: 'Line 3 is fixed, but line 1 still lacks its `;`. The message says `found \'print\'`, which is easy to misread as a problem with the `print` on line 2.',
       },
     ],
   },
@@ -197,9 +199,9 @@ export const quiz = [
   {
     q: 'Which error does Drip report for this program?\n```\nlet x = 1\nprint x;\n```',
     options: [
-      { t: '`[line 1] Error at \'1\': Expect \';\' after variable declaration.`', why: 'The `1` is fine. The parser only knows something is wrong when it looks *past* the `1`.' },
-      { t: '`[line 2] Error at \'print\': Expect \';\' after variable declaration.`', correct: true, why: 'The parser wanted a `;` and found `print`, which is on line 2. Errors are reported where they are noticed.' },
-      { t: '`[line 2] Error at \'x\': Expect expression.`', why: 'After the error the parser panics and skips `print x;` entirely, so nothing about `x` is reported.' },
+      { t: '`line 2: expected \';\' after the variable declaration, found \'print\'`', why: 'The parser noticed at `print`, on line 2, but a missing `;` is reported on the line of the token before it, where the `;` belongs.' },
+      { t: '`line 1: expected \';\' after the variable declaration, found \'print\'`', correct: true, why: 'The parser wanted a `;` and found `print`. The message names that token, and the line is the one where the `;` belongs.' },
+      { t: '`line 2: expected an expression, found \'x\'`', why: 'Nothing is wrong with `print x;`: after the first error the parser resumes at `print` and parses it normally.' },
       { t: 'No error: the newline ends the statement', why: 'Drip ignores newlines. Only `;` ends a statement.' },
     ],
   },
@@ -234,18 +236,18 @@ export const quiz = [
     q: 'A Drip program prints three lines, but line 40 has a syntax error. What does running it print?',
     options: [
       { t: 'The three lines, then the error', why: 'The parse finishes before anything runs, and with an error nothing runs at all.' },
-      { t: 'Only the error, with exit code 65', correct: true, why: '`run` checks `reporter.hadError` after parsing and returns before interpreting.' },
+      { t: 'Only the error, with exit code 65', correct: true, why: '`run` checks `reporter.errors` after parsing and returns before interpreting.' },
       { t: 'The lines before line 40, then the error', why: 'Drip does not interleave parsing and running. The whole program is parsed first.' },
       { t: 'Only the error, with exit code 70', why: '70 is for runtime errors. Syntax errors are static errors: 65.' },
     ],
   },
   {
-    q: 'For `a + b = 3;`, Drip reports `Invalid assignment target.` but does not enter panic mode. Why?',
+    q: 'For `a + b = 3;`, Drip reports `cannot assign to this expression`, but no token is skipped. Why?',
     options: [
-      { t: 'The parser is not confused: it has parsed both sides and is at a known place', correct: true, why: 'Panic mode is for when the parser has lost its place. Here it can report and carry on.' },
+      { t: 'The parser is not confused: it carries on, takes the `;`, and `synchronize()` stops at once', correct: true, why: 'The flag is set, but the previous token is already a `;` when it synchronizes, so it is at a safe place.' },
       { t: 'Because it is a runtime error, not a syntax error', why: 'It is found while parsing, before anything runs, and gives exit code 65.' },
       { t: 'Because the statement is fine and it is only a warning', why: 'It is a real error: the program will not run.' },
-      { t: 'Because `=` is a synchronization point', why: 'The safe points are `;` and statement keywords. And there is no panic here at all.' },
+      { t: 'Because `=` is a synchronization point', why: 'The safe points are just after a `;`, before a statement keyword, and at a closing `}`.' },
     ],
   },
 ];

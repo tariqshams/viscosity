@@ -35,7 +35,7 @@ export const prompts = {
   },
   'stmt-in-expr': {
     q: 'Why is `let x = print 1;` a syntax error in Drip?',
-    a: 'After `=` the grammar needs an expression, something with a value, and `print 1` is a statement. The parser says “Expect expression.”',
+    a: 'After `=` the grammar needs an expression, something with a value, and `print 1` is a statement. The parser says “expected an expression, found \'print\'”.',
   },
 };
 
@@ -235,7 +235,7 @@ test('left to right, not top to bottom', () => {
   const e = bin(bin(lit(1), '-', lit(2)), '-', lit(3));
   expect(literals(e)).toEqual([1, 2, 3]);
 });
-test('nil is a literal too', () => {
+test('none is a literal too', () => {
   expect(literals(grp(lit(null)))).toEqual([null]);
 });
 test('an unknown kind throws', () => {
@@ -344,8 +344,8 @@ export const quiz = [
     q: 'What does Drip report for `let x = print 1;`?',
     options: [
       { t: 'Nothing: x becomes 1', why: '`print 1` is a statement, so it has no value to store.' },
-      { t: '`Undefined variable \'print\'.`', why: '`print` is a keyword, not a variable; the problem is found by the parser, before anything runs.' },
-      { t: '`[line 1] Error at \'print\': Expect expression.`', correct: true, why: 'After `=` the grammar needs an expression, and the parser finds the keyword of a statement instead.' },
+      { t: '`runtime error: undefined variable \'print\'`', why: '`print` is a keyword, not a variable; the problem is found by the parser, before anything runs.' },
+      { t: '`line 1: expected an expression, found \'print\'`', correct: true, why: 'After `=` the grammar needs an expression, and the parser finds the keyword of a statement instead.' },
     ],
   },
 ];

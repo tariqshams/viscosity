@@ -24,7 +24,7 @@ export const prompts = {
   },
   'printer-source': {
     q: 'Does `printExpr` give back the original source text?',
-    a: 'No: `"hi" + name` prints as `(+ hi name)`, without quotes. It shows the tree’s shape, not the spelling.',
+    a: 'No: `x += 1` prints as `(+= x 1)`, and brackets come back as `group`. It shows the tree’s shape, not the spelling.',
   },
   'why-prefix': {
     q: 'Why does Drip’s printer put brackets and the operator first, rather than printing `1 + 2 * 3` as it was written?',
@@ -56,7 +56,7 @@ function show(e) {
   switch (e.kind) {
     case 'literal':
       return e.value === null
-        ? 'nil' : String(e.value);
+        ? 'none' : String(e.value);
     case 'grouping':
       return '(group ' +
         show(e.expression) + ')';
@@ -119,7 +119,7 @@ export const exercises = {
   printTree: {
     title: 'Write the tree printer',
     prompt:
-      'Write `printExpr(e)` for four kinds of node: `literal` (`value`), `grouping` (`expression`), `unary` (`operator`, `right`) and `binary` (`left`, `operator`, `right`). Print like Drip: a literal as its value (`null` as `nil`), and the others as `(group x)`, `(op x)` and `(op x y)`, using `operator.lexeme`. Throw an `Error` for any other kind.',
+      'Write `printExpr(e)` for four kinds of node: `literal` (`value`), `grouping` (`expression`), `unary` (`operator`, `right`) and `binary` (`left`, `operator`, `right`). Print like Drip: a literal as its value (`null` as `none`), and the others as `(group x)`, `(op x)` and `(op x y)`, using `operator.lexeme`. Throw an `Error` for any other kind.',
     starter: `function printExpr(e) {
   // your code here
 }
@@ -147,7 +147,7 @@ console.log(printExpr(t));`,
   switch (e.kind) {
     case 'literal':
       return e.value === null
-        ? 'nil' : String(e.value);
+        ? 'none' : String(e.value);
     case 'grouping':
       return '(group ' +
         printExpr(e.expression) + ')';
@@ -167,8 +167,8 @@ test('literals', () => {
   expect(printExpr(tLit(true))).toBe('true');
   expect(printExpr(tLit('hi'))).toBe('hi');
 });
-test('nil', () => {
-  expect(printExpr(tLit(null))).toBe('nil');
+test('none', () => {
+  expect(printExpr(tLit(null))).toBe('none');
 });
 test('1 + 2', () => {
   expect(printExpr(tBin(tLit(1), '+', tLit(2)))).toBe('(+ 1 2)');
@@ -185,7 +185,7 @@ test('an unknown kind throws', () => {
   expect(() => printExpr({ kind: 'mystery' })).toThrow();
 });`,
     hints: [
-      'Use a `switch (e.kind)` with one case per kind. A literal is the base case: return its value as a string, or `\'nil\'` for `null`.',
+      'Use a `switch (e.kind)` with one case per kind. A literal is the base case: return its value as a string, or `\'none\'` for `null`.',
       'For a binary node, call `printExpr` on `e.left` and on `e.right`, and glue the pieces: `\'(\' + lexeme + \' \' + left + \' \' + right + \')\'`.',
       'Unary is the same with one child, `e.right`. Grouping prints `(group ` before its child and `)` after. After the `switch`, throw.',
     ],
@@ -196,8 +196,8 @@ test('an unknown kind throws', () => {
 - \`function printExpr(e) {\` takes any expression node.
 - \`  switch (e.kind) {\` jumps to the case matching the node's tag (in TypeScript, each case also narrows \`e\` to that variant, so \`e.left\` is allowed in the binary case).
 - \`    case 'literal':\` is the base case.
-- \`      return e.value === null\` checks for Drip's \`nil\`, which is stored as \`null\`...
-- \`        ? 'nil' : String(e.value);\` ...and prints it as \`nil\`; anything else goes through \`String\`, so \`4\` becomes \`'4'\`, \`true\` becomes \`'true'\`, and a string stays as it is, with no quotes added.
+- \`      return e.value === null\` checks for Drip's \`none\`, which is stored as \`null\`...
+- \`        ? 'none' : String(e.value);\` ...and prints it as \`none\`; anything else goes through \`String\`, so \`4\` becomes \`'4'\`, \`true\` becomes \`'true'\`, and a string stays as it is, with no quotes added.
 - \`    case 'grouping':\` and \`      return '(group ' +\` start the bracket and the word \`group\`...
 - \`        printExpr(e.expression) + ')';\` ...then the printed child and the closing bracket.
 - \`    case 'unary':\` and \`      return '(' + e.operator.lexeme +\`: a bracket and the operator's text, such as \`-\`...
@@ -213,14 +213,14 @@ Because every non-literal node adds exactly one pair of brackets, \`(- (- 1 2) 3
 **Common wrong attempts.**
 
 - Printing the familiar infix form, \`((- 2) * ...)\`: a fine printer, but not Drip's, and the tests (like the companion's) expect the operator first and \`(group ...)\` for brackets.
-- Using \`String(e.value)\` for every literal: \`String(null)\` is \`'null'\`, but Drip calls that value \`nil\`.`,
+- Using \`String(e.value)\` for every literal: \`String(null)\` is \`'null'\`, but Drip calls that value \`none\`.`,
     wrong: [
       {
         code: `function printExpr(e) {
   switch (e.kind) {
     case 'literal':
       return e.value === null
-        ? 'nil' : String(e.value);
+        ? 'none' : String(e.value);
     case 'grouping':
       return '(' +
         printExpr(e.expression) + ')';
@@ -254,7 +254,7 @@ Because every non-literal node adds exactly one pair of brackets, \`(- (- 1 2) 3
   }
   throw new Error('unknown ' + e.kind);
 }`,
-        why: 'Almost: `String(null)` is `\'null\'`, but Drip calls that value `nil`.',
+        why: 'Almost: `String(null)` is `\'null\'`, but Drip calls that value `none`.',
       },
     ],
   },
@@ -496,7 +496,7 @@ export const quiz = [
       { t: 'It makes the parser faster', why: 'The printer runs only when you ask for it.' },
       { t: 'It lets you write the expected tree as one short string and compare', correct: true, why: '`(+ 1 (* 2 3))` is far easier to write and read than nested objects.' },
       { t: 'It is needed to run the program', why: 'The interpreter walks the tree directly; printing is only for people.' },
-      { t: 'It turns the tree back into the exact source text', why: 'It doesn’t: `"hi"` prints without quotes, and brackets become `group`.' },
+      { t: 'It turns the tree back into the exact source text', why: 'It doesn’t: `x += 1` prints as `(+= x 1)`, and brackets become `group`.' },
     ],
   },
   {

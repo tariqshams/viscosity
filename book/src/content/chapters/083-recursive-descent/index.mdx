@@ -120,7 +120,7 @@ const peek = () => ts[i];
 const next = () => ts[i++];
 function consume(t) {
   if (next() !== t) {
-    throw new Error('Expect ' + t);
+    throw new Error('expected ' + t);
   }
 }
 ```
@@ -158,9 +158,7 @@ token is `{`, otherwise `printStmt`. `printStmt` is its rule in code:
 take `print`, parse an expression, take `;`, return a print node.
 `block` takes `{`, loops while the next token is not `}` (parsing one
 more statement each time and pushing its node onto `body`), then takes
-`}` and returns a block node. If the tokens run out first, the loop
-does not spin for ever: `printStmt`'s `consume('print')` finds no token
-and throws. (`expr`, the fourth rule, is in the runnable example below:
+`}` and returns a block node. (`expr`, the fourth rule, is in the runnable example below:
 it takes one token and decides by looking at it.) Watch the functions
 call each other:
 
@@ -189,12 +187,15 @@ print 7 ;   →   (print 7)
 
 ```ts
 function ifStatement(): Stmt {
-  consume('(', "Expect '('...");
   const condition = expression();
-  consume(')', "Expect ')'...");
-  const then = statement();
-  const otherwise = match('else')
-    ? statement() : null;
+  const then = bracedBody(
+    "'{' after the condition");
+  let otherwise: Stmt | null = null;
+  if (match('else')) {
+    otherwise = match('if')
+      ? ifStatement()
+      : bracedBody("'{' or 'if'...");
+  }
   return { kind: 'if', condition,
            then, else: otherwise };
 }
@@ -206,13 +207,13 @@ The first is the smallest program: `printStmt` takes `print`, `expr`
 takes `7`, and `printStmt` takes `;`. The second nests: the
 outer `block`'s second statement is a block of its own, so `block` runs
 twice at once, one call inside the other, each with its own `body`; the
-brackets round `x` go through `expr` calling itself. The third is real, from `companion/ts/src/parser.ts`
-(error messages shortened): Drip's `if` statement, parsed by the same
-method. `consume` there takes a token *type* and a message; `match`
-takes a token only if it is there and says whether it did, which is how
-`( "else" statement )?` becomes code; and `statement()` may parse
-another `if`, so the functions recurse just as the rules do. (The `if`
-itself was taken by `statement`, which chose this rule.)
+brackets round `x` go through `expr` calling itself. The third is real, from `companion/ts/src/parser.ts`: Drip's
+`ifStmt → "if" expression block ( "else" ( ifStmt | block ) )?`. The
+condition needs no brackets; `bracedBody` parses a `{ ... }` body, or
+reports its message if the `{` is missing. `match` takes a token only if
+it is there, which is how the optional `else` becomes code, and
+`ifStatement` calling itself is how `else if` works. (The `if` itself
+was taken by `statement`, which chose this rule.)
 
 <Run id="statements" />
 
@@ -236,7 +237,7 @@ function statement() {
   if (next() === '{') return block();
   return printStmt();
 }
-// { print 1 ; }  →  Error: Expect {
+// { print 1 ; }  →  Error: expected {
 ```
 
 `next()` *takes* the `{` while asking about it, so `block`'s own

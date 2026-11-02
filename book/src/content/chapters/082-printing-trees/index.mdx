@@ -70,7 +70,7 @@ function printExpr(e: Expr): string {
   switch (e.kind) {
     case 'literal':
       return e.value === null
-        ? 'nil' : String(e.value);
+        ? 'none' : String(e.value);
     case 'grouping':
       return '(group ' +
         printExpr(e.expression) + ')';
@@ -84,8 +84,8 @@ function printExpr(e: Expr): string {
 ```
 
 A `switch` jumps to the `case` whose value equals `e.kind`. The literal
-case is the base case: `String(2)` is `'2'`, and Drip's `nil`, stored as
-`null`, is printed as `nil`. The grouping case prints the word `group`
+case is the base case: `String(2)` is `'2'`, and Drip's `none`, stored as
+`null`, is printed as `none`. The grouping case prints the word `group`
 and then its one child; and the binary case glues together an opening
 bracket, the operator's lexeme, the left child's string, the right
 child's string and a closing bracket. The children's strings come from
@@ -149,13 +149,16 @@ binary node as one pair of brackets. The second shows nesting: in
 `-x * 3` the minus binds to `x` alone, so the `*` node is the root with
 `(- x)` as its left child (a variable prints as its name); and the
 brackets in `(1 + 2) * 3` survive as a `group`. The third is the real
-companion printer, which has a case for all twelve kinds: a call prints
+companion printer, which has a case for all seventeen kinds: a call prints
 as `call`, then the thing called, then each argument, and setting a
 property prints as `=` with a `.` node (the property get) as its
 target.
 
-The printer is not meant to give back the source: `"hi" + name` prints
-as `(+ hi name)`, without quotes. Its job is to show shape.
+The printer is not meant to give back the source: `x += 1` prints as
+`(+= x 1)`, `xs[0]` as `([] xs 0)`, and brackets come back as the word
+`group`. Its job is to show shape. (The companion's printer does put
+quotes round a string, so `"hi" + name` prints as `(+ "hi" name)`; the
+short version above leaves them off.)
 
 <Run id="showTrees" />
 
@@ -188,8 +191,8 @@ and is the form Drip's tests use.
 ## Every kind, or the checker complains
 
 The real `printExpr` in `companion/ts/src/ast.ts` has a case for all
-twelve kinds of `Expr` and no `default`. That is on purpose: if someone
-adds a thirteenth kind and forgets its case, TypeScript notices that the
+seventeen kinds of `Expr` and no `default`. That is on purpose: if
+someone adds an eighteenth kind and forgets its case, TypeScript notices that the
 `switch` can now finish without returning a string:
 
 ```ts

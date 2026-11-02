@@ -11,7 +11,7 @@ objectives:
   - Make an operator group to the left or to the right by changing one number.
 introduces: [pratt-parser, binding-power, prefix-infix]
 uses: [parser, recursive-descent, precedence, associativity, grammar, ast, ast-node, tree-printer, expression-vs-statement, token, token-type, lookahead, literal, drip, function, return, recursion, call-stack, tree, object, bracket-access, array, nested-function, discriminated-union, typescript, for-loop, comparison, if]
-sources: [nystrom2021, pratt1973]
+sources: [pratt1973]
 ---
 import PrattSteps from '../../../components/diagrams/ch085/PrattSteps';
 import BpLadder from '../../../components/diagrams/ch085/BpLadder';
@@ -24,8 +24,8 @@ and calls the next, tighter level for its operands. It works, and it
 reads just like the grammar.
 
 Now count what happens when it parses the lone number `7`. Drip has six
-levels of binary operators (`or`, `and`, equality, comparison, `+ -`,
-`* /`), then unary, then calls. Every level's function is entered, finds
+levels of binary operators (`||`, `&&`, equality, comparison, `+ -`,
+`* / %`), then unary, then calls. Every level's function is entered, finds
 no operator, and returns, before anyone reaches the `7`. And adding an
 operator means adding a rung to the ladder.
 
@@ -49,20 +49,26 @@ The strength of each magnet is a number:
   <BpLadder />
 </Figure>
 
-Here is the same table as it appears in the code:
+This chapter uses the numbers in the figure. The companion keeps the
+same ladder in `companion/ts/src/parser.ts`, each number one higher,
+because it saves 1 for assignment:
 
 ```ts
-// companion/ts/src/parser.ts (excerpt)
-const BP = {
-  or: 1,
-  and: 2,
-  '==': 3, '!=': 3,
-  '<': 4, '<=': 4, '>': 4, '>=': 4,
-  '+': 5, '-': 5,
-  '*': 6, '/': 6,
-  '(': 8, '.': 8,
+export const Prec = {
+  NONE: 0, ASSIGNMENT: 1, OR: 2,
+  AND: 3, EQUALITY: 4, COMPARISON: 5,
+  TERM: 6, FACTOR: 7, UNARY: 8,
+  CALL: 9, PRIMARY: 10,
+} as const;
+// (its type annotation left out)
+export const INFIX_PREC = {
+  '(': Prec.CALL, '[': Prec.CALL,
+  '.': Prec.CALL,
+  '*': Prec.FACTOR, '/': Prec.FACTOR,
+  '%': Prec.FACTOR,
+  '+': Prec.TERM, '-': Prec.TERM,
+  // ...comparisons, ==, !=, &&, ||
 };
-const UNARY_BP = 7;
 ```
 
 The whole precedence ladder from chapter 83 is now data. A new operator
@@ -86,6 +92,8 @@ of an operand: a number, a name, a `(`, or a `-` as in `-x`. Or it
 already holds a finished operand, and the token comes *after* it: a
 `+`, a `*`, or a `-` as in `a - b`.
 
+In the parser we will trace, that choice looks like this:
+
 ```ts
 function prefix(): Expr {
   if (match('!', '-')) {
@@ -99,11 +107,12 @@ function prefix(): Expr {
 }
 ```
 
+(The companion's `prefixRule` is a `switch` making the same choice.)
 The parser never has to guess what a `-` means. If it holds no left
 operand yet, the `-` must be “negate”. If it does, it must be
 “subtract”. In Drip a call `f(x)` and a property access `p.x` are infix
 too: `(` and `.` come after an operand, with binding power 8, the
-strongest of all. A `(` at the start of an operand is grouping instead.
+strongest of all, and so is `[` in `xs[i]`. A `(` at the start of an operand is grouping instead.
 
 <Callout kind="definition">
 A token is in **prefix** position when it starts an operand, with
@@ -117,7 +126,7 @@ two positions.
 
 ## The loop
 
-Here is the heart of the parser, nearly as it is in the repository:
+Here is the heart of the parser, in the form we will trace:
 
 ```ts
 function pratt(minBp: number): Expr {
@@ -147,13 +156,18 @@ return {
 Read `minBp` as a promise to the caller: “I am the right operand of an
 operator this strong, so I only take operators that are stronger.” The
 first call, `pratt(0)`, has no such operator, so it takes everything.
-Step through it on `1 + 2 * 3 - 4`:
+(The companion's `continueExpression` writes the same test the other
+way round: it loops
+`while (prec <= (INFIX_PREC[current.type] ?? Prec.NONE))`, taking
+operators *at least* as strong as `prec`, and parses a right side with
+`parsePrecedence(INFIX_PREC[op.type]! + 1)`. "At least one more than"
+is "more than", so the trees are the same.) Step through it on
+`1 + 2 * 3 - 4`:
 
 <PrattSteps client:visible />
 
-Notice the order the tree forms in. The `*` node is built first, from
-the inside out, even though `+` came first in the text. The call stack
-holds the unfinished `+` while the `*` finishes.
+The `*` node is built first, even though `+` came first in the text:
+the call stack holds the unfinished `+` while the `*` finishes.
 
 <Prompts ids={['minbp-meaning', 'top-level-zero', 'equal-stops']} />
 
@@ -175,29 +189,29 @@ with `bp - 1`. Then an equal operator on the right is stronger than the
 promise, and it nests inward. You will do exactly that in the extra
 exercise.
 
-Drip's one right-associative operator, `=`, is handled just outside the
-loop:
+Drip's right-associative operators, the assignments `=`, `+=` and
+`-=`, are not in the table at all. The companion handles them in the
+prefix rule for a name:
 
 ```ts
-function assignment(): Expr {
-  const expr = pratt(0);
-  if (match('=')) {
-    const value = assignment();
-    if (expr.kind === 'variable')
-      return { kind: 'assign',
-        name: expr.name, value };
-    // a.b = … becomes a 'set' node
-    // anything else: an error
+function variable(canAssign: boolean) {
+  const name = previous;
+  if (canAssign && matchAny(ASSIGN_OPS)) {
+    const op = previous;
+    return { kind: 'assign', name, op,
+             value: expression() };
   }
-  return expr;
+  return { kind: 'variable', name };
 }
 ```
 
-There are two reasons. Calling `assignment()` again for the value makes
-`a = b = 5` nest to the right. And the left side has to be checked
-*after* it is parsed: in `a + b = 3`, the parser reads `a + b` before it
-sees the `=`, and only then learns the target is not a name. That error
-is the next chapter's business.
+After a name and `=`, `+=` or `-=`, the value is parsed by
+`expression()`, from the loosest level, so `a = b = 5` nests right. `canAssign` is true only when the level being parsed
+is as loose as assignment: in `a + b = 3` the `b` is the right side of
+`+`, so it may not take the `=`. The `=` is left over, and after its loop
+`continueExpression` reports `cannot assign to this expression`. (The
+rules for `.` and `[` do the same for `o.x = 1` and `xs[i] = 1`.) What
+happens after an error is the next chapter's business.
 
 <Prompts ids={['right-assoc-trick', 'assign-outside']} />
 
@@ -207,9 +221,7 @@ compiler in Part IV (`companion/ts/src/vm/compiler.ts`), parses
 expressions with the same idea: a table gives each token type a prefix
 rule, an infix rule and a precedence, and one loop keeps absorbing infix
 operators while they are strong enough. The difference is what the
-rules do. They emit bytecode instead of building tree nodes. Both
-versions follow Lox, the language from *Crafting Interpreters* that
-Drip is a dialect of<Cite id="nystrom2021" />.
+rules do. They emit bytecode instead of building tree nodes.
 </Callout>
 
 ## Your turn
@@ -234,8 +246,8 @@ right-associative power operator.
 - `bp <= minBp` stops on equals, which makes operators
   **left-associative**. Recursing with `bp - 1` makes one
   right-associative.
-- In Drip, calls and `.` are infix operators, and assignment is parsed
-  just outside the loop so its target can be checked.
+- In Drip, calls, `.` and `[` are infix operators, and assignment is
+  parsed by the rules for its targets, so `a + b = 3` is caught.
 
 Next: what the parser does when the tokens make no sense at all.
 

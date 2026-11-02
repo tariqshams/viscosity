@@ -22,7 +22,7 @@ const STATES: S[] = [
   { i: 3, stack: [st('it is a block'), bl('loop…'), st('printStmt'), pr('expr…'), ex('took 1')], nodes: ['one'], note: 'The next symbol of printStmt is expr. expr takes the number 1 and returns a literal node: the first leaf of the tree.' },
   { i: 4, stack: [st('it is a block'), bl('loop…'), st('printStmt'), pr('took ;')], nodes: ['one', 'p1'], note: 'Back in printStmt, the last symbol is ";", so it takes the semicolon and builds a print node holding the literal. Then printStmt and statement return.' },
   { i: 5, stack: [st('it is a block'), bl('body: 1 stmt'), st('printStmt'), pr('took print')], nodes: ['one', 'p1'], note: 'block pushes that node onto its body, and its loop goes round: the next token is print, not }, so statement and printStmt run again.' },
-  { i: 6, stack: [st('it is a block'), bl('loop…'), st('printStmt'), pr('expr…'), ex('took x')], nodes: ['one', 'p1', 'x'], note: 'This time expr finds a name, x, and returns a variable node.' },
+  { i: 6, stack: [st('it is a block'), bl('loop…'), st('printStmt'), pr('expr…'), ex('took x')], nodes: ['one', 'p1', 'x'], note: 'This time expr finds a name, x, and returns a name node.' },
   { i: 7, stack: [st('it is a block'), bl('loop…'), st('printStmt'), pr('took ;')], nodes: ['one', 'p1', 'x', 'p2'], note: 'printStmt takes the ; and builds the second print node.' },
   { i: 7, stack: [st('it is a block'), bl('peek: }, stop')], nodes: ['one', 'p1', 'x', 'p2'], note: 'Back in block with two statements in its body. The next token is }, so the loop stops: zero or more statements, and here there were two.' },
   { i: 8, stack: [st('it is a block'), bl('took }')], nodes: ['one', 'p1', 'x', 'p2', 'blk'], note: 'block takes the closing } and builds a block node whose body is the two print nodes.' },
@@ -34,7 +34,7 @@ const POS: Record<Id, { x: number; y: number; label: string }> = {
   p1: { x: 258, y: 152, label: 'print' },
   p2: { x: 350, y: 152, label: 'print' },
   one: { x: 258, y: 208, label: 'literal 1' },
-  x: { x: 350, y: 208, label: 'var x' },
+  x: { x: 350, y: 208, label: 'name x' },
 };
 const EDGES: [Id, Id][] = [['blk', 'p1'], ['blk', 'p2'], ['p1', 'one'], ['p2', 'x']];
 

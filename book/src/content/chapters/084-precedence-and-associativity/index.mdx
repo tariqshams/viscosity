@@ -51,7 +51,7 @@ work out.</span>
 
 <Callout kind="definition">
 **Precedence** says which operators bind tighter. In Drip, as in
-arithmetic, `*` and `/` bind tighter than `+` and `-`, which bind
+arithmetic, `*`, `/` and `%` bind tighter than `+` and `-`, which bind
 tighter than the comparisons, which bind tighter than `==` and `!=`; an
 operator that binds tighter ends up deeper in the tree, so it is worked
 out first.
@@ -89,39 +89,41 @@ To build precedence into the grammar, give each level its own rule,
 loosest first, and let each rule build its operands from the next,
 tighter one:
 
-<Formal title="Drip’s expression grammar">
+<Formal title="Drip’s expression grammar, from equality down">
 
 ```text
-expression → equality
 equality   → comparison
-               ( EQ_OP comparison )*
-comparison → term ( CMP_OP term )*
-term       → factor ( ADD_OP factor )*
-factor     → unary ( MUL_OP unary )*
-unary      → ( "!" | "-" ) unary
-           | primary
+               ( ( "==" | "!=" )
+                 comparison )*
+comparison → term
+               ( ( "<" | "<=" | ">" | ">=" )
+                 term )*
+term       → factor
+               ( ( "+" | "-" ) factor )*
+factor     → unary
+               ( ( "*" | "/" | "%" )
+                 unary )*
+unary      → ( "!" | "-" ) unary | call
 primary    → NUMBER | STRING | "true"
-           | "false" | "nil"
-           | "(" expression ")"
-
-EQ_OP  → "==" | "!="
-CMP_OP → "<" | "<=" | ">" | ">="
-ADD_OP → "+" | "-"
-MUL_OP → "*" | "/"
+           | "false" | "none" | IDENT
+           | "(" expression ")" | ...
 ```
 
-<span slot="read">An expression is an equality. An equality is a
-comparison, followed by zero or more pairs of an equality operator and
-another comparison. A comparison is a term, followed by zero or more
-pairs of a comparison operator and a term. A term is a factor, followed
-by zero or more pairs of a plus or minus and a factor. A factor is a
-unary, followed by zero or more pairs of a times or divide and a unary.
-A unary is a not sign or a minus sign followed by another unary, or else
-a primary. A primary is a number, a string, true, false, nil, or a whole
-expression in brackets. The four operator rules list the tokens of each
-level: equals-equals and not-equals; the four comparisons; plus and
-minus; times and divide.</span>
+<span slot="read">An equality is a comparison, followed by zero or more
+pairs of an equality operator and another comparison. A comparison is a
+term, followed by zero or more pairs of a comparison operator and a
+term. A term is a factor, followed by zero or more pairs of a plus or
+minus and a factor. A factor is a unary, followed by zero or more pairs
+of a times, divide or remainder sign and a unary. A unary is a not sign
+or a minus sign followed by another unary, or else a call. A primary is
+a number, a string, true, false, none, a name, a whole expression in
+brackets, or one of a few more forms you will meet later.</span>
 </Formal>
+
+Above `equality`, Drip's grammar has three looser levels, `assignment`, then `or` (with `||`) and `and`
+(with `&&`), and `call` sits between `unary` and `primary`. Our parser
+writes the six levels shown, taking `call` as plain `primary`; `||` and
+`&&` have exactly the same shape, and assignment comes back at the end.
 
 So `term` can only join *finished* factors: when it meets the `+` in
 `1 + 2 * 3`, the `2 * 3` on its right is one factor, built as a unit,
@@ -160,7 +162,7 @@ function term() {
 gets a factor, and then, as long as the next token is `+` or `-`, takes
 the operator, gets another factor, and replaces `left` with a binary
 node joining the two (`bin` makes that node). `factor` is the same
-function one level down, with `*` and `/` and calls to `unary`. `unary`
+function one level down, with `*`, `/` and `%` and calls to `unary`. `unary`
 checks for `!` or `-`; if it finds one, it takes it and calls *itself*
 for the operand (so `- - 1` and `!!x` work), and otherwise hands over to
 `primary`, which takes one token and returns a literal (or, for `(`,

@@ -46,7 +46,7 @@ const top = `function parse(ts) {
   const next = () => ts[i++];
   function consume(t) {
     if (next() !== t) {
-      throw new Error('Expect ' + t);
+      throw new Error('expected ' + t);
     }
   }
 `;
@@ -65,7 +65,7 @@ const printAndExpr = `  function printStmt() {
       return { kind: 'group', e };
     }
     if (t === undefined) {
-      throw new Error('Expect expr');
+      throw new Error('expected expr');
     }
     return { kind: 'name', t };
   }
@@ -223,7 +223,7 @@ What if the \`}\` is missing, as in \`{ print 1 ;\`? After the print statement, 
   }
 ${printAndExpr}${bottom}
 ${show}`,
-        why: '`next()` takes the token while choosing, so `block` cannot find its `{` (and `printStmt` cannot find its `print`): every input throws `Expect {` or `Expect print`.',
+        why: '`next()` takes the token while choosing, so `block` cannot find its `{` (and `printStmt` cannot find its `print`): every input throws `expected {` or `expected print`.',
       },
       {
         code: `${top}  function statement() {
@@ -243,7 +243,7 @@ ${show}`,
   }
 ${printAndExpr}${bottom}
 ${show}`,
-        why: 'An `if` allows at most one statement, but `*` means zero or more: `{ print 1 ; print x ; }` throws `Expect }` at the second `print`.',
+        why: 'An `if` allows at most one statement, but `*` means zero or more: `{ print 1 ; print x ; }` throws `expected }` at the second `print`.',
       },
     ],
   },
@@ -251,7 +251,7 @@ ${show}`,
     optional: true,
     title: 'Add an if statement',
     prompt:
-      'Add the rule `ifStmt → "if" "(" expr ")" statement ( "else" statement )?`. `statement` already sends `if` to `ifStmt`; write `ifStmt`, returning `{ kind: \'if\', c, then, else }`, with `else` set to `null` when there is no else part.',
+      'Add Drip’s rule `ifStmt → "if" expr block ( "else" ( ifStmt | block ) )?`. `statement` already sends `if` to `ifStmt`; write `ifStmt`, returning `{ kind: \'if\', c, then, else }`, with `else` set to `null` when there is no else part.',
     starter: `${top}  function statement() {
     const t = peek();
     if (t === 'if') return ifStmt();
@@ -280,9 +280,118 @@ ${show}`,
   }
   function ifStmt() {
     consume('if');
-    consume('(');
     const c = expr();
-    consume(')');
+    const then = block();
+    let other = null;
+    if (peek() === 'else') {
+      next();
+      other = peek() === 'if'
+        ? ifStmt() : block();
+    }
+    return { kind: 'if', c, then,
+             else: other };
+  }
+  function block() {
+    consume('{');
+    const body = [];
+    while (peek() !== '}') {
+      body.push(statement());
+    }
+    consume('}');
+    return { kind: 'block', body };
+  }
+${printAndExpr}${bottom}
+${show}`,
+    tests: `const shape = (s) => show(parse(s.split(' ')));
+test('if without else', () => {
+  expect(shape('if x { print 1 ; }')).toBe('(if x (block (print 1)))');
+});
+test('if with else', () => {
+  expect(shape('if x { print 1 ; } else { print 2 ; }')).toBe('(if x (block (print 1)) (block (print 2)))');
+});
+test('else if needs no rule of its own', () => {
+  expect(shape('if a { print 1 ; } else if b { print 2 ; }')).toBe('(if a (block (print 1)) (if b (block (print 2))))');
+});
+test('the else field is null when missing', () => {
+  expect(parse('if x { print 1 ; }'.split(' ')).else).toBe(null);
+});
+test('brackets round the condition are only a grouping', () => {
+  expect(shape('if ( x ) { print 1 ; }')).toBe('(if (group x) (block (print 1)))');
+});
+test('a body without braces is an error', () => {
+  expect(() => shape('if x print 1 ;')).toThrow();
+});
+test('an else body without braces is an error', () => {
+  expect(() => shape('if x { print 1 ; } else print 2 ;')).toThrow();
+});`,
+    hints: [
+      'Read the rule left to right: a terminal, a nonterminal, a nonterminal, then an optional group. There are no brackets to take: Drip’s condition has none.',
+      'The fixed part is `consume(\'if\')`, `const c = expr()`, `const then = block()`. Calling `block` (not `statement`) is what makes the braces required.',
+      'The `?` becomes an `if`: `let other = null; if (peek() === \'else\') { next(); other = peek() === \'if\' ? ifStmt() : block(); }`. Return `{ kind: \'if\', c, then, else: other }`.',
+    ],
+    walkthrough: `**How to think about it.** The rule is a row of pieces, and there are two new things in it. The first is the \`?\` at the end. "Optional" means: look at the next token; if it can start the group, parse the group, otherwise skip it. The group starts with the terminal \`else\`, so the test is \`peek() === 'else'\`. The second is the choice inside the group, \`( ifStmt | block )\`: after \`else\` comes either another \`if\` or a block, and those start with different tokens (\`if\` and \`{\`), so one peek decides it, exactly as in \`statement\`. Notice also what is *not* in the rule: no \`"("\` and \`")"\` round the condition, and no plain \`statement\` as a body. Drip's bodies are always blocks, so the code calls \`block\`, and \`block\`'s own \`consume('{')\` is what reports a missing brace.
+
+**The solution, line by line.**
+
+- \`    consume('if');\` takes the keyword (\`statement\` only peeked at it).
+- \`    const c = expr();\` parses the condition, straight after the keyword. (If someone writes \`( x )\`, \`expr\` reads it as a grouping, which is harmless.)
+- \`    const then = block();\` parses the body; it must start with \`{\`, or \`block\` throws.
+- \`    let other = null;\` starts with "no else part".
+- \`    if (peek() === 'else') {\` is the \`?\`: is the optional group there?
+- \`      next();\` takes the \`else\` (we already know what it is, so a plain \`next\` is enough).
+- \`      other = peek() === 'if'\` peeks again, to choose between the two alternatives...
+- \`        ? ifStmt() : block();\` ...another whole if statement (which takes its own \`if\`), or a block.
+- \`    }\` closes the \`if\`.
+- \`    return { kind: 'if', c, then,\` and \`             else: other };\` build the node; \`else\` is a reserved word in JavaScript, so it is written out as a property name rather than as a variable.
+
+Because \`ifStmt\` calls itself after \`else\`, \`else if b { ... }\` needs no rule of its own: it is an if statement whose else branch is another if statement. This is exactly how the companion's \`ifStatement\` does it, with \`match('if') ? ifStatement() : bracedBody(...)\`.
+
+**Common wrong attempts.**
+
+- Making the else part required (calling \`consume('else')\` unconditionally): every \`if\` without an \`else\` then throws \`expected else\`.
+- Parsing each body with \`statement()\` instead of \`block()\`: it works on good input, but it also accepts \`if x print 1 ;\`, which Drip rejects; the tests check that a body without braces is an error.
+- Keeping the old \`consume('(')\` and \`consume(')')\`: then \`if x { ... }\` throws \`expected (\`, because Drip's conditions have no brackets.`,
+    wrong: [
+      {
+        code: `${top}  function statement() {
+    const t = peek();
+    if (t === 'if') return ifStmt();
+    if (t === '{') return block();
+    return printStmt();
+  }
+  function ifStmt() {
+    consume('if');
+    const c = expr();
+    const then = block();
+    consume('else');
+    const other = peek() === 'if'
+      ? ifStmt() : block();
+    return { kind: 'if', c, then,
+             else: other };
+  }
+  function block() {
+    consume('{');
+    const body = [];
+    while (peek() !== '}') {
+      body.push(statement());
+    }
+    consume('}');
+    return { kind: 'block', body };
+  }
+${printAndExpr}${bottom}
+${show}`,
+        why: 'The else part is optional (`?`), but this always demands it, so `if x { print 1 ; }` throws `expected else`.',
+      },
+      {
+        code: `${top}  function statement() {
+    const t = peek();
+    if (t === 'if') return ifStmt();
+    if (t === '{') return block();
+    return printStmt();
+  }
+  function ifStmt() {
+    consume('if');
+    const c = expr();
     const then = statement();
     let other = null;
     if (peek() === 'else') {
@@ -303,77 +412,7 @@ ${show}`,
   }
 ${printAndExpr}${bottom}
 ${show}`,
-    tests: `const shape = (s) => show(parse(s.split(' ')));
-test('if without else', () => {
-  expect(shape('if ( x ) print 1 ;')).toBe('(if x (print 1))');
-});
-test('if with else', () => {
-  expect(shape('if ( x ) print 1 ; else print 2 ;')).toBe('(if x (print 1) (print 2))');
-});
-test('else if needs no rule of its own', () => {
-  expect(shape('if ( a ) print 1 ; else if ( b ) print 2 ;')).toBe('(if a (print 1) (if b (print 2)))');
-});
-test('the else field is null when missing', () => {
-  expect(parse('if ( x ) print 1 ;'.split(' ')).else).toBe(null);
-});
-test('a missing ) is an error', () => {
-  expect(() => shape('if ( x print 1 ;')).toThrow();
-});`,
-    hints: [
-      'Read the rule left to right: two terminals, a nonterminal, a terminal, a nonterminal, then an optional group.',
-      'The fixed part is `consume(\'if\')`, `consume(\'(\')`, `const c = expr()`, `consume(\')\')`, `const then = statement()`.',
-      'The `?` becomes an `if`: `let other = null; if (peek() === \'else\') { next(); other = statement(); }`. Return `{ kind: \'if\', c, then, else: other }`.',
-    ],
-    walkthrough: `**How to think about it.** The rule is a row of pieces, and the only new thing is the \`?\` at the end. "Optional" means: look at the next token; if it can start the group, parse the group, otherwise skip it. The group starts with the terminal \`else\`, so the test is \`peek() === 'else'\`.
-
-**The solution, line by line.**
-
-- \`    consume('if');\` takes the keyword (\`statement\` only peeked at it).
-- \`    consume('(');\` takes the opening bracket.
-- \`    const c = expr();\` parses the condition.
-- \`    consume(')');\` takes the closing bracket.
-- \`    const then = statement();\` parses the statement to run when the condition holds; it may be a block, or another \`if\`.
-- \`    let other = null;\` starts with "no else part".
-- \`    if (peek() === 'else') {\` is the \`?\`: is the optional group there?
-- \`      next();\` takes the \`else\` (we already know what it is, so a plain \`next\` is enough).
-- \`      other = statement();\` parses the else branch.
-- \`    }\` closes the \`if\`.
-- \`    return { kind: 'if', c, then,\` and \`             else: other };\` build the node; \`else\` is a reserved word in JavaScript, so it is written out as a property name rather than as a variable.
-
-Because the else branch is a whole \`statement\`, \`else if ( b ) ...\` needs no rule of its own: the statement after \`else\` happens to be another \`if\`.
-
-**Common wrong attempt.** Making the else part required (calling \`consume('else')\` unconditionally): every \`if\` without an \`else\` then throws \`Expect else\`.`,
-    wrong: [
-      {
-        code: `${top}  function statement() {
-    const t = peek();
-    if (t === 'if') return ifStmt();
-    if (t === '{') return block();
-    return printStmt();
-  }
-  function ifStmt() {
-    consume('if');
-    consume('(');
-    const c = expr();
-    consume(')');
-    const then = statement();
-    consume('else');
-    const other = statement();
-    return { kind: 'if', c, then,
-             else: other };
-  }
-  function block() {
-    consume('{');
-    const body = [];
-    while (peek() !== '}') {
-      body.push(statement());
-    }
-    consume('}');
-    return { kind: 'block', body };
-  }
-${printAndExpr}${bottom}
-${show}`,
-        why: 'The else part is optional (`?`), but this always demands it, so `if ( x ) print 1 ;` throws `Expect else`.',
+        why: 'Each body is any `statement`, so this also accepts `if x print 1 ;`. Drip’s bodies are always blocks: call `block()`, so a missing `{` is an error.',
       },
     ],
   },
@@ -407,11 +446,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the companion’s `ifStatement`, how does `( "else" statement )?` become code?',
+    q: 'In the companion’s `ifStatement`, how does `( "else" ( ifStmt | block ) )?` become code?',
     options: [
       { t: 'A `while` loop over `else` tokens', why: 'That would be `*`; `?` allows at most one.' },
       { t: '`consume(\'else\')`, which must succeed', why: 'consume demands the token; the else part is optional.' },
-      { t: '`match(\'else\') ? statement() : null`, which takes `else` only if it is there', correct: true, why: 'An optional group becomes an if on the next token; `null` means there was no else branch.' },
+      { t: '`if (match(\'else\'))`, then `match(\'if\') ? ifStatement() : bracedBody(...)`', correct: true, why: 'An optional group becomes an if on the next token (`match` takes `else` only if it is there, and `otherwise` stays `null` if not); the choice inside it is one more `match`.' },
     ],
   },
   {

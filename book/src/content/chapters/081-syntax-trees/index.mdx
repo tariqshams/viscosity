@@ -116,7 +116,7 @@ literals in `left` and `right`; nothing is left of the `;`, and of
 names are whole tokens rather than the strings shown here, as the next
 section explains.)
 
-<Formal title="The abstract grammar of Drip’s expressions">
+<Formal title="The abstract grammar of Drip’s simplest expressions">
 
 ```text
 Expr ::= Literal(value)
@@ -152,7 +152,7 @@ type Expr =
   | { kind: 'binary'; left: Expr;
       operator: Token; right: Expr }
   | { kind: 'variable'; name: Token };
-  // ...and seven more kinds
+  // ...and twelve more kinds
 ```
 
 Each line after a `|` is one kind of node, and `Expr` is "any one of
@@ -163,7 +163,7 @@ literal). Operators and names are kept as whole tokens, not just
 strings, so that a later error message can say which line they came
 from. A literal's `value` is what the scanner put in the token's
 `literal` field, a number or a string, and the keywords `true`, `false`
-and `nil` become literals holding `true`, `false` and `null`.
+and `none` become literals holding `true`, `false` and `null`.
 
 One kind is not strictly needed: `grouping`, for brackets. The tree's
 shape already says that `3 + 4` happens first in `-2 * (3 + 4)`; Drip
@@ -208,7 +208,8 @@ type Stmt =
   | { kind: 'block'; statements: Stmt[] }
   | { kind: 'if'; condition: Expr;
       then: Stmt; else: Stmt | null }
-  // ...while, function, return, class
+  // ...while, for, break, continue,
+  // fn, return, class
 ```
 
 Statements contain expressions (a print node holds the expression to
@@ -217,7 +218,7 @@ an if node one for each branch). `null` means "not there": a `let` with no
 `= ...` has a `null` initializer, and an `if` with no `else` a `null`
 else. A whole Drip program parses to an array of statements, `Stmt[]`.
 
-<Figure takeaway="Statements hold expressions; expressions never hold statements." caption="The tree of if (x > 1) print x * 2; The if node and the print node are statements (square corners). Everything that has a value, from the comparison down to the literal 2, is an expression (round corners).">
+<Figure takeaway="Statements hold expressions; expressions never hold statements." caption="The tree of if x > 1 { print x * 2; } The if node, its block and the print node are statements (square corners). Everything that has a value, from the comparison down to the literal 2, is an expression (round corners).">
   <StmtExprTree />
 </Figure>
 
@@ -230,20 +231,20 @@ run for its effect with its value thrown away.
 
 <Examples of="expression-vs-statement">
 
-```js
-1 + 2          // expression: value 3
-print 1 + 2;   // statement: prints 3
+```
+1 + 2          # expression: value 3
+print 1 + 2;   # statement: prints 3
 ```
 
-```js
-f(1)    // expression: the call's value
-f(1);   // expression statement
+```
+f(1)    # expression: the call's value
+f(1);   # expression statement
 ```
 
-```js
-if (x > 1) { print x; }
-// statement, holding the expression
-// x > 1 and a block statement
+```
+if x > 1 { print x; }
+# statement, holding the expression
+# x > 1 and a block statement
 ```
 
 </Examples>
@@ -259,10 +260,10 @@ realistic nesting: an if statement whose condition is the expression
 The mistake to watch for is putting a statement where an expression is
 expected:
 
-```js
+```
 let x = print 1;
-// [line 1] Error at 'print':
-//   Expect expression.
+# line 1: expected an expression,
+#   found 'print'
 let x = 1;
 ```
 

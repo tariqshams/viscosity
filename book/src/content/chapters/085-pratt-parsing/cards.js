@@ -43,8 +43,8 @@ export const prompts = {
     a: 'Parse its right operand with `pratt(bp - 1)` instead of `pratt(bp)`, so an equal operator on the right is still strong enough to be taken.',
   },
   'assign-outside': {
-    q: 'Why does Drip parse `=` outside the Pratt loop, in `assignment()`?',
-    a: 'So it can recurse for right associativity (`a = b = 5`), and check the target after it is parsed (`a + b = 3` is not a valid target).',
+    q: 'Why does the companion parse `=` in the prefix rule for a name (with a `canAssign` flag) instead of putting it in the binding-power table?',
+    a: 'So the value can be parsed by `expression()`, from the loosest level, which nests `a = b = 5` to the right; and so a bad target is caught: in `a + b = 3` the `=` is left over and reported as `cannot assign to this expression`.',
   },
 };
 
@@ -240,7 +240,7 @@ test('- is still left-associative', () => {
 - **Why not lower?** A \`*\` has power 6, and \`6 <= 6\` still stops it. So in \`2 ^ 3 * 4\` the \`^\` gets only \`3\`, and the \`*\` takes the whole \`2 ^ 3\`. If you used \`pratt(0)\`, the \`*\` would be swallowed too.
 - **Everything else** keeps \`pratt(bp)\`, so subtraction still groups to the left.
 
-Drip itself gets the same effect for \`=\` by calling \`assignment()\` again for the value.`,
+Drip itself gets the same effect for \`=\` by parsing the value with \`expression()\`, which starts again from the loosest level.`,
     wrong: [
       {
         code: `const BP = { '+': 5, '-': 5,
@@ -335,12 +335,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is assignment handled in `assignment()` instead of being another entry in the `BP` table?',
+    q: 'Why is assignment handled by the parser rules for its targets (a name, `.` and `[`) instead of being another entry in the `BP` table?',
     options: [
       { t: 'Because `=` is a keyword', why: 'It is an ordinary single-character token.' },
       { t: 'Because assignment is a statement, not an expression', why: 'In Drip assignment is an expression: `print a = 3;` prints 3.' },
       { t: 'Because the table can only hold left-associative operators', why: 'The table holds powers. Associativity comes from what you pass when recursing, and that could be changed for one operator.' },
-      { t: 'Because the target can only be checked after it has been parsed, and the value must nest to the right', correct: true, why: '`assignment()` parses the left side, sees `=`, recurses for the value, then checks the left side is a name or property.' },
+      { t: 'Because only a name, a field or an element may be assigned to, and the value must nest to the right', correct: true, why: 'Those rules check for `=` themselves (when `canAssign` allows it) and parse the value with `expression()`; an `=` left over after anything else is reported as `cannot assign to this expression`.' },
     ],
   },
 ];

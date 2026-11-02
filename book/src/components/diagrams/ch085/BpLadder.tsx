@@ -1,21 +1,21 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
 const ROWS: [string, number][] = [
-  ['or', 1],
-  ['and', 2],
+  ['||', 1],
+  ['&&', 2],
   ['==  !=', 3],
   ['<  <=  >  >=', 4],
   ['+  -', 5],
-  ['*  /', 6],
+  ['*  /  %', 6],
   ['-x  !x  (prefix)', 7],
-  ['f(…)  a.b', 8],
+  ['f(…)  a.b  a[i]', 8],
 ];
 
 /** Drip's binding powers as bars: longer bars hold their operands tighter. */
 export default function BpLadder() {
   const RH = 26;
   return (
-    <Svg w={400} h={ROWS.length * RH + 34} title="Drip's binding powers as a bar chart. or 1, and 2, equality 3, comparison 4, plus and minus 5, times and divide 6, prefix minus and not 7, call and dot 8.">
+    <Svg w={400} h={ROWS.length * RH + 34} title="Drip's binding powers as a bar chart. or (||) 1, and (&&) 2, equality 3, comparison 4, plus and minus 5, times, divide and remainder 6, prefix minus and not 7, call, dot and index 8.">
       <T x={8} y={12} size={11} weight={700} fill={tok('muted')}>OPERATOR</T>
       <T x={392} y={12} size={11} weight={700} anchor="end" fill={tok('muted')}>BINDING POWER (tighter →)</T>
       {ROWS.map(([ops, bp], k) => {

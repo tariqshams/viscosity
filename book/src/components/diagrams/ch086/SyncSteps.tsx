@@ -1,11 +1,14 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
+// Simplified from synchronize() in companion/ts/src/parser.ts.
 const CODE = `function synchronize() {
-  advance(); // skip the bad token
-  while (!atEnd()) {
-    if (previous().type === ';') return;
-    if (STARTS.has(peek().type)) return;
+  panicMode = false;
+  while (current.type !== 'eof') {
+    if (previous.type === ';') return;
+    if (STARTS.has(current.type)) return;
+    // (it also stops at the } closing
+    //  this block, and skips {…} whole)
     advance();
   }
 }`;
@@ -13,29 +16,29 @@ const CODE = `function synchronize() {
 // The program, one row of tokens per source line.
 const LINES = [
   ['let', 'x', '=', '1'],
-  ['print', 'x', ';'],
-  ['print', '(', '2', '+', ';'],
-  ['print', '3', ';', 'end'],
+  ['x', '=', '2', ';'],
+  ['print', '(', '3', '+', ';'],
+  ['print', 'x', ';', 'end'],
 ];
 
 type St = 'ok' | 'bad' | 'skip';
 type S = { cur: number; marks: Record<number, St>; line: number | null; errors: [string, string][]; kept: string[]; note: string };
 
-const E1: [string, string] = ["[line 2] Error at 'print':", "Expect ';' after variable declaration."];
-const E2: [string, string] = ["[line 3] Error at ';':", 'Expect expression.'];
+const E1: [string, string] = ["line 1: expected ';' after the variable", "declaration, found 'x'"];
+const E2: [string, string] = ['line 3: expected an expression,', "found ';'"];
 const range = (a: number, b: number, s: St) => Object.fromEntries(Array.from({ length: b - a + 1 }, (_, k) => [a + k, s]));
 
 const STATES: S[] = [
   { cur: 0, marks: {}, line: null, errors: [], kept: [], note: 'The parser sees let and starts a variable declaration: let, a name, =, an expression, then a ;.' },
-  { cur: 4, marks: { ...range(0, 3, 'ok'), 4: 'bad' }, line: null, errors: [E1], kept: [], note: 'After the 1, consume(\';\') finds print instead. It reports the error at the token where it noticed, on line 2, then throws a ParseError. (The ; was really missing from line 1.)' },
-  { cur: 5, marks: { ...range(0, 3, 'ok'), 4: 'skip' }, line: 1, errors: [E1], kept: [], note: 'The throw unwinds to declaration(), whose catch calls synchronize(). Its first move is to skip the token it got stuck on, whatever it is, so it always makes progress.' },
-  { cur: 6, marks: { ...range(0, 3, 'ok'), 4: 'skip', 5: 'skip' }, line: 5, errors: [E1], kept: [], note: 'The previous token (print) is not a ;. The next one, x, cannot start a statement. Skip it.' },
-  { cur: 7, marks: { ...range(0, 3, 'ok'), ...range(4, 6, 'skip') }, line: 3, errors: [E1], kept: [], note: 'The ; is skipped too. Now the previous token is a ;, so a statement has just ended: a safe place. Stop panicking.' },
-  { cur: 7, marks: { ...range(0, 3, 'ok'), ...range(4, 6, 'skip') }, line: null, errors: [E1], kept: [], note: 'Normal parsing resumes at the print on line 3. Notice what was lost: print x; was skipped unchecked. Panic mode gives up a little, to avoid inventing errors.' },
-  { cur: 11, marks: { ...range(0, 3, 'ok'), ...range(4, 6, 'skip'), ...range(7, 10, 'ok'), 11: 'bad' }, line: null, errors: [E1, E2], kept: [], note: 'print ( 2 + and then a ;. After the +, the Pratt loop needs a right operand, and a ; cannot start one. A second, genuine error is reported.' },
-  { cur: 12, marks: { ...range(0, 3, 'ok'), ...range(4, 6, 'skip'), ...range(7, 10, 'ok'), 11: 'skip' }, line: 3, errors: [E1, E2], kept: [], note: 'synchronize() skips the bad ;, and right away sees that the previous token is a ;. It stops at once: almost nothing was lost this time.' },
-  { cur: 15, marks: { ...range(0, 3, 'ok'), ...range(4, 6, 'skip'), ...range(7, 10, 'ok'), 11: 'skip', ...range(12, 14, 'ok') }, line: null, errors: [E1, E2], kept: ['print 3;'], note: 'print 3; parses cleanly, and its statement is kept.' },
-  { cur: 15, marks: { ...range(0, 3, 'ok'), ...range(4, 6, 'skip'), ...range(7, 10, 'ok'), 11: 'skip', ...range(12, 14, 'ok') }, line: null, errors: [E1, E2], kept: ['print 3;'], note: 'The end. Two real errors from one run, and no made-up ones. But an error was reported, so Drip runs nothing at all, not even print 3. Exit code 65.' },
+  { cur: 4, marks: { ...range(0, 3, 'ok'), 4: 'bad' }, line: null, errors: [E1], kept: [], note: 'After the 1, consume(\';\') finds x instead. It reports the error on line 1, where the ; belongs (a missing ; is reported on the line of the token before it). It does not throw: it sets panicMode, which keeps any further complaints about this statement quiet, and carries on.' },
+  { cur: 4, marks: { ...range(0, 3, 'ok'), 4: 'bad' }, line: 1, errors: [E1], kept: [], note: 'When the let declaration returns, declaration() sees that panicMode is set and calls synchronize(), which first clears the flag.' },
+  { cur: 5, marks: { ...range(0, 3, 'ok'), 4: 'skip' }, line: 7, errors: [E1], kept: [], note: 'The previous token, 1, is not a ;, and the next one, x, is not a keyword that starts a statement (only keywords are trusted). So advance() skips it.' },
+  { cur: 8, marks: { ...range(0, 3, 'ok'), ...range(4, 7, 'skip') }, line: 3, errors: [E1], kept: [], note: 'The =, the 2 and the ; are skipped too. Now the previous token is a ;, so a statement has just ended: a safe place. synchronize() returns.' },
+  { cur: 8, marks: { ...range(0, 3, 'ok'), ...range(4, 7, 'skip') }, line: null, errors: [E1], kept: [], note: 'Normal parsing resumes at the print on line 3. Notice what was lost: x = 2; was skipped unchecked. Panic mode gives up a little, to avoid inventing errors.' },
+  { cur: 13, marks: { ...range(0, 3, 'ok'), ...range(4, 7, 'skip'), ...range(8, 11, 'ok'), 12: 'bad' }, line: null, errors: [E1, E2], kept: [], note: 'print ( 3 + and then a ;. After the +, the Pratt loop needs a right operand, takes the ;, and finds that it cannot start one: a second, genuine error. The missing ) and ; that follow are not reported, because panicMode is set again and they would only be echoes.' },
+  { cur: 13, marks: { ...range(0, 3, 'ok'), ...range(4, 7, 'skip'), ...range(8, 11, 'ok'), 12: 'bad' }, line: 3, errors: [E1, E2], kept: [], note: 'synchronize() runs again. The previous token is already a ;, so it returns at once: nothing is skipped this time.' },
+  { cur: 16, marks: { ...range(0, 3, 'ok'), ...range(4, 7, 'skip'), ...range(8, 11, 'ok'), 12: 'bad', ...range(13, 15, 'ok') }, line: null, errors: [E1, E2], kept: ['print x;'], note: 'print x; parses cleanly, and its statement is kept.' },
+  { cur: 16, marks: { ...range(0, 3, 'ok'), ...range(4, 7, 'skip'), ...range(8, 11, 'ok'), 12: 'bad', ...range(13, 15, 'ok') }, line: null, errors: [E1, E2], kept: ['print x;'], note: 'The end. Two real errors from one run, and no made-up ones. But an error was reported, so Drip runs nothing at all, not even print x. Exit code 65.' },
 ];
 
 export default function SyncSteps() {
