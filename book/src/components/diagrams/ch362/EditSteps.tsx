@@ -38,8 +38,8 @@ export default function EditSteps() {
           const done = st.done.includes(e.id);
           return (
             <Box key={e.id} x={8 + k * 130} y={26} w={124} h={44} r={3} fill={on ? tok(e.col, 0.25) : done ? tok(e.col, 0.1) : tok('panel')} stroke={on ? tok(e.col) : tok('line')}>
-              <T x={14 + k * 130} y={40} size={10} weight={700} fill={tok(e.col)}>{e.id} {e.start}..{e.end}</T>
-              <T x={14 + k * 130} y={58} size={10} mono>→ {e.text}</T>
+              <T x={14 + k * 130} y={40} size={11} weight={700} fill={tok(e.col)}>{e.id} {e.start}..{e.end}</T>
+              <T x={14 + k * 130} y={58} size={11} mono>→ {e.text}</T>
             </Box>
           );
         })}

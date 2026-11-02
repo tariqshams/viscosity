@@ -7,7 +7,8 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 // it records each name, and flips `inner` while inside a function.
 const CODE = `impl Visit for Mentions {
     fn visit_name(&mut self, n: &str) {
-        self.found.push((n.into(), self.inner));
+        let at = (n.into(), self.inner);
+        self.found.push(at);
     }
     fn visit_arrow(&mut self, b: &Expr) {
         let saved = self.inner;
@@ -22,11 +23,11 @@ type S = { line: number | null; at: Id; inner: boolean; found: string[]; note: s
 
 const STATES: S[] = [
   { line: null, at: 'call', inner: false, found: [], note: 'visit_expr(call). Mentions doesn’t override visit_expr, so the trait’s default runs: walk_expr matches on the node and visits its children in source order.' },
-  { line: 2, at: 'f', inner: false, found: ['f · outer'], note: 'The callee f is a name. visit_name is overridden: record f, with inner = false.' },
-  { line: 2, at: 'a', inner: false, found: ['f · outer', 'a · outer'], note: 'Next child: the argument a. Same method, same flag.' },
-  { line: 6, at: 'arrow', inner: true, found: ['f · outer', 'a · outer'], note: 'An arrow function. visit_arrow is overridden too: save the old flag, set inner = true, then walk the body with the ordinary visit_expr.' },
-  { line: 2, at: 'b', inner: true, found: ['f · outer', 'a · outer', 'b · inner'], note: 'b sits inside the arrow, so it is recorded as inner. Lowering reads such variables as captured bindings, not as SSA values.' },
-  { line: 8, at: 'call', inner: false, found: ['f · outer', 'a · outer', 'b · inner'], note: 'Leaving the arrow restores the saved flag. Without this line, every name after the arrow would wrongly count as inner.' },
+  { line: 3, at: 'f', inner: false, found: ['f · outer'], note: 'The callee f is a name. visit_name is overridden: record f, with inner = false.' },
+  { line: 3, at: 'a', inner: false, found: ['f · outer', 'a · outer'], note: 'Next child: the argument a. Same method, same flag.' },
+  { line: 7, at: 'arrow', inner: true, found: ['f · outer', 'a · outer'], note: 'An arrow function. visit_arrow is overridden too: save the old flag, set inner = true, then walk the body with the ordinary visit_expr.' },
+  { line: 3, at: 'b', inner: true, found: ['f · outer', 'a · outer', 'b · inner'], note: 'b sits inside the arrow, so it is recorded as inner. Lowering reads such variables as captured bindings, not as SSA values.' },
+  { line: 9, at: 'call', inner: false, found: ['f · outer', 'a · outer', 'b · inner'], note: 'Leaving the arrow restores the saved flag. Without this line, every name after the arrow would wrongly count as inner.' },
   { line: null, at: null, inner: false, found: ['f · outer', 'a · outer', 'b · inner'], note: 'Two small overrides, and the trait walked the rest. The real Mentions overrides four of the more than 250 visit methods in oxc’s Visit trait, and the defaults walk everything else.' },
 ];
 

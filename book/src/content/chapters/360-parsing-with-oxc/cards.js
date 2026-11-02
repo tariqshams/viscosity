@@ -134,15 +134,24 @@ fn slices_where_acorn_points() {
       'Before adding a character’s units, check whether the count has reached `off`: if so, this character’s byte offset is the answer.',
       'If the loop ends, `off` is the end of the string, so return `src.len()`. A 😀 adds 2 to the count (`len_utf16()`), an `é` adds 1.',
     ],
-    walkthrough: `Two counters move together: the byte offset, which \`char_indices\` hands you, and the UTF-16 offset, which you add up yourself.
+    walkthrough: `**How to think about it.** Two counters move through the string together: the byte offset, which Rust gives you for free, and the UTF-16 offset, which you add up yourself. Walk the characters in order; the answer is the byte offset of the character at which the UTF-16 count reaches \`off\`. Try it by hand on \`"é😀x"\` first: é starts at byte 0 and unit 0, 😀 at byte 2 and unit 1, x at byte 6 and unit 3, and the end is byte 7 and unit 4.
 
-- **ASCII** characters are one byte and one code unit, so the two counters agree. That is why most code never notices the difference.
-- **é** (U+00E9) is two bytes in UTF-8 but one code unit in UTF-16: after it, the byte counter is one ahead.
-- **😀** (U+1F600) is outside the Basic Multilingual Plane: four bytes in UTF-8, and two code units (a surrogate pair) in UTF-16. \`len_utf16()\` returns 2 for it.
+**The solution, line by line.**
 
-Checking \`units == off\` *before* adding the current character's units means you return the byte offset where that character starts. If no character starts there, the offset is the end of the string, \`src.len()\`.
+- \`let mut units = 0;\` is the UTF-16 offset of the character we are about to look at.
+- \`for (b, c) in src.char_indices() {\` walks the characters, each with \`b\`, the byte offset where it starts.
+- \`if units == off { return b; }\` checks *before* counting this character: if JavaScript's offset points at the start of this character, its byte offset is the answer.
+- \`units += c.len_utf16();\` moves the UTF-16 counter past the character: 1 for é or x, 2 for 😀 (a surrogate pair).
+- \`src.len()\` runs only if no character starts at \`off\`, which (since \`off\` is never inside a character) means \`off\` is the end of the string, so the answer is the byte length.
 
-The port has the opposite function, \`lines::utf16_offset\`, which counts \`source[..offset].encode_utf16()\`. Inside the engine neither is needed: each engine slices its own string in its own unit. Conversions matter only at the border, when offsets cross from one language to the other.`,
+For \`byte_offset("é😀x", 3)\`: at é, units is 0 (no match), then 1; at 😀, units is 1 (no match), then 3; at x, units is 3, a match, so the answer is x's byte offset, 6.
+
+**Common wrong attempts.**
+
+- Treating the offset as a count of \`char\`s (\`char_indices().nth(off)\`) works for é, but a 😀 is one \`char\` and two code units, so every offset after an emoji lands one character too far.
+- Returning \`off\` unchanged is right only while the text is ASCII; after é the byte offset is already one larger.
+
+The port has the opposite function, \`lines::utf16_offset\`, which counts \`source[..offset].encode_utf16()\`. Inside the engine neither is needed, because each engine slices its own string in its own unit; conversions matter only at the border, when offsets cross from one language to the other.`,
     wrong: [
       {
         code: `${DOC}
@@ -195,7 +204,7 @@ export const quiz = [
     q: 'What does oxc’s `Allocator` do when it is dropped?',
     options: [
       { t: 'Runs `Drop` for every node, in reverse order', why: 'Nodes in the arena are never dropped individually.' },
-      { t: 'Moves the nodes to the normal heap', why: 'Nothing is moved; the memory is simply returned.' },
+      { t: 'Moves the nodes to the normal heap', why: 'Nothing is moved; the memory is returned.' },
       { t: 'Nothing until the program exits', why: 'Its chunks are returned when it is dropped.' },
       { t: 'Releases its memory in bulk without dropping individual nodes', correct: true, why: 'That is why it refuses `Drop` types at compile time: their own allocations would leak.' },
     ],
@@ -211,9 +220,9 @@ export const quiz = [
   {
     q: 'Which statement about early errors in the port is true?',
     options: [
-      { t: 'oxc’s parser alone reports every early error acorn reports', why: 'Of the twelve early-error programs tried, acorn rejected eleven and oxc’s parser alone only one.' },
+      { t: 'oxc’s parser alone reports every early error acorn reports', why: 'oxc’s documentation says the parser’s list of errors is not comprehensive; redeclarations such as `let a; let a;` are left to its semantic pass.' },
       { t: 'Both engines report every early error at the same line and column', why: 'oxc anchors some on a different token: for `let a = 1; let a = 2;` Rust says (1:4) and acorn (1:15).' },
-      { t: 'After parsing, the port runs oxc’s semantic syntax checks, so a redeclared `let` is rejected by both engines', correct: true, why: 'That pass was added after this chapter was first written; before it, the Rust engine compiled the file.' },
+      { t: 'After parsing, the port runs oxc’s semantic syntax checks, so a redeclared `let` is rejected by both engines', correct: true, why: '`SemanticBuilder` with `with_check_syntax_error(true)` runs right after parsing; before it was added, the Rust engine compiled the file.' },
     ],
   },
 ];

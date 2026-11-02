@@ -219,13 +219,27 @@ fn program_order_across_blocks() {
       'Walk `m.blocks`, not `m.values`: only instructions listed in a block are live, and blocks give the program order.',
       'For each id `i` in a block, look up `m.values[i.ix()]` and push `i` onto the list of each of its `args`. Don’t skip repeats.',
     ],
-    walkthrough: `The real \`build_uses\` in \`crates/vir/src/lib.rs\` has the same three loops (plus terminators, which this exercise leaves out).
+    walkthrough: `**How to think about it.** The answer is indexed by value id, so it must have one slot for *every* id, dead ones included, or \`u[a.ix()]\` would run off the end. Then ask which instructions count: only those listed in a block are live, and the block order is the program order the tests ask for. So walk the blocks, not \`m.values\`. Finally, the rule "a double use appears twice" means you push once per operand and never check for repeats.
 
-- **One list per value.** Indexing the result by \`a.ix()\` only works if the outer \`Vec\` has a slot for every id, dead or alive. That is the arena idea again: the use lists are a second arena with the same ids.
-- **Walk the blocks.** \`m.values\` also holds instructions that were removed, like the trivial phi in the diagram. They are in no block, so walking blocks skips them for free, and the block order is the program order the analyses rely on.
-- **Keep duplicates.** \`%2 * %2\` uses \`%2\` twice, and the TypeScript reference pushes it twice. Parity with \`explain\` depends on details like that, so the port does the same.
+**The solution, line by line.**
 
-Notice what \`uses\` returns: ids, not references into \`m\`. The result doesn't borrow the module, so you could change the module later while keeping the lists.`,
+- \`let n = m.values.len();\` is the number of ids, live or dead.
+- \`let mut u = vec![Vec::new(); n];\` makes \`n\` empty lists, one per id. (\`vec![x; n]\` clones \`x\` \`n\` times; the element type, \`Vec<V>\`, is worked out from the return type.)
+- \`for b in &m.blocks {\` visits the blocks in order, borrowing each.
+- \`for &i in &b.insts {\` visits the ids in the block; the \`&i\` pattern copies the \`V\` out, which is fine because \`V\` is \`Copy\`.
+- \`let x = &m.values[i.ix()];\` follows the id into the arena: this is \`m.inst(i)\`.
+- \`for &a in &x.args {\` visits each operand of that instruction, repeats included.
+- \`u[a.ix()].push(i);\` records "instruction \`i\` uses value \`a\`" in \`a\`'s list.
+- \`u\` returns the lists.
+
+For the sample, \`%2 = %0 + %1\` pushes \`%2\` onto the lists of \`%0\` and \`%1\`; \`%3 = %2 * %2\` pushes \`%3\` twice onto the list of \`%2\`; and the dead \`%4\` is in no block, so it is never visited and \`%0\`'s list stays \`[%2]\`.
+
+**Common wrong attempts.**
+
+- Walking \`m.values\` with \`enumerate\` visits dead instructions (the removed \`%4\` shows up as a use of \`%0\`) and uses creation order rather than block order.
+- Skipping an id that is already in the list looks tidy, but the reference keeps one entry per operand, and the analyses count them.
+
+The real \`build_uses\` in \`crates/vir/src/lib.rs\` has these same three loops, plus one more step per block for its terminator. Notice that \`uses\` returns ids, not references into \`m\`: the result does not borrow the module, so you could change the module later and keep the lists.`,
     wrong: [
       {
         code: `${TYPES}

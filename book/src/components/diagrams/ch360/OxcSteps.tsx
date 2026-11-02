@@ -5,18 +5,17 @@
 // facts hold oxc Spans: plain u32 pairs), and the arena is freed in one go
 // when lower returns. The 7,160 bytes were measured with
 // Allocator::used_bytes() after parsing tests/extra/unicode_offsets.js
-// (762 bytes of source, as of 288e497) with oxc 0.156; the 16-byte Expression with
+// (762 bytes of source; re-measured at 0.0.1) with oxc 0.156; the 16-byte Expression with
 // std::mem::size_of on the same machine.
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
 const NODES = [
-  { label: 'Program', w: 46 },
-  { label: 'VarDecl', w: 44 },
-  { label: 'For', w: 30 },
-  { label: 'Expr', w: 34 },
-  { label: 'Member', w: 40 },
-  { label: '…', w: 16 },
+  { label: 'Program', w: 50 },
+  { label: 'VarDecl', w: 50 },
+  { label: 'For', w: 26 },
+  { label: 'Expr', w: 32 },
+  { label: 'Member', w: 44 },
 ];
 
 type S = { fill: boolean; life?: boolean; out?: boolean; gone?: boolean; emit?: boolean; note: string };
@@ -39,7 +38,7 @@ export default function OxcSteps() {
       <Svg w={400} h={260} title="oxc allocates the AST in an arena that lives only while lower runs">
         <Box x={8} y={10} w={252} h={178} r={6} fill={st.gone ? tok('panel') : tok('brand', 0.05)} stroke={st.gone ? tok('line') : tok('brand')} dash={st.gone} opacity={st.gone ? 0.6 : 1}>
           <T x={18} y={26} size={11} mono weight={700} fill={tok('brand')}>fn lower(&amp;self, source)</T>
-          <T x={18} y={50} size={10} fill={tok('muted')}>{st.gone ? 'allocator dropped: arena freed at once' : 'let allocator = Allocator::default();'}</T>
+          <T x={18} y={50} size={11} fill={tok('muted')}>{st.gone ? 'allocator dropped: arena freed at once' : 'let allocator = Allocator::default();'}</T>
           <Box x={18} y={60} w={232} h={34} r={3} fill={tok('paper')} stroke={tok('line')} dash={!st.fill}>
             {st.fill && !st.gone && NODES.map((n) => {
               const nx = x;
@@ -47,40 +46,40 @@ export default function OxcSteps() {
               return (
                 <g key={n.label}>
                   <rect x={nx} y={64} width={n.w} height={26} rx={2} fill={tok('accent', 0.2)} stroke={tok('accent')} strokeWidth={1} />
-                  <T x={nx + n.w / 2} y={77} size={9.5} mono anchor="middle">{n.label}</T>
+                  <T x={nx + n.w / 2} y={77} size={11} mono anchor="middle">{n.label}</T>
                 </g>
               );
             })}
           </Box>
           {st.life && (
-            <T x={18} y={110} size={10} mono fill={tok('warn')}>Program&lt;'a&gt;: 'a = borrow of allocator</T>
+            <T x={18} y={110} size={11} mono fill={tok('warn')}>Program&lt;'a&gt;: borrows the allocator</T>
           )}
           <Box x={18} y={124} w={104} h={26} r={3} fill={st.out && !st.gone ? tok('accent', 0.12) : tok('panel')} stroke={tok('line')}>
-            <T x={70} y={137} size={10} mono anchor="middle">resolve</T>
+            <T x={70} y={137} size={11} mono anchor="middle">resolve</T>
           </Box>
           <Box x={146} y={124} w={104} h={26} r={3} fill={st.out && !st.gone ? tok('accent', 0.12) : tok('panel')} stroke={tok('line')}>
-            <T x={198} y={137} size={10} mono anchor="middle">lower</T>
+            <T x={198} y={137} size={11} mono anchor="middle">lower</T>
           </Box>
-          <T x={18} y={170} size={10} fill={tok('muted')}>parse → resolve scopes → lower to VIR</T>
+          <T x={18} y={170} size={11} fill={tok('muted')}>parse → resolve scopes → lower to VIR</T>
         </Box>
-        <Box x={276} y={40} w={116} h={40} r={4} fill={st.out ? tok('safe', 0.14) : tok('panel')} stroke={st.out ? tok('safe') : tok('line')} opacity={st.out ? 1 : 0.4}>
-          <T x={334} y={55} size={10.5} mono anchor="middle" weight={700}>Module</T>
-          <T x={334} y={70} size={9.5} anchor="middle">VIR, owned</T>
+        <Box x={270} y={40} w={122} h={40} r={4} fill={st.out ? tok('safe', 0.14) : tok('panel')} stroke={st.out ? tok('safe') : tok('line')} opacity={st.out ? 1 : 0.4}>
+          <T x={331} y={55} size={11} mono anchor="middle" weight={700}>Module</T>
+          <T x={331} y={70} size={11} anchor="middle">VIR, owned</T>
         </Box>
-        <Box x={276} y={100} w={116} h={50} r={4} fill={st.out ? tok('safe', 0.14) : tok('panel')} stroke={st.out ? tok('safe') : tok('line')} opacity={st.out ? 1 : 0.4}>
-          <T x={334} y={114} size={10.5} mono anchor="middle" weight={700}>JsExtra</T>
-          <T x={334} y={129} size={9.5} anchor="middle">node facts</T>
-          <T x={334} y={142} size={9.5} mono anchor="middle">Span {'{'} start, end {'}'}</T>
+        <Box x={270} y={100} w={122} h={50} r={4} fill={st.out ? tok('safe', 0.14) : tok('panel')} stroke={st.out ? tok('safe') : tok('line')} opacity={st.out ? 1 : 0.4}>
+          <T x={331} y={114} size={11} mono anchor="middle" weight={700}>JsExtra</T>
+          <T x={331} y={129} size={11} anchor="middle">node facts</T>
+          <T x={331} y={142} size={11} mono anchor="middle">Span: 2 × u32</T>
         </Box>
         {st.out && (
           <g>
-            <Arrow x1={250} y1={132} x2={274} y2={64} color={tok('safe')} width={1.6} />
-            <Arrow x1={250} y1={140} x2={274} y2={124} color={tok('safe')} width={1.6} />
+            <Arrow x1={250} y1={132} x2={268} y2={64} color={tok('safe')} width={1.6} />
+            <Arrow x1={250} y1={140} x2={268} y2={124} color={tok('safe')} width={1.6} />
           </g>
         )}
         <Box x={8} y={204} w={384} h={40} r={5} fill={st.emit ? tok('brand', 0.12) : tok('panel')} stroke={st.emit ? tok('brand') : tok('line')} opacity={st.emit ? 1 : 0.4}>
-          <T x={200} y={218} size={10.5} mono anchor="middle">emit(source, &amp;lowered, plan)</T>
-          <T x={200} y={234} size={9.5} anchor="middle">splices byte ranges of source; no tree needed</T>
+          <T x={200} y={218} size={11} mono anchor="middle">emit(source, &amp;lowered, plan)</T>
+          <T x={200} y={234} size={11} anchor="middle">splices byte ranges of source; no tree needed</T>
         </Box>
         {st.emit && <Arrow x1={334} y1={152} x2={334} y2={202} color={tok('brand')} width={1.6} />}
       </Svg>

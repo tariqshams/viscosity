@@ -238,13 +238,25 @@ fn unknown_files_get_none() {
       'In `compile`, keep the `Extra` in a local: `let x = self.lower(src);`, then `self.emit(src, &x)`. Its type is `P::Extra`, known inside each copy, and it never escapes.',
       'For `pick`, put `&Js` and `&Py` in an array of `&dyn AnyPlugin` and use `.into_iter().find(...)`. Use `ends_with`, not `contains`.',
     ],
-    walkthrough: `This is the standard way to get dynamic dispatch over a trait with an associated type: a second trait whose methods mention no associated type, and a blanket impl that connects them.
+    walkthrough: `**How to think about it.** \`&dyn Plugin\` fails because callers through a trait object would have to know \`Extra\`. So design a trait whose methods never mention \`Extra\`: \`compile\` takes text and returns text, the same types for every plugin. Then connect the two traits once, for every plugin, with a *blanket impl* (an \`impl\` that is generic over the type it implements for). Inside it, \`Extra\` is known again, because each copy is made for one concrete plugin.
 
-- **The blanket impl.** \`impl<P: Plugin> AnyPlugin for P\` is generic, so the compiler makes one copy per plugin type, just like \`compile<P: LanguagePlugin>\`. Inside the copy for \`Js\`, \`P::Extra\` is \`usize\`; for \`Py\` it is \`String\`.
-- **\`Extra\` stays local.** \`compile\` returns a \`String\`, the same type for every plugin, so \`AnyPlugin\` is dyn compatible: callers through the vtable never see \`Extra\`. That is exactly why the port's \`compile\` can return one \`CompileResult\` type.
-- **\`pick\`.** \`&Js\` and \`&Py\` are references to constants, so they live for the whole program, which is what \`&'static dyn AnyPlugin\` asks for. \`find\` returns the first plugin whose \`handles\` is true, or \`None\`.
+**The solution, line by line.**
 
-The cost is one indirect call per method, through the vtable (chapter 308). For a compiler that makes one such call per file, that is nothing.`,
+- \`impl<P: Plugin> AnyPlugin for P {\` says: for any type \`P\` that implements \`Plugin\`, here is its \`AnyPlugin\` impl. The compiler makes one copy for \`Js\` and one for \`Py\`, as it does for \`compile<P: LanguagePlugin>\`.
+- \`fn handles(&self, file: &str) -> bool {\` asks whether this plugin takes the file.
+- \`self.exts().iter().any(|e| file.ends_with(e))\` calls the \`Plugin\` method \`exts\` on \`self\` (allowed, because \`P: Plugin\`), walks the extensions, and is true as soon as one is at the end of the file name.
+- \`fn compile(&self, src: &str) -> String {\` is the dyn-friendly entry point.
+- \`let x = self.lower(src);\` keeps the plugin's private data in a local. Its type is \`P::Extra\`: \`usize\` in the copy for \`Js\`, \`String\` in the copy for \`Py\`.
+- \`self.emit(src, &x)\` hands it straight to the same plugin's \`emit\` and returns the \`String\`. \`x\` is dropped at the closing brace, so \`Extra\` never escapes.
+- In \`pick\`, \`let all: [&dyn AnyPlugin; 2] = [&Js, &Py];\` builds a fixed-size array of trait objects; this type compiles because \`AnyPlugin\` has no associated type.
+- \`all.into_iter().find(|p| p.handles(file))\` returns the first plugin that handles the file, or \`None\`. \`&Js\` and \`&Py\` borrow constants that live for the whole program, which is what \`&'static dyn AnyPlugin\` asks for.
+
+**Common wrong attempts.**
+
+- Using \`contains\` instead of \`ends_with\` matches an extension anywhere in the name, so \`notes.json\` (which contains \`.js\`) goes to the JavaScript plugin.
+- Falling back to JavaScript for every other file is what the TypeScript CLI does, but this \`pick\` must return \`None\` for \`c.rb\`.
+
+The cost of the erased version is one indirect call per method, through the trait object's table of functions (*Trait objects and dispatch*); for a compiler that makes one such call per file, that is nothing.`,
     wrong: [
       {
         code: `${BASE}
@@ -321,15 +333,6 @@ export const quiz = [
       { t: 'Both, with E0191', why: 'Naming `Extra` fixes E0191.' },
       { t: 'Only `&PyPlugin`: its `Extra` is `PyExtra`, not `JsExtra` (E0271)', correct: true, why: 'Each choice of `Extra` is a different trait-object type.' },
       { t: 'Only `&JsPlugin`', why: '`JsPlugin`’s `Extra` is `JsExtra`, so it fits.' },
-    ],
-  },
-  {
-    q: 'How does the wasm crate run Python or JavaScript by name?',
-    options: [
-      { t: 'It stores both plugins in a `HashMap<&str, Box<dyn LanguagePlugin>>`', why: 'That type doesn’t compile without naming `Extra`.' },
-      { t: 'It converts the Python source to JavaScript first', why: 'Each language has its own plugin, and Python output stays Python.' },
-      { t: 'It only supports JavaScript', why: '`compileLanguage` accepts `"python"` too.' },
-      { t: 'A `match` on the name, with `compile(source, &JsPlugin, opts)` in one arm and `compile(source, &PyPlugin, opts)` in the other', correct: true, why: 'Two monomorphized calls whose results have the same type.' },
     ],
   },
   {

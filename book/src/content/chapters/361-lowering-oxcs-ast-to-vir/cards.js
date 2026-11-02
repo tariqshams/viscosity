@@ -84,10 +84,6 @@ export const prompts = {
     q: 'Why does the port lower a `"use strict"` directive to a string constant nothing uses?',
     a: 'ESTree keeps directives as expression statements, so the TS engine lowers them. Doing the same keeps value numbering identical.',
   },
-  'mentions-inner': {
-    q: 'Why does `Mentions` record whether each name is inside a nested function?',
-    a: 'A variable used inside a nested function is captured, so it is a binding: the opaque instruction must read the binding, not an SSA value.',
-  },
 };
 
 export const examples = {
@@ -277,13 +273,25 @@ fn leaving_a_function_restores_the_flag() {
       'In `visit_func`, overriding replaces the default walk, so you must call `self.visit_expr(b)` yourself or the body is never visited.',
       'Save `self.inner` in a local before setting it to `true`, and assign it back after the walk. Setting it to `false` afterwards is wrong for a function inside a function.',
     ],
-    walkthrough: `This is the real \`Mentions\` collector in \`lower.rs\`, on a smaller tree.
+    walkthrough: `**How to think about it.** Ask which node kinds you need to *change*, and leave the rest to the trait. Names are where something is recorded, so \`visit_name\` must be overridden. Functions are where the flag changes, so \`visit_func\` must be overridden too. \`Add\`, \`Call\` and \`Num\` need nothing special: their default walk already visits their children in source order. The one trap is that overriding \`visit_func\` throws away its default walk of the body, so you have to walk it yourself, and functions nest, so the flag must be put back to what it *was*, not to \`false\`.
 
-- **\`visit_name\`** is the leaf case. The default walk calls it for every \`Name\`, in source order, because \`walk_expr\` visits children left to right.
-- **\`visit_func\`** shows what overriding costs: the default would have walked the body, and yours replaces it. So you walk it yourself with \`self.visit_expr(b)\`, the same way oxc code calls \`walk::walk_arrow_function_expression(self, it)\`.
-- **Save and restore**, not set and clear. In \`g(() => () => x, y)\` the inner function ends while you are still inside the outer one, so \`inner\` must go back to \`true\` there; only leaving the outer one makes it \`false\` again. The real code writes \`std::mem::replace(&mut self.inner, true)\`, which sets the new value and hands back the old one in one step.
+**The solution, line by line.**
 
-Everything else (\`Add\`, \`Call\`, \`Num\`) you never mention: the trait’s defaults walk it.`,
+- \`fn visit_name(&mut self, n: &str) {\` is called by \`walk_expr\` for every \`Name\` node.
+- \`let f = self.inner;\` reads the current flag (copying a \`bool\`).
+- \`self.found.push((n.into(), f));\` records the pair; \`n.into()\` turns the \`&str\` into an owned \`String\`, because the list must outlive the tree.
+- \`fn visit_func(&mut self, b: &Expr) {\` is called for every \`Func\` node, with its body \`b\`.
+- \`let saved = self.inner;\` remembers the flag as it was outside this function.
+- \`self.inner = true;\` marks everything below as inside a function.
+- \`self.visit_expr(b);\` walks the body: the walk the override replaced.
+- \`self.inner = saved;\` restores the outer value. In \`g(() => () => x, y)\`, leaving the inner function sets it back to \`true\` (we are still in the outer one), and leaving the outer one sets it back to \`false\`, so \`y\` is outer.
+
+**Common wrong attempts.**
+
+- Setting \`inner = true\` and never restoring it marks every later name as inner, such as the \`y\` above.
+- Setting the flag and not calling \`self.visit_expr(b)\` loses every name inside a function, because the override replaced the walk.
+
+This is the real \`Mentions\` collector in \`lower.rs\` on a smaller tree; there, \`std::mem::replace(&mut self.inner, true)\` does the save and the set in one step.`,
     wrong: [
       {
         code: `${TOY}
@@ -358,14 +366,6 @@ export const quiz = [
       { t: 'A `direct` flag recorded in `JsNode::Member` while lowering', correct: true, why: '`expr_object` sets it just before lowering a member expression’s object.' },
       { t: 'A parent map built by a second visitor', why: 'The port needs no parent pointers at all.' },
       { t: 'Re-parsing the source in the emitter', why: 'The emitter never re-parses; it works from spans and facts.' },
-    ],
-  },
-  {
-    q: 'Why does `lower.rs` lower a `"use strict"` directive to an unused string constant?',
-    options: [
-      { t: 'Strict mode changes how Viscosity analyses the code', why: 'It doesn’t; the constant has no users.' },
-      { t: 'To keep value numbers (`%n`) identical to the TS engine, which sees the directive as an expression statement', correct: true, why: 'ESTree has no separate directive list; oxc does.' },
-      { t: 'oxc reports an error otherwise', why: 'oxc parses directives into their own list without complaint.' },
     ],
   },
 ];

@@ -28,10 +28,6 @@ export const prompts = {
     q: 'Why does it matter that `sort_by_key` is stable?',
     a: 'Edits with equal sort keys keep the order they were added in, as with JavaScript’s sort, so both engines apply them identically.',
   },
-  'utf8-offsets': {
-    q: 'oxc spans count UTF-8 bytes, acorn’s count UTF-16 units. Why do both engines still cut at the same characters?',
-    a: 'Each engine slices its own string with its own unit. A byte offset into the Rust `String` and a UTF-16 offset into the JS string name the same character.',
-  },
   'char-boundary': {
     q: 'What happens if `replace_range` gets a byte offset in the middle of `é`?',
     a: 'It panics: the range must lie on `char` boundaries.',
@@ -196,13 +192,26 @@ fn overlapping_edits_are_an_error() {
       '`String::replace_range(start..end, &text)` replaces a byte range in place.',
       'Keep the start of the edit you applied last, beginning at `usize::MAX`. The next edit (which starts earlier) overlaps it if its `end` is greater than that start; equal is fine.',
     ],
-    walkthrough: `This is the loop at the end of \`emit_js\` in \`engine/rust/crates/frontend-js/src/emit.rs\`, with \`usize\` offsets, a \`String\` error, and only the first part of its sort key (the real one also orders edits that start at the same byte).
+    walkthrough: `**How to think about it.** Each edit's offsets describe the *original* text. Any edit you apply moves everything after it, so apply the edit furthest along first: then every edit still to come lies before the ones already applied, in text that has not moved. Overlaps are the one thing back-to-front cannot fix, so remember where the last applied edit started and refuse any edit that reaches past it.
 
-- **Sort backwards.** \`Reverse(e.start)\` makes the largest start come first. Each replacement moves only the text after it, and every edit still to come is before it, so its offsets still describe the original text exactly.
-- **Replace in place.** \`replace_range\` works on bytes, like oxc’s spans, so \`offsets_are_bytes\` passes without any conversion: \`find\` also returns a byte offset. A range that cut through \`é\` would panic, which is a loud way to find an offset bug.
-- **Overlaps.** After applying an edit that starts at \`last\`, any later edit must end at or before \`last\`. \`e.end > last\` means it reaches into text that has already been replaced, and those bytes no longer mean what the edit thinks.
+**The solution, line by line.**
 
-The sort is stable, so edits with equal keys keep their order. The real emitter relies on that to match the TypeScript engine, whose \`Array.prototype.sort\` is stable too.`,
+- \`let mut es = edits.to_vec();\` copies the edits, because the slice is borrowed and sorting needs to change the order.
+- \`es.sort_by_key(|e| { Reverse(e.start) });\` sorts by start, largest first: \`Reverse\` flips the comparison. The sort is stable, so edits with the same start keep their order.
+- \`let mut out = src.to_string();\` makes the one buffer every edit is applied to.
+- \`let mut last = usize::MAX;\` is the start of the edit applied last; before any edit, nothing can overlap, so it starts at the largest number there is.
+- \`for e in &es {\` visits the edits in sorted order.
+- \`if e.end > last { return Err(...); }\`: this edit starts earlier than the last one, so it must also *end* at or before that start. Ending later means it reaches into text already replaced. Ending exactly at \`last\` is fine: the edits touch but share no byte.
+- \`out.replace_range(e.start..e.end, &e.text);\` swaps the bytes in place. The offsets are bytes, as \`find\` in the tests returns, so text such as \`é😀\` before the edit needs no conversion.
+- \`last = e.start;\` remembers this edit's start for the next check.
+- \`Ok(out)\` returns the edited text.
+
+**Common wrong attempts.**
+
+- Sorting by \`e.start\` front to back: the first edit changes the length of the text, so every later offset points at the wrong place.
+- Testing \`e.end >= last\` rejects edits that merely touch, such as replacing \`ab\` and \`cd\` in \`abcd\`.
+
+This is the loop at the end of \`emit_js\` in \`crates/frontend-js/src/emit.rs\`, with \`usize\` offsets, a \`String\` error, and only the first part of its sort key (the real one also orders edits that start at the same byte, by end and then by rank).`,
     wrong: [
       {
         code: `${EDIT}

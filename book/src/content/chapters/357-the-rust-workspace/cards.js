@@ -3,15 +3,11 @@
 export const prompts = {
   'vrs-what': {
     q: 'What is viscosity-rs, and what must it match?',
-    a: 'The Rust port of Viscosity in `engine/rust`. For every test program it must produce the same code and `explain` text as the TypeScript engine, byte for byte.',
+    a: 'The Rust port of Viscosity in `engine/rust`, published at 0.0.1. For every test program it must produce the same code and `explain` text as the TypeScript engine, byte for byte.',
   },
   'vrs-crates': {
     q: 'Name the six crates of the Rust workspace.',
     a: '`vir`, `core`, `frontend-js`, `frontend-python`, `cli` and `wasm`.',
-  },
-  'vrs-oracle': {
-    q: 'Which part of the TypeScript `core` package became a crate of its own, and what does that crate depend on?',
-    a: 'The IR, `vir.ts`, became the `vir` crate. It depends on nothing.',
   },
   'vrs-inherit': {
     q: 'The root has `[workspace.package] edition = "2021"`. What must a member write to use it?',
@@ -136,13 +132,24 @@ fn a_missing_final_newline_counts() {
       '`want.lines().zip(got.lines())` gives pairs of lines and stops at the end of the shorter text. Count the pairs as you go.',
       'If the loop finishes without finding a differing pair, the texts still differ (you checked that first), so the difference is just past the shorter one: `Some(count + 1)`.',
     ],
-    walkthrough: `The real \`first_difference\` in \`crates/cli/tests/parity.rs\` has the same shape: zip the lines, report the first pair that differs, and fall back to something else when every pair matches.
+    walkthrough: `**How to think about it.** Start from what the test needs: a line number a person can jump to. Two texts are compared line by line, so walk both at once, pair by pair, and stop at the first pair that differs. The tricky case is when every pair matches but the texts are still different: one has extra lines, or only one ends in a line break. \`zip\` stops at the shorter text, so you must handle "ran out" yourself, after the loop.
 
-- **Equal first.** Comparing whole strings is one call, and it settles the \`None\` case, including two empty strings.
-- **Zip the lines.** \`zip\` pairs line 1 with line 1, line 2 with line 2, and stops as soon as either side runs out. Counting with \`n += 1\` before the comparison makes the number 1-based.
-- **The prefix case.** If the loop ends, every shared line matched, but the texts are different, so one has extra lines or a different final line break. \`lines()\` drops a final \`\\n\`, so \`"a\\n"\` and \`"a"\` both give \`["a"]\`; the answer is then line 2, the first line the shorter text doesn't have.
+**The solution, line by line.**
 
-A parity failure that says "line 2" of an \`explain\` text usually points straight at one decision. That is why the real test prints the two lines next to each other.`,
+- \`if want == got {\` compares the whole strings first. That one comparison settles the \`None\` case, including two empty strings, and it means that after this line you *know* the texts differ.
+- \`    return None;\` reports "no difference".
+- \`let mut n = 0;\` is the count of line pairs seen so far.
+- \`for (w, g) in want.lines().zip(got.lines())\` walks the two texts together: \`lines()\` splits at line breaks (and drops a final one), and \`zip\` pairs line 1 with line 1, line 2 with line 2, and stops as soon as either side runs out.
+- \`    n += 1;\` counts this pair *before* comparing, so the first pair is line 1, not line 0.
+- \`    if w != g { return Some(n); }\` reports the first pair that differs.
+- \`Some(n + 1)\` runs only when every shared line matched. The texts differ anyway (the first check said so), so the difference is the line just after the shorter text. For \`"a\\n"\` against \`"a"\`, \`lines()\` gives \`["a"]\` for both, the loop finds nothing, and the answer is line 2.
+
+**Common wrong attempts.**
+
+- Returning \`None\` after the loop calls two different texts equal whenever one is a prefix of the other, which is exactly the failure a missing last line produces.
+- Counting after the comparison, or using \`enumerate\` without adding 1, reports line 0 for a difference on the first line.
+
+The real \`first_difference\` in \`crates/cli/tests/parity.rs\` has the same zip-and-compare loop; when every pair matches it reports the two lengths in bytes instead of a line number.`,
     wrong: [
       {
         code: `${SIG}
@@ -200,11 +207,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'A workspace root sets `rust-version = "1.85"` under `[workspace.package]`, and no member writes `rust-version.workspace = true` (engine/rust’s first manifest). What minimum Rust version do the members declare?',
+    q: 'The crates are published at 0.0.1. A project depends on `viscosity-core = "0.0.1"`. Will `cargo update` move it to 0.0.2 when that is released?',
     options: [
-      { t: 'None: no member writes `rust-version.workspace = true`', correct: true, why: 'Inheritance is opt-in per key; `cargo metadata` showed no `rust_version` for any member. Today every member opts in and declares 1.97.' },
-      { t: '1.85, inherited automatically', why: 'Workspace keys are inherited only by members that ask for them.' },
-      { t: '1.97, because oxc requires it', why: 'oxc’s manifest does ask for 1.97.0, but that is oxc’s field, not the members’.' },
+      { t: 'Yes: any 0.x version is compatible', why: 'Before 1.0 cargo is stricter, not looser.' },
+      { t: 'No: `"0.0.1"` means at least 0.0.1 and below 0.0.2', correct: true, why: 'The leftmost non-zero number is the patch number, so every 0.0.z release counts as incompatible with every other. That is why the README calls 0.0.1 deliberate.' },
+      { t: 'Yes, because only the patch number changed', why: 'That holds from 1.0 on; for 0.0.z the patch number is the one that must stay the same.' },
     ],
   },
   {
@@ -213,15 +220,6 @@ export const quiz = [
       { t: 'Yes, cargo always reads the config next to the manifest', why: 'The Cargo book says config files are probed in the current directory and its parents.' },
       { t: 'No: cargo looks in the directory it runs in and that directory’s parents, and `engine/rust` is neither', correct: true, why: 'Run cargo from inside `engine/rust` to get `debug = 0`.' },
       { t: 'Only for release builds', why: 'Where cargo looks for config doesn’t depend on the profile.' },
-    ],
-  },
-  {
-    q: 'Why does the port use `IndexMap` where the TypeScript engine used `Map`?',
-    options: [
-      { t: 'IndexMap is always faster than HashMap', why: 'Speed is what FxHashMap is for. IndexMap is chosen for its order.' },
-      { t: 'HashMap can’t store string keys', why: 'It can; the run above uses `&str` keys.' },
-      { t: 'Only IndexMap compiles to WebAssembly', why: 'std’s HashMap works in WebAssembly too.' },
-      { t: 'Both IndexMap and `Map` iterate in insertion order, and that order decides the order of the `explain` lines', correct: true, why: 'With HashMap’s arbitrary order, the messages could come out in a different order from the TypeScript engine’s.' },
     ],
   },
   {

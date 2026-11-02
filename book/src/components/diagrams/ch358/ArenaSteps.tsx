@@ -40,7 +40,7 @@ export default function ArenaSteps() {
     <StepFrame title="An instruction arena with typed ids" steps={s} note={st.note}>
       <Svg w={400} h={260} title="The values arena of a VIR function, its blocks as lists of ids, and its use lists">
         <T x={sx} y={22} size={11} weight={700} fill={tok('brand')}>Module::values</T>
-        <T x={388} y={22} size={10} anchor="end" fill={tok('muted')}>func sum(%0)</T>
+        <T x={388} y={22} size={11} anchor="end" fill={tok('muted')}>func sum(%0)</T>
         {SLOTS.map((_name, k) => {
           const x = sx + k * sw;
           const on = st.slots.includes(k);
@@ -51,13 +51,13 @@ export default function ArenaSteps() {
           return (
             <g key={k}>
               <Box x={x} y={sy} w={sw - 3} h={40} r={3} fill={fill} stroke={stroke} dash={dead}>
-                <T x={x + (sw - 3) / 2} y={sy + 12} size={10} mono anchor="middle" weight={700}>{`%${k}`}</T>
-                <T x={x + (sw - 3) / 2} y={sy + 28} size={10} mono anchor="middle" fill={dead ? tok('muted') : undefined}>{SHORT[k]}</T>
+                <T x={x + (sw - 3) / 2} y={sy + 12} size={11} mono anchor="middle" weight={700}>{`%${k}`}</T>
+                <T x={x + (sw - 3) / 2} y={sy + 28} size={11} mono anchor="middle" fill={dead ? tok('muted') : undefined}>{SHORT[k]}</T>
               </Box>
             </g>
           );
         })}
-        <T x={sx} y={sy + 58} size={10} fill={tok('muted')}>{st.dead ? 'dead slot: kept so that no id moves' : `${SLOTS.length} slots · index = id`}</T>
+        <T x={sx} y={sy + 58} size={11} fill={tok('muted')}>{st.dead ? 'dead slot: kept so that no id moves' : `${SLOTS.length} slots · index = id`}</T>
         <T x={sx} y={128} size={11} weight={700} fill={tok('accent')}>blocks (lists of ids)</T>
         {BLOCKS.map((b, k) => {
           const x = sx + k * 76;
@@ -66,8 +66,8 @@ export default function ArenaSteps() {
           return (
             <g key={b.name}>
               <Box x={x} y={140} w={70} h={42} r={4} fill={on ? tok('accent', 0.15) : tok('panel')} stroke={on ? tok('accent') : tok('line')}>
-                <T x={x + 8} y={153} size={10.5} mono weight={700}>{b.name}</T>
-                <T x={x + 8} y={170} size={10} mono>{label}</T>
+                <T x={x + 8} y={153} size={11} mono weight={700}>{b.name}</T>
+                <T x={x + 8} y={170} size={11} mono>{label}</T>
               </Box>
               {on && b.ids.map((i) => (
                 <Arrow key={i} x1={x + 35} y1={140} x2={sx + i * sw + (sw - 3) / 2} y2={sy + 42} color={tok('accent', 0.7)} width={1.4} />
