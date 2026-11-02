@@ -221,7 +221,7 @@ test('starts at i, not at 0', () => {
       'After every successful step, if the new state is accepting, set `last = j + 1` (the index just after the character you read). Do not return there: keep reading.',
       'Break out of the loop when there is no row or no arrow. Then return `last`. (If the start state were accepting, the empty piece would count, so `last` would start at `i`.)',
     ],
-    walkthrough: `**How to think about it.** This is maximal munch from chapter 68, done with a machine. A scanner cannot stop at the first accepting state (that would cut \`4.25\` to \`4\`), and it cannot insist on ending in an accepting state either (in \`1..5\` it gets stuck in \`D\`, yet \`1\` is a perfectly good token). The answer is to keep reading for as long as there are arrows, and to *remember* the last place where the machine was accepting.
+    walkthrough: `**How to think about it.** This is maximal munch from *Lookahead and maximal munch*, done with a machine. A scanner cannot stop at the first accepting state (that would cut \`4.25\` to \`4\`), and it cannot insist on ending in an accepting state either (in \`1..5\` it gets stuck in \`D\`, yet \`1\` is a perfectly good token). The answer is to keep reading for as long as there are arrows, and to *remember* the last place where the machine was accepting.
 
 **The solution, line by line.**
 

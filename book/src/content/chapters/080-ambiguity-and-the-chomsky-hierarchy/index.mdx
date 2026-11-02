@@ -119,7 +119,7 @@ which restart at the top level. And in `term → term "-" factor`, the
 right side of a `-` is a `factor`, which cannot contain a `-`, so in
 `1 - 2 - 3` the only way to place the first `-` lower in the tree is
 inside the *left* `term`: the tree leans left, as arithmetic does.
-(The chapter "Recursive descent parsing" turns these levels into code,
+(The chapter "Precedence and associativity" turns these levels into code,
 and Drip's own grammar, in which `term` handles `+` and `-` and
 `factor` handles `*`, `/` and `%`, has more levels on the same plan.)
 
@@ -269,8 +269,8 @@ third is a rule every programming language has, "use a name only after
 declaring it", and it cannot be written as a context-free grammar at
 all; the textbooks prove this with a language of a word, a separator
 and the same word again<Cite id="aho2006" />. That is why compilers
-check it in a separate pass after parsing (the chapter "Resolving
-variables" builds one for Drip), and keep the grammar context-free.
+check it in a separate pass after parsing (the chapter "Finding every name before running: the resolver"
+builds one for Drip), and keep the grammar context-free.
 
 <Prompts ids={['chomsky-four', 'cf-machine', 'declare-before-use']} />
 

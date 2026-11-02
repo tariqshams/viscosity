@@ -181,7 +181,7 @@ export const exercises = {
   thompson: {
     title: 'Thompson’s construction',
     prompt:
-      'Finish `build(r)`, which turns a pattern tree (the shapes of chapter 72: `chr`, `eps`, `cat`, `alt`, `star`) into an NFA `{ start, accept: [f], edges }`, with `null` as the ε label. The character, ε and alternation rules are done; add **concatenation** (`r.t === \'cat\'`, children `r.a` and `r.b`) and **star** (`r.t === \'star\'`, child `r.a`) following the figure. Every machine must keep exactly one accepting state.',
+      'Finish `build(r)`, which turns a pattern tree (the shapes from *Regular expressions as a language*: `chr`, `eps`, `cat`, `alt`, `star`) into an NFA `{ start, accept: [f], edges }`, with `null` as the ε label. The character, ε and alternation rules are done; add **concatenation** (`r.t === \'cat\'`, children `r.a` and `r.b`) and **star** (`r.t === \'star\'`, child `r.a`) following the figure. Every machine must keep exactly one accepting state.',
     starter: `${THOMPSON_START}
   // 'cat' and 'star' go here
   return null;
@@ -327,7 +327,7 @@ On \`(a|b)*c\` this makes 6 states for \`a|b\`, 2 for the star and 2 for \`c\`: 
     optional: true,
     title: 'The subset construction',
     prompt:
-      'Write `toDFA(nfa, alphabet)`. It returns a DFA in chapter 73’s format, `{ start: 0, accept, next }`, where DFA states are the numbers 0, 1, 2… in the order their sets are discovered, `next[i][c]` is the next state (leave the entry out when the move is empty), and `accept` lists the accepting DFA states. `closure(nfa, states)` and `move(nfa, states, ch)` are given; `alphabet` is a string of the characters to try, such as `\'ifx\'`.',
+      'Write `toDFA(nfa, alphabet)`. It returns a DFA in the format of *Finite automata*, `{ start: 0, accept, next }`, where DFA states are the numbers 0, 1, 2… in the order their sets are discovered, `next[i][c]` is the next state (leave the entry out when the move is empty), and `accept` lists the accepting DFA states. `closure(nfa, states)` and `move(nfa, states, ch)` are given; `alphabet` is a string of the characters to try, such as `\'ifx\'`.',
     starter: `${CLOSURE}
 
 function toDFA(nfa, alphabet) {

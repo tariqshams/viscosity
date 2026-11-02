@@ -29,8 +29,8 @@ nesting is a tree, as in "Trees: recursion's natural home".
 
 ## Which tree?
 
-You have met one tree already: the *parse tree* from "Derivations,
-parse trees and ambiguity", with a node for every rule used. It is
+You have met one tree already: the *parse tree* from "Derivations
+and parse trees", with a node for every rule used. It is
 faithful but cluttered, with a node for every helper rule and every
 token, including the `;`, none of which the interpreter needs.
 
@@ -215,7 +215,7 @@ type Stmt =
 Statements contain expressions (a print node holds the expression to
 print) and some contain other statements (a block holds a list of them,
 an if node one for each branch). `null` means "not there": a `let` with no
-`= ...` has a `null` initializer, and an `if` with no `else` a `null`
+`= ...` has a `null` initialiser, and an `if` with no `else` a `null`
 else. A whole Drip program parses to an array of statements, `Stmt[]`.
 
 <Figure takeaway="Statements hold expressions; expressions never hold statements." caption="The tree of if x > 1 { print x * 2; } The if node, its block and the print node are statements (square corners). Everything that has a value, from the comparison down to the literal 2, is an expression (round corners).">
@@ -278,8 +278,8 @@ Most language tools are built around an AST. ESTree, the tree format
 many JavaScript tools share, describes every node as an object with a
 string `type` field, the same tagging idea as Drip's `kind`<Cite id="estree" />.
 In the companion, the AST is where the whole interpreter meets: the
-parser builds `Expr` and `Stmt` nodes, the resolver (in "Resolving
-variables") walks them to find where each variable lives, and the
+parser builds `Expr` and `Stmt` nodes, the resolver (in "Finding every name before running:
+the resolver") walks them to find where each variable lives, and the
 interpreter walks them to run the program.
 </Callout>
 

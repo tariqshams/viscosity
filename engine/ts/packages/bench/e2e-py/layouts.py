@@ -1,4 +1,4 @@
-"""Python layout benchmark (book chapter 116): is column storage worth it in
+"""Python layout benchmark (the book's chapter “Emitting Python with column storage”): is column storage worth it in
 CPython? Measures time per element for the same update loop over
 dataclass objects, array('d') columns and list columns, and memory for
 objects vs columns. Prints one JSON object."""

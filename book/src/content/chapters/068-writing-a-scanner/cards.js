@@ -131,7 +131,7 @@ test('nothing to scan', () => {
     hints: [
       'Strings compare character by character, so `c >= \'0\' && c <= \'9\'` is true exactly for the ten digit characters.',
       'In `scan`, keep an index `cur`. Each round: remember `start = cur`, read `src[cur++]`, and decide what it begins.',
-      'If it was a digit, keep moving `cur` while `src[cur]` is a digit (maximal munch). Then push `src.slice(start, cur)`. If it was a space, push nothing.',
+      'If it was a digit, keep moving `cur` while `src[cur]` is a digit, so the number takes every digit in the run. Then push `src.slice(start, cur)`. If it was a space, push nothing.',
     ],
     walkthrough: `**How to think about it.** Split the job in two. \`isDigit\` is a question about one character, and it has a neat answer because the ten digit characters sit next to each other in character-code order, \`'0'\` to \`'9'\` (from *Strings up close*), so "is \`c\` between \`'0'\` and \`'9'\`?" is exactly "is \`c\` a digit?". \`scan\` is Drip's loop in miniature: each round remembers where a token starts, reads one character, and decides what it begins. A space begins nothing. Any of \`+ - * / ( )\` is a whole token by itself. A digit begins a number, and a number keeps going while the *next* character is also a digit, so \`23\` becomes one token and not two.
 

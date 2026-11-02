@@ -26,7 +26,7 @@ both of these trees fit them:
   <TwoTrees which="prec" />
 </Figure>
 
-This is the ambiguity from "Derivations, parse trees and ambiguity": the
+This is the ambiguity from "Ambiguity and the Chomsky hierarchy": the
 grammar `expr → expr "+" expr | expr "*" expr | NUMBER` allows both
 trees. We need a grammar that allows only the left one.
 
@@ -277,8 +277,8 @@ The first thing `term()` would do is call `term()`, with the same token
 still next, for ever, until the call stack runs out. A rule whose body
 starts with its own name is **left-recursive**, and cannot be coded
 directly in recursive descent; so the grammar uses `*` and the code a
-loop, which gives the same left-leaning trees ("FIRST, FOLLOW and
-LL(1)" shows how to rewrite any such rule). Recursing on
+loop, which gives the same left-leaning trees ("LL(1) tables and
+rewriting grammars" shows how to rewrite any such rule). Recursing on
 the *right* instead, `return bin(left, op, term())`, does stop, but it
 makes the chain lean right, which is correct for assignment and wrong
 for `-`.

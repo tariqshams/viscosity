@@ -262,7 +262,7 @@ backslash is doubled), and `?` makes the arguments optional. It prints
 That works because nothing here nests. The moment an argument may be a
 whole call, `f(g(h(1)))`, the rule for `call` mentions `call` (through
 `expr`), and no regular expression can check nesting to any depth; the
-chapter "Derivations, parse trees and ambiguity" shows where grammars
+chapter "Ambiguity and the Chomsky hierarchy" shows where grammars
 and regular expressions sit in one family of descriptions, and why.
 
 <Prompts ids={['regex-limit']} />
@@ -297,8 +297,8 @@ practice, adds a `?`.
 - Shorthands alone are regular expressions over tokens; nesting needs
   rules that mention themselves.
 
-Next: "Derivations, parse trees and ambiguity" shows, step by step, how
-a row of tokens is proved to fit a grammar, and what goes wrong when it
-fits in two different ways.
+Next: "Derivations and parse trees" shows, step by step, how a row of
+tokens is proved to fit a grammar; the chapter after it shows what goes
+wrong when it fits in two different ways.
 
 <Quiz />

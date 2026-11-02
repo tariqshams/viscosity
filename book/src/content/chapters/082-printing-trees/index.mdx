@@ -21,7 +21,7 @@ import TwoPrints from '../../../components/diagrams/ch082/TwoPrints';
 A tree lives in memory as objects pointing at objects, and you cannot
 look at memory. Printing it with `JSON.stringify` works, after a
 fashion: the tree of `1 + 2`, with operators kept as simple
-`{ lexeme }` objects, comes out as one line of 113 characters (split
+`{ lexeme }` objects, comes out as one line of 116 characters (split
 here to fit the page):
 
 ```text
@@ -174,7 +174,7 @@ and the last line prints the other grouping of `1 + 2 * 3`.
 
 Why not print `1 + 2` as `1 + 2`? Because then two different trees can
 print as the same text, which is exactly the ambiguity from
-"Derivations, parse trees and ambiguity", and the printer is supposed to
+"Ambiguity and the Chomsky hierarchy", and the printer is supposed to
 remove it:
 
 <Figure takeaway="Operator-first brackets never print two trees the same way." caption="Two trees for the tokens 1 + 2 * 3. Printed plainly, from left to right, both give the same text, so the printout cannot tell you which tree the parser built. Printed Drip's way, every node is one pair of brackets with its operator first, and the two trees cannot be confused.">

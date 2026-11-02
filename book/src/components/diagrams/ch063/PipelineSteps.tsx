@@ -52,7 +52,7 @@ function Tree({ values }: { values: boolean }) {
 }
 
 const TOKS: [string, string][] = [['print', 'print'], ['number', '1'], ['+', '+'], ['number', '2'], ['*', '*'], ['number', '3'], [';', ';'], ['eof', '']];
-const CODE = ['CONSTANT 1', 'CONSTANT 2', 'CONSTANT 3', 'MULTIPLY', 'ADD', 'PRINT'];
+const CODE = ['push 1', 'push 2', 'push 3', 'mul', 'add', 'print'];
 
 export default function PipelineSteps() {
   const s = useSteps(STATES);

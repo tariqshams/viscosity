@@ -225,7 +225,7 @@ was taken by `statement`, which chose this rule.)
 at a single token: `{` means block, anything else means print. That
 works because the two alternatives *start* with different tokens, so
 one token of **lookahead** (the scanner's idea, one level up) settles
-it before any token is taken. "FIRST, FOLLOW and LL(1)" works out, for
+it before any token is taken. The chapter "FIRST and FOLLOW" works out, for
 any grammar, which tokens can start each rule, and when one is not
 enough.
 
@@ -255,9 +255,10 @@ operators are harder, because the parser must also decide which
 operator binds tighter and which way a chain leans; the next chapter,
 "Precedence and associativity", builds that in, and "Pratt parsing"
 shows the shorter method the companion uses.
-Both build the same trees (a differential test of the kind in "Edge
-cases and differential testing", feeding thousands of random
-expressions to both parsers, finds no difference).
+Both are meant to build the same trees, which is exactly the kind of
+claim a differential test (from "Edge cases and differential testing")
+checks: feed the same random expressions to both parsers and compare
+the printed trees.
 
 <Prompts ids={['companion-split']} />
 

@@ -26,7 +26,7 @@ way, so a machine with one of them in place of both accepts the same
 strings with less to store. On a real scanner the subset construction
 often leaves many such twins behind, and a smaller table means a
 smaller, faster scanner (it fits better in the CPU's cache, the fast
-memory of chapter 50).
+memory of *The CPU and its caches*).
 
 <Analogy title="two routes that meet">
 You can reach the motorway from the north car park or the south car
@@ -129,7 +129,7 @@ NFA for each, joins them with ε-moves from one new start state (as in
 the "`if` or a name" machine), runs the subset construction, minimises,
 and prints out a scanner.
 
-<Figure takeaway="A scanner generator is chapters 72 to 75 run in a row." caption="Inside a scanner generator. The rules go in at the top, and source code for a scanner comes out at the bottom; every arrow is a construction from this chapter or the last.">
+<Figure takeaway="A scanner generator is the constructions of the last few chapters, run in a row." caption="Inside a scanner generator. The rules go in at the top, and source code for a scanner comes out at the bottom; every arrow is a construction from this chapter or the last.">
   <GeneratorPipeline />
 </Figure>
 
@@ -162,7 +162,7 @@ match three characters and `let` comes first. A range such as `1..5`
 comes out as `NUMBER`, `DOT_DOT`, `NUMBER`: the number rule cannot take
 a dot with no digit after it, and `..` is longer than `.`. That is
 maximal munch and
-the reserved-word table of chapter 71, now expressed as the order of
+the reserved-word table of *Names and keywords*, now expressed as the order of
 lines in a file. Inside the DFA, it means each accepting state is
 labelled with the earliest rule among its NFA states; state D in the
 stepper holds both the keyword's and the name's accepting states, and

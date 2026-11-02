@@ -215,7 +215,7 @@ test('no closing quote', () => {
 **Common wrong attempts.**
 
 - \`s.slice(i, j + 1)\` as the value: that is the lexeme, quotes included.
-- Forgetting the end test: \`while (s[j] !== '"')\` never stops on its own when there is no closing quote, because \`undefined !== '"'\` is always true; it only stops when \`j\` grows huge, and the value is then the rest of the source.
+- Forgetting the end test: \`while (s[j] !== '"')\` never stops when there is no closing quote: past the end \`s[j]\` is \`undefined\`, and \`undefined !== '"'\` is always true, so the loop runs for ever and the page hangs.
 - Returning \`end: j\`: the closing quote would be read again as the start of a new string.`,
     wrong: [
       {

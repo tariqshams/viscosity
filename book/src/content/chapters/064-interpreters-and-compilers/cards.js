@@ -27,7 +27,7 @@ export const prompts = {
   },
   'v8-both': {
     q: 'What does V8 do with a function that runs very often?',
-    a: 'It compiles it again, with an optimizing compiler, into machine code (after first running it as bytecode in Ignition).',
+    a: 'It compiles it again, with an optimising compiler, into machine code (after first running it as bytecode in Ignition).',
   },
   'source-to-source': {
     q: 'What is a source-to-source compiler? Give an example.',
@@ -287,10 +287,10 @@ export const quiz = [
   {
     q: 'Which statement about V8, the engine in Chrome and Node, is right?',
     options: [
-      { t: 'It only interprets: it never makes machine code', why: 'Frequently run code is compiled again by an optimizing compiler into machine code.' },
+      { t: 'It only interprets: it never makes machine code', why: 'Frequently run code is compiled again by an optimising compiler into machine code.' },
       { t: 'It turns JavaScript into machine code before the page starts, like a C compiler', why: 'V8 starts with bytecode and an interpreter, and compiles more while the program runs.' },
       { t: 'It walks the syntax tree, like Part III’s Drip', why: 'V8 runs bytecode, not the tree. That is closer to Drip’s VM in Part IV.' },
-      { t: 'It compiles functions to bytecode, interprets that, and compiles hot code again to machine code', correct: true, why: 'Ignition runs the bytecode, and an optimizing compiler takes over for code that runs often: both kinds of program in one engine.' },
+      { t: 'It compiles functions to bytecode, interprets that, and compiles hot code again to machine code', correct: true, why: 'Ignition runs the bytecode, and an optimising compiler takes over for code that runs often: both kinds of program in one engine.' },
     ],
   },
 ];

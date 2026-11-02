@@ -262,7 +262,7 @@ export const quiz = [
   {
     q: 'Which of these shows that a grammar is ambiguous?',
     options: [
-      { t: 'A sentence with a leftmost and a rightmost derivation', why: 'Every sentence of a nonempty derivation has both; they can still draw one tree.' },
+      { t: 'A sentence with a leftmost and a rightmost derivation', why: 'Every sentence of a grammar has both, and the two can still draw one and the same tree.' },
       { t: 'A sentence that is very long', why: 'Length has nothing to do with it.' },
       { t: 'A sentence with two different parse trees', correct: true, why: 'That is the definition: two trees, so two possible meanings.' },
       { t: 'A rule that mentions itself', why: 'Recursive rules are normal; the layered grammar is recursive and unambiguous.' },

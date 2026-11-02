@@ -108,7 +108,7 @@ test('a space splits tokens', () => {
   expect(scanOps('= =')).toEqual(['=', '=']);
 });`,
     hints: [
-      'Use the same loop as the core exercise: `start = cur`, then read `src[cur++]`.',
+      'Use the same loop as the last chapter’s exercise: `start = cur`, then read `src[cur++]`.',
       'Each of these four characters can be followed by `=` to make a longer token. Look at `src[cur]` before you finish the token.',
       'Take at most one extra `=`. `!==` is `!=` followed by `=`: there is no three-character token.',
     ],

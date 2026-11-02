@@ -78,7 +78,7 @@ tokens (the words of the program). Line 2 is the **parser**: it turns
 the tokens into a **syntax tree**, the same kind of tagged-union tree
 you built in *Tagged unions: the shape of every syntax tree*. Line 3 is
 an extra check over the tree, which works out which variable each name
-refers to (the chapter *Resolving variables* builds it). Line 4 is the
+refers to (the chapter *Finding every name before running: the resolver* builds it). Line 4 is the
 interpreter, which walks the tree and does what it says (the next
 chapter, *Interpreters and compilers*, sets it beside the other way to
 finish the journey). The

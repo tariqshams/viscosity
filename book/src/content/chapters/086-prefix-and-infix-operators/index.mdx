@@ -260,7 +260,8 @@ The core exercise adds prefix minus and brackets to your parser from
 - The companion keeps two tables, `prefixRule` and `infix`; a token
   with no prefix rule in prefix position is
   `expected an expression`.
-- Prefix `-` and `!` parse their operand with power 8, so only calls,
+- Prefix `-` and `!` parse their operand with power 8 (in the
+  companion's numbering), so only calls,
   `.` and `[` get inside them.
 - Parsing a right side with `bp - 1` makes an operator lean right;
   assignment parses its value with `expression()` and is only allowed

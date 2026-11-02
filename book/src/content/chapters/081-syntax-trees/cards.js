@@ -310,7 +310,7 @@ export const quiz = [
       { t: 'It has a node for the semicolon', why: 'The `;` only marks where the statement ends. Once the tree exists, its shape says that.' },
       { t: 'It is a print node holding a grouping node, which holds a binary + node with two literal children', correct: true, why: 'Drip keeps grouping nodes, and print holds the expression to print.' },
       { t: 'It is the same as the parse tree', why: 'A parse tree has a node for every rule and token; the AST keeps only what matters.' },
-      { t: 'It is a flat list of six tokens', why: 'That is what the scanner produces. The tree is nested.' },
+      { t: 'It is a flat list of seven tokens', why: 'That is what the scanner produces. The tree is nested.' },
     ],
   },
   {

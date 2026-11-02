@@ -163,12 +163,12 @@ test('no rule matches: throw', () => {
       'Keep `best` (the winning type) and `len` (its length). Replace them only when a match is *strictly* longer (`>`, not `>=`): that is what makes the earlier rule win a tie.',
       'After trying all rules: if `len` is 0, throw; if `best` is not `null`, push `[best, src.slice(i, i + len)]`; either way, move on with `i += len`.',
     ],
-    walkthrough: `**How to think about it.** A generated scanner does two jobs: at one position, decide which rule wins, and then repeat that from the end of each token until the input is used up. The first job is the runnable \`pick\` from the chapter; the second is the familiar scanner loop of chapter 68, with \`i\` playing the part of \`start\`. Two details carry the whole meaning of flex's rules: comparing lengths with a strict \`>\` (so a later rule must be *longer* to win, and ties stay with the earlier rule), and making each regex *sticky*, because a normal regex would happily match further along the string and report a token that does not start at \`i\`.
+    walkthrough: `**How to think about it.** A generated scanner does two jobs: at one position, decide which rule wins, and then repeat that from the end of each token until the input is used up. The first job is the runnable \`pick\` from the chapter; the second is the familiar scanner loop of *Writing a scanner*, with \`i\` playing the part of \`start\`. Two details carry the whole meaning of flex's rules: comparing lengths with a strict \`>\` (so a later rule must be *longer* to win, and ties stay with the earlier rule), and making each regex *sticky*, because a normal regex would happily match further along the string and report a token that does not start at \`i\`.
 
 **The solution, line by line.**
 
 - \`const res = rules.map(([t, re]) => [t, new RegExp(re.source, 'y')]);\` makes a sticky copy of each rule's regex once, up front. \`re.source\` is the pattern's text, and \`'y'\` adds the sticky flag.
-- \`return (src) => {\` the scanner itself, a closure (chapter 12) that can see \`res\`.
+- \`return (src) => {\` the scanner itself, a closure (from *Closures: functions that remember*) that can see \`res\`.
 - \`const out = []; let i = 0;\` the tokens so far and the current position.
 - \`while (i < src.length) {\` one round per token (or per piece of skipped text).
 - \`let best = null; let len = 0;\` no winner yet.

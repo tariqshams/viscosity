@@ -262,7 +262,7 @@ Because every non-literal node adds exactly one pair of brackets, \`(- (- 1 2) 3
     optional: true,
     title: 'Print statements too',
     prompt:
-      'A `printExpr` is given. Write `printStmt(s)` for four kinds of statement: `print` (`expression`) as `(print X)`; `expression` (`expression`) as `(; X)`; `let` (`name`, `initializer`) as `(let x X)`, or `(let x)` when the initializer is `null`; and `block` (`statements`) as `(block S1 S2 ...)`, or `(block)` when empty. Use `name.lexeme` for the name. Throw for any other kind.',
+      'A `printExpr` is given. Write `printStmt(s)` for four kinds of statement: `print` (`expression`) as `(print X)`; `expression` (`expression`) as `(; X)`; `let` (`name`, `initializer`) as `(let x X)`, or `(let x)` when the initialiser is `null`; and `block` (`statements`) as `(block S1 S2 ...)`, or `(block)` when empty. Use `name.lexeme` for the name. Throw for any other kind.',
     starter: `${given}
 function printStmt(s) {
   // your code here
@@ -324,7 +324,7 @@ test('an unknown kind throws', () => {
       'For `let`, read the name with `s.name.lexeme`, then check `s.initializer === null` to choose between the two forms.',
       'A block holds statements, so it calls `printStmt` on each one: `s.statements.map((t) => \' \' + printStmt(t)).join(\'\')` gives every child with a space in front, ready to put between `(block` and `)`.',
     ],
-    walkthrough: `**How to think about it.** Statements are a second union, with the same plan as expressions: one case per kind, and each case builds its string from its parts. The parts come in two families, which is the point of this exercise: a print, expression or let statement holds an *expression*, so it calls \`printExpr\`; a block holds *statements*, so it calls \`printStmt\`, itself. Two details need care: a \`let\` may have no initializer (\`null\`, meaning "not there"), and a block may hold any number of statements, including none, so it needs \`map\` and \`join\` rather than a fixed number of pieces.
+    walkthrough: `**How to think about it.** Statements are a second union, with the same plan as expressions: one case per kind, and each case builds its string from its parts. The parts come in two families, which is the point of this exercise: a print, expression or let statement holds an *expression*, so it calls \`printExpr\`; a block holds *statements*, so it calls \`printStmt\`, itself. Two details need care: a \`let\` may have no initialiser (\`null\`, meaning "not there"), and a block may hold any number of statements, including none, so it needs \`map\` and \`join\` rather than a fixed number of pieces.
 
 **The solution, line by line.**
 
@@ -335,9 +335,9 @@ test('an unknown kind throws', () => {
 - \`    case 'expression':\` and the two lines after it do the same with \`;\` as the label, since an expression statement is "an expression, then a semicolon".
 - \`    case 'let': {\` opens a case with its own braces, so it may declare a \`const\`.
 - \`      const n = s.name.lexeme;\` reads the variable's name from its token.
-- \`      if (s.initializer === null) {\` and \`        return '(let ' + n + ')';\`: no initializer, so just the name.
+- \`      if (s.initializer === null) {\` and \`        return '(let ' + n + ')';\`: no initialiser, so just the name.
 - \`      }\` closes the \`if\`.
-- \`      return '(let ' + n + ' ' +\` and \`        printExpr(s.initializer) + ')';\`: otherwise the name, a space and the printed initializer.
+- \`      return '(let ' + n + ' ' +\` and \`        printExpr(s.initializer) + ')';\`: otherwise the name, a space and the printed initialiser.
 - \`    }\` closes the case.
 - \`    case 'block':\` and \`      return '(block' + s.statements\` start the block's string...
 - \`        .map((t) => ' ' + printStmt(t))\` ...turn each inner statement into a space plus its own printed form (this is the recursion: statements inside statements)...
@@ -370,7 +370,7 @@ function printStmt(s) {
   }
   throw new Error('unknown ' + s.kind);
 }`,
-        why: 'The initializer is glued on as it is, so `let y;` prints `(let y null)` and `let x = 1;` prints `(let x [object Object])`. It must be printed with `printExpr`, or left out when it is `null`.',
+        why: 'The initialiser is glued on as it is, so `let y;` prints `(let y null)` and `let x = 1;` prints `(let x [object Object])`. It must be printed with `printExpr`, or left out when it is `null`.',
       },
     ],
   },
@@ -451,7 +451,7 @@ test('an unknown operator throws', () => {
 - \`  throw new Error('cannot evaluate');\` ...and lands here, as does any unknown kind.
 - \`}\` closes the function.
 
-Notice that \`1 - 2 - 3\` gives \`-4\` only because the tree groups it to the left. The evaluator does no precedence work at all: the parser has already decided everything by the shape it built. The chapter "Evaluating expressions" grows this into Drip's real evaluator.
+Notice that \`1 - 2 - 3\` gives \`-4\` only because the tree groups it to the left. The evaluator does no precedence work at all: the parser has already decided everything by the shape it built. The chapter "Running expressions: a tree that computes" grows this into Drip's real evaluator.
 
 **Common wrong attempt.** Leaving out the grouping case: any tree with brackets in it falls through to the \`throw\`, even though brackets do not change the value.`,
     wrong: [

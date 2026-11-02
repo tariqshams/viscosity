@@ -19,8 +19,8 @@ import SubsetSteps from '../../../components/diagrams/ch075/SubsetSteps';
 ## From a pattern to a machine, automatically
 
 You now have three pieces that have not yet been joined up: patterns,
-which are easy for people to write (chapter 72); DFAs, which are fast
-for computers to run (chapter 73); and NFAs, which sit in between,
+which are easy for people to write (*Regular expressions as a language*); DFAs, which are fast
+for computers to run (*Finite automata*); and NFAs, which sit in between,
 because they are easy to build and still mean the same languages. This
 chapter joins them into a pipeline that a program can follow with no
 human help:
@@ -40,7 +40,7 @@ In 1968, Ken Thompson published a program that compiled a regular
 expression into machine code for the IBM 7094 and then used it to search
 text<Cite id="thompson1968" />; the way of building an automaton from a
 pattern that bears his name works like this. Every pattern is a tree
-(chapter 72), so we build a small NFA for each leaf, and then, working
+(*Regular expressions as a language*), so we build a small NFA for each leaf, and then, working
 upwards, wrap the machines of the children into a machine for their
 parent. Every machine we make has exactly **one start state and one
 accepting state**, which is what lets the pieces snap together.
@@ -60,7 +60,7 @@ is only a way of keeping count, not something that physically flows.</span>
   <ThompsonPieces />
 </Figure>
 
-The railway pictures of chapter 72 were the same idea in disguise: the
+The railway pictures of *Regular expressions as a language* were the same idea in disguise: the
 star's track had a "skip" line and a "go round again" loop, and those
 are the two extra ε-arrows here.
 
@@ -135,7 +135,7 @@ The first is the base case. The second follows the code exactly: the
 children are built first, so they get states 0 to 1 and 2 to 3
 (numbers are handed out in the order `fresh` is called), and the new
 start and end are 4 and 5. The
-third is the running example of chapter 72, built bottom-up: six states
+third is the running example of *Regular expressions as a language*, built bottom-up: six states
 for `a|b`, two more for the star and two for `c`, so ten states, with
 many ε-arrows; it is bigger than the smallest machine for the same
 language, which is fine, because the next step tidies it up.
@@ -227,7 +227,7 @@ generated scanner can be as fast as a careful hand-written one.
 Thompson's own 1968 program went another way: it compiled the pattern
 straight into IBM 7094 machine code and ran that code over the text to
 be searched<Cite id="thompson1968" />.
-The dragon book calls the pattern-to-NFA recipe the McNaughton-Yamada-
+Aho, Lam, Sethi and Ullman's textbook calls the pattern-to-NFA recipe the McNaughton-Yamada-
 Thompson algorithm and builds the subset construction on top of it, as
 here<Cite id="aho2006" />; Hopcroft, Motwani and Ullman give the proof
 that the two machines accept the same language<Cite id="hmu2006" />.
