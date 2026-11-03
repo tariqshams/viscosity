@@ -15,6 +15,12 @@ const chapterBySlug = (slug) => {
   if (!d) throw new Error(`smoke: no chapter with slug ${slug}`);
   return d;
 };
+// The first chapter whose text contains a pattern (so checks survive renames).
+const chapterWith = (re) => {
+  const d = ls(chaptersDir).sort().find((f) => re.test(readFileSync(join(chaptersDir, f, 'index.mdx'), 'utf8')));
+  if (!d) throw new Error(`smoke: no chapter matching ${re}`);
+  return d;
+};
 const REFS = chapterBySlug('references');
 const { BOOK } = await import('../src/data/book.js');
 // What the refs-play example prints when the same harness runs it in Node:
@@ -39,6 +45,11 @@ const browser = await chromium.launch();
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); console.log(`${ok ? '✓' : '✗'} ${msg}`); };
 
+// Extra material sits in closed <details> dropdowns (<More>, extra analogies,
+// <OtherLanguages>, <Formal>); open any around an element before using it.
+async function openDropdowns(loc) {
+  await loc.evaluate((el) => { for (let d = el.closest('details'); d; d = d.parentElement?.closest('details') ?? null) d.open = true; });
+}
 async function newPage(opts = IPHONE) {
   const ctx = await browser.newContext(opts);
   const page = await ctx.newPage();
@@ -52,11 +63,12 @@ async function newPage(opts = IPHONE) {
 const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
 // 1. Every page: no console errors, no sideways scrolling on a phone.
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 // Islands hydrate when scrolled into view; on a busy machine that can lag
 // behind the click. Wait until the enclosing <astro-island> has hydrated.
 async function hydrated(loc) {
+  await openDropdowns(loc);
   await loc.scrollIntoViewIfNeeded();
   const h = await loc.elementHandle();
   await h.evaluate((el) => new Promise((done) => {
@@ -133,6 +145,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
 
   // Runnable example
   const ex = page.locator(`[data-runner="${REFS}/refs-play"]`);
+  await openDropdowns(ex);
   await ex.scrollIntoViewIfNeeded();
   await ex.locator('.cm-content').waitFor();
   await ex.locator('[data-run]').click();
@@ -150,6 +163,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
 
   // Exercise: starter fails, typing the reference solution passes.
   const exr = page.locator(`[data-runner="${REFS}/${EX_ID}"]`);
+  await openDropdowns(exr);
   await exr.scrollIntoViewIfNeeded();
   await exr.locator('.cm-content').waitFor();
   await exr.locator('[data-run]').click();
@@ -221,6 +235,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
   const { page, errors } = await newPage();
   await page.goto(url + `/chapters/${chapterBySlug('meet-drip')}/`, { waitUntil: 'networkidle' });
   const r = page.locator('[data-runner]').first();
+  await openDropdowns(r);
   await r.scrollIntoViewIfNeeded();
   await r.locator('.cm-content').waitFor();
   await r.locator('[data-run]').click();
@@ -238,7 +253,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
   const { page, errors } = await newPage();
   const wasmRequests = [];
   page.on('request', (r) => { if (r.url().endsWith('.wasm')) wasmRequests.push(r.url()); });
-  await page.goto(url + `/chapters/${chapterBySlug('emitting-javascript')}/`, { waitUntil: 'networkidle' });
+  await page.goto(url + `/chapters/${chapterWith(/<Playground\b/)}/`, { waitUntil: 'networkidle' });
   const pg = page.locator('[data-playground]').first();
   await hydrated(pg);
   const status = pg.locator('[data-engine-status]');
