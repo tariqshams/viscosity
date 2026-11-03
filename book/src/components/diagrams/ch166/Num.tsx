@@ -27,6 +27,8 @@ const FIGS: Record<string, () => string> = {
   cli: () => x(m.compileSpeed.cli.totalSpeedup),
   inproc: () => x(m.compileSpeed.inProcess.totalSpeedup),
   tsCliTotal: () => ms(m.compileSpeed.cli.totalMedianMs.ts),
+  rsCliTotal: () => ms(m.compileSpeed.cli.totalMedianMs.rust),
+  wasmInprocTotal: () => ms(Math.round(m.compileSpeed.inProcess.totalMedianUs.wasm / 100) / 10),
   tsInprocTotal: () => ms(Math.round(m.compileSpeed.inProcess.totalMedianUs.ts / 100) / 10),
   programs: () => String(m.compileSpeed.programs),
   vmVsTree: () => x(m.drip.geomean.vmVsTree),

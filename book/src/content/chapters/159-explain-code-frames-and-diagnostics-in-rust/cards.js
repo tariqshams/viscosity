@@ -1,79 +1,27 @@
-// Chapter 84 cards: recall prompts, examples, exercises and quiz.
+// Chapter 159 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 159, 159, 159, 159.
+// Merged from the old chapters explain in Rust, Code frames in Rust, Diagnostics, and Lines and columns.
 
 export const prompts = {
   'rx-one-fn': {
-    q: 'How do `explain` and `explain_with_frames` in `plan.rs` share their code?',
+    q: 'In the Rust Viscosity engine, how do `explain` and `explain_with_frames` (in `plan.rs`) share their code?',
     a: 'Both call `explain_text(p, frames)`. `None` gives the plain report; `Some(source)` adds frames.',
   },
-  'rx-two-fns': {
-    q: 'The reference has one `explain(p, { frames })`. Why does the port have two public functions instead?',
-    a: 'So a caller who wants the plain report can’t pass a source by accident; each name says what it does, and `compile` calls `explain(&p)`.',
-  },
-  'rx-braces': {
-    q: 'What does `format!("{{{}}}", "x, y")` produce, and why?',
-    a: '`{x, y}`: in a format string `{{` and `}}` are a literal brace, and `{}` in between is the argument.',
-  },
-  'rx-refused': {
-    q: 'Why does `explain_text` check that a collection has as many reasons as bailouts?',
-    a: 'Then reason `k` is bailout `k`, so its message finds its site. Other reasons (annotations, size) get no frame.',
-  },
   'rx-first-site': {
-    q: 'A collection bails out with the same message at two places. Which one does `--frames` show?',
+    q: 'In Viscosity, a collection bails out with the same message at two places. Which place does `explain --frames` show?',
     a: 'The first: `bail` uses `entry(msg).or_insert(at)`, which only writes a new key.',
   },
-  'rx-dedupe': {
-    q: 'How does the analysis remove repeated bailout messages, and which copy does it keep?',
-    a: 'It drains the vector into an `IndexSet` and back, which keeps the first of each message, in first-seen order.',
-  },
-  'rx-string-index': {
-    q: 'In `string_index.js` the reason says line 6 but the frame shows line 4. Why?',
-    a: 'The site is the index value’s instruction. In SSA, `k` is the constant `\'5\'`, written on line 4.',
-  },
-  'rx-none-site': {
-    q: 'Why is a bailout site an `Option<SourceRef>`?',
-    a: 'Some bailouts have no single place in the source, such as “no records are ever added”; they are recorded with `None`.',
-  },
   'rx-zip': {
-    q: 'What does `frames.zip(at)` give, and why is it used there?',
+    q: 'Why does the Rust Viscosity engine decide whether to draw a code frame with `frames.zip(at)`?',
     a: '`Some((src, at))` only when both are `Some`: a frame needs a source to quote and a position for this reason.',
   },
-  'rx-flatten': {
-    q: 'Why does the frame code call `.copied().flatten()` on `bailout_sites.get(...)`?',
-    a: '`get` gives `Option<&Option<SourceRef>>` (no entry, or an entry that is itself `None`); `copied().flatten()` makes it one `Option<SourceRef>`.',
-  },
   'rx-tabs': {
-    q: 'Why does the caret line keep the tabs that come before the code?',
+    q: 'Why should a code frame’s caret line copy the tabs that come before the code?',
     a: 'A tab is drawn at different widths by different editors. Copying it means the carets move exactly as far as the code does.',
   },
-  'rx-clip': {
-    q: 'An element is written across two lines. What does its frame show?',
-    a: 'Only its first line, with carets from the start of the span to the end of that line’s text.',
-  },
-  'rx-line-start': {
-    q: 'Why does `code_frame` add `char::len_utf8` of the line break, not just 1, to find where the line starts?',
-    a: 'A line break can be U+2028 or U+2029, which are three bytes in UTF-8; adding 1 would land inside the character.',
-  },
   'rx-bytes': {
-    q: 'Rust spans are UTF-8 byte offsets and TypeScript spans UTF-16 offsets. How do the two frames still match?',
+    q: 'In Viscosity, Rust spans are UTF-8 byte offsets and TypeScript spans are UTF-16 offsets. How do the two engines’ code frames still match?',
     a: 'Each engine slices in its own units but counts columns in code points (`chars()` in Rust, `Array.from` in TS).',
-  },
-  'rx-fixtures': {
-    q: 'What checks that `--frames` output matches across the engines?',
-    a: '14 `.frames.txt` fixtures written by `gen_expected.mjs` (checked by `parity.rs`), and the fuzzer on every program it generates.',
-  },
-  'rx-display': {
-    q: 'What does a code frame still get wrong, in both engines?',
-    a: 'A code point is not a screen column: after an emoji drawn two columns wide, the carets start too early.',
-  },
-  'dg-missing': {
-    q: 'When this chapter was first written, what did `viscosity explain bad.js` (holding `const ps = [;`) leave out?',
-    a: 'The position: it printed `SyntaxError: Unexpected token` with no line or column. It now prints `Unexpected token (1:12)`.',
-  },
-  'dg-why-place': {
-    q: 'Why is “where” as important as “what” in a compiler message?',
-    a: 'Without a place you have to search the file (or ten files) for the problem; with a span you go straight to the characters the compiler was reading.',
   },
   'dg-parts': {
     q: 'Which parts of a diagnostic does rustc’s guide list?',
@@ -83,53 +31,9 @@ export const prompts = {
     q: 'What is a span?',
     a: 'A stretch of the source, given by where it starts and where it ends; in oxc and Viscosity, as byte offsets.',
   },
-  'dg-once': {
-    q: 'When is a `SourceRef`’s line number worked out?',
-    a: 'Once, during lowering (`Lowerer::src`), from oxc’s span start with `LineIndex`. It then rides along on the VIR instruction; no later pass changes it.',
-  },
-  'dg-same-line': {
-    q: 'Why can the “line 6” in an `unsafe:` reason never disagree with the frame under it?',
-    a: 'Both come from the same `SourceRef`: the line from its `line`, the frame from its `start` and `end`.',
-  },
   'dg-forof': {
-    q: 'Why does a refusal about the element of `for (const p of ps)` underline the whole line?',
+    q: 'In Viscosity, why does a code frame for a refusal about the element of `for (const p of ps)` underline the whole statement?',
     a: 'The element was made by the `for...of` statement, so its SourceRef is the span of the whole statement. The frame is only as precise as its span.',
-  },
-  'dg-tab': {
-    q: 'Why does the caret line copy the tabs that come before the span?',
-    a: 'A terminal may draw a tab as 2, 4 or 8 columns. A tab in the caret line moves exactly as far as the tab above it, so the carets stay under the code.',
-  },
-  'lc-units': {
-    q: 'Name the three units a position in text can be counted in.',
-    a: 'Bytes (UTF-8), characters (Unicode code points, Rust’s `char`) and UTF-16 units (what JavaScript strings count).',
-  },
-  'lc-who': {
-    q: 'Which unit does each count: oxc’s spans, the code frames, acorn’s columns?',
-    a: 'oxc’s spans count bytes; the code frames count characters; acorn’s columns count UTF-16 units.',
-  },
-  'lc-emoji': {
-    q: 'How big is 🎉 in each unit?',
-    a: '4 bytes in UTF-8, 1 character, and 2 UTF-16 units (a surrogate pair).',
-  },
-  'lc-crlf': {
-    q: 'How many line breaks is `\\r\\n`, and how does `LineIndex::new` make sure of that?',
-    a: 'One. A `\\r` starts a new line only when the next byte is not `\\n`; otherwise the `\\n` does.',
-  },
-  'lc-partition': {
-    q: 'How does `LineIndex::line` find the line of a byte offset?',
-    a: 'It binary-searches the sorted list of line starts (`partition_point`) for how many starts are at or before the offset; that count is the 1-based line.',
-  },
-  'lc-label': {
-    q: 'Where does oxc keep the position of a syntax error?',
-    a: 'In the diagnostic’s labels: each label is a span marking the bad code.',
-  },
-  'lc-display': {
-    q: 'Why did `format!("SyntaxError: {e}")` drop the position?',
-    a: '`OxcDiagnostic`’s `Display` prints only its message; the labels, which hold the span, are not printed.',
-  },
-  'lc-frames': {
-    q: 'The code frames count characters but acorn counts UTF-16 units. Why does that not make the two disagree?',
-    a: 'The frames never print a column: they draw a caret line, one space per character. Only the syntax error prints a column, and it uses UTF-16 units.',
   },
 };
 
@@ -549,6 +453,7 @@ fn report(ps: &[Plan]) -> String {
     ],
   },
   codeFrame: {
+    optional: true,
     lang: 'rust',
     title: 'A code frame from byte offsets',
     prompt: 'Write `code_frame(src, start, end, line)`, a simpler `plan::code_frame`. `start..end` are byte offsets into `src`, and only `\\n` breaks lines. Return two lines with no final newline: `"{line} | {text}"`, where `text` is the line containing `start` with trailing whitespace trimmed; then a gutter of spaces as wide as the line number, `" | "`, a pad, and carets. The pad has one character per code point before `start` on that line: a tab stays a tab, anything else becomes a space. The carets run from `start` to `end`, clipped to the trimmed text, and there is at least one.',
@@ -762,6 +667,7 @@ fn trims_blanks_and_never_runs_past() {
     ],
   },
   caretLine: {
+    optional: true,
     lang: 'rust',
     title: 'The caret line',
     prompt: 'Write `underline(before, width)`, the second line of a code frame. `before` is the text of the source line from its start up to the span, and `width` is how many characters the span covers. Return a pad, then `width` carets (`^`), and at least one caret even when `width` is 0. In the pad, every tab of `before` stays a tab, and every other character, whatever it is, becomes one space.',
@@ -899,6 +805,7 @@ fn underline(
     ],
   },
   acornLineCol: {
+    optional: true,
     lang: 'rust',
     title: 'acorn’s line and column',
     prompt: 'The Rust CLI prints `Unexpected token (1:12)` as the TypeScript one does, by turning oxc’s byte offset into acorn’s position. Write `line_col(src, at)`: the line (from 1) and column (from 0) of byte offset `at`. Lines break at `\\n`, `\\r`, `\\r\\n` (one break), U+2028 and U+2029. Columns count UTF-16 units. Every expected value in the tests is what acorn printed.',
@@ -1126,24 +1033,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What header does a collection `ps` on line 3 with fields `x` and `vx`, planned as SoA, get?',
-    options: [
-      {
-        t: '`ps (line 3) {x, vx} → struct of arrays`',
-        correct: true,
-        why: 'Name, line in brackets, fields in braces joined by “, ”, an arrow, the verdict.',
-      },
-      {
-        t: '`ps (line 3) x, vx → struct of arrays`',
-        why: 'The braces are part of the header; in the format string they are written `{{` and `}}`.',
-      },
-      {
-        t: '`ps: struct of arrays (x, vx)`',
-        why: 'Both engines use one fixed form, `name (line n) {fields} → verdict`.',
-      },
-    ],
-  },
-  {
     q: 'A collection bails out with the message “line 7: an element is used by push” at two different places. What is recorded?',
     options: [
       {
@@ -1158,177 +1047,6 @@ export const quiz = [
       {
         t: 'One reason, and the site of the last place it was found',
         why: '`or_insert` never overwrites an existing entry.',
-      },
-    ],
-  },
-  {
-    q: 'Which reasons can get a code frame?',
-    options: [
-      {
-        t: 'Every reason of every collection',
-        why: '“typed Float64Array columns for all 8 fields” has no single place in the source.',
-      },
-      {
-        t: 'Only reasons of transformed collections',
-        why: 'The other way round: frames explain refusals.',
-      },
-      {
-        t: 'Only the first reason',
-        why: 'Each bailout reason gets its own frame.',
-      },
-      {
-        t: 'The `unsafe: ...` reasons of a kept collection whose reasons are exactly its bailouts, when a site was recorded',
-        correct: true,
-        why: 'Then reason `k` is bailout `k`, and `bailout_sites` maps its message to an `Option<SourceRef>`.',
-      },
-    ],
-  },
-  {
-    q: 'In `string_index.js`, why does the frame for “line 6: indexes the array with something that may not be a number” show line 4?',
-    options: [
-      {
-        t: 'A bug in the line counter',
-        why: 'Both engines agree, and the line is right for the instruction recorded.',
-      },
-      {
-        t: 'The bailout is about the index value, which in SSA is the constant `\'5\'` written on line 4',
-        correct: true,
-        why: 'The site is the span of the instruction the bailout is about.',
-      },
-      {
-        t: 'Frames always show the line of the collection’s declaration',
-        why: 'The declaration is on line 2; the frame shows the site.',
-      },
-    ],
-  },
-  {
-    q: 'A refused reason has a recorded site, but you ran plain `viscosity explain`. Is a frame printed?',
-    options: [
-      {
-        t: 'Yes, because the site is known',
-        why: 'A frame also needs a source to quote, and plain explain passes `None`.',
-      },
-      {
-        t: 'No: `frames` is `None`, so `frames.zip(at)` is `None`',
-        correct: true,
-        why: '`zip` is `Some` only when both sides are.',
-      },
-      {
-        t: 'Only for the first reason',
-        why: 'Without `--frames` no reason gets one.',
-      },
-    ],
-  },
-  {
-    q: 'A line is `naïve 🎉 ps[0]`. Where does `ps` start in each unit?',
-    options: [
-      {
-        t: 'Byte 12, UTF-16 unit 9, code point 8',
-        correct: true,
-        why: '`ï` is 2 bytes but 1 unit; `🎉` is 4 bytes, 2 units (a surrogate pair), 1 code point. The Run example prints these numbers.',
-      },
-      {
-        t: '8 in all three',
-        why: 'Only ASCII text has the same offsets in every unit.',
-      },
-      {
-        t: 'Byte 8, UTF-16 unit 9, code point 12',
-        why: 'Bytes are the biggest count here, code points the smallest.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `code_frame` count `chars()` rather than use the byte offsets directly?',
-    options: [
-      {
-        t: 'Byte offsets can’t be used to slice a Rust string',
-        why: 'They can, at character boundaries; the function slices with them.',
-      },
-      {
-        t: 'Counting chars is faster',
-        why: 'It is slower: the bytes must be decoded.',
-      },
-      {
-        t: 'So that the column means the same as in the TypeScript engine, which counts code points',
-        correct: true,
-        why: 'Bytes (Rust) and UTF-16 units (TS) differ after non-ASCII text; code points agree.',
-      },
-      {
-        t: 'Because oxc reports columns in chars',
-        why: 'oxc reports byte spans and no columns at all.',
-      },
-    ],
-  },
-  {
-    q: 'Both engines print the same frame, but in your terminal the carets after an emoji start one column early. What is going on?',
-    options: [
-      {
-        t: 'A parity bug in the Rust engine',
-        why: 'The TypeScript engine prints the same bytes.',
-      },
-      {
-        t: 'The fixtures are stale',
-        why: 'They match; the bytes are as intended.',
-      },
-      {
-        t: 'Both count columns in code points, and the emoji is one code point drawn two columns wide',
-        correct: true,
-        why: 'Parity can’t catch a mistake both engines share. Fixing it would need a table of character widths.',
-      },
-    ],
-  },
-  {
-    q: `An escaping element is written as \`ps[
-  i]\`, across two lines. What does its frame show?`,
-    options: [
-      {
-        t: 'Both lines, with carets under each part',
-        why: 'A frame always shows one line: the one the span starts on.',
-      },
-      {
-        t: 'The first line, with carets from `ps[` to the end of that line’s text',
-        correct: true,
-        why: '`min(e)` cuts the span at the end of its first line, and the width never runs past the trimmed text.',
-      },
-      {
-        t: 'Nothing: a span over two lines has no frame',
-        why: 'It still gets a frame, clipped to its first line.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is a diagnostic in this chapter’s sense?',
-    options: [
-      {
-        t: '`viscosity: SyntaxError: Unexpected token`, as the CLI once printed it',
-        why: 'It has a message but no position.',
-      },
-      {
-        t: 'An `unsafe:` reason with its code frame',
-        correct: true,
-        why: 'A message plus a span, drawn as a line number, the code and carets.',
-      },
-      {
-        t: '`viscosity: No such file or directory (os error 2)`, as it once was',
-        why: 'It did not even name the file.',
-      },
-    ],
-  },
-  {
-    q: 'Where does the “line 6” in “line 6: an element is used by push” come from?',
-    options: [
-      {
-        t: 'From oxc, which reports line numbers',
-        why: 'oxc reports byte offsets only; `LineIndex` works out lines.',
-      },
-      {
-        t: 'From counting line breaks again when explain runs',
-        why: 'The line is worked out once, when the SourceRef is made.',
-      },
-      {
-        t: 'From the `SourceRef` that lowering put on the `ps[i]` instruction',
-        correct: true,
-        why: 'The same SourceRef gives the frame its span.',
       },
     ],
   },
@@ -1369,114 +1087,6 @@ export const quiz = [
       {
         t: 'The line holds a tab',
         why: 'It holds none; a tab only changes the pad.',
-      },
-    ],
-  },
-  {
-    q: 'In `underline`, why are characters counted with `chars()` rather than `len()`?',
-    options: [
-      {
-        t: 'Because `len()` would include the tabs',
-        why: 'Both count tabs; the difference is bytes against characters.',
-      },
-      {
-        t: 'Because `len()` counts bytes, and a character like 🎉 is four bytes but one character',
-        correct: true,
-        why: 'One space per character is what lines up.',
-      },
-      {
-        t: 'Because `chars()` is faster',
-        why: 'It is slower, if anything; correctness is the reason.',
-      },
-    ],
-  },
-  {
-    q: 'In `"let é = [;"`, the `;` is at byte 10. Which column does acorn report?',
-    options: [
-      {
-        t: '10',
-        why: 'That is the byte offset; é is 2 bytes.',
-      },
-      {
-        t: '8',
-        why: 'That would count é as zero units.',
-      },
-      {
-        t: '9',
-        correct: true,
-        why: 'é is one UTF-16 unit, so `(1:9)`.',
-      },
-    ],
-  },
-  {
-    q: 'A file uses Windows line endings (`\\r\\n`). An error is on the third line. What would a line counter that treats `\\r` and `\\n` as separate breaks report?',
-    options: [
-      {
-        t: 'Line 3',
-        why: 'Only if it counted `\\r\\n` once.',
-      },
-      {
-        t: 'Line 5',
-        correct: true,
-        why: 'Two breaks per line ending: two line endings become four breaks, so 1 + 4 = 5.',
-      },
-      {
-        t: 'Line 6',
-        why: 'There are only two line endings before the third line.',
-      },
-    ],
-  },
-  {
-    q: 'Which statement about oxc and the old Rust syntax errors is accurate?',
-    options: [
-      {
-        t: 'oxc did not know where the error was',
-        why: 'It did: the label holds the span.',
-      },
-      {
-        t: 'oxc reports line and column numbers, and the plugin ignored them',
-        why: 'oxc reports byte offsets; the plugin turns them into line and column.',
-      },
-      {
-        t: 'The span was in a label that `Display` does not print, so `format!("{e}")` lost it',
-        correct: true,
-        why: 'The fix reads `e.labels.first()` and appends `(line:column)`.',
-      },
-    ],
-  },
-  {
-    q: 'Why must the Rust CLI count columns in UTF-16 units, when Rust strings are UTF-8?',
-    options: [
-      {
-        t: 'Because terminals draw UTF-16',
-        why: 'Terminals draw characters; the unit is about matching acorn.',
-      },
-      {
-        t: 'Because it must print what the TypeScript CLI prints, and acorn counts JavaScript string units',
-        correct: true,
-        why: 'The same error, the same `(line:column)`, in both engines.',
-      },
-      {
-        t: 'Because UTF-8 has no columns',
-        why: 'Any unit can count a column; the question is which one the other engine uses.',
-      },
-    ],
-  },
-  {
-    q: 'A source file has 10,000 lines. About how many comparisons does `partition_point` make to find the line of an offset?',
-    options: [
-      {
-        t: 'About 14',
-        correct: true,
-        why: 'A binary search halves the list each step, and 2 to the 14th is just over 10,000.',
-      },
-      {
-        t: 'About 5,000 on average',
-        why: 'That is a search from the start; the starts are sorted, so it can halve.',
-      },
-      {
-        t: 'Exactly 1, because it is a lookup table',
-        why: 'It is a sorted list searched by halving, not a table indexed by offset.',
       },
     ],
   },

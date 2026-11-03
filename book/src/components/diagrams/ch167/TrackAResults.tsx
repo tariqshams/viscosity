@@ -1,4 +1,4 @@
-// Chapter 167: Track A's two headline measurements, read from the
+// Chapter 167: the core's two headline measurements, read from the
 // committed results. No number is typed by hand.
 //   Drip (the redesigned language): book/companion/ts/results/drip-bench-2026-11-02.json
 //   Viscosity: engine/ts/packages/bench/results/matrix-2026-10-31.json,
@@ -54,7 +54,7 @@ export default function TrackAResults({ caption }: { caption?: string }) {
   return (
     <figure className="figure not-prose" data-bench="track-a">
       <div className="fig-card">
-        <div className="mb-1 font-sans text-[0.95rem] font-semibold">Track A, measured</div>
+        <div className="mb-1 font-sans text-[0.95rem] font-semibold">Drip and Viscosity, measured</div>
         <div className="mb-2 font-sans text-xs text-muted">Speed-ups, longer is better; the dashed lines mark 1× (no change)</div>
         <svg viewBox={`0 0 ${W} ${H}`} className="viz" role="img" aria-label={`Drip VM over tree-walker: ${dripBars.map((b) => `${b.label} ${b.value}×`).join('; ')}. Viscosity over original, on Node: ${e2eBars.map((b) => `${b.label} ${b.value}×`).join('; ')}.`}>
           <Group bars={dripBars} y0={0} head="DRIP: BYTECODE VM vs TREE-WALKER" color="rgb(var(--accent))" />

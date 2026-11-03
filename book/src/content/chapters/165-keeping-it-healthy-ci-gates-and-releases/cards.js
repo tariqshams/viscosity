@@ -1,16 +1,8 @@
-// Chapter 88 cards: recall prompts, examples, exercises and quiz.
+// Chapter 165 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 165, 165, 165.
+// Merged from the old chapters Keeping it healthy, The gates: what each check protects, and Release engineering.
 
 export const prompts = {
-  'ci-acorn': {
-    q: 'Why did `fuzz.rs` pass on the machine where it was written but fail on the CI runner?',
-    a: 'It loads the TypeScript engine, which imports acorn. The developer’s machine already had `engine/ts/node_modules`; the fresh runner had nothing, because the job never ran `npm ci` there.',
-  },
-  'ci-lockfile': {
-    q: 'What does a lockfile such as `package-lock.json` record?',
-    a: 'The exact version of every package to install, so that every install gets the same ones.',
-  },
   'ci-npm-ci': {
     q: 'What does `npm ci` do when package-lock.json and package.json disagree, and how is that different from `npm install`?',
     a: '`npm ci` exits with an error and installs nothing; `npm install` updates the lockfile to match.',
@@ -20,88 +12,28 @@ export const prompts = {
     a: 'It runs them on every change on a fresh machine that has only what the repository installs, so it catches what passed only because of something your machine had.',
   },
   'ci-concurrency': {
-    q: 'What does `concurrency: { group: workflow-ref, cancel-in-progress: true }` do when you push twice quickly to the same branch?',
+    q: 'In GitHub Actions, what does `concurrency: { group: workflow-ref, cancel-in-progress: true }` do when you push twice quickly to the same branch?',
     a: 'Both runs are in the same group, so the newer one cancels the run still in progress for the first push.',
   },
-  'ci-parallel-jobs': {
-    q: 'Why do the workflow’s five jobs not depend on each other?',
-    a: 'So they run side by side, and a red job never stops or hides the others: one push shows every failure.',
-  },
   'ci-cache': {
-    q: 'Why does a changed package-lock.json mean a fresh npm download on the next CI run?',
+    q: 'A CI cache is keyed by a hash of package-lock.json (as `actions/setup-node` does). Why does a changed lockfile mean a fresh npm download on the next run?',
     a: 'setup-node’s cache key includes a hash of the lockfile, so a changed lockfile gives a new key, which misses.',
   },
-  'ci-rust-cache': {
-    q: 'What does `Swatinem/rust-cache` keep between runs, and what does it leave out?',
-    a: 'It keeps ~/.cargo and the compiled dependencies in target/, keyed by the rustc version among other things; it leaves out the workspace’s own crates, which are rebuilt every run.',
-  },
   'gt-skip': {
-    q: 'A step of a CI job fails. What happens to the job’s later steps, and to the other jobs?',
+    q: 'In GitHub Actions, a step of one job fails. What happens to that job’s later steps, and to the workflow’s other jobs?',
     a: 'The later steps of that job are skipped and the job is red; the other jobs run on, since none depends on another.',
   },
   'gt-new-kind': {
     q: 'Why can a mistake pass every gate?',
     a: 'Each gate catches only what it was written to look for. A new kind of mistake needs a new gate, as the fuzz bugs needed the fuzzer.',
   },
-  'gt-fmt': {
-    q: 'What does `cargo fmt --all --check` do, and why is it the first gate of the Rust job?',
-    a: 'It exits with 1 (and prints the difference) if rustfmt would change any file, without changing it. It is the fastest gate, so a formatting slip costs seconds.',
-  },
-  'gt-tests': {
-    q: 'What does each hold together: parity, the differential test, `multi_file`?',
-    a: 'Parity: the Rust engine to the TypeScript engine’s committed output. Differential: compiled programs to the originals, under node and CPython. multi_file: the parallel CLI to one fixed output order.',
-  },
-  'gt-clippy': {
-    q: 'What does `-- -D warnings` change about Clippy?',
-    a: 'Every lint warning becomes an error, so the job fails on code that compiles but that Clippy would warn about.',
-  },
-  'gt-fixtures': {
-    q: 'Why does the Rust half of parity need no TypeScript to run, and what is the price?',
-    a: 'The TypeScript output is committed as fixtures in tests/expected. The price: after changing the reference, run gen_expected.mjs and commit the new fixtures.',
-  },
-  'gt-book': {
-    q: 'Name three things the book job checks.',
-    a: 'Any three of: the chapter rules (citations, budget, prompts, quiz, line widths, exercises), the book’s unit tests, the build, every internal link, and a phone-sized smoke test that uses the pages and both Playground engines.',
-  },
-  'gt-pack': {
-    q: 'Why does the engine-ts job install the packed CLI in an empty folder instead of running it from the repository?',
-    a: 'To test what a user would download from npm: a file missing from the package shows up only when the tarball is installed on its own.',
-  },
-  'release-what': {
-    q: 'What are the steps of a release process, in order?',
-    a: 'Choose the version, record what changed (a changelog), build each package, check it as a user would get it, publish.',
-  },
   'publish-permanent': {
-    q: 'Why is publishing the step to be most careful with?',
+    q: 'Why is publishing the step of a release to be most careful with, on crates.io and npm?',
     a: 'It can’t be undone: a crates.io version can never be overwritten or deleted, and an npm name and version can never be reused, even after unpublishing.',
-  },
-  'three-numbers': {
-    q: 'Which three files hold the version numbers a Viscosity release changes?',
-    a: '`engine/rust/Cargo.toml` (`[workspace.package]`, inherited by six crates), `engine/ts/packages/cli/package.json` and `engine/rust/packages/wasm/package.json`.',
-  },
-  'zero-zero': {
-    q: 'Viscosity is at 0.0.1. Which later versions does Cargo’s caret requirement `"0.0.1"` accept, and why does that make 0.0.1 “experimental”?',
-    a: 'None: it means `>=0.0.1, <0.0.2`. In 0.0.z the left-most non-zero part is z, so every patch release counts as incompatible, and users only move when they ask to.',
-  },
-  'api-surface': {
-    q: 'Besides its functions, what counts as Viscosity’s public API?',
-    a: 'The explain text, the CLI’s flags, messages and exit statuses, and the compiled code users run.',
-  },
-  'path-deps': {
-    q: 'Why did `cargo package -p viscosity-core` fail at first?',
-    a: 'Its dependency `viscosity-vir` was given by path only. crates.io needs a version requirement, so each internal dependency now has `version = "0.0.1"` next to its `path`.',
-  },
-  'crate-license': {
-    q: 'What licence text did a packaged `viscosity-vir` crate first contain?',
-    a: 'None: `crates/vir` had no LICENSE file, so the `.crate` held only the manifest, lockfile and sources. MIT asks for the notice to travel with copies, so each crate now has a LICENSE.',
   },
   'skip-published': {
     q: 'Why does `scripts/release.sh` ask crates.io whether each crate’s version exists before running `cargo publish`?',
     a: 'So a run that stopped partway can be repeated: what is already published is skipped (HTTP 200), and only the rest is uploaded.',
-  },
-  'rate-limit': {
-    q: 'Why did `viscosity-wasm` fail on the first `--crates-only` run, and what fixed it?',
-    a: 'crates.io answered HTTP 429 (“published too many new crates in a short period”): it limits how fast one account creates new crate names. Re-running the script about ten minutes later skipped the five and published it.',
   },
 };
 
@@ -382,6 +314,7 @@ fn finished(
     ],
   },
   fixtureCheck: {
+    optional: true,
     lang: 'rust',
     title: 'Missing and stale fixtures',
     prompt: 'Write `check(progs, have)`, the fixture-set gate of `parity.rs`. Each program `(name, ext)` needs four files: `name.ext`, `name.explain.txt`, `name.assume.ext` and `name.assume.explain.txt`. Return the files that are needed but not in `have` (missing), and the files in `have` that no program needs (stale), each sorted.',
@@ -643,6 +576,7 @@ fn check(
     ],
   },
   semver: {
+    optional: true,
     lang: 'rust',
     title: 'Cargo’s version arithmetic',
     prompt: 'Write `next(v, c)`: the version after `v` for a change `c`. From 1.0.0 on, `Break` bumps the major number, `Feat` the minor and `Fix` the patch, and the parts to the right reset to 0. In `0.y.z`, `Break` bumps y and resets z, and `Feat` and `Fix` bump z. In `0.0.z`, every change bumps z. Then write `accepts(req, v)`: does Cargo’s default (caret) requirement `req` accept `v`? It must have the same left-most non-zero part (for `0.0.z`, the same everything) and not be older than `req`.',
@@ -942,7 +876,7 @@ fn accepts(req: &str, v: &str) -> bool {
 
 export const quiz = [
   {
-    q: 'A lockfile is out of sync with package.json. What happens on the CI runner?',
+    q: 'A CI job runs `npm ci`, and the repository’s package-lock.json is out of sync with package.json. What happens?',
     options: [
       {
         t: '`npm ci` updates the lockfile and carries on',
@@ -960,7 +894,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'You push twice to the same branch a minute apart. What does ci.yml’s `concurrency` setting do?',
+    q: 'A GitHub Actions workflow has a concurrency group per branch with `cancel-in-progress: true`. You push twice to one branch a minute apart. What happens?',
     options: [
       {
         t: 'Cancels the run for the first push',
@@ -974,42 +908,6 @@ export const quiz = [
       {
         t: 'Merges them into one run',
         why: 'Runs are never merged; the newer one replaces the older.',
-      },
-    ],
-  },
-  {
-    q: 'Why did the `engine-rust` job fail on the first CI runs after the fuzzer was added?',
-    options: [
-      {
-        t: 'The fuzzer found a bug in the engine',
-        why: 'The log says `Cannot find package \'acorn\'`: the fuzzer never ran.',
-      },
-      {
-        t: 'The runner had not installed the TypeScript engine’s packages, which the fuzz test loads',
-        correct: true,
-        why: 'The fix was one step, `npm ci` in engine/ts, before `cargo test`.',
-      },
-      {
-        t: 'GitHub’s runner had no Rust compiler',
-        why: 'The job installs a toolchain first, and the other Rust tests ran.',
-      },
-    ],
-  },
-  {
-    q: 'What does `Swatinem/rust-cache` save between runs?',
-    options: [
-      {
-        t: 'Everything in target/, including the workspace’s own crates',
-        why: 'It deliberately leaves the workspace crates out.',
-      },
-      {
-        t: 'Only the test results',
-        why: 'It caches build inputs and outputs, not results.',
-      },
-      {
-        t: '~/.cargo and the compiled dependencies in target/',
-        correct: true,
-        why: 'Keyed by the rustc version among other things.',
       },
     ],
   },
@@ -1032,82 +930,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these does the committed workflow NOT run?',
-    options: [
-      {
-        t: 'Clippy with warnings denied',
-        why: 'The engine-rust and drip jobs run it.',
-      },
-      {
-        t: 'A long fuzzing campaign of 20,000 programs',
-        correct: true,
-        why: 'Only the 200-program run inside `cargo test` happens in CI; long campaigns are run by hand.',
-      },
-      {
-        t: 'The wasm32 build of viscosity-wasm',
-        why: 'The engine-rust job builds it.',
-      },
-      {
-        t: '`cargo fmt --check`',
-        why: 'It is the first gate of the engine-rust job.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the Rust parity half of CI not need the TypeScript engine to run?',
-    options: [
-      {
-        t: 'The Rust job compiles the TypeScript engine to Rust',
-        why: 'Nothing like that happens.',
-      },
-      {
-        t: 'Parity is skipped in CI',
-        why: 'It runs in `cargo test --workspace`.',
-      },
-      {
-        t: 'The TypeScript output is committed as fixtures in tests/expected',
-        correct: true,
-        why: 'gen_expected.mjs writes them; the gate only compares bytes.',
-      },
-    ],
-  },
-  {
-    q: 'A program was deleted from the corpus, but its four fixtures were left in tests/expected. What happens?',
-    options: [
-      {
-        t: 'Nothing: no test reads them',
-        why: 'That is why the fixture-set check exists; without it they would sit there for ever.',
-      },
-      {
-        t: '`fixtures_match_the_programs_exactly` fails and lists them as stale',
-        correct: true,
-        why: 'It compares the folder with the program list in both directions.',
-      },
-      {
-        t: 'The parity test fails on them',
-        why: 'Parity reads the fixtures of programs that exist; it never opens these.',
-      },
-    ],
-  },
-  {
-    q: 'On 1 November the smoke test failed with “no horizontal overflow at 440px”. What had gone wrong?',
-    options: [
-      {
-        t: 'Two pages were wider than a phone’s screen',
-        correct: true,
-        why: 'The bibliography and one chapter scrolled sideways at 440 pixels.',
-      },
-      {
-        t: 'The site did not build',
-        why: 'The build step had passed; the smoke test runs on the built site.',
-      },
-      {
-        t: 'A link pointed to a missing page',
-        why: 'That is what Check site links looks for.',
-      },
-    ],
-  },
-  {
     q: 'Adding a new gate to a workflow can…',
     options: [
       {
@@ -1126,47 +948,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Suppose Viscosity were at 0.1.0 and a release changed the wording of an explain line. Under Cargo’s rules, what should the version be?',
-    options: [
-      {
-        t: '0.1.1: it is only text',
-        why: 'Explain text is part of the API: tests and users compare it exactly. A change that can break them is a breaking change.',
-      },
-      {
-        t: '0.2.0',
-        correct: true,
-        why: 'In 0.y.z Cargo treats y as the major part, so a breaking change bumps y and resets z.',
-      },
-      {
-        t: '1.0.0',
-        why: 'That would be the 1.0 rule. Going to 1.0 is a choice to promise stability, not what a break in 0.y.z requires.',
-      },
-    ],
-  },
-  {
-    q: 'Once the path dependencies had versions, but before the first crates.io release, what did `cargo package -p viscosity-core` do?',
-    options: [
-      {
-        t: 'Built a `.crate` file and verified it, ready to upload',
-        why: 'Not on its own: the verifying build looked for `viscosity-vir` on crates.io, where it wasn’t yet.',
-      },
-      {
-        t: 'Uploaded the crate to crates.io',
-        why: '`cargo package` never uploads. That is `cargo publish`.',
-      },
-      {
-        t: 'Stopped: `viscosity-vir` was a path dependency without a version',
-        why: 'That was the result before the versions were added; by now the workspace gives one.',
-      },
-      {
-        t: 'Packed it, then failed to verify it: `viscosity-vir` wasn’t on crates.io yet',
-        correct: true,
-        why: 'The verifying build resolves dependencies from crates.io. `cargo package --workspace` packs `viscosity-vir` first and verifies against that instead.',
-      },
-    ],
-  },
-  {
-    q: 'A user depends on `viscosity-core = "0.1"`. Which release will `cargo update` give them?',
+    q: 'A Rust crate depends on `foo = "0.1"`, and `foo` has releases 0.1.3, 0.2.0 and 1.0.0. Which one will `cargo update` choose?',
     options: [
       {
         t: '0.2.0',
@@ -1180,42 +962,6 @@ export const quiz = [
         t: '0.1.3',
         correct: true,
         why: 'Same left-most non-zero part (the 1), and not older than 0.1.0.',
-      },
-    ],
-  },
-  {
-    q: '`scripts/release.sh` can publish everything. Why does it only do so with tokens Tariq adds himself?',
-    options: [
-      {
-        t: 'Because npm can’t publish scoped packages without them',
-        why: 'Scoped packages publish fine with `publishConfig.access` set to public. The tokens say who is publishing.',
-      },
-      {
-        t: 'Because the packages don’t build without them',
-        why: 'Both npm packages build and pack, and `--dry-run` verifies all six crates, with no tokens at all.',
-      },
-      {
-        t: 'Because publishing is permanent, and whether and when to do it is the author’s decision',
-        correct: true,
-        why: 'A published version can’t be taken back. The script does the work; the tokens keep running it a deliberate human step.',
-      },
-    ],
-  },
-  {
-    q: 'The second `--crates-only` run published five crates and then got HTTP 429 for `viscosity-wasm`. What was the right next step?',
-    options: [
-      {
-        t: 'Bump the version to 0.0.2 and publish everything again',
-        why: 'The five are fine at 0.0.1, and a new version would be a different release; only one upload was missing.',
-      },
-      {
-        t: 'Wait a few minutes and run the same command again',
-        correct: true,
-        why: 'The script skips every version crates.io already has, so the re-run uploads only `viscosity-wasm`. That is what happened, about ten minutes later.',
-      },
-      {
-        t: 'Yank the five crates and start over',
-        why: 'Yanking does not delete anything and was not needed: nothing was wrong with them.',
       },
     ],
   },

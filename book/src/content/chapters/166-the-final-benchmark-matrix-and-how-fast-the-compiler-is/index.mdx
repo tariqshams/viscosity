@@ -3,19 +3,15 @@ n: 166
 day: 30
 part: IX
 title: 'The final benchmark matrix, and how fast the compiler is'
-tagline: 'Every benchmark so far timed the programs Viscosity writes. This one times Viscosity. The Rust CLI is about ten times faster than the TypeScript one, the engine alone about five, and the gap between those two numbers is mostly the time it takes to start a program at all.'
+tagline: 'Every benchmark so far timed the programs Viscosity writes; the last one also times Viscosity, and puts every comparison in one grid measured by one method. The Rust CLI is about ten times faster than the TypeScript one, the engine alone about five, and the same compiled program gains four times on one JavaScript engine and nothing on another.'
 objectives:
-  - Tell whole-process compile times from in-process ones, and say which question each answers.
-  - Read section (b) of the benchmark matrix, and explain where a CLI run's time goes.
-  - Explain why a ratio of small times is fragile, and why the matrix sums medians.
-  - Predict how start-up, per-file cost and threads matter as the number of files grows.
-  - Read the matrix’s three sections and say what each one compares, and how each cell was measured.
-  - Compute a speed-up and a geometric mean from the results file, and say why rounding each ratio first can move the last digit.
-  - Explain why Viscosity gains about 4× on heat under V8 and nothing under JavaScriptCore, and say which part of that explanation is still a hypothesis.
-  - Tell the two compile-speed numbers apart, and say which parts of the matrix are older than the code they describe.
+  - Tell whole-process compile times from in-process ones, and explain where a CLI run’s time goes.
+  - Explain why a ratio of small times is fragile.
+  - Read the benchmark matrix’s sections, say how each cell was measured, and compute a speed-up and a geometric mean.
+  - Explain why Viscosity gains on heat under V8 and not under JavaScriptCore, and say which part of that explanation is still a hypothesis.
 introduces: [compile-time-performance, benchmark-matrix]
-uses: [native-vs-wasm, playground, wasm-pack, webassembly, viscosity-rs, oxc, engine-parity, end-to-end-benchmark, test-corpus, jit-warmup, median-p95, benchmark-isolation, release-build, profiling, implementation-comparison, npm-package, struct, impl, vec, slice, rust-closure, rust-iterator, hashmap, aos-vs-soa, typed-array, float64, heap-number, field-representation, nan-boxing, shape, cpu-cache, spatial-locality, cost-model, rust-cost-model, drip-rs, rust-explain, cli, release-process, option, pattern]
-sources: ['cargo-profiles', v8-react-cliff, jsc-jsvalue]
+uses: [native-vs-wasm, wasm-pack, webassembly, viscosity-rs, oxc, engine-parity, end-to-end-benchmark, test-corpus, jit-warmup, median-p95, benchmark-isolation, release-build, profiling, implementation-comparison, npm-package, struct, impl, vec, slice, rust-closure, rust-iterator, hashmap, aos-vs-soa, typed-array, float64, heap-number, field-representation, nan-boxing, shape, cpu-cache, spatial-locality, cost-model, rust-cost-model, drip-rs, rust-explain, cli, release-process, option, pattern]
+sources: [v8-react-cliff, jsc-jsvalue]
 ---
 import CompileSteps from '../../../components/diagrams/ch166/CompileSteps';
 import WhereTimeGoes from '../../../components/diagrams/ch166/WhereTimeGoes';
@@ -23,42 +19,47 @@ import MatrixSteps from '../../../components/diagrams/ch166/MatrixSteps';
 import MatrixAxes from '../../../components/diagrams/ch166/MatrixAxes';
 import Num from '../../../components/diagrams/ch166/Num';
 
-{/* ── merge: from old chapter 166, How fast is the compiler? ── */}
-
 ## The other stopwatch
 
-Since Part II, every benchmark in this book has timed the programs
-Viscosity *writes*: does the struct-of-arrays version of `particles`
-run faster than the original? This chapter turns the stopwatch on
-Viscosity itself. When you type `viscosity build app.js`, how long
-until you get your prompt back? And when the playground recompiles on
-every keystroke, how long does each compile take? Those are two
-different questions, and they get two different answers.
+Since *AoS vs SoA, measured*, every benchmark has timed the programs
+Viscosity *writes*. Now turn the stopwatch on Viscosity itself. When you
+type `viscosity build app.js`, how long until you get your prompt back?
+And when this book's Playground recompiles as you type, how long does
+each compile take? Those are two different questions, with two
+different answers.
 
 <Analogy title="how fast is a taxi?">
 The speed on the motorway is one answer; the time from phoning for a
-taxi to arriving is another, and for a short trip it is mostly the
-wait for the car to turn up. A faster engine does not help much if the
-car is parked across town.
+taxi to arriving is another, and for a short trip it is mostly the wait
+for the car to turn up. A faster engine does not help much if the car is
+parked across town.
 <span slot="breaks">A taxi's wait changes with traffic and the time of
 day; a program's start-up is much the same every time on a quiet
 machine, which is what lets us measure it and subtract it.</span>
+</Analogy>
+
+<Analogy extra title="a school report card">
+A report card lists every subject in one grid, marked in the same week
+by the same rules, so the rows can be compared with each other.
+<span slot="breaks">A school grades every pupil on the same scale; the
+matrix's machine is a noisy shared computer, so it also has to record
+how much its own marks wobble.</span>
 </Analogy>
 
 <Callout kind="definition">
 **Compile-time performance** is the speed of the compiler itself, from
 source in to code out. Measure it as a **whole process** per compile
 (what a command-line user waits for, start-up included) or **in
-process**: `compile()` called again and again in one long-lived
-process, after warm-up (what an editor, a build tool or a playground
-sees). Neither says anything about how fast the compiled program runs.
+process**: `compile()` called again and again in one long-lived process,
+after warm-up (what an editor, a build tool or a playground sees).
+Neither says anything about how fast the compiled program runs.
 </Callout>
 
 <Examples of="compile-time-performance">
 
 ```sh
 viscosity build basic_soa.js
-# Rust 4.1 ms, TS 112 ms
+# medians of 21: Rust 3.6 ms, TS 94 ms
 ```
 
 ```js
@@ -66,120 +67,72 @@ for (let k = 0; k < 200; k++)
   compile(src); // after 50 warm-ups
 ```
 
-```sh
-viscosity build *.js --jobs 1 -o out/
-# 400 files: Rust 50–62, TS 825–899 ms
-```
-
 </Examples>
 
-The first is one whole process, the way a user runs it: the numbers in
-the comment are medians of 21 runs I made for this chapter on the
-shared machine, start-up and all. The second is the in-process
-question: the matrix calls `compile()` 50 times to let the JIT warm up
-(the chapter *Benchmarking honestly* explains why), then times 200
-calls and takes the median. The third is in between: one process, many
-files, so start-up is paid once; the numbers are again medians from my
-runs (seven each, writing to a memory-backed folder).
+The first is one whole process per compile, the way a user runs it; the
+comment holds medians of 21 alternating runs I made on the shared
+machine, start-up and all, for one corpus program. The second is the
+in-process question: call `compile()` 50 times to let the JIT warm up
+(*Benchmarking honestly* explains why), then time 200 calls and take the
+median.
 
 <Prompts ids={['ctp-what']} />
 
-## Section (b) of the matrix
-
-`engine/ts/packages/bench/src/matrix.ts` measured both questions on
-the 40 JavaScript programs of the corpus and wrote the results to
+`engine/ts/packages/bench/src/matrix.ts` measured both questions on the
+<Num k="programs" /> JavaScript programs of the corpus and wrote
 `results/matrix-2026-10-31.json`. Whole process: `viscosity build
 <file>`, five runs per program, alternating the TypeScript CLI (Node
-running the esbuild bundle from the chapter *Shipping Viscosity*) and
-the Rust CLI (the release binary). In process: 50 warm-up calls, then
-200 timed calls, of the TypeScript engine and of `@viscosity/wasm` in
-the same Node. Every number in the diagram is read from that file:
+running the esbuild bundle) and the Rust CLI (the release binary). In
+process: the TypeScript engine and `@viscosity/wasm` in the same Node.
+Every number in the diagram is read from that file:
 
 <CompileSteps client:visible />
 
-Summed over the corpus, the medians come to 4,764.6 ms for the
-TypeScript CLI against 435.8 ms for the Rust CLI, 10.9 times faster;
-in process, 14,979.7 µs against 2,846.8 µs, 5.26 times. (A note added
-to the results file says that when this was measured the in-process
-identity check compared only the emitted code, and the WebAssembly
-side's timed region did not read the result strings; a later check
-found code and explain identical for all 40, but the timings were not
-re-measured.)
-
-<Prompts ids={['cli-total', 'inproc-total']} />
+Summed over the corpus, the medians come to <Num k="tsCliTotal" /> for
+the TypeScript CLI against <Num k="rsCliTotal" /> for the Rust CLI,
+<Num k="cli" /> faster; in process, <Num k="tsInprocTotal" /> against
+<Num k="wasmInprocTotal" />, <Num k="inproc" /> faster.
 
 ## Where the time goes
 
-The third step of the diagram is the important one: a warm `compile()`
-is under 1% of a TypeScript CLI run, for every program. So what is the
-other 99%? I timed the pieces for this chapter on the same shared
-machine, 21 fresh processes each, alternating, in three rounds (the
-load average was about 2); each range is the spread of the three
-medians:
+A warm `compile()` is under 1% of a TypeScript CLI run, for every
+program. So what is the rest? I timed the pieces, 21 fresh processes
+each, alternating (load average about 1 to 2):
 
 ```text
-node -e 0              39–44 ms
-TS CLI --version       92–101 ms
-TS CLI build (1 file)  111–123 ms
-Rust CLI --version     3.9–4.1 ms
-Rust CLI build         4.1–4.6 ms
+node -e 0              32 ms
+TS CLI --version       75 ms
+TS CLI build (1 file)  94 ms
+Rust CLI --version     3.3 ms
+Rust CLI build         3.6 ms
 ```
 
-<Figure takeaway="A TypeScript CLI run is mostly starting Node and loading code; a Rust CLI run is mostly starting a process." caption="One round's medians, split by subtraction: starting Node is node -e 0, loading the bundle is --version minus that, compiling is build minus --version. The Rust bar's compile slice is about 0.2 ms.">
+<Figure takeaway="A TypeScript CLI run is mostly starting Node and loading code; a Rust CLI run is mostly starting a process." caption="An earlier round's medians on the same machine, split by subtraction: starting Node is node -e 0, loading the bundle is --version minus that, compiling is build minus --version. The Rust bar's compile slice is about 0.2 ms.">
   <WhereTimeGoes />
 </Figure>
 
-Starting Node is about a third of the TypeScript run, and loading the
-1 MB bundle costs more again before a line is compiled (`--version`
+Starting Node is about a third of the TypeScript run, and loading the 1
+MB bundle costs more again before a line is compiled (`--version`
 compiles nothing). The compile itself adds about 20 ms, far more than
-the warm figure of well under 1 ms, because in a fresh process the code
-is cold: the committed `engine/rust/results/compile-speed-2026-10-31.md`
-measured the first `compile()` of `boids` at 22 ms, about 25 times its
-warm time, which is the JIT warm-up of the chapter *Benchmarking
-honestly*, seen from the compiler's side. The Rust CLI spends almost
-all of its 4 ms starting a process too, which is why the CLI ratio is
-twice the engine ratio: it mostly compares Node's start-up with a
-native binary's.
+the warm figure, because in a fresh process the code is cold:
+`engine/rust/results/compile-speed-2026-10-31.md` measured the first
+`compile()` of `boids` at 22 ms, about 25 times its warm time. The Rust
+CLI spends almost all of its few milliseconds starting a process, which
+is why the CLI ratio is about twice the engine ratio: it mostly compares
+Node's start-up with a native binary's. And a ratio of milliseconds is
+fragile: the matrix's Rust medians were 7 to 15 ms per program, on a
+busier machine, so read "<Num k="cli" />" as "about ten times, or more".
 
-<Prompts ids={['why-bigger', 'share', 'first-call']} />
+<Prompts ids={['why-bigger', 'first-call']} />
 
-<Callout kind="pitfall">
-My Rust CLI medians (about 4 ms) are well below the matrix's (7 to 15
-ms per program), although the engine has changed only slightly since
-(its early-error checks add about 10 µs per compile). The matrix ran while the machine
-was busier, and when the denominator is a few milliseconds a busy
-neighbour can double it, and the ratio halves. Read "10.9×" as "about
-ten times, or more". The earlier compile-speed file shows the other way
-a ratio moves: it ran the TypeScript CLI from source, `node cli.ts`,
-which Node type-strips and loads module by module, and found medians
-near 200 ms and gaps of 80 to 120 times; the bundle roughly halved the
-TypeScript start-up.
-</Callout>
+<More title="Many files in one process, and where Rust's time goes">
+Both CLIs accept many files, `viscosity build a.js b.js … -o out/`, so
+start-up is paid once. When this chapter was first written I timed 1, 40
+and 400 files in one process with `--jobs 1`: the Rust CLI took 4.4–5.7,
+11.3–11.4 and 50–62 ms, the TypeScript CLI 120–141, 205–264 and 825–899
+ms, so each extra file cost Rust about 0.12 ms and TypeScript about 1.8.
 
-<Prompts ids={['fragile']} />
-
-## Many files, one process
-
-Both CLIs accept many files, `viscosity build a.js b.js … -o out/`,
-and then start-up is paid once. I timed 1, 40 and 400 files in one
-process (the corpus, then the corpus copied ten times) with `--jobs 1`,
-writing to a memory-backed folder, seven runs each, in two rounds.
-The medians: the Rust CLI took 4.4–5.7, 11.3–11.4 and 50–62 ms; the
-TypeScript CLI 120–141, 205–264 and 825–899 ms. So each extra file cost
-Rust about 0.12 ms and TypeScript about 1.8 ms.
-
-<Analogy extra title="opening a shop for the day">
-A baker spends an hour lighting ovens and setting out trays before the
-first loaf; after that, each extra loaf takes a few minutes. For one
-loaf the opening hour is almost everything; for a thousand it hardly
-matters, and the minutes per loaf decide the day.
-<span slot="breaks">A baker can hire more hands to share the loaves;
-so can the compiler, with threads, but only up to the point where
-something they all share (the oven, or for us the disk) becomes the
-limit.</span>
-</Analogy>
-
-<Formal title="Start-up, amortized">
+<Formal title="Start-up, amortised">
 
 ```text
 T(n) = S + n · c
@@ -188,149 +141,61 @@ R(1) ≈ S_ts / S_rs,  R(∞) = c_ts / c_rs
 ```
 
 <span slot="read">A run of n files costs its start-up S plus n times the
-cost per file c. The ratio between the two CLIs, R, is about the ratio
-of their start-ups when n is 1, and tends to the ratio of their
-per-file costs as n grows large.</span>
+cost per file c. The ratio between the two CLIs, R, is about the ratio of
+their start-ups when n is 1, and tends to the ratio of their per-file
+costs as n grows large.</span>
 </Formal>
-
-The model below is those two costs, rounded from my runs. Watch the
-ratio fall from about 25 times towards the ratio of the per-file costs:
 
 <Run id="amortize" />
 
-`Cli` holds the two numbers of the model, and `run` is the formula
-above, `start_ms + files * per_file_ms`. The loop prints the two times
-and their ratio for 1, 10, 100 and 10,000 files: 26 times, 24, 18, and
-finally 15, closing in on 1.8 / 0.12 = 15, the ratio of the per-file
-costs. Change `per_file_ms` for Rust to 0.24 (as if every file took
-twice as long) and the last line drops to `8x` (7.5, rounded): with enough
-files, only the cost per file matters.
+The model prints the two times and their ratio for 1, 10, 100 and 10,000
+files, closing in on 1.8 / 0.12 = 15. With hundreds of files threads can
+share the per-file cost: `results/parallel-build-2026-10-31.md` built 396
+files 2.95 times faster with four threads than one into a memory-backed
+folder, but only 1.24 times writing to disk, where creating the files
+took about 65 ms whatever the thread count (the deep dive *Compiling in
+parallel* follows those threads).
 
-With hundreds of files, the per-file cost dominates, and threads can
-share it out. `results/parallel-build-2026-10-31.md` built 396 files
-with one to four threads: writing to a memory-backed folder, four
-threads were 2.95 times faster than one, but writing to the machine's
-disk only 1.24 times, because creating 396 files took about 65 ms
-whatever the thread count. The chapter *Compiling in parallel* is
-about those threads.
+The compile-speed file also reports a callgrind profile of `nbody.js` in
+the native engine: parsing with oxc about 10–17 µs, scope resolution and
+lowering about 80, analysis about 35, plan and emit about 25. No phase
+dominates; small heap allocations and hashing do, and the port stopped
+there on purpose, a faithful translation rather than a rewrite for speed.
+</More>
 
-<Prompts ids={['batch']} />
+## One grid, one method
 
-<Callout kind="engine" label="Under the hood">
-What does the native engine do with its fraction of a millisecond? The
-compile-speed file reports a callgrind profile of `nbody.js`: parsing
-with oxc took about 10–17 µs, scope resolution plus lowering about 80,
-analysis about 35, plan and emit about 25. No phase dominates; the
-largest costs are small heap allocations (strings in the IR, per-block
-maps) and hashing, and switching the internal maps from SipHash to
-FxHash cut 10–40%. The port stopped there on purpose: it is a faithful
-translation of the reference, not a rewrite for speed.
-</Callout>
-
-## Your turn
-
-<Exercise id="totals" />
-
-## What you learned
-
-- **Compile-time performance** is the compiler's own speed: per
-  process for a command line, in process for editors and playgrounds.
-  Over the corpus the Rust CLI was about ten times faster, the engine
-  alone (as WebAssembly) about five.
-- A CLI run is mostly **start-up**, and the first compile in a process
-  is cold; ratios of milliseconds are fragile, so sum the **medians**
-  and report the load.
-- With many files, start-up **amortises**: per-file cost and threads
-  decide, and the disk can cap them.
-
-
-{/* ── merge: from old chapter 166, The final benchmark matrix ── */}
-
-## Three questions, one run
-
-By the end of Part XIII three comparisons had each been measured on a
-different day, in a different way: Viscosity's compiled programs against
-their originals on Node (*Benchmarking Viscosity end to end*), the
-TypeScript engine against the Rust one (*How fast is the compiler?*), and
-the three Drips (*Benchmarks: three implementations*). Numbers taken on
-different days by different methods cannot honestly sit in one table,
-because you cannot tell whether a difference comes from the code or from
-the day; so the last benchmark of the book runs all of them from one
-script, on one machine, in one sitting (all but Drip, whose committed
-results the script copies in, as the last section explains).
-
-<Analogy title="a school report card">
-A report card lists every subject in one grid, marked in the same week by
-the same rules. One great mark from last term tells you less than the
-whole grid, because now the rows can be compared with each other.
-<span slot="breaks">A school grades every pupil on the same scale; the
-matrix's machine is a noisy shared computer, so it also has to record how
-much its own marks wobble.</span>
-</Analogy>
-
-<Analogy extra title="testing tyres on two kinds of road">
-A new tyre that grips far better on a wet road may make no difference on
-a dry one, because the old tyre was already fine there. Test it on only
-one surface and you will overstate, or understate, what it does.
-<span slot="breaks">Road surfaces are easy to see. The difference between
-two JavaScript engines is hidden inside them, and the matrix can show
-that it exists long before anyone can show where it is.</span>
-</Analogy>
-
-The script is `engine/ts/packages/bench/src/matrix.ts`. It writes
-`results/matrix-2026-10-31.json` and generates the `.md` next to it from
-that file, with a header saying not to edit it by hand; every figure on
-this page, in the diagrams and in the text, is read from that JSON (or,
-where the page says so, from another committed results file).
+Three comparisons had each been measured on a different day, in a
+different way: the compiled programs against their originals, the
+TypeScript engine against the Rust one, and the three Drips. Numbers
+taken on different days by different methods cannot honestly sit in one
+table, because you cannot tell whether a difference comes from the code
+or from the day; so `matrix.ts` runs them from one script, on one
+machine, in one sitting, and generates its `.md` from the JSON.
 
 <Figure caption="The matrix's three sections, their axes and how many cells each holds. Each section asks a different question; within a section, every cell was measured the same way." takeaway="A benchmark matrix is every combination of a few axes, measured by one method.">
   <MatrixAxes />
 </Figure>
 
 <Callout kind="definition">
-A **benchmark matrix** measures every combination along a few axes
-(here: program × JavaScript engine × original or compiled; compiler ×
-corpus program × way of running it; Drip implementation × program) with
-one method, so that any two cells can be compared. It records the
-machine, the versions and the noise alongside the numbers.
+A **benchmark matrix** measures every combination along a few axes (here:
+program × JavaScript engine × original or compiled; compiler × corpus
+program × way of running it; Drip implementation × program) with one
+method, so that any two cells can be compared. It records the machine,
+the versions and the noise alongside the numbers.
 </Callout>
 
-<Formal title="Speed-up and geometric mean">
+The machine is a shared 4-vCPU VM, and the file itself warns that
+timings vary by up to about 2× between runs and that differences under
+about 10% are noise. Against that, the end-to-end section runs each
+program in <Num k="runs" /> fresh processes per version per engine,
+original and compiled interleaved, after one discarded run of each, and
+reports the **best** time, the most stable figure because noise only
+ever adds time, with the median beside it. Every compiled program
+printed the same checksum as its original, on both engines. The second
+engine is Bun <Num k="bun" />, which runs JavaScriptCore.
 
-```text
-speedup(p) = t_original(p) / t_compiled(p)
-geomean    = (s₁ × s₂ × ... × sₙ)^(1/n)
-           = exp((ln s₁ + ... + ln sₙ) / n)
-```
-
-<span slot="read">The speed-up of a program is its original time divided
-by its compiled time, so 4 means four times faster. The geometric mean of
-n speed-ups multiplies them together and takes the n-th root; the second
-line computes the same thing by averaging their logarithms, which never
-overflows. Unlike the ordinary average, a 2× gain and a 2× loss cancel
-out to exactly 1.</span>
-</Formal>
-
-<Prompts ids={['matrix-what', 'matrix-why']} />
-
-## How each cell was measured
-
-The machine is a shared cloud VM with 4 vCPUs. Other tenants use the same
-CPUs, so the file itself warns that timings vary by up to about 2×
-between runs, and that differences under about 10% are noise. Against
-that, the end-to-end section runs each program in <Num k="runs" /> fresh
-processes per version per engine, original and compiled interleaved,
-after one discarded run of each (the rules of *Benchmarking honestly*
-and *Noisy numbers: the median, p95 and a fresh process*). It reports
-the best time, which is the most stable figure because noise only ever
-adds time, with the median beside it. Every compiled program printed the
-same checksum as its original, on both engines, and the Rust CLI's
-compiled code was byte-identical to the TypeScript engine's for all five.
-
-Bun <Num k="bun" /> is the second engine; it runs JavaScriptCore (*JavaScriptCore and
-SpiderMonkey*). One detail shows why the file records its settings: the VM's
-shell set `BUN_OPTIONS=--smol`, a memory-saving mode, and the script
-removed it so that Bun ran with its defaults.
+<Prompts ids={['matrix-what', 'matrix-why', 'best-of']} />
 
 <Examples of="benchmark-matrix">
 
@@ -342,11 +207,67 @@ r.node.originalMs.best
   / r.node.viscosityMs.best;
 ```
 
-```js
-// the same row, the other engine
-r.bun.originalMs.best
-  / r.bun.viscosityMs.best;
-```
+</Examples>
+
+The example reads the results file, `m`, finds heat's row, and divides
+its original time on Node, <Num k="heatNodeOrig" />, by its compiled
+time, <Num k="heatNodeComp" />, giving the <Num k="heatNode" /> in the
+table. Reading the same row along the engine axis, on Bun the original
+takes <Num k="heatBunOrig" /> and the compiled program
+<Num k="heatBunComp" />, a speed-up of <Num k="heatBun" />. A whole
+column is summarised by its **geometric mean**, the n-th root of the
+product of the speed-ups, so that a 2× gain and a 2× loss cancel to
+exactly 1.
+
+<MatrixSteps client:visible />
+
+On Node, Viscosity speeds up every program, with a geometric mean of
+<Num k="nodeGeo" />; on Bun the mean is <Num k="bunGeo" />, and `heat`
+gains nothing. The difference lies in the originals: Bun runs the
+unchanged array-of-objects programs <Num k="bunOrig" /> faster than Node,
+and the compiled ones only <Num k="bunComp" /> faster. JavaScriptCore was
+already fast on the objects; V8 was not.
+
+<Prompts ids={['heat-two']} />
+
+## A likely cause, not yet confirmed
+
+`FINDINGS.md` in the bench package offers an explanation and labels it
+"not yet confirmed with engine traces". The facts it rests on are
+documented: in V8, a field that holds doubles keeps each value in a
+separate box on the heap<Cite id="v8-react-cliff" />, while
+JavaScriptCore stores a double inside the value itself<Cite id="jsc-jsvalue" />,
+and a `Float64Array` holds raw doubles on both. If every `c[i].h` on V8
+is one more pointer to follow, the rewrite fixes storage and locality on
+V8 but only locality on JavaScriptCore, and heat, which reads four
+neighbours of every cell in every step, would feel the pointer most.
+Nobody has yet taken the trace of V8 that would confirm it.
+
+The lesson for the cost model holds either way: its rules predict
+*whether* a layout helps on these programs, but not *how much*, because
+that depends on an engine the compiler never sees; which is why
+`explain` says why a collection was transformed and never promises a
+speed-up.
+
+<Prompts ids={['explain-claim']} />
+
+<More title="Two honest notes, and reading the Drip column">
+The in-process figure carries a note added afterwards: when it was
+measured, the WebAssembly side's timed region did not copy the output
+strings out of linear memory, which the TypeScript side never has to do.
+`matrix.ts` now does, but the timing has not been re-run, so treat
+<Num k="inproc" /> as an upper bound.
+
+The Drip section was not timed by the matrix: its <Num k="dripPrograms" />
+rows are copied from the redesigned Drip's committed results of
+2026-11-02, the files *Profiling and optimising drip-rs, and three
+implementations compared* reads. The TypeScript VM is about level with
+the tree-walker (<Num k="vmVsTree" />), and drip-rs is <Num k="rustVsVm" />
+faster than it and <Num k="rustVsTree" /> faster than the tree-walker.
+`matrix.ts` takes each mean over ratios rounded to two places; taken from
+the times, drip-rs against the tree-walker is <Num k="rustVsTreeTimes" />.
+Only the mean from the times keeps an exact rule: the third mean is the
+first two multiplied.
 
 ```js
 // a column, from the raw times
@@ -356,129 +277,45 @@ Math.exp(xs.reduce((a, x) =>
   a + Math.log(x), 0) / xs.length);
 ```
 
-</Examples>
+<Formal title="Speed-up and geometric mean">
 
-Each example reads the results file, `m`. The first finds heat's row and
-divides its original time on Node, <Num k="heatNodeOrig" />, by its
-compiled time, <Num k="heatNodeComp" />, giving the <Num k="heatNode" />
-in the table. The second reads the same row along the engine axis: on
-Bun the original takes <Num k="heatBunOrig" /> and the compiled program
-<Num k="heatBunComp" />, a speed-up of <Num k="heatBun" />. The third
-works down a column: for each Drip program it divides the TypeScript
-VM's time by drip-rs's, and the last line is the geometric mean from the
-formal box, which comes to <Num k="rustVsVm" />, as in the file.
+```text
+speedup(p) = t_original(p) / t_compiled(p)
+geomean    = (s₁ × s₂ × ... × sₙ)^(1/n)
+           = exp((ln s₁ + ... + ln sₙ) / n)
+```
 
-<Prompts ids={['best-of', 'interleave']} />
+<span slot="read">The speed-up of a program is its original time divided
+by its compiled time. The geometric mean of n speed-ups multiplies them
+together and takes the n-th root; the second line computes the same
+thing by averaging their logarithms, which never overflows.</span>
+</Formal>
 
-## The results
-
-<MatrixSteps client:visible />
-
-On Node, Viscosity speeds up every program, with a geometric mean of
-<Num k="nodeGeo" />. On Bun the mean is <Num k="bunGeo" />, and `heat`
-gains nothing; `nbody` comes out at <Num k="nbodyBun" /> on Bun, also
-within the noise. The same compiled code, checked to behave the same,
-pays off on one engine and not on the other.
-
-The third step shows where the difference lies: in the originals. Bun
-runs the unchanged array-of-objects programs <Num k="bunOrig" /> faster
-than Node (as a geometric mean), and the compiled ones only
-<Num k="bunComp" /> faster. JavaScriptCore was already fast on the
-objects; V8 was not, and after Viscosity the two engines are close.
-
-<Prompts ids={['heat-two', 'originals']} />
-
-## A likely cause, not yet confirmed
-
-`FINDINGS.md` in the bench package, section 7, offers an explanation and
-labels it carefully as a likely cause, "not yet confirmed with engine
-traces". The facts it rests on are documented. In V8, a field that holds
-doubles gets the Double representation, and its value sits in a separate
-box on the heap that only that object points to<Cite id="v8-react-cliff" />
-(*Field representations: one TypeScript line, a slower loop*).
-JavaScriptCore stores a double inside the value itself: its `JSValue`
-encodes doubles by adding 2^49 to their bits, so a double needs no
-box<Cite id="jsc-jsvalue" />. A `Float64Array` holds raw doubles on both.
-
-The hypothesis joins them. If every `c[i].h` on V8 is one more pointer
-to follow, then the struct-of-arrays rewrite fixes two things on V8, the
-storage and the locality, and only the locality on JSC; and heat reads
-four neighbours of every cell in every step, so the extra pointer would
-hurt it most. Section 5 of the same file fits: on V8, packing the fields
-into one `Float64Array` recovered much of the gain without changing the
-layout. What would confirm it is a trace of what V8 really does with
-heat's objects (*Watching the engine work*), and nobody has taken one.
-
-The lesson for the cost model holds either way. Its rules about size and
-access patterns predict *whether* a layout helps on these programs, but
-not *how much*, because that depends on an engine the compiler never
-sees; which is why `explain` says why a collection was transformed and
-never promises a speed-up.
-
-<Prompts ids={['hypothesis', 'explain-claim']} />
-
-## Two honest notes: a timing not re-run, and rows copied in
-
-The compile-speed section has two numbers that are easy to mix up. Run
-as command-line tools, one process per file over the <Num k="programs" />
-corpus programs, the Rust CLI is <Num k="cli" /> faster; but the
-TypeScript CLI's total of <Num k="tsCliTotal" /> is mostly Node starting
-and loading a 1 MB bundle, and inside one warm Node process the
-TypeScript engine compiled all of them in about <Num k="tsInprocTotal" />.
-There, the Rust engine running as WebAssembly in the same Node is
-<Num k="inproc" /> faster. That figure carries a note added afterwards:
-the WebAssembly side's timed region did not copy the output strings out
-of linear memory, which the TypeScript side never has to do. `matrix.ts`
-now does, but the timing has not been re-run, so treat it as an upper
-bound.
-
-The Drip section was not timed by the matrix at all: its times are
-copied (not re-run) from the redesigned Drip's committed results of
-2026-11-02, the files *Benchmarks: three implementations* reads. Its
-<Num k="dripPrograms" /> rows are that chapter's rows, each with all three
-times, and so are its means: the TypeScript VM is about level with the
-tree-walker (<Num k="vmVsTree" />), and drip-rs is <Num k="rustVsVm" />
-faster than it and <Num k="rustVsTree" /> faster than the tree-walker.
-
-One digit differs. `matrix.ts` takes each mean over the ratios rounded
-to two places; taken from the times, drip-rs against the tree-walker is
-<Num k="rustVsTreeTimes" /> (the figure that chapter quotes). The gap is
-far below the noise, but only the mean from the times keeps an exact
-rule, which the exercise checks: the third mean is the first two
-multiplied, because each row's third ratio is its other two multiplied.
-
-<Prompts ids={['old-file', 'startup', 'drip-copied']} />
-
-<Callout kind="engine" label="Under the hood">
-The README and *Benchmarking Viscosity end to end* also quote an earlier
-run, `results/e2e-node-2026-10-31.json`: Node only, a median of three
-runs, made before the fuzzer fixes of Part XIII. One of those fixes
-changed heat's compiled code: a field write whose right-hand side may
-throw now stores late, through a small helper (`__vsc_set`), so an error
-comes out in the original's order (in heat, the Rust CLI here emits
-one such store, for the write to `next`). The matrix measured the code as it is now; the two files
-used different methods too, so compare their shapes, never their cells.
-</Callout>
+An earlier end-to-end run, `results/e2e-node-2026-10-31.json` (Node
+only, a median of three, made before the fuzzer fixes changed heat's
+compiled code), used a different method; compare its shape with the
+matrix, never its cells.
+</More>
 
 ## Your turn
 
 <Exercise id="geomean" />
 
+For more practice, sum a results table's medians into the two totals:
+
+<Exercise id="totals" />
+
 ## What you learned
 
+- **Compile-time performance** is the compiler's own speed: per process
+  for a command line, in process for editors and playgrounds; a CLI run
+  is mostly **start-up**, and ratios of milliseconds are fragile.
 - A **benchmark matrix** runs every comparison with one method on one
-  machine, and records the versions and the noise with the numbers.
-- Each end-to-end cell is the **best of several fresh processes**,
-  interleaved, with the checksum checked on both engines; a
-  **speed-up** is original over compiled, and a **geometric mean**
-  averages speed-ups so that a gain and an equal loss cancel.
+  machine, recording versions and noise; each end-to-end cell is the
+  **best of fresh processes**, interleaved.
 - Viscosity gains on **V8** across the board and much less on
-  **JavaScriptCore**, where heat gains nothing; the originals explain it.
-- The **heap-number** explanation is a **hypothesis**, built on
-  documented facts about both engines and not yet confirmed.
-- The CLI compile-speed ratio mostly measures **start-up**; the
-  **Drip** section is copied from the committed run of 2026-11-02, and a
-  geometric mean taken from the **times** multiplies exactly, while one
-  taken from **rounded ratios** can move the last digit.
+  **JavaScriptCore**; the heap-number explanation is a **hypothesis**.
+
+Next: *Capstone: the whole machine*.
 
 <Quiz />

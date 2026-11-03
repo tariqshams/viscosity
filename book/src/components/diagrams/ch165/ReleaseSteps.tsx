@@ -59,7 +59,7 @@ const ROWS: Row[] = [
 const COLS = ['version', 'build', 'licences', 'checked', 'published'];
 
 const STATES: { upto: number; note: string }[] = [
-  { upto: 0, note: 'Three numbers, all 0.0.1: one in the workspace Cargo.toml, which six crates inherit, and one in each npm package. They are set by hand; scripts/release.sh refuses to run if they differ, and CI checks that the packed CLI’s --version matches its own package.json.' },
+  { upto: 0, note: 'Three numbers, all 0.0.1 for the first release (0.0.2 since): one in the workspace Cargo.toml, which six crates inherit, and one in each npm package. They are set by hand; scripts/release.sh refuses to run if they differ, and CI checks that the packed CLI’s --version matches its own package.json.' },
   { upto: 1, note: 'Building a package. Both npm packages have a build.mjs that npm runs as prepack. For the crates, cargo package --workspace packages all six. At first it stopped at once: the workspace’s own crates depended on each other by path only, and crates.io needs a version too.' },
   { upto: 2, note: 'Licences. Each npm package ships LICENSE and a THIRD_PARTY_LICENSES.txt with the full text of everything bundled into it. A packaged crate carries only the files in its own folder, so each crate folder now has a LICENSE (crates/vir had none at first).' },
   { upto: 3, note: 'Checks before a release. Every push packs @viscosity/cli, installs the tarball in an empty folder and runs it. CI also tests and packages the crates. @viscosity/wasm has the same kind of test in smoke.mjs, but CI doesn’t run it.' },

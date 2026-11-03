@@ -1,107 +1,39 @@
-// Chapter 85 cards: recall prompts, examples, exercises and quiz.
+// Chapter 161 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 161, 161, 161.
+// Merged from the old chapters WebAssembly as a target, Rust and WebAssembly, and Compiling the engine to WebAssembly.
 
 export const prompts = {
   'wasm-what': {
     q: 'What is WebAssembly, in one sentence?',
     a: 'A standardised, portable, low-level binary format for code, which browsers and Node can validate, compile and run.',
   },
-  'wasm-magic': {
-    q: 'What are the first 8 bytes of every WebAssembly module?',
-    a: 'The magic number `00 61 73 6d` (“\\0asm”) and the version, `01 00 00 00` (version 1).',
-  },
-  'wasm-validate': {
-    q: 'Why can an engine compile WebAssembly to machine code without keeping a real operand stack?',
-    a: 'Validation type-checks every function, which fixes the stack height at every instruction, so the stack slots can be treated as registers.',
-  },
-  'wasm-wrap': {
-    q: 'What does the exported `add` return for `add(2147483647, 1)`, and why?',
-    a: '`-2147483648`: `i32.add` works modulo 2³², so it wraps around instead of growing.',
-  },
-  'lm-what': {
-    q: 'What is linear memory?',
-    a: 'A module’s single contiguous, growable array of raw bytes, read and written by integer address.',
-  },
-  'lm-trap': {
-    q: 'What happens when WebAssembly loads from an address past the end of its memory?',
-    a: 'It traps: the call stops and JavaScript sees a thrown `WebAssembly.RuntimeError`. Nothing outside the memory is touched.',
-  },
   'lm-detach': {
     q: 'You made `new Float64Array(mem.buffer)` and then called `mem.grow(1)`. What is the view’s length now, and why?',
     a: '0. Growing detaches the old ArrayBuffer and creates a new one, so views must be made again.',
   },
-  'visc-wasm-status': {
-    q: 'Does Viscosity emit WebAssembly today?',
-    a: 'No. Both engines emit JavaScript. The Rust port’s `wasm` crate compiles the compiler itself to WebAssembly, so it can run in a browser.',
-  },
   'numbers-only': {
-    q: 'Why can’t a WebAssembly export take a `&str` directly?',
-    a: 'WebAssembly functions take and return only numbers. A string has to be copied into linear memory and passed as an address and a length.',
+    q: 'Why can’t a Rust function exported to WebAssembly take a `&str` straight from JavaScript?',
+    a: 'A WebAssembly function’s parameters are plain values such as numbers, not strings. The string has to be copied into linear memory and passed as an address and a length.',
   },
   'bindgen-what': {
     q: 'What are the two halves of wasm-bindgen?',
     a: 'A Rust attribute, `#[wasm_bindgen]`, that marks what to export, and a command-line tool that reads the `.wasm` and writes JavaScript glue and `.d.ts` types.',
   },
-  'npm-package': {
-    q: 'Where does engine/rust’s WebAssembly build end up?',
-    a: 'On npm as `@viscosity/wasm` (0.0.1), for Node and browsers, and in this book’s Playground, which runs it in a worker when you pick the Rust engine.',
-  },
   'str-copy': {
     q: 'When JavaScript passes a string to a wasm-bindgen function taking `&str`, what happens?',
     a: 'The glue reserves space with the module’s own allocator and copies the string into linear memory as UTF-8, then passes its address and length.',
-  },
-  surrogate: {
-    q: 'A JavaScript string contains an unpaired surrogate. What does Rust receive as `&str`?',
-    a: 'The string with that unit replaced by U+FFFD, so it differs from the JavaScript string.',
   },
   'result-throw': {
     q: 'An exported wasm-bindgen function returns `Err(JsError)`. What does the JavaScript caller see?',
     a: 'An exception: the glue throws a JavaScript `Error` with the message.',
   },
-  'output-handle': {
-    q: 'What does the JavaScript `Output` object returned by `compile` actually hold?',
-    a: 'An address (`__wbg_ptr`) of the Rust `Output` in linear memory. Its `code` getter copies the string out on every read.',
-  },
-  free: {
-    q: 'Why does the generated `Output` class have a `free()` method?',
-    a: 'The Rust value lives in linear memory, which JavaScript’s collector cannot see into. `free()` drops it now; a FinalizationRegistry is only a late fallback.',
-  },
-  'parity-wasm': {
-    q: 'What happened when this chapter compiled the 40 JavaScript corpus programs with the published `@viscosity/wasm` from Node?',
-    a: 'Every `code` and `explain` text matched the TypeScript CLI’s output byte for byte.',
-  },
   'wasm-pack-what': {
     q: 'What does `wasm-pack build` do, in one sentence?',
     a: 'Compiles the crate to WebAssembly, runs wasm-bindgen (and, for release builds, wasm-opt), and writes a `pkg` folder with the `.wasm`, the JS glue and a `package.json`, ready for npm.',
   },
-  'wasm-pack-target': {
-    q: 'How many wasm-bindgen targets does one `wasm-pack build` produce?',
-    a: 'One, chosen with `--target`: `bundler` (the default), `nodejs`, `web`, `no-modules` or `deno`.',
-  },
-  'why-build-mjs': {
-    q: 'Why does Viscosity build its package with `build.mjs` instead of wasm-pack?',
-    a: 'It wants two targets (`nodejs` and `web`) in one package, plus licence texts and a copy into the book, and a check that the CLI matches `Cargo.lock`.',
-  },
-  'describe-fns': {
-    q: 'What are the `__wbindgen_describe_` exports in cargo’s `.wasm`?',
-    a: 'Functions generated by the macro that report each exported type. The wasm-bindgen CLI runs them in its own small interpreter, writes the glue, then deletes them.',
-  },
-  'version-check': {
-    q: 'Why does `build.mjs` read `Cargo.lock` before running wasm-bindgen?',
-    a: 'To demand the CLI at exactly the locked `wasm-bindgen` crate version. Their formats must match, or the CLI refuses the file.',
-  },
   'node-vs-web': {
-    q: 'How do the `nodejs` and `web` targets load the `.wasm`?',
+    q: 'How does the glue of wasm-bindgen’s `nodejs` target load the `.wasm`, compared with its `web` target?',
     a: '`nodejs`: CommonJS glue that reads the file synchronously, so functions work right after `require`. `web`: an ES module whose `init()` fetches and instantiates it first.',
-  },
-  'name-section': {
-    q: 'Where did most of wasm-opt’s 386 KB saving come from?',
-    a: 'Dropping the name section (257 KB of function names). The code itself shrank by about 9%.',
-  },
-  reproducible: {
-    q: 'Rebuilt from the same commit in an empty directory, was the `.wasm` the same?',
-    a: 'Yes: byte for byte the same as the copy committed in `book/public/wasm`, so the book serves the engine in its own tree.',
   },
 };
 
@@ -463,6 +395,7 @@ For 624485 the 7-bit groups, smallest first, are 1100101, 0001110 and 100110, wh
     ],
   },
   options: {
+    optional: true,
     lang: 'rust',
     title: 'compileWith’s options',
     prompt: 'The wasm crate’s `compileWith(source, mode, bounds, minSize)` gets its options from JavaScript as strings. Write `parse_mode` (`"auto"` or `"opt-in"`), `parse_bounds` (`"check"` or `"assume"`), and `options`, which parses both, **mode first**, and passes the first error up with `?`. Use the crate’s exact messages, given as `BAD_MODE` and `BAD_BND`.',
@@ -678,6 +611,7 @@ fn options(mode: &str, bounds: &str)
     ],
   },
   pin: {
+    optional: true,
     lang: 'rust',
     title: 'The version check',
     prompt: 'Before running wasm-bindgen, `build.mjs` reads `Cargo.lock` and insists on exactly that version of the CLI. Write `locked`: in a lockfile, find the line `name = "<name>"` (the whole line) and return the version from the `version = "…"` line right after it, or `None`. Then write `check`: `out` is the CLI’s `--version` output, like `"wasm-bindgen 0.2.106\\n"`; its version is the last word. Return `Ok(())` if it matches the locked `wasm-bindgen`, else `Err` with exactly `wasm-bindgen-cli X is required (found Y)`, or `wasm-bindgen is not in Cargo.lock`.',
@@ -918,50 +852,6 @@ fn check(
 
 export const quiz = [
   {
-    q: 'What do the first four bytes `00 61 73 6d` of a module do?',
-    options: [
-      {
-        t: 'They give the number of sections',
-        why: 'Sections are just read one after another; there is no count up front.',
-      },
-      {
-        t: 'They are the magic number “\\0asm”, marking the file as WebAssembly',
-        correct: true,
-        why: 'A zero byte and the ASCII codes for a, s, m. The version follows.',
-      },
-      {
-        t: 'They are the version number',
-        why: 'The version is the next four bytes, `01 00 00 00`.',
-      },
-      {
-        t: 'They are the first instruction',
-        why: 'Instructions only appear inside the code section.',
-      },
-    ],
-  },
-  {
-    q: 'A function body is `20 00 20 01 6a 0b`. What kind of machine runs it?',
-    options: [
-      {
-        t: 'A register machine with named registers',
-        why: 'There are no register operands; `local.get` pushes and `i32.add` pops.',
-      },
-      {
-        t: 'A tree-walking interpreter',
-        why: 'There is no tree here, only a flat list of opcodes.',
-      },
-      {
-        t: 'A stack machine, like your Drip VM',
-        correct: true,
-        why: 'Push, push, add, end: the same model as Part IV, though engines usually compile it to machine code.',
-      },
-      {
-        t: 'The JavaScript engine’s parser',
-        why: 'WebAssembly is not JavaScript source and isn’t parsed as such.',
-      },
-    ],
-  },
-  {
     q: 'A module’s memory is 1 page. What happens on `f64.load` at byte 65,536?',
     options: [
       {
@@ -980,28 +870,6 @@ export const quiz = [
       {
         t: 'The memory grows automatically',
         why: 'Growing only happens when code calls `memory.grow` (or `mem.grow` from JavaScript).',
-      },
-    ],
-  },
-  {
-    q: 'After `mem.grow(1)`, an old `Float64Array` over `mem.buffer` has length 0. What should a SoA back end do?',
-    options: [
-      {
-        t: 'Nothing: the view will update by itself',
-        why: 'A detached buffer stays detached. The old view is useless.',
-      },
-      {
-        t: 'Never grow the memory',
-        why: 'Then collections couldn’t grow; amortised growth needs bigger storage.',
-      },
-      {
-        t: 'Create new views over the new `mem.buffer` after every grow',
-        correct: true,
-        why: 'Growing detaches the old buffer and creates a new one, so views must be made again.',
-      },
-      {
-        t: 'Copy the old view into a new ArrayBuffer',
-        why: 'The old view has no data left to copy, and the data is still in the memory anyway.',
       },
     ],
   },
@@ -1046,24 +914,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'You read `r.code` ten times in a loop. What happens each time?',
-    options: [
-      {
-        t: 'The same JS string is returned from a cache',
-        why: 'The getter has no cache: it calls into Rust every time.',
-      },
-      {
-        t: 'Rust recompiles the source',
-        why: 'The compile happened once; the getter only reads a field.',
-      },
-      {
-        t: 'Rust clones the `String`, and the glue decodes it into a new JS string and frees the clone',
-        correct: true,
-        why: 'That is what `getter_with_clone` generates. Read it once and keep the JS string.',
-      },
-    ],
-  },
-  {
     q: 'What does JavaScript receive when Rust’s `compile` returns `Err(JsError::new("Unexpected token (1:6)"))`?',
     options: [
       {
@@ -1086,42 +936,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is calling `r.free()` the caller’s job?',
-    options: [
-      {
-        t: 'It isn’t; JavaScript’s garbage collector frees Rust memory',
-        why: 'The collector frees the small JS wrapper. The `Output` lives in linear memory, which it knows nothing about.',
-      },
-      {
-        t: 'The `Output` lives in Rust’s linear memory, outside the JS collector; `free()` drops it, and a FinalizationRegistry is only a fallback',
-        correct: true,
-        why: 'Finalizers may run late or never, so long-running pages should free explicitly.',
-      },
-      {
-        t: 'Because `Output` holds a file handle',
-        why: 'It holds two `String`s.',
-      },
-    ],
-  },
-  {
-    q: 'What does the WebAssembly build of Viscosity produce?',
-    options: [
-      {
-        t: 'WebAssembly versions of your loops',
-        why: '*WebAssembly as a target* discussed emitting loops as WebAssembly; Viscosity still emits JavaScript (or Python).',
-      },
-      {
-        t: 'The same JavaScript and explain text as the TypeScript engine, from a compiler that itself runs as WebAssembly',
-        correct: true,
-        why: 'In this chapter’s run, the published package matched the TypeScript CLI on all 40 JavaScript corpus programs. It is what the Playground’s Rust switch runs.',
-      },
-      {
-        t: 'Rust source code',
-        why: 'Viscosity is JavaScript in, JavaScript out, whichever engine runs it.',
-      },
-    ],
-  },
-  {
     q: 'Which of these does `build.mjs` do that a single `wasm-pack build` does not?',
     options: [
       {
@@ -1131,7 +945,7 @@ export const quiz = [
       {
         t: 'Produce the `nodejs` and the `web` glue in one package',
         correct: true,
-        why: 'wasm-pack takes one `--target` per build. `build.mjs` runs wasm-bindgen twice and the package picks one per environment (the chapter *The npm package*).',
+        why: 'wasm-pack takes one `--target` per build. `build.mjs` runs wasm-bindgen twice and the package picks one per environment (as *Packages, versions and the npm package* shows).',
       },
       {
         t: 'Run wasm-opt on a release build',
@@ -1140,78 +954,6 @@ export const quiz = [
       {
         t: 'Write a `package.json`',
         why: 'wasm-pack writes one into `pkg`. `build.mjs` actually deletes the one wasm-bindgen writes and keeps a hand-written one.',
-      },
-    ],
-  },
-  {
-    q: 'Cargo’s `.wasm` had 75 exports and the final one 15. What were most of the others?',
-    options: [
-      {
-        t: 'Dead Rust functions that wasm-opt removed',
-        why: 'They were gone after wasm-bindgen, before wasm-opt ran.',
-      },
-      {
-        t: 'Debug copies of `compile`',
-        why: 'There is one `compile`. The extras had a different job.',
-      },
-      {
-        t: 'Descriptor functions that only the wasm-bindgen CLI runs',
-        correct: true,
-        why: 'The macro emits `__wbindgen_describe_` functions; the CLI interprets them to learn the types, writes the glue, and deletes them.',
-      },
-    ],
-  },
-  {
-    q: 'wasm-opt cut the file from 1,759,823 to 1,373,422 bytes. Gzipped, the saving was about 33 KB. Why so much less?',
-    options: [
-      {
-        t: 'gzip undoes wasm-opt’s optimisations',
-        why: 'Compression is lossless; it can’t undo anything. It only shrinks repetitive bytes well.',
-      },
-      {
-        t: 'Most of the saving was the name section, and names compress very well',
-        correct: true,
-        why: '257 KB of the 386 KB were function names, which are highly repetitive text.',
-      },
-      {
-        t: 'wasm-opt makes the code larger but faster',
-        why: 'The code section shrank too, by about 9%.',
-      },
-    ],
-  },
-  {
-    q: 'You install wasm-bindgen-cli 0.2.130, but `Cargo.lock` pins the crate at 0.2.106. What happens with `build.mjs`?',
-    options: [
-      {
-        t: 'It stops after cargo, before wasm-bindgen runs, and names the version to install',
-        correct: true,
-        why: 'Step 2 compares `--version` with the lockfile and throws an error that includes the `cargo install` command to run.',
-      },
-      {
-        t: 'It works: newer CLIs read older files',
-        why: 'They don’t. The CLI insists on an identical schema version (the chapter *The Rust workspace*).',
-      },
-      {
-        t: 'It downloads the right CLI automatically',
-        why: '`build.mjs` installs nothing. It checks, and tells you what to install.',
-      },
-    ],
-  },
-  {
-    q: 'The `.wasm` in `book/public/wasm` is committed. How do you know it is the engine at that commit?',
-    options: [
-      {
-        t: 'You can’t: binaries can’t be checked',
-        why: 'They can: rebuild and compare bytes.',
-      },
-      {
-        t: 'Its file size matches the README',
-        why: 'The size is a clue, not proof. Many different files have the same size.',
-      },
-      {
-        t: 'Rebuilding the commit in an empty directory gave identical bytes',
-        correct: true,
-        why: 'With the same toolchain versions, the build was reproducible byte for byte.',
       },
     ],
   },

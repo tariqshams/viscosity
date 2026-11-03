@@ -1,6 +1,6 @@
-// Chapter 88 cards: recall prompts, examples, exercises and quiz.
+// Chapter 164 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 164, 164.
+// Merged from the old chapters A command-line interface, and Parsing arguments by hand.
 
 export const prompts = {
   'cli-three-outputs': {
@@ -11,61 +11,25 @@ export const prompts = {
     q: 'Why do CLIs write errors to stderr instead of stdout?',
     a: 'So that a user can redirect the results (stdout) to a file and still see the errors on screen.',
   },
-  'dollar-q': {
-    q: 'In a shell, what does `$?` hold right after a command finishes?',
-    a: 'That command’s exit status: `0` if it succeeded, something else if it failed.',
-  },
   'usage-vs-other': {
-    q: 'Which errors make the Viscosity CLI print its help text?',
+    q: 'Which errors make Viscosity’s CLI (either engine) print its help text after the message?',
     a: 'Only `CliError::Usage`: the command line itself was wrong (unknown option, missing value, no files). A missing file or a syntax error is `Other`, with no help.',
-  },
-  'exit-one': {
-    q: 'What exit status does the Viscosity CLI use for a usage error, and for a compile error?',
-    a: '1 for both (`ExitCode::FAILURE`). Success is 0. Only the printed text differs.',
-  },
-  okfalse: {
-    q: 'What does it mean when `run` returns `Ok(false)`?',
-    a: 'The run itself worked, but at least one of several files failed: its error was printed, the others compiled, and the status is 1.',
-  },
-  'version-source': {
-    q: 'Where does the Rust CLI’s `--version` number come from?',
-    a: '`env!("CARGO_PKG_VERSION")`, filled in at compile time from the workspace version in `Cargo.toml`. The TS CLI reads `package.json` at run time.',
-  },
-  'multi-fail': {
-    q: 'With several files, one has a syntax error. What happens?',
-    a: 'It is reported as `viscosity: bad.js: <error>` on stderr, the other files still compile and print, and the exit status is 1.',
   },
   'flag-vs-option': {
     q: 'What is the difference between a flag like `--frames` and an option like `-o`?',
     a: 'A flag is a switch, on if present. An option takes the next word as its value.',
   },
-  'regular-grammar': {
-    q: 'Why can one simple loop read a whole Viscosity command line?',
-    a: 'Its grammar is regular: a flat sequence of words with nothing nested, so looking at one word at a time (plus the next, for an option’s value) is enough.',
-  },
   'next-closure': {
-    q: 'In `parse_args`, what does the `next_os` closure do?',
+    q: 'In the Rust Viscosity CLI’s `parse_args`, what does the `next_os` closure do?',
     a: 'Moves the index on by one and returns that word as the option’s value, or a usage error “X needs a value” if there are no words left.',
   },
-  positional: {
-    q: 'How does `parse_args` decide that a word is a file?',
-    a: 'It doesn’t start with `-` and isn’t the value of an option. So files and flags can come in any order.',
-  },
   'arm-order': {
-    q: 'Why must the arm `_ if !a.starts_with(\'-\')` come after the real flags and before the final `_`?',
+    q: 'In a Rust argument parser that matches each word, why must the arm `_ if !a.starts_with(\'-\')` (a file) come after the real flags and before the final `_` (an unknown option)?',
     a: '`match` tries arms top to bottom. Earlier, it would never see a flag; without it, every file would be an “unknown option”; after the final `_`, it would never run.',
   },
   'js-number': {
-    q: 'Why does the Rust CLI read `--min-size` with `js_to_number` instead of `str::parse`?',
+    q: 'Why does the Rust Viscosity CLI read `--min-size` with `js_to_number` instead of `str::parse`?',
     a: 'To match the TypeScript CLI, which uses JavaScript’s `Number()`: it accepts `0x10` (16) and `" 12 "`, and refuses `inf`, unlike Rust’s parser.',
-  },
-  'clap-diff': {
-    q: 'Name two ways a clap-based Viscosity CLI would behave differently.',
-    a: 'Different error messages and help layout; exit status 2 for usage errors; `--min-size 0x10` refused and `inf` accepted, unlike JavaScript’s `Number()`.',
-  },
-  'why-hand': {
-    q: 'Why is a hand-written parser a reasonable choice for the Rust port of Viscosity?',
-    a: 'The port must behave exactly like the TypeScript CLI (messages, number parsing, exit statuses), and tests compare the two. Hand-written code can copy that; clap would choose its own.',
   },
 };
 
@@ -204,6 +168,7 @@ fn main() {
 
 export const exercises = {
   finish: {
+    optional: true,
     lang: 'rust',
     title: 'How main ends a run',
     prompt: 'Write `finish`, the end of `main`. Given what `run` returned, return the text for stderr and the exit status. `Ok(true)`: nothing, status 0. `Ok(false)`: nothing more (the failed files were already reported), status 1. `Err(Usage(e))`: `viscosity: ` and the message, a blank line, then `HELP`, status 1. `Err(Other(e))`: `viscosity: ` and the message on one line, status 1.',
@@ -954,42 +919,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Where does `viscosity --version` get `0.0.1` in the Rust CLI?',
-    options: [
-      {
-        t: 'From `package.json`, read when it runs',
-        why: 'That is how the TypeScript CLI does it.',
-      },
-      {
-        t: 'From `Cargo.toml`, at compile time, through `env!("CARGO_PKG_VERSION")`',
-        correct: true,
-        why: 'Cargo sets that variable while compiling, so the version is baked into the binary.',
-      },
-      {
-        t: 'From git, by asking for the latest tag',
-        why: 'The CLI never looks at git; the number is compiled into it.',
-      },
-    ],
-  },
-  {
-    q: 'A script runs `viscosity explain $f` and checks `$?`. Which run gives a status other than 1 or 0?',
-    options: [
-      {
-        t: 'An unknown option',
-        why: 'A usage error: status 1, with the help.',
-      },
-      {
-        t: 'A missing file',
-        why: 'Status 1, one line, no help.',
-      },
-      {
-        t: 'None of them, in today’s CLI',
-        correct: true,
-        why: 'Every failure is `ExitCode::FAILURE`, 1. (Before `args_os`, a file name that was not UTF-8 made it panic with 101; that is fixed.)',
-      },
-    ],
-  },
-  {
     q: 'In `viscosity build a.js -o out/ b.js`, how many files will be compiled?',
     options: [
       {
@@ -1008,25 +937,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `viscosity explain a.js --mode` print?',
-    options: [
-      {
-        t: '`viscosity: unknown option --mode`',
-        why: '`--mode` is a known option; the problem is its missing value.',
-      },
-      {
-        t: 'The explanation for `a.js`, in the default mode',
-        why: 'A missing value is an error, not a default.',
-      },
-      {
-        t: '`viscosity: --mode needs a value`, a blank line and the help',
-        correct: true,
-        why: '`next()` finds no word after `--mode`, so it returns that usage error, and `?` passes it up.',
-      },
-    ],
-  },
-  {
-    q: 'Someone moves the final arm, `_ => return Err(CliError::Usage(...unknown option...))`, above the arm for files. What happens to `viscosity explain a.js`?',
+    q: 'Someone moves the final arm, `_ => return Err(CliError::Usage(...unknown option...))`, before the arm for files. What happens to `viscosity explain a.js`?',
     options: [
       {
         t: 'Nothing changes: the arms are independent',
@@ -1040,42 +951,6 @@ export const quiz = [
       {
         t: 'Flags stop working',
         why: 'The real flags are matched by name in arms above both, so they still work.',
-      },
-    ],
-  },
-  {
-    q: 'Why is a single `while` loop enough to parse a Viscosity command line?',
-    options: [
-      {
-        t: 'Because the grammar is regular: a flat list of words, nothing nested',
-        correct: true,
-        why: 'Recursion (or a stack) is needed only for nesting, as with brackets in expressions.',
-      },
-      {
-        t: 'Because Rust loops are faster than recursion',
-        why: 'Speed is not the reason; the shape of the language is.',
-      },
-      {
-        t: 'Because clap does the hard part',
-        why: 'The Rust CLI does not use clap.',
-      },
-    ],
-  },
-  {
-    q: 'A clap version of the CLI exited with status 2 on an unknown option. Why does that matter for Viscosity?',
-    options: [
-      {
-        t: 'It doesn’t: any non-zero status means failure',
-        why: 'Scripts and tests can compare exact statuses, and Viscosity’s tests compare the two CLIs’ statuses.',
-      },
-      {
-        t: 'The TypeScript CLI exits 1, and the two CLIs are meant to behave the same',
-        correct: true,
-        why: 'Parity covers what users and scripts see: output, messages and exit statuses.',
-      },
-      {
-        t: 'Status 2 means the program crashed',
-        why: 'A Rust panic exits with 101. 2 is clap’s usage-error code, as in GNU `ls` and Python’s argparse.',
       },
     ],
   },

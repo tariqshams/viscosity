@@ -17,7 +17,7 @@ const STATES: S[] = [
   { run: 'release.sh --crates-only', st: ['done', 'done', 'up', 'up', 'up', 'up', 'up', W], note: 'Second run, with only the crates.io token. For each crate: is this version on crates.io already? No, so cargo publish -p, then wait until the sparse index lists it, so the next crate can depend on it. Five go out in order.' },
   { run: 'release.sh --crates-only', st: ['done', 'done', 'done', 'done', 'done', 'done', 'done', 'fail'], note: 'The sixth, viscosity-wasm, is refused with HTTP 429: "published too many new crates in a short period". crates.io limits how fast one account creates new crate names, and a first release creates six at once. set -e stops the script.' },
   { run: 'release.sh --crates-only (again)', st: ['done', 'done', 'skip', 'skip', 'skip', 'skip', 'skip', 'up'], note: 'About ten minutes later, the same command again. crate_published answers 200 for the first five, so each is skipped; viscosity-wasm goes up. Nothing was undone and nothing was uploaded twice: the script is safe to repeat.' },
-  { run: 'after', st: ['done', 'done', 'done', 'done', 'done', 'done', 'done', 'done'], note: 'Everything is on its registry at 0.0.1. npm install -g @viscosity/cli and cargo install viscosity-cli both give a viscosity whose --version prints viscosity 0.0.1.' },
+  { run: 'after', st: ['done', 'done', 'done', 'done', 'done', 'done', 'done', 'done'], note: 'Everything is on its registry at 0.0.1, and npm install -g @viscosity/cli and cargo install viscosity-cli both gave a viscosity whose --version printed viscosity 0.0.1. That evening the npm packages were published again as 0.0.2; the crates stayed at 0.0.1.' },
 ];
 
 const LOOK: Record<St, { c: string; t: string }> = {

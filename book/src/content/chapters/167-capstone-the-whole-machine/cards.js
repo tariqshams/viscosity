@@ -1,71 +1,39 @@
-// Chapter 256 cards: recall prompts, examples, exercises and quiz.
+// Chapter 167 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 167, 167.
+// Merged from the old chapters Capstone: what you have built, and Capstone: the whole machine.
 
 export const prompts = {
   'cap-what': {
-    q: 'What is a capstone, and what is its point?',
+    q: 'What is a capstone, at the end of a course, and what is its point?',
     a: 'The final piece of work that uses everything before it at once; the point is seeing how the parts fit, and which are solid.',
   },
   'cap-links': {
-    q: 'Why does Viscosity have to prove safety, when the run-time research could transform arrays without proofs?',
-    a: 'A JIT can speculate and deoptimise if it is wrong (Part V). Viscosity runs before the program and has no way back.',
-  },
-  'cap-pipeline': {
-    q: 'Name Viscosity’s four pipeline stages, in order.',
-    a: 'The plugin lowers source to VIR; the core analyses; the planner decides layouts; the plugin emits rewritten source.',
-  },
-  'cap-vm-slow': {
-    q: 'Why was the Drip VM slower than the tree-walker on four programs (`fields`, `instantiation`, `strings`, `trees`)?',
-    a: 'V8 compiles both engines, and the VM rebuilds in JavaScript (its own hash tables and collector) what the tree-walker borrows from V8.',
-  },
-  'cap-e2e': {
-    q: 'Which end-to-end program gained least from Viscosity, and what is special about its loop?',
-    a: '`nbody` (1.2× on Node, 0.97× on Bun in the benchmark matrix): every body reads every field of the others, so columns save little.',
-  },
-  'cap-rough': {
-    q: 'Name three things about Viscosity that are unfinished at the end of Track A.',
-    a: 'Any three of: no WebAssembly back end; many ordinary programs refused (sort, classes, varying shapes, exports); the cost model is a heuristic; Python has no profiling and no AoSoA.',
-  },
-  'cap-shipped': {
-    q: 'Where can a stranger install Viscosity 0.0.1 from?',
-    a: 'npm (`@viscosity/cli`, `@viscosity/wasm`) and crates.io (six crates, including `viscosity-cli`).',
-  },
-  'cap-trackb': {
-    q: 'What two things does Track B rebuild in Rust?',
-    a: 'Drip’s bytecode VM (`drip-rs`) and the Viscosity compiler.',
+    q: 'Why does Viscosity, an ahead-of-time compiler, have to prove a layout rewrite safe, when run-time research systems can transform arrays without such proofs?',
+    a: 'A JIT can speculate and deoptimise if it turns out wrong. Viscosity rewrites the source before the program runs, and has no way back.',
   },
   'm-three-drips': {
-    q: 'What are the three implementations of Drip in this book?',
-    a: 'A tree-walking interpreter in TypeScript (Part III), a bytecode VM in TypeScript (Part IV), and drip-rs, the same VM design in Rust (Part XII).',
+    q: 'Drip, the small teaching language built in *Viscosity* by Tariq Shams, has three implementations. What are they?',
+    a: 'A tree-walking interpreter in TypeScript, a bytecode VM in TypeScript, and drip-rs, the same VM design in Rust.',
   },
   'm-checks': {
-    q: 'How is each Rust implementation checked against the TypeScript one?',
+    q: 'How are drip-rs and the Rust Viscosity engine each checked against their TypeScript counterparts?',
     a: 'drip-rs runs the shared Drip corpus; the Rust engine must reproduce every stored TypeScript output byte for byte, and the fuzzer compares the two on generated programs.',
   },
   'm-stages': {
-    q: 'Name the stages one program passes through in the Rust engine, in order.',
+    q: 'Name the stages a program passes through in the Rust Viscosity engine, in order.',
     a: 'Parse (oxc), lower to VIR in SSA form, analyse (collections, shapes, escapes, access patterns, sizes and bounds), plan (the cost model), emit, explain.',
   },
   'm-qs': {
-    q: 'In the chapter’s program, why is `qs` kept as an array of objects?',
-    a: '`qs[0]` is passed to `console.log`, a method call, so an element escapes and the analysis records a bailout: “unsafe: line 14: an element is passed to a method call”.',
-  },
-  'm-try': {
-    q: 'In the chapter’s program, the first loop runs to 10 instead of 1000. What happens to `ps`?',
-    a: 'It is kept as objects: “about 10 elements: below the 64-element threshold, where the benefit is too small”.',
-  },
-  'm-open': {
-    q: 'Name three things about Viscosity that are unfinished or open.',
-    a: 'Any three of: no changelog yet; the port rejects TypeScript input; syntax errors worded by oxc, not acorn; the cost model is engine-blind (heat on JSC); many programs refused; no WebAssembly output.',
-  },
-  'm-chore': {
-    q: 'Which is research, and which a chore: running the wasm smoke test in CI, or knowing how much a layout will gain on an engine?',
-    a: 'The smoke test in CI is a chore. Predicting the gain needs a model of engines the compiler never sees: research.',
+    q: 'Viscosity is compiling a program that ends with `console.log(s, qs[0])`, where `qs` is an array of records. Why is `qs` kept as an array of objects?',
+    a: '`qs[0]` is passed to `console.log`, a method call, so an element escapes and the analysis records a bailout (“an element is passed to a method call”).',
   },
   'm-mastery': {
-    q: 'What does mastery mean in this book?',
+    q: 'What does mastery of a compiler mean, in the sense of “being able to build it again yourself”?',
     a: 'Being able to build the thing again yourself, from an empty folder, knowing why each piece is there and how you would check it works.',
+  },
+  'm-chore': {
+    q: 'For Viscosity, which is research and which a chore: running the wasm smoke test in CI, or knowing how much a layout will gain on a given JavaScript engine?',
+    a: 'The smoke test in CI is a chore. Predicting the gain needs a model of engines the compiler never sees: research.',
   },
 };
 
@@ -94,6 +62,7 @@ print len(ps);`,
 
 export const exercises = {
   optimize: {
+    optional: true,
     title: 'Viscosity in miniature',
     prompt: 'Write `optimize(ps)`, a tiny run-time version of Viscosity. If `ps` is empty, or its records don’t all have **the same fields in the same order** as the first one, or any field value is not a number, bail out: return `ps` itself, unchanged. Otherwise return `{ length, cols }`, where `cols` has one `Float64Array` per field holding that field of every record, in order.',
     starter: `function optimize(ps) {
@@ -156,7 +125,7 @@ test('an empty array is left alone', () => {
       'Bail out with `return ps` the moment anything is wrong: a different shape, or a value whose `typeof` isn’t `\'number\'`.',
       'Only when every record passes, build the columns: one `new Float64Array(n)` per field, filled in a loop.',
     ],
-    walkthrough: `**How to think about it.** This is Viscosity in miniature, done at run time from the data instead of ahead of time from the source, and it uses three ideas from Part VIII in order. First the **record shape**: the first record's field names, *in order*, are the shape every other record must match. Second the **bail-out**: at the first doubt (a different shape, a value that is not a number) give the original array back untouched, so the caller cannot tell anything was tried. Third **column storage**: only when every check has passed, build one \`Float64Array\` per field. Doing all the checks *before* building anything matters: half-built columns would be wasted work on every bail-out.
+    walkthrough: `**How to think about it.** This is Viscosity in miniature, done at run time from the data instead of ahead of time from the source, and it uses three ideas from the chapters that built Viscosity, in order. First the **record shape**: the first record's field names, *in order*, are the shape every other record must match. Second the **bail-out**: at the first doubt (a different shape, a value that is not a number) give the original array back untouched, so the caller cannot tell anything was tried. Third **column storage**: only when every check has passed, build one \`Float64Array\` per field. Doing all the checks *before* building anything matters: half-built columns would be wasted work on every bail-out.
 
 **The solution, line by line.**
 
@@ -231,7 +200,7 @@ test('an empty array is left alone', () => {
   tinyVm: {
     optional: true,
     title: 'A bytecode VM in a dozen lines',
-    prompt: 'Write `run(code)`, a stack machine like Part IV’s. `code` is an array of instructions: `\'push\'` followed by a number pushes that number; `\'add\'`, `\'sub\'` and `\'mul\'` pop two values and push the result (for `sub`, the value pushed first minus the value pushed second). When the code ends, return the top of the stack.',
+    prompt: 'Write `run(code)`, a stack machine like the one in *A stack machine and its dispatch loop*. `code` is an array of instructions: `\'push\'` followed by a number pushes that number; `\'add\'`, `\'sub\'` and `\'mul\'` pop two values and push the result (for `sub`, the value pushed first minus the value pushed second). When the code ends, return the top of the stack.',
     starter: `function run(code) {
   const st = [];
   for (const op of code) {
@@ -276,7 +245,7 @@ test('a lone push', () => {
       'After `push`, the number is the next element of `code`: read it and move `ip` past it too.',
       'The top of the stack is the *second* operand. Pop `b` first, then `a`, and compute `a - b`.',
     ],
-    walkthrough: `**How to think about it.** This is the stack machine of Part IV from memory, with the three moving parts every bytecode VM has: an instruction pointer that walks the code, a stack that holds values, and a loop that reads one instruction at a time and does what it says. Two details need care. \`push\` carries an *operand*, the number that follows it in the code, so reading it moves the instruction pointer twice. And for \`sub\`, the order matters: the value on top of the stack is the one pushed *last*, which is the second operand.
+    walkthrough: `**How to think about it.** This is the stack machine of *A stack machine and its dispatch loop* from memory, with the three moving parts every bytecode VM has: an instruction pointer that walks the code, a stack that holds values, and a loop that reads one instruction at a time and does what it says. Two details need care. \`push\` carries an *operand*, the number that follows it in the code, so reading it moves the instruction pointer twice. And for \`sub\`, the order matters: the value on top of the stack is the one pushed *last*, which is the second operand.
 
 **The solution, line by line.**
 
@@ -815,51 +784,7 @@ fn plan(
 
 export const quiz = [
   {
-    q: 'In the particle program, which analysis decided that `ps` holds five fields in a stable order?',
-    options: [
-      {
-        t: 'The cost model',
-        why: 'The cost model weighs size and loops; it relies on the shape being known.',
-      },
-      {
-        t: 'The access patterns',
-        why: 'Those find which loops touch which fields.',
-      },
-      {
-        t: 'The record shape analysis',
-        correct: true,
-        why: '*Record shapes*: every pushed record must have the same fields in the same order.',
-      },
-      {
-        t: 'The differential test',
-        why: 'That checks output after compiling; it decides nothing.',
-      },
-    ],
-  },
-  {
-    q: 'Which part of the book does Viscosity’s numeric inference (is this value provably a float?) descend from most directly?',
-    options: [
-      {
-        t: 'The type inference of Part III, run as a dataflow fixpoint from Part VI',
-        correct: true,
-        why: 'It infers a fact about every value from the facts about its inputs, and repeats until nothing changes.',
-      },
-      {
-        t: 'The garbage collector of Part IV',
-        why: 'The collector finds live objects; it says nothing about kinds of number.',
-      },
-      {
-        t: 'The calling conventions of Part VII',
-        why: 'Those say where arguments go in registers, not what they hold.',
-      },
-      {
-        t: 'Semantic versioning',
-        why: 'Versions are about releases, not values.',
-      },
-    ],
-  },
-  {
-    q: 'The Drip VM was slower than the tree-walker on four of ten programs. What is the right conclusion?',
+    q: 'In the committed Drip benchmarks of 2026-11-02, the TypeScript bytecode VM was slower than the TypeScript tree-walker on four of ten programs. What is the right conclusion?',
     options: [
       {
         t: 'Bytecode VMs are slower than tree-walkers',
@@ -868,7 +793,7 @@ export const quiz = [
       {
         t: 'A faster design isn’t faster at everything, and one run can only point at suspects',
         correct: true,
-        why: 'Part IV measured why: V8 compiles both engines, and the VM rebuilds in JavaScript (hash tables, a collector) what the tree-walker borrows from V8.',
+        why: '*Measuring and speeding up the VM* found why: V8 compiles both engines, and the VM rebuilds in JavaScript (hash tables, a collector) what the tree-walker borrows from V8.',
       },
       {
         t: 'The measurement must be wrong, so it should be dropped',
@@ -881,7 +806,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which statement about the Rust port is true?',
+    q: 'Which statement about the Rust port of Viscosity is true?',
     options: [
       {
         t: 'It uses acorn to parse JavaScript',
@@ -925,47 +850,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the chapter’s program, which stage first notices that `qs` can’t be transformed?',
-    options: [
-      {
-        t: 'The parser',
-        why: 'oxc parses `console.log(s, qs[0])` without complaint. It is valid JavaScript.',
-      },
-      {
-        t: 'The escape analysis, working on VIR',
-        correct: true,
-        why: 'It sees an element of `qs` passed to a method call and records a bailout; the planner turns that into “unsafe: …”.',
-      },
-      {
-        t: 'The emitter',
-        why: 'The emitter only follows the plan. By then `qs` is already marked to stay as objects.',
-      },
-      {
-        t: 'The cost model, because 100 elements is too few',
-        why: '100 is above the 64-element threshold, and the bailout is checked first anyway.',
-      },
-    ],
-  },
-  {
-    q: 'What does the TypeScript CLI print for `explain --frames` on the chapter’s program?',
-    options: [
-      {
-        t: 'The same bytes as the Rust CLI',
-        correct: true,
-        why: 'That is the parity guarantee, frames included.',
-      },
-      {
-        t: 'The same decisions in different words',
-        why: 'The words are the same too: the explain text is compared byte for byte.',
-      },
-      {
-        t: 'Nothing: frames are a Rust-only feature',
-        why: 'Both CLIs have `--frames`, and the parity tests hold `--frames` fixtures that check they agree.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is still open?',
+    q: 'Which of these is still open for Viscosity?',
     options: [
       {
         t: 'The Rust engine can’t compile Python',
@@ -987,43 +872,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Until 2026-11-02, nothing was published. Why does the book treat that as a decision rather than a bug?',
-    options: [
-      {
-        t: 'Because publishing is permanent and claims names, so it is the author’s call',
-        correct: true,
-        why: 'A published version can never be reused or deleted, on crates.io or npm.',
-      },
-      {
-        t: 'Because the packages don’t build',
-        why: 'Everything built: both npm packages packed and every crate packaged. All of them are published now.',
-      },
-      {
-        t: 'Because npm doesn’t accept WebAssembly',
-        why: 'npm accepts any files; `@viscosity/wasm` is on npm now.',
-      },
-    ],
-  },
-  {
-    q: 'What does the WebAssembly in this book do?',
-    options: [
-      {
-        t: 'It is the output of Viscosity: compiled programs run as WebAssembly',
-        why: 'Every version of Viscosity emits JavaScript or Python. There is no WebAssembly back end.',
-      },
-      {
-        t: 'It is the Rust engine, compiled to WebAssembly, running the compiler in the page',
-        correct: true,
-        why: 'The Playground’s Rust engine is `crates/wasm`, built by `packages/wasm/build.mjs`.',
-      },
-      {
-        t: 'It runs drip-rs',
-        why: 'drip-rs is a native program; the book’s Drip examples run the TypeScript implementations.',
-      },
-    ],
-  },
-  {
-    q: 'By this book’s definition, which shows mastery of Viscosity best?',
+    q: 'If mastery means being able to build the thing again yourself, which shows mastery of Viscosity best?',
     options: [
       {
         t: 'Remembering every line of `plan.rs`',

@@ -17,7 +17,7 @@ const STATES: S[] = [
   { hi: ['run'], note: 'The target was compiled with instrumentation: at every branch it records which edge (from where to where) ran. AFL keeps one counter per edge in a 64 kB map.' },
   { hi: ['new', 'kept'], back: true, note: 'If the run reached an edge no earlier input reached, the input is kept and will be mutated further. Otherwise it is dropped. Coverage is the only feedback, and it steers the search deeper.' },
   { hi: ['seed', 'gen'], note: 'fuzz.mjs works the other way round. Program k of campaign S gets its own seed, and a generator writes a valid program in the subset Viscosity cares about: records pushed in loops, escapes, out-of-bounds accesses.' },
-  { hi: ['cmp', 'node'], note: 'Both engines compile it (Rust through its CLI, 250 files per call), and node runs the original and the compiled program. Those are the oracles; the chapter TypeScript vs Rust: differential tests lists them.' },
+  { hi: ['cmp', 'node'], note: 'Both engines compile it (Rust through its CLI, 250 files per call), and node runs the original and the compiled program. Those are the oracles; the map of oracles above lists them.' },
   { hi: ['diff', 'red'], note: 'A difference is a failure. The program is written to a file, and --reduce deletes lines while the same kind of failure remains. Nothing from a run flows back into the generator: it is blind.' },
 ];
 

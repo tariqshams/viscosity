@@ -3,22 +3,14 @@ n: 162
 day: 29
 part: IX
 title: 'Packages, versions and the npm package'
-tagline: 'A compiler that only runs inside its own repository is a prototype. Packing it for strangers turned up three bugs no test in the repository could see, and publishing it put eight packages on two registries, in an order the registries insisted on.'
+tagline: 'A compiler that only runs inside its own repository is a prototype. Packing it for strangers turned up three bugs no test in the repository could see; its version number turned out to be a promise; and the Rust engine reached npm as one WebAssembly file instead of a binary per platform.'
 objectives:
   - Describe what an npm package is, and how its name and version identify it.
   - Explain why the CLI, as first written, could not be installed and run from npm, and what fixed it.
-  - Say what was published on 2026-11-02, to which registries, and in what order.
-  - Choose which files go into a package, and in what order packages that depend on each other must be published.
-  - Apply semantic versioning's rules to choose the next version after a fix, a feature or a breaking change.
-  - Compare versions correctly, as numbers, and explain why string comparison gets it wrong.
-  - Read caret ranges, including what major version zero changes, and say why Viscosity starts at 0.0.1.
-  - Decide what counts as Viscosity's public API, and so what a breaking change is.
+  - Apply semantic versioning’s rules, compare versions as numbers, and read caret ranges, including what major version zero changes.
   - Compare shipping native binaries through npm with shipping one .wasm, and say what each costs.
-  - Read a conditional exports map and predict which file Node, a bundler and TypeScript load.
-  - Explain why a statically linked .wasm must carry its dependencies' licences.
-  - Describe how smoke.mjs tests the package as a user would get it, and what it found when its oracle went stale.
 introduces: [npm-package, semantic-versioning, native-vs-wasm]
-uses: [module, import-export, program-structure, typescript, type-erasure, string-methods, map-filter-reduce, comparison, test, differential-testing, round-trip-testing, viscosity-pipeline, language-plugin, optimization-report, test-corpus, source-to-source, front-end-back-end, wasm-pack, webassembly, wasm-bindgen, cargo, crate, release-build, viscosity-rs, oxc, engine-parity, enum, match, option, recursion, vec, rust-iterator]
+uses: [module, import-export, program-structure, typescript, type-erasure, string-methods, map-filter-reduce, comparison, test, differential-testing, round-trip-testing, viscosity-pipeline, language-plugin, optimization-report, test-corpus, source-to-source, front-end-back-end, wasm-pack, webassembly, wasm-bindgen, cargo, crate, release-build, viscosity-rs, oxc, enum, match, option, recursion, vec, rust-iterator]
 sources: [npm-package-json, npm-publish-docs, node-typescript-docs, semver2, node-semver-ranges, npm-package-json-platform, node-packages-exports, ts-modules-reference, rustc-wasm32-unknown-unknown, binaryen-readme, wasm-bindgen-guide]
 ---
 import ShipSteps from '../../../components/diagrams/ch162/ShipSteps';
@@ -28,158 +20,94 @@ import CaretSteps from '../../../components/diagrams/ch162/CaretSteps';
 import ExportsSteps from '../../../components/diagrams/ch162/ExportsSteps';
 import ShipTwoWays from '../../../components/diagrams/ch162/ShipTwoWays';
 
-{/* ── merge: from old chapter 162, Shipping Viscosity ── */}
-
 ## Can I install it?
 
-Somebody reads this book, likes Viscosity, and types
-`npm install viscosity`. What do they get? A library at version 0.3.0,
-described as "a sass library for fluid containers that handle aspect
-ratios across device sizes": the name `viscosity` on npm belongs to
-someone else. What they want is this:
-
-```text
-$ npm install -g @viscosity/cli
-$ viscosity --version
-viscosity 0.0.1
-```
-
-That works today, because version 0.0.1 of the compiler was published
-on 2026-11-02, to npm and to crates.io. This chapter is about that last
-step, from "works on my machine" to "works on yours"; the next one is
-about what the number 0.0.1 promises.
-
-## What a package is
+Somebody likes Viscosity and types `npm install viscosity`. What they
+get is a library at version 0.3.0, "a sass library for fluid containers
+that handle aspect ratios across device sizes": the name `viscosity` on
+npm belongs to someone else. What they want is `npm install -g
+@viscosity/cli`, after which `viscosity --version` prints `viscosity
+0.0.2` (in November 2026). Getting there meant three questions: what a
+package is, what its number promises, and how to ship Rust to machines
+you have never seen.
 
 <Analogy title="a sealed box with a label">
 A package is a sealed box on a warehouse shelf, with a label that says
 exactly what is inside: a name and a version. Once a labelled box is on
 the shelf it never changes. A fix goes into a new box with a new label,
-and the numbers on the label tell the customer how different the new
-box is.
-<span slot="breaks">A warehouse box is the same for every customer. A
-package can also say which other boxes it needs (its dependencies), and
-those are fetched fresh for each customer, so two people installing the
-"same" package can end up with different contents unless every
-dependency is pinned; Viscosity's CLI avoids that by needing none.</span>
+and the numbers on the label tell the customer how different the new box
+is.
+<span slot="breaks">A box is the same for every customer; a package's
+dependencies are fetched fresh for each one, so two installs of the
+"same" package can differ unless every dependency is pinned.</span>
 </Analogy>
 
-Here is the CLI's `package.json` as it is published (some fields left
-out):
+## What a package is
+
+Here is the CLI's `package.json` (some fields left out):
 
 ```json
 {
   "name": "@viscosity/cli",
-  "version": "0.0.1",
-  "type": "module",
+  "version": "0.0.2",
   "bin": {
     "viscosity": "bin/viscosity.mjs"
   },
   "files": ["bin", "dist", "LICENSE",
     "THIRD_PARTY_LICENSES.txt"],
-  "engines": { "node": ">=18" },
-  "scripts": {
-    "prepack": "node build.mjs"
-  }
+  "engines": { "node": ">=18" }
 }
 ```
 
-The name and version are the only fields npm requires, and together
-they identify the package. `@viscosity/` is a **scope**, a namespace
-that belongs to one user or organisation, where only they can add
-packages<Cite id="npm-publish-docs" />. `bin` asks npm to install a
-`viscosity` command that runs `bin/viscosity.mjs`<Cite id="npm-package-json" />;
-`files` limits the tarball to those paths; `engines` says which Node
-versions it supports; and `prepack` runs the build before every pack,
-so the tarball always holds a fresh build. `npm pack` makes the tarball
-that `npm publish` would upload, and `npm pack --dry-run` lists what
-would go in it without writing anything<Cite id="npm-publish-docs" />.
+`@viscosity/` is a **scope**, a namespace owned by one
+organisation<Cite id="npm-publish-docs" />. `bin` installs a `viscosity`
+command<Cite id="npm-package-json" />, `files` limits the tarball to those
+paths (npm always adds `package.json` and the README), and `engines` says
+which Node versions it supports.
 
 <Callout kind="definition">
-An **npm package** is a folder described by a `package.json`, packed
-into a tarball and published to a **registry**. Its **name** (possibly
-scoped, `@scope/name`) and **version** identify it. `bin` installs
-commands, `files` limits what is packed, `dependencies` lists other
-packages it needs with version ranges, and `engines` says which Node
-versions it supports.
+An **npm package** is a folder described by a `package.json`, packed into
+a tarball and published to a **registry**, identified by its **name**
+(possibly scoped, `@scope/name`) and **version**; `dependencies` lists the
+packages it needs, with version ranges.
 </Callout>
 
 <Examples of="npm-package">
 
-```json
-{ "name": "tiny", "version": "1.0.0" }
-```
-
 ```text
-$ npm view @viscosity/cli dist.fileCount
-5
-```
-
-```json
-"exports": { ".": {
-  "node": "./dist/node/viscosity_wasm.js",
-  "browser": "./dist/web/viscosity_wasm.js"
-} }
+$ npm view @viscosity/cli@0.0.2 \
+    dist.fileCount
+6
 ```
 
 </Examples>
 
-The first is the smallest valid `package.json`: a name and a version,
-nothing else. The second asks the public registry about the real CLI:
-its tarball holds five files (the bin file, the bundle, `package.json`
-and the two licence files). The third is a trimmed piece of
-`@viscosity/wasm`'s `package.json`, the Rust engine compiled to
-WebAssembly from *WebAssembly as a target*: an `exports` map lets one package
-name hand Node one build and a browser bundler another.
+The registry's answer for the real CLI: six files (the bin file, the
+bundle, `package.json`, the README and two licence files).
 
-<Prompts ids={['pkg-what', 'pkg-identity', 'pkg-scope', 'pkg-dryrun', 'pkg-files']} />
+<Prompts ids={['pkg-what']} />
 
-## Three bugs nobody could see
-
-The CLI did not start like that. Before publishing anything, the author
-packed the CLI as it first was and installed the tarball into an empty
-folder, the way a stranger would. Step through what happened:
+Packed as it first was and installed into an empty folder, the way a
+stranger would, the CLI showed three bugs no test in the repository
+could see:
 
 <ShipSteps client:visible />
 
-<Analogy extra title="moving out of a flat">
-When you move out, you find out which things were yours and which came
-with the flat: the kettle you used every day turns out to belong to the
-landlord, and the new place has no curtains. A package leaving its
-repository finds out the same way what the repository was quietly
-providing.
-<span slot="breaks">You notice a missing kettle the first morning. A
-package's missing pieces may show up only on a stranger's machine, with
-a different Node version or folder layout, which is why the test is to
-install the tarball somewhere empty, the way a stranger would.</span>
-</Analogy>
+The one that matters most for any TypeScript package: Node 22.18 and
+later strip TypeScript types, but deliberately refuse to under
+`node_modules`<Cite id="node-typescript-docs" />. The fix was a build
+step that bundles everything into one plain `dist/viscosity.mjs`.
 
-None of the three bugs was visible from inside the repository, because
-there everything works:
+<Prompts ids={['pkg-ts']} />
 
-1. **No dependencies.** `cli.ts` imports the core with a relative path,
-   `'../../core/src/index.ts'`, which exists only in the repository's
-   folder layout, and its `package.json` declared no dependencies, so
-   npm installed one package and nothing else.
-2. **TypeScript in `node_modules`.** Node 22.18 and later strip
-   TypeScript types by default, which is why the repository runs `.ts`
-   files directly; however, Node deliberately refuses to do it under
-   `node_modules`, to discourage publishing TypeScript
-   sources<Cite id="node-typescript-docs" />.
-3. **The silent main check.** `cli.ts` ended with a check, so that
-   importing it in a test does not run it, which compared
-   `import.meta.url` with `process.argv[1]`. Run through npm's link in
-   `node_modules/.bin`, `argv[1]` is the link's path, not the file's,
-   so the check was false and the command exited with status 0 having
-   done nothing.
+<More title="The other two bugs, the bin file, and what bundling costs">
+The core was imported by a relative path that exists only in the
+repository's layout, with no declared dependencies; and a "run only when
+executed directly" check compared `import.meta.url` with
+`process.argv[1]`, which through npm's link in `node_modules/.bin` is the
+link's path, so the command exited quietly having done nothing. The
+bundle has no runtime dependencies, and a two-line bin file calls `main`:
 
-The fixes were a build step and one small file. `build.mjs` runs
-esbuild, which compiles the TypeScript and pulls the core, the front
-ends and their parsers (acorn, acorn-walk, sucrase) into one file,
-`dist/viscosity.mjs`, so the package has no runtime dependencies; and
-because a bundle contains other people's code, the build also writes
-`LICENSE` and `THIRD_PARTY_LICENSES.txt`. A separate entry file calls
-`main` without any check:
 
 ```js
 #!/usr/bin/env node
@@ -188,162 +116,48 @@ import { main } from
 process.exit(main(process.argv.slice(2)));
 ```
 
-The `#!` line matters: npm's documentation asks that every `bin` file
-start with it, or the script is not run by Node<Cite id="npm-package-json" />.
-(The check in `cli.ts` now compares real paths, so running the source
-through a link works too.)
+npm asks that every `bin` file start with the `#!` line, or the script is
+not run by Node<Cite id="npm-package-json" />. Because a bundle contains
+other people's code (acorn, acorn-walk, sucrase), the build also writes
+`LICENSE` and `THIRD_PARTY_LICENSES.txt`.
 
-<Prompts ids={['pkg-ts', 'pkg-deps', 'pkg-main']} />
-
-<Callout kind="engine" label="Under the hood">
-Node's type stripping replaces type annotations with whitespace and
-checks nothing. By default it runs only TypeScript whose features need
-no code generation (an `enum` does), so it needs no source maps: line
-numbers stay the same<Cite id="node-typescript-docs" />. That is why the
-repository can run its `.ts` sources directly on Node 22.18 or later,
-the version its own `engines` field asks for, and also why that
-convenience stops at the edge of `node_modules`: the published CLI is
-plain JavaScript, and asks only for Node 18.
-</Callout>
-
-
-## Out into the world
-
-On 2026-11-02, `scripts/release.sh` published everything at version
-0.0.1: `@viscosity/cli` (the TypeScript engine's command) and
-`@viscosity/wasm` to npm, and the Rust port's six crates to crates.io.
-
-<Figure takeaway="Crates go up in dependency order; a re-run skips what is already there." caption="What was published, and in what order. Each crate needs the ones above it to be on crates.io before it can be uploaded.">
-  <ReleaseOrder />
-</Figure>
-
-Crates go up in dependency order, because cargo will not publish a
-crate whose dependencies are not on crates.io yet: `viscosity-vir` (the
-IR) first,
-then `viscosity-core`, the two front ends, `viscosity-cli` and, last,
-`viscosity-wasm`. The first run published five of them; crates.io then
-answered the sixth with HTTP 429, "published too many new crates in a
-short period" (a limit on how many *new* crates one account may create
-at once), and a re-run about ten minutes later skipped the five already
-there and published the sixth. Both registries were then checked the
-way a stranger would use them: `npm install -g @viscosity/cli` and
-`cargo install viscosity-cli` each give a `viscosity` command whose
-`--version` prints `viscosity 0.0.1`. (Whether the book and docs move
-to the viscosity.dev domain is still the author's decision.)
-
-<Prompts ids={['pkg-order']} />
-
-
-## Your turn
-
-<Exercise id="packList" />
-
-<Exercise id="releaseOrder" />
-
-## What you learned
-
-- An **npm package** is a tarball described by `package.json`,
-  identified by **name** and **version**, with `bin`, `files`,
-  `dependencies` and `engines`. The name `viscosity` is taken, so the
-  CLI is `@viscosity/cli`.
-- Packing and installing the CLI found three bugs (undeclared
-  dependencies, TypeScript under `node_modules`, a main check that
-  failed through npm's link); a bundle and a bin entry fixed them.
-- On 2026-11-02, version 0.0.1 went to npm (`@viscosity/cli`,
-  `@viscosity/wasm`) and crates.io (six crates, in dependency order,
-  the last one ten minutes late, held back by a rate limit).
-
-Next: what the number 0.0.1 on all of them actually promises.
-
-
-{/* ── merge: from old chapter 162, Semantic versioning: what a version promises ── */}
-
-## Three numbers on a label
-
-The previous chapter shipped Viscosity: two npm packages and six Rust
-crates, all labelled `0.0.1`. Suppose next month a bug is fixed, then
-a new option is added, then an old option is removed. What should each
-release be called, and what does a project that already depends on
-`0.0.1` get when it next runs `npm install`?
-
-npm works in **semantic versioning**: it requires versions that its
-semver library can parse<Cite id="npm-package-json" />, and the rules
-fit in a sentence: given MAJOR.MINOR.PATCH, bump MAJOR for incompatible
-API changes, MINOR for backward compatible new features and PATCH for
-backward compatible bug fixes, and reset the numbers to the right of
-the one you bumped<Cite id="semver2" />.
-
-<Analogy title="editions of a book">
-A reprint that fixes typos is like a patch; a new edition that adds a
-chapter but keeps every page number is like a minor release; a revised
-edition that renumbers the chapters breaks everyone's references, which
-is a major release.
-<span slot="breaks">Publishers decide what counts as a new edition by
-habit. Semver only means something against a *declared* public API:
-until you say what your API is, nobody can tell a fix from a breaking
-change, as the last section shows.</span>
+<Analogy extra title="moving out of a flat">
+When you move out, you find out which things were yours and which came
+with the flat: the kettle you used every day belongs to the landlord.
+A package leaving its repository finds out the same way what the
+repository was quietly providing.
+<span slot="breaks">You notice a missing kettle the first morning; a
+package's missing pieces may show up only on a stranger's machine, which
+is why the test is to install the tarball somewhere empty.</span>
 </Analogy>
+</More>
 
-<Analogy extra title="a restaurant's menu">
-Fixing a spelling mistake on the menu changes nothing for diners; adding
-a dish gives them more choice and takes nothing away; taking a dish off
-disappoints everyone who came for it.
-<span slot="breaks">Diners can read the whole menu. Users of a library
-often depend on things nobody listed (the exact wording of a message,
-how fast a call is), and a change to those can break them although the
-"menu" of documented functions never changed.</span>
-</Analogy>
+## What a version promises
+
+npm works in **semantic versioning**<Cite id="npm-package-json" />: given
+MAJOR.MINOR.PATCH, bump MAJOR for incompatible API changes, MINOR for
+compatible features and PATCH for compatible fixes, resetting the numbers
+to the right<Cite id="semver2" />.
 
 <Figure takeaway="Bump one part; reset everything to its right." caption="The three ways out of version 1.9.3.">
   <BumpTree />
 </Figure>
 
-<Callout kind="definition">
-**Semantic versioning** (semver) numbers releases MAJOR.MINOR.PATCH.
-MAJOR changes when the **public API** breaks, MINOR when it gains
-backward compatible features, PATCH for backward compatible fixes, and
-the parts to the right of the bumped one reset to 0. Released versions
-are immutable, 0.y.z promises nothing, and pre-release tags
-(`1.0.0-beta.1`) sort before the release.
-</Callout>
-
-<Prompts ids={['sv-rules', 'sv-immutable', 'sv-prerelease']} />
-
-## Comparing versions
-
-Three details catch people out. First, the parts are compared as
-**numbers**, so `1.10.0` is newer than `1.9.0`, even though as strings
-it sorts first. Second, a released version must never change: once a
-name and version have been published on npm, that pair can never be
-used again, even after unpublishing<Cite id="npm-publish-docs" />.
-Third, major version zero is for initial development, and "anything MAY
+The parts compare as **numbers**, so `1.10.0` is newer than `1.9.0`; a
+published name and version can never be reused<Cite id="npm-publish-docs" />;
+and major version zero is for initial development, where "anything MAY
 change at any time"<Cite id="semver2" />.
 
-<Formal title="Ordering versions, and a caret range">
+<Callout kind="definition">
+**Semantic versioning** (semver) numbers releases MAJOR.MINOR.PATCH,
+bumped for a break in the **public API**, a compatible feature or a
+compatible fix, with the parts to the right reset to 0. Versions compare
+as numbers, and 0.y.z promises nothing.
+</Callout>
 
-```text
-(a,b,c) < (x,y,z)  iff  a < x
-   or (a = x and b < y)
-   or (a = x and b = y and c < z)
-^1.2.3 = [1.2.3, 2.0.0)
-^0.1.0 = [0.1.0, 0.2.0)
-^0.0.1 = [0.0.1, 0.0.2)
-```
-
-<span slot="read">Version a.b.c comes before x.y.z if its major part
-is smaller; or the majors are equal and its minor is smaller; or both
-are equal and its patch is smaller: the first part that differs
-decides, as numbers. A caret range accepts everything from the given
-version up to, but not including, the next version that changes the
-leftmost non-zero part: below 2.0.0 for ^1.2.3, below 0.2.0 for ^0.1.0,
-and below 0.0.2 for ^0.0.1, which is only 0.0.1 itself.</span>
-</Formal>
-
-A dependency in `package.json` names a *range* rather than one version,
-and npm installs the newest release in it. The caret, `^`, is the
-usual range, and it follows the zero rule: in 0.x the minor number is
-treated as the breaking one, and in 0.0.x even the patch
-is<Cite id="node-semver-ranges" />. Step through it:
+A dependency names a *range*, and npm installs the newest release in it.
+The usual caret range, `^`, stops at the next change in the leftmost
+non-zero part<Cite id="node-semver-ranges" />:
 
 <CaretSteps client:visible />
 
@@ -356,8 +170,6 @@ is<Cite id="node-semver-ranges" />. Step through it:
   option              → 2.0.0
 ```
 
-<Run id="semver-compare" />
-
 ```text
 "dependencies": {
   "@viscosity/cli": "^0.0.1"
@@ -366,129 +178,88 @@ is<Cite id="node-semver-ranges" />. Step through it:
 
 </Examples>
 
-The first walks the story from the top of the chapter through three
-releases: a fix bumps the patch; a new option bumps the minor and
-resets the patch (and 9 + 1 is 10, not "91"); removing an option breaks
-anyone who used it, so the major goes up and everything to its right
-resets. The second runs the numbers-not-strings trap: line 4 prints
-`false`, because `'1.10.0' > '1.9.0'` compares character by character
-and `'1'` sorts before `'9'`; `parse` splits each version at the dots
-and turns the pieces into numbers, and the last line compares the minor
-parts, 10 and 9, and prints `true`. The third is Viscosity's own
-choice: a project depending on `^0.0.1` gets 0.0.1 and nothing newer.
-Cargo reads `0.0.1` the same way, which the release notes in
-`engine/rust/README.md` give as the reason for starting there: no
-project that depends on it picks up a newer release without asking for
-it.
+The first walks three releases: a fix bumps the patch, a new option the
+minor (9 + 1 is 10, not "91"), a removal the major. The second is
+Viscosity's own choice: everything was first published at 0.0.1, which
+Cargo reads the same way, so no dependent picks up a newer release
+without asking. The same evening the npm packages went out again as
+0.0.2 (a README for the CLI, a corrected dataclass message), and a
+project asking for `^0.0.1` still gets 0.0.1; the crates on crates.io
+are still at 0.0.1.
 
-<Prompts ids={['sv-zero', 'sv-caret', 'sv-numeric', 'sv-cargo']} />
+<Prompts ids={['sv-rules', 'sv-numeric', 'sv-caret', 'sv-cargo']} />
 
-## What is Viscosity's public API?
+<More title="Comparing versions, run; and what Viscosity's public API is">
 
-Semver starts with a demand: declare your public API, because the
-numbers only mean something relative to it<Cite id="semver2" />. For a
-library that is its exported functions; for Viscosity it is more:
+<Run id="semver-compare" />
 
-- **The CLI**: its commands and options (the docs site's CLI reference
-  is generated from `--help`, so the documentation cannot drift from
-  it).
-- **The plugin API** from *The plugin API*, if other people write
-  plugins.
-- **The explain text**, since *viscosity explain* argued that if people
-  read the reports they are part of the interface, and scripts will
-  search them.
-- **The decisions.** A release that suddenly keeps a collection it used
-  to transform makes someone's program slower without changing its
-  output.
+Line 4 prints `false`, because `'1.10.0' > '1.9.0'` compares character by
+character and `'1'` sorts before `'9'`; `parse` splits each version at
+the dots and turns the pieces into numbers, and the last line prints
+`true`.
 
-Is that last one a breaking change? The output is identical (the
-differential tests check exactly that), so by semver's letter it is a
-fix or a feature, but a user who measured a speed-up may disagree.
-Deciding, and writing the decision down, is part of shipping. (One
-small thing was fixed on the way: `viscosity --version` used to print a
-hard-coded number, a second copy of the one in `package.json` that
-would one day disagree with it; now it reads `package.json`, so there
-is only one place the version lives.)
+<Formal title="Ordering versions, and a caret range">
 
-<Prompts ids={['sv-api']} />
+```text
+(a,b,c) < (x,y,z)  iff  a < x
+   or (a = x and b < y)
+   or (a = x and b = y and c < z)
+^1.2.3 = [1.2.3, 2.0.0)
+^0.1.0 = [0.1.0, 0.2.0)
+^0.0.1 = [0.0.1, 0.0.2)
+```
 
-## Your turn
+<span slot="read">Version a.b.c comes before x.y.z if the first part
+that differs is smaller, compared as numbers. A caret range accepts
+everything from the given version up to, but not including, the next
+version that changes the leftmost non-zero part.</span>
+</Formal>
 
-<Exercise id="bump" />
+Semver starts with a demand: declare your public API, because the numbers
+only mean something relative to it<Cite id="semver2" />. For Viscosity
+that is the CLI's commands and options, the plugin API, the explain text
+(scripts will search it), and arguably the decisions themselves: a
+release that keeps a collection it used to transform has identical
+output, so by semver's letter it is a fix, but a user who measured a
+speed-up may disagree. Deciding, and writing the decision down, is part
+of shipping.
 
-<Exercise id="newer" />
-
-## What you learned
-
-- **Semantic versioning**: MAJOR.MINOR.PATCH; bump one part for a
-  breaking change, a feature or a fix, and reset the parts to its
-  right.
-- Versions compare **as numbers**, part by part; released versions are
-  **immutable**; pre-releases sort before their release.
-- **Caret ranges** accept everything up to the next change in the
-  leftmost non-zero part, so `^0.1.0` means 0.1.x and `^0.0.1` means
-  only 0.0.1, which is why Viscosity starts there.
-- Versions are only meaningful against a declared **public API**, which
-  for Viscosity includes its options, reports and decisions.
-
-
-{/* ── merge: from old chapter 162, The npm package ── */}
+<Analogy extra title="editions of a book">
+A reprint that fixes typos is a patch; a new edition that adds a chapter
+but keeps every page number is a minor release; a revised edition that
+renumbers the chapters is a major release.
+<span slot="breaks">Publishers decide by habit; semver only means
+something against a *declared* public API.</span>
+</Analogy>
+</More>
 
 ## Two ways to ship Rust
 
-The chapter *Shipping Viscosity* packed the TypeScript CLI for npm as
-one JavaScript bundle that runs on any computer with Node 18, which
-was easy, because JavaScript is the same everywhere. The Rust engine is
-faster (the chapter *How fast is the compiler?* measures by how much),
-but a compiled Rust program is not the same everywhere: `cargo build
---release` gave me a 2,786,376-byte ELF executable for x86-64 Linux,
-and a Mac cannot run it, nor can an ARM laptop.
-
-Tools written in Rust, Go or C++ solve this in one of two ways, and you
-have used both without noticing. Look in this book's own
-`node_modules`: the bundler esbuild 0.27.7 lists 26
-`optionalDependencies`, from `@esbuild/aix-ppc64` to
-`@esbuild/win32-x64`, and each of those packages declares the `os` and
-`cpu` it runs on, so npm compares them with the machine and skips the
-rest<Cite id="npm-package-json-platform" />. Here only
-`@esbuild/linux-x64` was installed, one 11,120,788-byte binary. The
-other way is to compile once to WebAssembly and let the JavaScript
-engine run it; wasm-bindgen's guide offers its Node target "perhaps as
-an alternative to a native module"<Cite id="wasm-bindgen-guide" />.
+A compiled Rust program is not the same everywhere: `cargo build
+--release` gives me an ELF executable for x86-64 Linux, which a Mac
+cannot run. One answer is esbuild's: version 0.27.7 lists 26
+`optionalDependencies`, each declaring the `os` and `cpu` it runs on, so
+npm installs only the one that matches<Cite id="npm-package-json-platform" />.
+The other is to compile once to WebAssembly and let the JavaScript engine
+run it<Cite id="wasm-bindgen-guide" />.
 
 <Figure takeaway="Native means one build per platform, chosen at install time; WebAssembly means one build for all of them." caption="On the left, npm installs the one esbuild package whose os and cpu match the machine. On the right, every platform, and a browser tab, runs the same .wasm.">
   <ShipTwoWays />
 </Figure>
 
-<Analogy title="plug adapters and batteries">
-Travelling abroad, you can pack a plug adapter for every country you
-might visit, or bring a device that runs on batteries sold everywhere.
-The adapters give full mains power, but you need the right one for each
-wall; the batteries work anywhere, at a little less power.
-<span slot="breaks">You can carry all the adapters at once; npm
-downloads only the one platform package that matches, so the cost of
-the native route falls on the people who build and test 26 packages,
-not on the person installing.</span>
-</Analogy>
-
 <Callout kind="definition">
 **Native binaries vs WebAssembly**: a native build is compiled for one
-operating system and CPU, so it is the fastest and can use threads and
-files, but you ship (and build, and test) one per platform. A `.wasm`
-is one file for every platform, run by the host's JavaScript engine;
-it is slower, and on `wasm32-unknown-unknown` the standard library
-cannot reach the host, so `std::fs` returns errors and
-`std::thread::spawn` panics<Cite id="rustc-wasm32-unknown-unknown" />.
+operating system and CPU, fastest and free to use threads and files, but
+one per platform. A `.wasm` is one file for every platform, run by the
+host's JavaScript engine: slower, and on `wasm32-unknown-unknown`
+`std::fs` returns errors and `std::thread::spawn`
+panics<Cite id="rustc-wasm32-unknown-unknown" />.
 </Callout>
 
 <Examples of="native-vs-wasm">
 
 ```json
 "os": ["linux"], "cpu": ["x64"]
-```
-
-```text
-ELF 64-bit LSB pie executable, x86-64
 ```
 
 ```js
@@ -498,178 +269,94 @@ const { compile } =
 
 </Examples>
 
-The first is from `@esbuild/linux-x64/package.json`: the two fields
-that let npm skip the package on any other machine. The second is what
-`file` says about the Rust CLI I built: x86-64 Linux, and nothing else.
-The third is the whole WebAssembly story for a user: one package, the
-same on every machine, and `compile` is ready the moment `require`
-returns. The run below does what npm does with esbuild's list, for
-whatever machine compiles it:
+The first is from `@esbuild/linux-x64/package.json`. The second is
+`@viscosity/wasm`: one package for every machine, whose `exports` map
+hands Node one glue and a browser bundler the other.
 
-<Run id="pick-native" />
+<Prompts ids={['native-vs-wasm-what']} />
 
-It holds the 26 names as `<os>-<cpu>` strings, asks Rust which
-operating system and CPU it was compiled for (`std::env::consts::OS`
-and `ARCH`), and translates Rust's names into Node's (`macos` is
-`darwin`, `x86_64` is `x64`), because the two worlds name the same
-machines differently. On an x86-64 Linux machine, like the one I ran it
-on, it prints `this machine: linux-x64` and `npm installs ["linux-x64"] of
-26`; on a Mac with an M-series chip it would pick `darwin-arm64`
-instead.
-
-<Prompts ids={['native-vs-wasm-what', 'esbuild-26']} />
-
-## One package, two kinds of glue
-
-`@viscosity/wasm` takes the WebAssembly road. The chapter *Compiling
-the engine to WebAssembly* left two folders, `dist/node` (CommonJS
-glue that loads synchronously) and `dist/web` (an ES module with
-`init()`), and the `package.json` decides who gets which with an
-`exports` map. Trimmed:
-
-```json
-"exports": {
-  ".": {
-    "node": {
-      "types": "./dist/node/….d.ts",
-      "default": "./dist/node/….js"
-    },
-    "browser": { … },
-    "types": "./dist/web/….d.ts",
-    "default": "./dist/web/….js"
-  },
-  "./web": …, "./node": …
-}
-```
-
-The `"."` entry is what `import '@viscosity/wasm'` means; `"./web"`
-and `"./node"` let a user ask for one glue by name. Each key inside
-`"."` is a **condition**. Node sets `"node"` and either `"import"`
-or `"require"`; a bundler building for the web uses `"browser"`. Key
-order is significant: the first key whose condition is active wins,
+<More title="The exports map, and what is in the box">
+Each key inside an `exports` entry is a **condition**. Node sets
+`"node"` and either `"import"` or `"require"`; a bundler building for the
+web uses `"browser"`. The first key whose condition is active wins,
 `"default"` always matches and so comes last, and a nested object that
 matches nothing falls back to its parent's next
-key<Cite id="node-packages-exports" />. TypeScript reads the same map
-and always matches `"types"`<Cite id="ts-modules-reference" />.
-
-<Analogy extra title="the signs at a hotel reception">
-A reception desk has a list of signs, read from the top: "members: the
-lounge", "families: the garden rooms", "everyone else: the main
-building". You go to the first sign that applies to you, even if a
-later one also does, and "everyone else" has to be at the bottom, or
-nobody would ever read past it.
-<span slot="breaks">A guest who is sent to the lounge stays there; in
-an exports map, a matching key whose own list matches nothing sends you
-back to the desk to read the next sign.</span>
-</Analogy>
-
-Step through five importers on the real map:
+key<Cite id="node-packages-exports" />. TypeScript reads the same map and
+always matches `"types"`<Cite id="ts-modules-reference" />. Step through
+five importers on the real map:
 
 <ExportsSteps client:visible />
 
-<Formal title="Resolving conditional exports">
-
-```text
-resolve(file, C) = file
-resolve([k₁:v₁ … kₙ:vₙ], C) =
-  the first resolve(vᵢ, C) ≠ none
-  with kᵢ ∈ C or kᵢ = default
-```
-
-<span slot="read">A file resolves to itself. A map resolves to the
-first entry, in the map's own order, whose key is one of the importer's
-conditions C or is "default", and whose value itself resolves to
-something; if none does, the map resolves to nothing.</span>
-</Formal>
-
-<Prompts ids={['exports-order', 'exports-fallthrough']} />
-
-## What is in the box
-
-Packed, the package is 13 files, 997 KiB, and 2,840 KiB unpacked. Most
-of that is two copies of the module, `dist/node/viscosity_wasm_bg.wasm`
-(1,373,486 bytes) and `dist/web/viscosity_wasm_bg.wasm` (1,373,422):
-each glue file loads the module sitting next to it, so sharing one
-would mean editing generated code, and the build does not, at a price
-of 1.4 MB of disk. There is no `bin`: `@viscosity/cli` installs a
-`viscosity` command, while `@viscosity/wasm` is a library, for
-programs that call `compile` themselves (an editor plugin, a bundler
-plugin, this book).
-
-The third big file is `THIRD_PARTY_LICENSES.txt`, 130,597 bytes. The
-`.wasm` *statically links* 71 third-party Rust crates (oxc's parser,
-`indexmap`, `rustc-hash`, the ICU4X Unicode crates, wasm-bindgen
-itself): their code is inside the file you hand out, so their licence
-notices must travel with it. `build.mjs` asks `cargo tree` which
-crates are linked for `wasm32-unknown-unknown` (leaving out proc
-macros, which run only at build time), finds each crate's licence
-files through `cargo metadata`, and writes every distinct text once.
-One snag: oxc's crates are published without their licence file, so
-the package carries copies of oxc's own files in `licenses/` and uses
-them as a fallback for any `oxc` crate.
-
-<Prompts ids={['two-copies', 'licences-67', 'oxc-licence']} />
-
-## Installed like a stranger would
+Packed, `@viscosity/wasm` 0.0.2 is 13 files, 997 KiB (2,840 KiB
+unpacked), most of it two copies of the 1.4 MB module, because each glue
+file loads the module sitting next to it. The third big file is
+`THIRD_PARTY_LICENSES.txt`: the `.wasm` *statically links* 71
+third-party Rust crates (oxc's parser, `indexmap`, the ICU4X Unicode
+crates, wasm-bindgen itself), so their notices must travel with it.
+`build.mjs` asks `cargo tree` which crates are linked for the target,
+finds their licence files through `cargo metadata`, and writes each
+distinct text once (oxc's crates are published without their licence
+file, so the package carries copies of oxc's own).
 
 `smoke.mjs` installs the package the way a stranger would: `npm pack`,
-install the tarball into a fresh directory, compile every corpus
-program through the installed package (40 JavaScript, 20 Python) in
-three ways, compare `code` and `explain` with what the TypeScript CLI
-prints, and finally type-check a small consumer under both the Node and
-the browser conditions. When I ran it for this chapter it printed:
+install into a fresh directory, compile 60 corpus programs (40
+JavaScript, 20 Python) through it three ways, compare with the
+TypeScript CLI, and type-check a small consumer. When this chapter was
+first written it reported four mismatches, all in Python explain text,
+and the package was not at fault: the oracle, the TypeScript CLI's
+committed bundle, had been built before a change of wording. That
+corrected wording is what 0.0.2 carries. Run on the 0.0.2 tree, it
+prints `✓` for all three ways, with 0 mismatches.
 
-```text
-packed viscosity-wasm-0.0.1.tgz:
-  13 files, 997 KiB (2840 KiB unpacked)
-✗ nodejs target, require():
-  {"programs":60,"mismatches":4}
-✗ nodejs target, import: … 4
-✗ web target, init(bytes): … 4
-✓ types (node, nodenext)
-✓ types (browser, bundler)
-```
+The npm `binaryen` package that `build.mjs` uses for `wasm-opt` is
+itself WebAssembly, "a port of `wasm-opt` to JavaScript+WebAssembly … on
+any platform that Node.js runs on"<Cite id="binaryen-readme" />.
 
-Four mismatches, the same four each way, all in the explain text of
-Python programs. The package was not at fault: the oracle was.
-`smoke.mjs` compares with the TypeScript CLI's committed bundle,
-`engine/ts/packages/cli/dist/viscosity.mjs`, and that bundle was built
-before a change of wording in the analysis ("a dataclass call is
-modelled only with its arguments in field order and literal
-defaults"), so it still printed the old sentence. I bundled the CLI
-from its current source into a scratch folder and compared again: all
-60 programs matched, three ways (the bundle has since been rebuilt, and
-`smoke.mjs` now prints three ✓ lines with 0 mismatches). It is the lesson of the chapter
-*TypeScript vs Rust: differential tests* in miniature: a test is only as current as the thing it trusts. (On
-2026-11-02 both packages went to npm, as the chapter *Release
-engineering* describes, so `npm install @viscosity/wasm` works now.)
+<Run id="pick-native" />
 
-<Prompts ids={['smoke-what']} />
+That program does what npm does with esbuild's list, for whatever machine
+compiles it: it asks Rust for `std::env::consts::OS` and `ARCH`,
+translates Rust's names into Node's (`macos` is `darwin`, `x86_64` is
+`x64`), and picks the one matching package of 26.
+</More>
 
-<Callout kind="engine" label="Under the hood">
-The build itself relies on a WebAssembly package. Binaryen is written
-in C++ and publishes native releases for several platforms, plus a
-build for Node: "A port of `wasm-opt` to JavaScript+WebAssembly … on
-any platform that Node.js runs on"<Cite id="binaryen-readme" />. The
-npm `binaryen` package that `build.mjs` finds is that port; its
-`bin/wasm-opt` is one 11 MB file, a JavaScript loader with the module
-inside it, which is why `npm install` was enough on the build machine,
-whatever it was, and also why each `-O3` run took about half a minute.
-</Callout>
+<More title="What went out, and in what order">
+
+<Figure takeaway="Crates go up in dependency order; a re-run skips what is already there." caption="What was published at 0.0.1, and in what order. Each crate needs the ones above it to be on crates.io before it can be uploaded.">
+  <ReleaseOrder />
+</Figure>
+
+On 2026-11-02, version 0.0.1 of `@viscosity/cli` and `@viscosity/wasm`
+went to npm, and the six crates to crates.io in dependency order.
+*Keeping it healthy: CI, gates and releases* follows the script that did
+it, the rate limit it met, and the 0.0.2 release that followed.
+</More>
 
 ## Your turn
+
+<Exercise id="bump" />
+
+For more practice: choose a package's files, order the crates for
+publishing, compare versions, or resolve an exports map.
+
+<Exercise id="packList" />
+
+<Exercise id="releaseOrder" />
+
+<Exercise id="newer" />
 
 <Exercise id="resolve" />
 
 ## What you learned
 
-- **Native** builds are fastest but per platform (esbuild ships 26
-  packages); a **.wasm** is one file for every platform, without
-  threads or files on `wasm32-unknown-unknown`.
-- An **exports map** is tried in key order: the first active condition
-  wins, `"default"` comes last, and nested misses fall through.
-- A statically linked `.wasm` must carry its crates' **licences**, and
-  `smoke.mjs` tests the package installed, against an oracle that has
-  to be kept current.
+- An **npm package** is a tarball described by `package.json`, identified
+  by **name** and **version**.
+- **Semantic versioning** bumps MAJOR, MINOR or PATCH and compares as
+  **numbers**; `^0.0.1` is 0.0.1 alone.
+- **Native** builds are fastest but per platform; one **.wasm** serves
+  every platform.
+
+Next: *TypeScript against Rust: differential tests, fuzzing and
+shrinking*.
 
 <Quiz />

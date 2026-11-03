@@ -1,39 +1,19 @@
-// Chapter 255 cards: recall prompts, examples, exercises and quiz.
+// Chapter 166 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 166, 166.
+// Merged from the old chapters How fast is the compiler?, and The final benchmark matrix.
 
 export const prompts = {
   'ctp-what': {
     q: 'What is **compile-time performance**?',
     a: 'How fast the compiler itself runs: the time from source in to code out, as opposed to how fast the compiled program runs.',
   },
-  'cli-total': {
-    q: 'In the matrix, how much faster is the Rust CLI than the TS CLI over the corpus?',
-    a: '10.9×, as the sum of per-program medians (40 programs, one fresh process per compile).',
-  },
-  'inproc-total': {
-    q: 'In one warm Node process, how much faster is the Rust engine as WebAssembly than the TS engine?',
-    a: '5.26×, as the sum of per-program medians over the same 40 programs.',
-  },
   'why-bigger': {
-    q: 'Why is the CLI ratio bigger than the in-process ratio?',
+    q: 'In Viscosity’s benchmark matrix, why is the Rust-over-TypeScript speed ratio for whole CLI runs bigger than the ratio for warm in-process compiles?',
     a: 'The CLI run is mostly start-up: starting Node and loading a 1 MB bundle, against a native binary that starts in a few milliseconds.',
   },
-  share: {
-    q: 'What share of a TS CLI run is warm compiling, per the matrix?',
-    a: 'Under 1% for every program. Warm `compile()` takes at most about a millisecond; a CLI run takes about a hundred.',
-  },
-  fragile: {
-    q: 'Why should you distrust a CLI ratio’s second digit here?',
-    a: 'Its denominator is a few milliseconds, and on a shared VM the Rust CLI’s median moved between about 4 and 15 ms from run to run.',
-  },
   'first-call': {
-    q: 'How did the TS engine’s first `compile()` in a fresh process compare with a warm one?',
+    q: 'In Viscosity’s compile-speed results, how did the TypeScript engine’s first `compile()` in a fresh process compare with a warm one?',
     a: 'About 25× slower (22 ms for `boids`): the code hasn’t been optimised by the JIT yet.',
-  },
-  batch: {
-    q: 'How does compiling 400 files in one process change the comparison?',
-    a: 'Start-up is paid once, so per-file cost takes over. In this chapter’s runs TS added about 1.8 ms per extra file and Rust about 0.12 ms: still more than ten times apart.',
   },
   'matrix-what': {
     q: 'What is a benchmark matrix?',
@@ -44,40 +24,16 @@ export const prompts = {
     a: 'Results from different days and methods can’t be compared cell by cell. One run, one method, one machine makes any two cells comparable.',
   },
   'best-of': {
-    q: 'Why does the matrix report the best of 9 runs as its main figure?',
+    q: 'Why does Viscosity’s benchmark matrix report the best of 9 fresh-process runs as its main figure?',
     a: 'On a shared, noisy VM the minimum is the most stable figure: noise only ever adds time. The median is shown beside it for the spread.',
   },
-  interleave: {
-    q: 'Why are the original and compiled runs interleaved?',
-    a: 'So that a slow patch on the shared machine hits both versions alike, instead of making one of them look slower.',
-  },
   'heat-two': {
-    q: 'What does Viscosity do for `heat` on Node, and on Bun?',
+    q: 'In Viscosity’s benchmark matrix of 2026-10-31, what does compiling `heat` gain on Node, and on Bun?',
     a: 'A large gain on Node (V8), one of the biggest in the matrix; none on Bun (JavaScriptCore), within the noise.',
   },
-  originals: {
-    q: 'Where is the difference between V8 and JSC on `heat`: in the original or the compiled program?',
-    a: 'In the original. Bun runs the array-of-objects version much faster than Node; compiled, the two are close.',
-  },
-  hypothesis: {
-    q: 'What is FINDINGS.md’s likely explanation for heat, and how sure is it?',
-    a: 'V8 keeps a double field in a separate heap box (one more pointer per read); JSC stores the double in the value. SoA fixes storage and locality on V8, only locality on JSC. A hypothesis: not yet confirmed with engine traces.',
-  },
   'explain-claim': {
-    q: 'Why does `explain` say why a collection was transformed, but not how much faster it will be?',
+    q: 'Why does `viscosity explain` say why a collection was transformed, but not how much faster it will be?',
     a: 'Because the gain depends on the engine that runs the code, which the compiler never sees: the same compiled heat gained a lot on V8 and nothing on JSC.',
-  },
-  'old-file': {
-    q: 'Why shouldn’t `e2e-node-2026-10-31` be compared cell by cell with the matrix?',
-    a: 'It predates the late-store fix (heat’s compiled code changed since), and it used a different method: Node only, median of 3.',
-  },
-  'drip-copied': {
-    q: 'Where do the times in the matrix’s Drip section come from?',
-    a: 'They are copied, not re-run, from the redesigned Drip’s committed results of 2026-11-02: the same files *Benchmarks: three implementations* reads.',
-  },
-  startup: {
-    q: 'Run once per file, the Rust CLI beats the TS CLI by a much bigger ratio than the in-process comparison shows. Why?',
-    a: 'Start-up: each TS CLI run starts Node and loads a 1 MB bundle, which takes far longer than compiling. In one warm process, only the engines are compared.',
   },
 };
 
@@ -126,6 +82,7 @@ fn main() {
 
 export const exercises = {
   totals: {
+    optional: true,
     lang: 'rust',
     title: 'Sum of medians',
     prompt: 'The matrix summarises many noisy timings in two steps. Write `median`: sort a copy (use `total_cmp` for `f64`), take the middle value, or the mean of the two middle values for an even count. Then write `total_speedup`: the sum of the TS programs’ medians divided by the sum of the Rust programs’ medians. (Not the mean of per-program ratios: a slow program should count for more.)',
@@ -412,7 +369,7 @@ fn no_rows_is_none() {
       'Add up `f(r).ln()` in a running total. Adding logarithms is multiplying the ratios, without ever forming a product that could grow huge.',
       'At the end, divide the total by `xs.len() as f64` and turn it back into a ratio with `.exp()`, wrapped in `Some`.',
     ],
-    walkthrough: `**How to think about it.** This is \`geo\` from \`engine/ts/packages/bench/src/matrix.ts\`, in Rust, with one difference that matters here: \`matrix.ts\` takes the mean of each row's ratio after rounding it to two places (the ratios it prints in its table), while this \`geo\` takes it from the times. The tests feed it the ten real rows of the matrix's Drip section, so you can watch both ways of reading them. For the TypeScript VM against the tree-walker and for drip-rs against the TypeScript VM, the two ways agree to two places (1.01 and 3.94, the figures in the matrix); for drip-rs against the tree-walker the matrix prints 3.99, from its rounded column, while the times give 3.98, the figure *Benchmarks: three implementations* quotes. Neither is a mistake (the gap is far below the noise on that machine); however, only the mean from the times keeps an exact rule, which \`the_means_multiply\` checks: each row's \`tree / rust\` is its \`tree / vm\` times its \`vm / rust\`, and the geometric mean of products is the product of the geometric means, so the third mean is exactly the first two multiplied.
+    walkthrough: `**How to think about it.** This is \`geo\` from \`engine/ts/packages/bench/src/matrix.ts\`, in Rust, with one difference that matters here: \`matrix.ts\` takes the mean of each row's ratio after rounding it to two places (the ratios it prints in its table), while this \`geo\` takes it from the times. The tests feed it the ten real rows of the matrix's Drip section, so you can watch both ways of reading them. For the TypeScript VM against the tree-walker and for drip-rs against the TypeScript VM, the two ways agree to two places (1.01 and 3.94, the figures in the matrix); for drip-rs against the tree-walker the matrix prints 3.99, from its rounded column, while the times give 3.98, the figure *Profiling and optimising drip-rs, and three implementations compared* quotes. Neither is a mistake (the gap is far below the noise on that machine); however, only the mean from the times keeps an exact rule, which \`the_means_multiply\` checks: each row's \`tree / rust\` is its \`tree / vm\` times its \`vm / rust\`, and the geometric mean of products is the product of the geometric means, so the third mean is exactly the first two multiplied.
 
 Why geometric at all? Speed-ups are ratios, and ratios multiply. A program that gets 2× faster and another that gets 2× slower should average to "no change", 1×; the ordinary mean of 2 and 0.5 is 1.25, which wrongly reports a gain, while the geometric mean is exactly 1 (\`a_loss_cancels_a_win\` checks this). And why logarithms? Because \`ln(a × b) = ln a + ln b\`: the mean of the logs is the log of the n-th root of the product, so \`exp\` of that mean is the geometric mean.
 
@@ -540,79 +497,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Over the corpus, the CLI ratio is 10.9× but the in-process ratio 5.26×. What explains most of the difference?',
-    options: [
-      {
-        t: 'WebAssembly is slower than native code',
-        why: 'Partly true, but small next to the other cause: the in-process TS engine is warm, and the CLI runs are mostly start-up.',
-      },
-      {
-        t: 'The CLI compiles different programs',
-        why: 'Both use the same 40 corpus programs.',
-      },
-      {
-        t: 'Start-up: Node plus a 1 MB bundle against a native binary',
-        correct: true,
-        why: 'Warm compiling is under 1% of a TS CLI run. The rest is starting and loading, where the native binary needs a few milliseconds.',
-      },
-    ],
-  },
-  {
-    q: 'The Rust CLI’s median was 7–15 ms per program in the matrix, and about 4 ms in this chapter’s runs of the CLI. What does that tell you?',
-    options: [
-      {
-        t: 'The binary got faster',
-        why: 'The engine has changed only slightly since (about 10 µs more per compile, for the early-error checks), nothing like a factor of two or three.',
-      },
-      {
-        t: 'Ratios with a few-millisecond denominator move a lot with the machine’s load',
-        correct: true,
-        why: 'On a shared 4-vCPU VM, a busy neighbour can triple a 3 ms process. Read the CLI ratio as “about ten times or more”, not 10.9 exactly.',
-      },
-      {
-        t: 'The matrix measured it wrongly',
-        why: 'Both are honest measurements under different loads. That is why the file states the load average.',
-      },
-    ],
-  },
-  {
-    q: 'A build compiles 10,000 files. Which matters most?',
-    options: [
-      {
-        t: 'Process start-up',
-        why: 'Paid once per process; spread over 10,000 files it nearly vanishes.',
-      },
-      {
-        t: 'The cost per file, and how many cores share the work',
-        correct: true,
-        why: 'Start-up amortises, so per-file speed dominates, and threads divide it (2.95× on 4 vCPUs to tmpfs).',
-      },
-      {
-        t: 'The size of the `.wasm`',
-        why: 'A CLI build doesn’t load the WebAssembly at all.',
-      },
-    ],
-  },
-  {
-    q: 'Writing to the VM’s disk, 4 threads gave only 1.24×. Why?',
-    options: [
-      {
-        t: 'The compiler has a global lock',
-        why: 'On tmpfs the same build reached 2.95×, so compiling scales.',
-      },
-      {
-        t: 'Creating the 396 output files cost about 65 ms whatever the thread count',
-        correct: true,
-        why: 'The virtual disk serialises file creation, so that part doesn’t shrink with threads.',
-      },
-      {
-        t: 'Rust threads don’t run in parallel',
-        why: 'They do: `std::thread::scope` threads are OS threads.',
-      },
-    ],
-  },
-  {
-    q: 'On which program did Viscosity gain on Node but not on Bun?',
+    q: 'In Viscosity’s benchmark matrix of 2026-10-31, on which program did the compiled code gain on Node but not on Bun?',
     options: [
       {
         t: 'particles',
@@ -634,7 +519,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is the status of the “heap number” explanation for heat?',
+    q: 'What is the status of the explanation that V8’s boxed double fields (heap numbers) are why Viscosity gains on `heat` under V8 but not JavaScriptCore?',
     options: [
       {
         t: 'Confirmed by V8 traces',
@@ -652,7 +537,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the matrix interleave original and compiled runs?',
+    q: 'Why does a benchmark that compares an original and a compiled program interleave their runs?',
     options: [
       {
         t: 'To warm up the JIT',
@@ -666,64 +551,6 @@ export const quiz = [
       {
         t: 'Because Bun requires it',
         why: 'Nothing about Bun needs it. It is a measurement choice.',
-      },
-    ],
-  },
-  {
-    q: 'The CLI comparison gives Rust a much larger lead than the in-process comparison. Which statement is right?',
-    options: [
-      {
-        t: 'One of the two measurements is wrong',
-        why: 'Both are right; they measure different things.',
-      },
-      {
-        t: 'The CLI ratio includes starting Node and loading the bundle for every file; the in-process one compares warm engines',
-        correct: true,
-        why: 'Inside one warm process the TS engine compiles a corpus program in well under a millisecond, so most of each TS CLI run is start-up.',
-      },
-      {
-        t: 'The in-process run used the native Rust binary',
-        why: 'It used `@viscosity/wasm`, the Rust engine as WebAssembly, inside the same Node.',
-      },
-    ],
-  },
-  {
-    q: 'Where were the times in the matrix’s Drip section measured?',
-    options: [
-      {
-        t: 'In the redesigned Drip’s own committed run of 2026-11-02, and then copied into the matrix',
-        correct: true,
-        why: 'The section says “copied from the committed results (not re-run here)”, names the two files of 2026-11-02, and a note in the file says only part (c) was refreshed.',
-      },
-      {
-        t: 'By `matrix.ts`, in the same sitting as the end-to-end programs',
-        why: '`matrix.ts` times the end-to-end and compile sections itself, but for Drip it only copies the committed results.',
-      },
-      {
-        t: 'Nowhere: the drip-rs times are estimated from the TypeScript ones',
-        why: 'drip-rs was timed by its own run, the best of three fresh processes; nothing in the section is estimated.',
-      },
-    ],
-  },
-  {
-    q: 'Over the same rows, taken from the times, the TS VM’s geometric-mean speed-up over the tree-walker is a, and drip-rs’s over the TS VM is b. What is drip-rs’s geometric-mean speed-up over the tree-walker?',
-    options: [
-      {
-        t: 'a + b',
-        why: 'Speed-ups multiply rather than add: twice as fast, and then twice as fast again, is four times as fast, not three.',
-      },
-      {
-        t: '(a + b) / 2',
-        why: 'That averages two different comparisons, so it is not the speed-up of anything over anything.',
-      },
-      {
-        t: 'It cannot be known without the rows',
-        why: 'For geometric means it can: each row’s ratio is the product of its two steps, and the geometric mean of products is the product of the means.',
-      },
-      {
-        t: 'a × b',
-        correct: true,
-        why: 'Exactly, when all three come from the same rows’ times; the matrix’s means, taken from ratios rounded to two places, can differ from this in the last digit.',
       },
     ],
   },

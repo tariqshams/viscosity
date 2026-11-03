@@ -3,23 +3,15 @@ n: 163
 day: 29
 part: IX
 title: 'TypeScript against Rust: differential tests, fuzzing and shrinking'
-tagline: 'Five layers of tests stand between the two engines, and each compares against a different oracle, so each is blind somewhere else. This chapter maps the blind spots, including two that the chapters of this Part walked straight into.'
+tagline: 'Five layers of tests stand between the two engines, and each compares against a different oracle, so each is blind somewhere else. Here is the map of the blind spots, the fuzzer that found five bugs past all of them, and the reducer that cut each failure down to a few lines.'
 objectives:
   - Name the oracle each test layer compares against, and the inputs it feeds.
-  - Predict which layers can catch a given bug, and which cannot.
-  - Explain why the fuzzer's finds were all bugs in both engines.
-  - Implement the fuzzer's verdict for one program, with errors compared by presence only.
-  - Say what a coverage-guided fuzzer keeps, and why it counts edges rather than blocks.
-  - Contrast it with a generation-based fuzzer, and say why Viscosity generates programs instead of mutating bytes.
-  - Explain how a seed per program makes any generated program replayable.
-  - Write the feedback step of a coverage-guided fuzzer in Rust.
-  - Run scripts/fuzz.mjs, name its three oracles, and replay a failure with --seed and --only.
-  - Explain line-based delta debugging, and what makes its result 1-minimal.
-  - Say why a reduced program can stop making sense, and read one before trusting it.
-  - Explain why line coverage flattened out while the fuzzer kept finding bugs, and implement the reducer in Rust.
+  - Predict which layers can catch a given bug, and explain why the fuzzer's finds were all bugs in both engines.
+  - Say what a coverage-guided fuzzer keeps, why it counts edges, and why Viscosity generates programs instead.
+  - Explain line-based delta debugging, and why a reduced program must be read before it is trusted.
 introduces: [engine-parity, coverage-guided-fuzzing]
-uses: [viscosity-rs, cross-implementation-tests, rust-explain, rust-pgo, rust-python-plugin, oxc, differential-testing, fuzzing, round-trip-testing, test-corpus, shared-corpus, webassembly, wasm-bindgen, npm-package, pgo, optimization-report, bailout, cargo-test, result, option, match, struct, vec, rust-closure, string-vs-str, rust-soa-codegen, capacity, amortized-growth, instrumentation, slice, lifetime, cfg]
-sources: ['csmith', 'test262', afl-technical-details, cargo-fuzz-book, csmith, ecma262-assignment-order, node-vm]
+uses: [viscosity-rs, cross-implementation-tests, rust-explain, rust-pgo, oxc, differential-testing, fuzzing, round-trip-testing, test-corpus, shared-corpus, webassembly, wasm-bindgen, npm-package, pgo, optimization-report, bailout, cargo-test, result, option, match, struct, vec, rust-closure, string-vs-str, rust-soa-codegen, capacity, amortized-growth, instrumentation, slice, lifetime, cfg]
+sources: [csmith, afl-technical-details, cargo-fuzz-book, ecma262-assignment-order]
 ---
 import OracleSteps from '../../../components/diagrams/ch163/OracleSteps';
 import OracleMap from '../../../components/diagrams/ch163/OracleMap';
@@ -28,45 +20,36 @@ import EdgeFigure from '../../../components/diagrams/ch163/EdgeFigure';
 import ReduceSteps from '../../../components/diagrams/ch163/ReduceSteps';
 import CoverageBars from '../../../components/diagrams/ch163/CoverageBars';
 
-{/* ── merge: from old chapter 163, TypeScript vs Rust: differential tests ── */}
-
 ## Two bugs nobody's tests saw
 
-While this Part was being written, two differences between the engines
-turned up by hand. The chapter *Sizes and thresholds in Rust* noticed
-that, given a profile, the Rust planner wrote "about 25 (measured)
-elements" where the TypeScript one wrote "about 25 elements
-(measured)". And *Reading a profile in Rust* fed both CLIs a
-hand-edited profile:
-
-```json
-{ "ps": { "maxLength": "20" } }
-```
-
-The Rust CLI skipped the entry, since `"20"` is a string, and
-transformed `ps`; the TypeScript CLI compared `"20" < 64` the
-JavaScript way (which turns the string into a number), got `true`, and
-kept `ps` as objects. Same program, different decisions, and yet at the
-time `cargo test` passed everything. That is not a contradiction:
-every test compares against *something*, on *some* inputs, and neither
-bug was in any test's inputs. (Both are fixed now.)
+While the Rust chapters were being written, two differences between the
+engines turned up by hand. Given a profile, the Rust planner wrote "about
+25 (measured) elements" where the TypeScript one wrote "about 25 elements
+(measured)"; and fed a hand-edited profile, `{ "ps": { "maxLength": "20"
+} }`, the Rust CLI skipped the entry and transformed `ps`, while the
+TypeScript CLI compared `"20" < 64` the JavaScript way and kept it. Same
+program, different decisions, and at the time `cargo test` passed
+everything. That is not a contradiction: every test compares against
+*something*, on *some* inputs, and neither bug was in any test's inputs
+(both are fixed now, as *Profiles in Rust: writing and reading them*
+told).
 
 <Analogy title="smoke alarms and gas detectors">
-A smoke alarm does not smell gas, and a gas detector does not see
-smoke. You do not fix that by buying a better smoke alarm; you put a
-few different detectors in the house, and you know which one covers
-which danger in which room.
-<span slot="breaks">A detector either works or it does not; a test
-layer also has *inputs*, so even the right kind of detector misses a
-danger that never happens in the rooms it is placed in.</span>
+A smoke alarm does not smell gas, and a gas detector does not see smoke.
+You do not fix that by buying a better smoke alarm; you put a few
+different detectors in the house, and you know which one covers which
+danger in which room.
+<span slot="breaks">A detector either works or it does not; a test layer
+also has *inputs*, so even the right kind of detector misses a danger
+that never happens in the rooms it is placed in.</span>
 </Analogy>
 
 ## Five oracles
 
-An **oracle** is whatever a test trusts to give the right answer.
-Here there are two: the original program (run it and see what it
-prints) and the TypeScript engine (the reference, whose output is
-saved as fixtures). Every layer compares an engine with one of them:
+An **oracle** is whatever a test trusts to give the right answer. Here
+there are two: the original program (run it and see what it prints) and
+the TypeScript engine (the reference, whose output is saved as
+fixtures). Every layer compares an engine with one of them:
 
 <Figure takeaway="Each test compares two of three things; a bug both engines share is invisible to the edge between them." caption="Parity, the wasm check and part of the fuzzer compare the two engines. The differentials and the rest of the fuzzer compare a compiled program with the original.">
   <OracleMap />
@@ -76,48 +59,24 @@ saved as fixtures). Every layer compares an engine with one of them:
 layer         oracle         inputs
 parity        TS fixtures    95 programs
 node diff     the original   68 JS
-python3 diff  the original   27 Python
 wasm          TS fixtures    95 programs
 fuzzer        TS + original  random JS
 ```
 
-Read the table one row at a time, asking two questions of each layer:
-what does it trust, and what does it feed in?
-
-**Parity** (`parity.rs`, from the chapter *Round-trip tests across
-engines*) compares code and explain text with the TypeScript output,
-byte for byte, for every program in both bounds modes, plus 14
-`--frames` fixtures and 4 `--profile` fixtures. Its oracle is the
-reference, so it catches **divergence** (the two engines disagreeing),
-and nothing else: if both engines are wrong in the same way, parity
-passes, because it has nothing outside the two engines to compare with.
-
-**The node differential** (`differential.rs`) runs each original and
-compiled JavaScript program in an isolated context and compares
-everything printed and thrown. Its oracle is the source program
-itself, so it catches **miscompiles** (a compiled program that behaves
-differently), even ones both engines share; however, it sees only its
-68 programs, it compiles them only with bounds checks on, and a
-difference in explain text never changes what a program prints, so
-explain is invisible to it. **The python3 differential** does the same
-for the 27 Python programs, comparing standard output and the last
-line of standard error (the exception), so a difference earlier in
-standard error, such as a warning, would pass.
-
-**The wasm check** runs the same fixtures through the WebAssembly
-build. I loaded the module this book serves in Node and ran all six
-suites through `compileLanguage`: 190 of 190. It is the parity oracle on
-a different target, so it catches whatever changes with the target;
-its API takes no profile and returns no frames, so it cannot check
-either.
-
-**The fuzzer** (`scripts/fuzz.mjs`) generates random programs in the
-part of JavaScript Viscosity cares about and checks each against both
-oracles: the TypeScript output against the original under node, and
-the Rust output against the TypeScript output (code, explain, frames,
-and explain with a random profile). My run of its default, 300 programs
-with seed 1, took 5.9 seconds: 134 of them were transformed, and 20 had
-an early error inserted, which both engines must reject.
+**Parity** (`parity.rs`) compares code and explain text with the
+TypeScript output, byte for byte, for every program in both bounds
+modes, plus 14 `--frames` and 4 `--profile` fixtures. It catches
+**divergence** and nothing else: if both engines are wrong in the same
+way, parity passes. **The node differential** (`differential.rs`) runs
+each original and compiled JavaScript program in an isolated context and
+compares everything printed and thrown, so it catches **miscompiles**,
+even shared ones, but only on its 68 programs, and explain text never
+changes what a program prints. **The wasm check** runs the parity fixtures
+through the WebAssembly build. And **the fuzzer** (`scripts/fuzz.mjs`)
+generates random programs and checks each against both oracles; its
+default run, 300 programs with seed 1, took a few seconds here (134 of
+them transformed, 20 with an inserted early error that both engines must
+reject).
 
 <Examples of="engine-parity">
 
@@ -130,33 +89,41 @@ TS:   about 20 elements (measured)
 Rust: about 20 (measured) elements
 ```
 
-```js
-if (!a.error !== !b.error)
-  fails.push({
-    kind: `parity-error-${mode}`, ...
-```
-
 </Examples>
 
-The first is what `cargo test` prints today: all 190 fixture pairs
-agree, 54 of them Python. The second is the smallest kind of
-divergence, a change of wording with the same decision, which only a
-layer that compares text, and runs with a profile, can see. The third
-is from the fuzzer's `failuresOf` (trimmed and rewrapped): when either
-engine fails on a program, it reports a failure only if exactly one of
-them failed. `!a.error` turns "has an error message" into `true` or
-`false`, so two errors with different wording count as agreement,
-because oxc and acorn word their messages differently.
-
-<Prompts ids={['ep-oracle', 'ep-parity-blind', 'ep-diff-blind', 'ep-wasm']} />
+The first is what `cargo test` reports today: all 190 fixture pairs
+agree (54 of them belong to the Python plugin, which has a deep dive of
+its own, *The Python plugin in Rust*). The second is the smallest kind of divergence,
+a change of wording with the same decision, which only a layer that
+compares text *and* runs with a profile can see; at the time no layer
+did both, which is why it passed.
 
 <Callout kind="definition">
 **Engine parity** is two engines making identical decisions, held in
 place by tests against different **oracles**: the reference engine's
 output (for divergence), the source program's own behaviour (for
-miscompiles), and both at once on generated inputs. A test catches
-only what differs from its oracle, on its inputs, under its options.
+miscompiles), and both at once on generated inputs. A test catches only
+what differs from its oracle, on its inputs, under its options.
 </Callout>
+
+<Prompts ids={['ep-oracle', 'ep-parity-blind', 'ep-diff-blind']} />
+
+Step through seven cases (two of them hypothetical, and marked so); for
+each, the lit layers are those whose oracle and inputs could notice it:
+
+<OracleSteps client:visible />
+
+The fuzzer's five finds were all in *both* engines, because the port
+mirrors the reference line for line; parity cannot see a bug both share,
+so every one was found by an oracle outside the two engines, the
+behaviour check or the rule that the TypeScript engine must not crash on
+a valid program. The fixes that followed came from the map: profile
+fixtures, a random profile in every fuzzer batch, odd hand-written
+profiles in `profile_cli.rs`, and `early_errors.rs`.
+
+<Prompts ids={['ep-shared']} />
+
+<More title="What counts as equal, and the gaps left">
 
 <Formal title="What one test checks">
 
@@ -172,109 +139,52 @@ answer equals what it observes of the oracle's. It is blind whenever E
 and O give the same wrong answer, and to every x it never tries.</span>
 </Formal>
 
-Put the two hand-found bugs through that rule. For parity, E is the
-Rust engine, O the TypeScript fixtures, obs the explain text and ≈
-"the same bytes"; the wording bug made the two texts differ, so parity
-*could* have failed, but only on an input x compiled with a profile, and
-no x in its set had one. For the node differential, obs is what the
-program prints, and a change of wording prints nothing different, so
-it could never fail, whatever its inputs. Two different reasons for
-silence: the wrong inputs, and the wrong observation.
-
-## Who could have seen it?
-
-Step through seven cases (two of them hypothetical, and marked so).
-For each, the lit layers are those whose oracle and inputs could
-notice it:
-
-<OracleSteps client:visible />
-
-The first two are opposites. The line deleted from the Rust builder
-was a Rust-only change on a corpus program, so parity and the node
-differential both failed at once. The fuzzer's five finds (the chapter
-*The order of a field write in Rust* covered the write-order ones) were all
-in *both* engines, because the port mirrors the reference; parity
-cannot see a bug both share, so every one was found by a different
-oracle: the behaviour check, or the rule that the TypeScript engine
-must not crash on a valid program ("internal error: overlapping
-rewrites"). A port that copies its reference makes cross-engine checks
-blind to shared bugs; only an oracle outside both engines finds those.
+Parity says bytes; the differential says printed output and the error
+message (its Python half, for the 27 Python programs, says standard
+output and the last line of standard error); the fuzzer says bytes for output and *presence* for
+errors, because oxc and acorn word their messages differently. Each
+looser rule hides something, and each stricter one would fail on
+differences nobody cares about. The string `"20"` was outside every
+layer's reach for another reason: every profile a test could use came
+from the profiler, which always writes numbers. One gap is left: the
+fuzzer generates JavaScript only, and there is no committed Python
+fuzzer.
 
 <Analogy extra title="checking a translation">
 Two people translate the same letter; comparing their translations
 catches a slip either one made alone, but if both misread the same
-smudged word, they agree perfectly and are both wrong. To catch that,
-you have to ask the person who wrote the letter.
+smudged word, they agree perfectly and are both wrong. To catch that, you
+have to ask the person who wrote the letter.
 <span slot="breaks">The letter writer can always be asked; a program's
 behaviour is only observed on the inputs and options a test actually
-runs, which is exactly where the two hand-found bugs hid.</span>
+runs.</span>
 </Analogy>
-
-<Prompts ids={['ep-shared']} />
-
-## Inputs, options, and what counts as equal
-
-Both hand-found bugs needed `--profile`, and at the time no fixture was
-compiled with one, the fuzzer never passed one, and the wasm API still
-cannot take one: an option no layer sets is untested in every layer,
-however good the layers are. The second bug needed more, a profile no
-profiling run would ever write, because `viscosity profile` always
-writes numbers. The profile file is an input too, and every profile a
-test could have used came from the profiler, so the string `"20"` was
-outside every layer's reach: a layer finds only what its inputs can
-produce, which is why the fix added hand-written odd profiles rather
-than more profiled runs.
-
-Then there is what counts as equal.
-Parity says bytes; the differential says printed output and the error
-message; the python3 test says standard output and the last line of
-standard error; the fuzzer says bytes for output and presence for
-errors. Each looser rule hides something, and each stricter one would
-fail on differences nobody cares about.
-
-<Prompts ids={['ep-option', 'ep-input', 'ep-equal']} />
-
-The fixes followed from the map, and the engines have them now: four
-profile fixtures and a random profile in every fuzzer batch;
-`profile_cli.rs`, which feeds odd profiles to both CLIs; and
-`early_errors.rs`, which checks that both engines reject 108 invalid
-programs and accept 77 valid ones close to them. One gap is left: the
-fuzzer generates JavaScript only. The Python plugin had one ad hoc run
-of 800 random programs when it was ported (its commit message says
-so), but there is no committed Python fuzzer.
-
-<Callout kind="engine" label="Under the hood">
-The fuzzer is cheap because two of its three engines run in the same
-process: the TypeScript compiler and Node's `vm` module are both
-JavaScript. The Rust engine is reached through its CLI, one
-`viscosity build a.js b.js ... -o dir/` call per batch of 250 files, so
-the cost is a few process starts per batch rather than per program.
-The README puts the campaign at about 50,000 programs: the five bugs
-turned up in roughly the first 8,000, and 42,000 more after the fixes
-found nothing. The chapter *Fuzzing the Rust engine* goes further.
-</Callout>
-
-## Your turn
-
-<Exercise id="verdict" />
-
-## What you learned
-
-- Each layer has an **oracle**: the TS fixtures (parity, wasm), the
-  original program (node and python3 differentials), or both (fuzzer).
-- **Parity** catches divergence and is blind to shared bugs; the
-  **differentials** catch miscompiles, but only on their inputs.
-- A bug hides where **no layer** feeds its input or option, or where
-  the **equality rule** is loose (errors by presence).
-
-
-{/* ── merge: from old chapter 163, Fuzzing the Rust engine ── */}
+</More>
 
 ## Five bugs past every test
 
-When the fuzzer of this chapter was written, `cargo test` was green,
-and random programs still found five bugs that every test had missed.
-Here is one, as the fuzzer's reducer left it (reformatted):
+Here is the heart of one of the five, as the fuzzer's reducer left it
+(shortened; `ls` holds 64 records `{ a, b }`, and a loop over them adds
+`m` to every `b` and sums them into `t`):
+
+```js
+ls[1].a = (ls.push({ a: 0, b: 0 }), 7);
+t += ls[1].a;
+```
+
+The store into `ls[1].a` pushes a 65th record before it gives `7` (the
+comma operator). Called with 0 and 1, the whole program prints `2023 2087` under node;
+compiled by the TypeScript engine from just before the fix, it printed
+`2017 2081`. The
+old engine wrote `ls.a[...] = (ls.push(0, 0), 7)`, and JavaScript works
+out *where* to store (the column `ls.a`) before it runs the right-hand
+side<Cite id="ecma262-assignment-order" />; the push overflowed the
+column's capacity of 64, `grow()` installed a new column, and the `7`
+went into the old one. Today both engines store last, through
+`__vsc_set`. Nobody writes a test like this, which is the reason to let a
+machine write tests.
+
+<More title="The whole program">
 
 ```js
 function local1(m) {
@@ -293,90 +203,22 @@ function local1(m) {
 console.log(local1(0), local1(1));
 ```
 
-The function builds 64 records, adds `m` to every `b` while summing
-them, and then does something odd on purpose: it stores `7` into
-`ls[1].a`, where the right-hand side first pushes a 65th record (the
-comma operator runs `ls.push(...)`, throws its answer away, and gives
-`7`). Under node it prints `2023 2087`. Compiled by the TypeScript
-engine from just before the fix (I ran it here), it printed `2017
-2081`: the `7` was lost. The old engine had written the store like
-this (the compiled `push` takes the field values in order; wrapped):
-
-```js
-ls.a[__vsc_bc(ls, 1, 'a', true)] =
-  (ls.push(0, 0), 7);
-```
-
-JavaScript works out *where* to store (here `ls.a`, the column of `a`
-values) before it runs the right-hand side<Cite id="ecma262-assignment-order" />.
-The 65th push overflows the column's capacity of 64, so `grow()`
-installs a new, larger column, and the `7` goes into the old one, which
-nothing reads any more (*Growing collections* explained the growing).
-Today both engines write this instead, which checks the index first
-and stores last, into whatever column exists by then (wrapped):
-
-```js
-__vsc_set(ls, 'a', __vsc_bk(ls, 1),
-  (ls.push(0, 0), 7), 'a');
-```
-
-Compiled by today's Rust CLI (release build, rustc 1.97), the program
-prints `2023 2087`, as the original does. Nobody writes a test like
-`local1`, because nobody thinks of it; that is the reason to let a
-machine write tests.
-
-**Fuzzing** (*Testing compilers*) means running a program on huge
-numbers of machine-made inputs and checking each run against an
-**oracle**, something that says whether the run was right. This chapter
-is about the two ways of making those inputs.
-
-<Prompts ids={['fz-order', 'fz-oracle']} />
+Compiled by today's Rust CLI (release build, rustc 1.97), it prints
+`2023 2087`, as the original does; the store became `__vsc_set(ls, 'a',
+__vsc_bk(ls, 1), (ls.push(0, 0), 7), 'a')`, which decides the bounds
+check first and stores last, into whatever column exists by then.
+</More>
 
 ## Two ways to search
 
-<Analogy title="exploring a cave with chalk">
-You explore a cave by chalking a mark at every junction you reach.
-Each morning you go back to the deepest spot where you found an
-unmarked junction yesterday and wander a little further from there;
-wanders that only pass old marks are forgotten. You never know where
-the treasure is, yet you are pulled steadily into parts of the cave
-nobody has seen.
-<span slot="breaks">A cave stays the same between visits; a program's
-paths depend on the input in ways the chalk marks do not show, so two
-inputs that reach the same junctions can still behave very
-differently.</span>
-</Analogy>
-
-<Analogy extra title="a driving examiner">
-An examiner who knows the rules of the road plans a fresh route for
-every test drive: a roundabout here, a hill start there, a reversing
-bay at the end. Every route is a legal drive, and over hundreds of
-tests every kind of manoeuvre comes up, in every combination.
-<span slot="breaks">A real examiner learns from experience which
-routes catch people out; the generator in this chapter learns nothing
-from its runs, and gets new kinds of route only when a person edits
-it.</span>
-</Analogy>
-
-The cave explorer is a **coverage-guided** fuzzer, and the examiner is
-a **generation-based** one. Step through both loops:
-
 <FuzzLoopSteps client:visible />
 
-The difference is the arrow that goes back. In the top loop, what a run
-reached decides which input is changed next; in the bottom loop, the
-next program depends only on a seed, and nothing from a run flows back.
-
-<Prompts ids={['fz-coverage', 'fz-generation']} />
-
-## Coverage: counting edges
-
-To know what a run reached, a coverage-guided fuzzer compiles its
-target with a few extra instructions at every branch (that is
-**instrumentation**, from *Profile-guided optimization*). AFL, the
-fuzzer that made this style famous, gives every basic block a random
-number and adds, in effect, these three lines at the start of each
-one<Cite id="afl-technical-details" />:
+A **coverage-guided** fuzzer such as AFL mutates inputs it has kept, and
+keeps a new one only if its run reached something no earlier run did.
+To know what a run reached, the target is compiled with a few extra
+instructions in every basic block (**instrumentation**): AFL gives each
+block a random number and adds, in effect, these three
+lines<Cite id="afl-technical-details" />:
 
 ```c
 cur = <random number for this block>;
@@ -384,33 +226,61 @@ shared_mem[cur ^ prev]++;
 prev = cur >> 1;
 ```
 
-`shared_mem` is a 64 kB array of counters shared with the fuzzer. The
-index `cur ^ prev` (`^` is exclusive or, which mixes two numbers into
-one) depends on *both* the block we are in and the block we came from,
-so each counter stands for an **edge**: a step from one block to
-another. The shift on the last line makes A→B and B→A land on
-different counters. Why edges and not blocks? Two runs can visit
-exactly the same blocks along different edges:
+The index `cur ^ prev` depends on *both* the block we are in and the one
+we came from, so each counter stands for an **edge**, a step from one
+block to another, and the shift makes A→B and B→A land on different
+counters. Edges matter because two runs can visit the same blocks along
+different paths:
 
 <Figure caption="Both runs visit A, B, C and D. A block counter sees nothing new in run 2; an edge counter sees three new edges." takeaway="Edges tell paths apart that blocks cannot.">
   <EdgeFigure />
 </Figure>
 
-An input whose run reaches a new edge (or a much larger hit count on an
-old one; AFL sorts counts into buckets such as 1, 2, 3, 4 to 7) is kept
-and changed further, and every other input is thrown away. In Rust,
-`cargo fuzz` drives libFuzzer the same way; you write a target that
-takes raw bytes, and it needs a nightly compiler for its sanitizer
-flags<Cite id="cargo-fuzz-book" />.
-
 <Callout kind="definition">
 A **coverage-guided fuzzer** changes (**mutates**) inputs it has kept,
-runs the instrumented target on each one, and keeps an input only if
-its run reached **new coverage**, such as a branch edge no earlier
-input reached. The kept inputs (the **corpus**) grow towards code no
-input has reached. A **generation-based** fuzzer writes every input
-from a grammar or model instead, and nothing a run reached feeds back.
+runs the instrumented target on each one, and keeps an input only if its
+run reached **new coverage**, such as a branch edge no earlier input
+reached. The kept inputs (the **corpus**) grow towards code no input has
+reached. A **generation-based** fuzzer writes every input from a grammar
+or model instead, and nothing a run reached feeds back.
 </Callout>
+
+<Examples of="coverage-guided-fuzzing">
+
+```rust
+// a sketch, not in the repository
+fuzz_target!(|data: &[u8]| {
+    if let Ok(s) = from_utf8(data) {
+        let o = CompileOptions::default();
+        let _ = compile(s, &JsPlugin, o);
+    }
+});
+```
+
+</Examples>
+
+This is what a `cargo fuzz` target for the Rust engine would look like:
+libFuzzer calls the closure over and over with bytes it has mutated
+towards new edges, the closure compiles them if they are valid UTF-8,
+and any panic counts as a crash<Cite id="cargo-fuzz-book" />. Yet almost
+every byte string is a syntax error, so such a target would mostly test
+oxc's parser, and Viscosity's best oracles need a program that *runs*.
+That is why `fuzz.mjs` is generation-based, like Csmith for C
+compilers<Cite id="csmith" />: it knows the slice of JavaScript Viscosity
+cares about and writes valid programs in it, each from a seed mixed from
+the campaign seed and its number, so `--seed 5 --only 90` rebuilds
+program 90 alone.
+
+<Prompts ids={['fz-coverage', 'fz-blocks', 'fz-valid']} />
+
+<More title="Guided against blind, run; and the keep rule">
+The toy "bug" needs the three bytes `FUZ`. The blind search guesses three
+letters at a time; the guided one changes one byte of an input it kept,
+and keeps the result only when it passed a check no earlier input
+passed. With this seed the guided search found `FUZ` at try 360; the
+blind one needed 11,524 tries (one chance in 17,576 on each).
+
+<Run id="guided-vs-blind" />
 
 <Formal title="The keep rule">
 
@@ -423,375 +293,83 @@ Seen := Seen ∪ E(x)
 
 <span slot="read">E of x is the set of edges the run on input x took. The
 fuzzer keeps x exactly when E of x is not contained in Seen, the edges
-every earlier run took (the symbol ⊄ reads "is not a subset of"). Then
-it adds the new edges to Seen, so the same edge never counts as new
-twice.</span>
+every earlier run took; then it adds the new edges to Seen.</span>
 </Formal>
-
-<Examples of="coverage-guided-fuzzing">
-
-```text
-AFL: shared_mem[cur ^ prev]++
-```
-
-```rust
-// a sketch, not in the repository
-fuzz_target!(|data: &[u8]| {
-    if let Ok(s) = from_utf8(data) {
-        let o = CompileOptions::default();
-        let _ = compile(s, &JsPlugin, o);
-    }
-});
-```
-
-<Run id="guided-vs-blind" />
-
-</Examples>
-
-The first is AFL's edge counter, the line every other example rests on.
-The second is what a `cargo fuzz` target for the Rust engine would look
-like: libFuzzer calls the closure over and over with bytes it has
-mutated, the closure turns them into text if they are valid UTF-8 and
-compiles that text, and any panic counts as a crash. The third is a toy
-you can run: the "bug" needs the three bytes `FUZ`, and the target
-records each of its three checks that passed. The blind search guesses
-three letters at a time; the guided one changes one byte of an input it
-kept, and keeps the result only when it passed a check no earlier input
-passed. With this seed the guided search kept `FAA` at try 27 and `FUA`
-at try 114, and found `FUZ` at try 360; the blind one needed 11,524
-tries (it has one chance in 26³, which is 17,576, on each try). Each
-kept input is a foothold; the blind search never has one.
-
-<Prompts ids={['fz-afl-edge', 'fz-blocks']} />
-
-## Why Viscosity generates programs
-
-For Viscosity, mutated bytes are a poor input. Almost every byte string
-is a syntax error, which the engine refuses while parsing, so the
-analyses this Part ported never run; and the most useful oracles need a
-program that *runs*, because they compare the original program with the
-compiled one under node. As such, `engine/rust/scripts/fuzz.mjs` is
-generation-based, like Csmith, a random generator of C programs built
-to test C compilers<Cite id="csmith" />. It knows
-the slice of JavaScript Viscosity cares about (arrays of records pushed
-in loops, field reads and writes, escapes, out-of-bounds reads inside
-`try`, annotations) and writes valid programs in it.
-
-Every program comes from a seed, and one small function ties the
-pieces together:
-
-```js
-function programAt(seed, k) {
-  const s = programSeed(seed, k);
-  return withEarlyError(generate(s), s);
-}
-```
-
-`programSeed` mixes the campaign seed with the program's number `k`
-into a new 32-bit seed (by multiplying and shifting, so that nearby
-`k`s give unrelated seeds); `generate(s)` builds a program from a
-random-number generator started at `s`; and `withEarlyError` gives about
-one program in 20 an error that JavaScript must reject before running
-(a redeclared `let`, a stray `break`, and so on), which both engines
-must then refuse. Because program `k` depends only on `(seed, k)`, any
-program can be made again on its own (the next chapter, *Shrinking a
-failing program*, runs it and follows what it finds).
-
-<Prompts ids={['fz-valid', 'fz-seed']} />
-
-<Callout kind="engine" label="Under the hood">
-Fed raw bytes, as in the sketch above, a coverage-guided harness would
-mostly test oxc's parser. One that builds programs from the fuzzer's
-bytes could reach the analyses, but its oracle would have to live inside
-the Rust process (no panics, output that parses again), since node and
-the TypeScript engine are outside it. That is a design, not code in the
-repository.
-</Callout>
-
-## Your turn
-
-The exercise is the feedback step of the cave explorer: given the path a
-run took, record its edges and say whether any was new.
-
-<Exercise id="keepIfNew" />
-
-## What you learned
-
-- **Fuzzing** checks machine-made inputs against an **oracle**.
-- A **coverage-guided** fuzzer keeps a mutated input only when its run
-  reaches new coverage; AFL counts branch **edges**, which tell apart
-  paths that visit the same blocks.
-- A **generation-based** fuzzer such as `fuzz.mjs` writes valid
-  programs from a seed, with no feedback; Viscosity needs that because
-  its oracles run the programs.
-- A per-program **seed** makes every generated program replayable on
-  its own.
-
-
-{/* ── merge: from old chapter 163, Shrinking a failing program ── */}
-
-## Running it
-
-*Fuzzing the Rust engine* built up to `scripts/fuzz.mjs`, a
-generator that writes a valid program from a seed. Here is a run I did
-for this chapter, on the current engine (release build, rustc 1.97,
-node 22, on a shared cloud VM; wrapped):
-
-```
-$ node scripts/fuzz.mjs --count 300 --seed 5
-  250/300 programs, 0 failing
-  300/300 programs, 0 failing
-fuzz: seed 5, 300 programs (138
-  transformed, 178 may go out of bounds,
-  11 with an early error), 0 failing,
-  4.6 s
-```
-
-"Transformed" means the engine rewrote at least one collection, so the
-compiled program really differs from the original; programs that "may
-go out of bounds" are checked only with `--bounds check`, since
-`--bounds assume` trusts a program not to.
-
-Every program meets three **oracles**. **Behaviour**: the original and
-the compiled program run in a fresh `vm` context of node (a separate set
-of globals, so one program cannot disturb the next)<Cite id="node-vm" />,
-and must print the same lines and throw the same error. **Parity**: the
-TypeScript and Rust engines must give the same compiled code, explain
-text and code frames, byte for byte (*TypeScript vs Rust: differential
-tests*). **Early errors**: both must reject the programs that were
-given one. The TypeScript engine runs inside the script; the Rust one is
-reached through its CLI, one `viscosity build a.js b.js ... -o dir/`
-per batch of 250 programs, so a process start is paid per batch, not
-per program.
-
-Each program's seed depends only on the campaign seed and its number,
-which is why `--seed 5 --only 3` can rebuild program 3 alone. Here is
-the mixing function from `fuzz.mjs` (rewrapped); the program it prints
-for `(5, 3)` is the seed that `--seed 5 --only 3 --print` reports in
-the program's first line:
 
 <Run id="program-seeds" />
 
-`crates/cli/tests/fuzz.rs` runs 200 programs with seed 1 on every
-`cargo test`; my run of it printed `fuzz: seed 1, 200 programs (85
-transformed, 114 may go out of bounds, 13 with an early error), 0
-failing, 3.2 s`.
+That is the seed mixing of `fuzz.mjs`. `crates/cli/tests/fuzz.rs` runs
+200 programs with seed 1 on every `cargo test`, and the README's
+campaign was about 50,000 programs: the five bugs turned up in roughly
+the first 8,000, and 42,000 more after the fixes found nothing.
 
-<Prompts ids={['fz-three-oracles', 'fz-batch', 'fz-ci']} />
-
-## A failure to shrink
-
-Today the fuzzer finds nothing, so to watch it fail I went back in
-time: I put `fuzz.mjs` as it was at commit `c68daec` next to the
-TypeScript engine from just before the commit that fixed the five bugs
-(`10b4a63^`), and ran `--no-rust --count 300 --seed 5 --max-fail 5`. It
-stopped after five failures (trimmed and wrapped):
-
-```
-FAIL program 12 ...: behaviour-check
-FAIL program 31 ...: ts-crash
-FAIL program 49 ...: behaviour-check
-FAIL program 51 ...: behaviour-check,
-  behaviour-assume
-FAIL program 90 ...: behaviour-check,
-  behaviour-assume
-fuzz: seed 5, 91 programs (34
-  transformed, 51 may go out of bounds),
-  5 failing, 2.0 s (TS only)
-```
-
-Program 90 had 20 lines, and somewhere in them was the lost store from
-the last chapter. A person wants the two lines that matter, not the
-twenty; with `--reduce`, the fuzzer finds them itself.
-
-## Delete, ask, keep or undo
-
-<Analogy title="a string of fairy lights">
-One dead bulb has put out a whole string of fairy lights. Rather than
-test the fifty bulbs one at a time, you swap in good bulbs for half of
-them: if the string lights up, the fault was in that half. Halve again,
-and in a handful of tries you hold the bad bulb.
-<span slot="breaks">A string of lights has one bad bulb; a program can
-need two lines at once (a push and the store it spoils), which is why
-the reducer does not stop at halves but keeps trying smaller and
-smaller chunks.</span>
+<Analogy extra title="exploring a cave with chalk">
+You chalk a mark at every junction you reach, and each morning go back
+to the spot where you last found an unmarked junction and wander a
+little further.
+<span slot="breaks">A cave stays the same between visits; two inputs
+that reach the same junctions can still behave very differently.</span>
 </Analogy>
+</More>
 
-<Analogy extra title="leaving ingredients out of a recipe">
-A cake keeps upsetting your stomach, so you bake it again with half the
-ingredients left out, and then with the other half, until you know which
-one is to blame.
-<span slot="breaks">Leave out the flour and you no longer have a cake at
-all, so "it did not upset me" tells you nothing; a program with half its
-lines deleted is often not a program either, which is why the reducer
-throws away any try that does not parse.</span>
-</Analogy>
+## Shrinking a failing program
 
-The reducer is **line-based delta debugging**. It starts with chunks
-of half the lines and tries deleting each chunk in turn; it keeps a
-deletion if the program still fails in the same way, and otherwise puts
-the lines back and moves on by one chunk. When a whole pass changes
-nothing, it halves the chunk, down to single lines. Step through it on
-an eight-line program whose failure needs lines 2 and 5:
+A failing random program is twenty lines, and a person wants the two
+that matter. `fuzz.mjs --reduce` finds them by **line-based delta
+debugging**: it tries deleting chunks of half the lines, keeps a
+deletion if the program still fails *in the same way* (the same kind of
+failure, such as `behaviour-check`, and it must still parse), puts the
+lines back otherwise, and halves the chunk size when a pass changes
+nothing, down to single lines. The result is **1-minimal**: deleting any
+one remaining line makes the failure go away.
 
 <ReduceSteps client:visible />
 
-"Fails in the same way" is a function inside `reduce` (trimmed):
+<Prompts ids={['fz-reduce']} />
 
-```js
-const stillFails = (lines) => {
-  const code = lines.join('\n') + '\n';
-  if (!prog.early && !parses(code))
-    return false;
-  // ... compile it, and run it ...
-  return failuresOf(p, rust)
-    .some((x) => x.kind === kind);
-};
-```
-
-It joins the remaining lines back into a program; a try that acorn
-cannot parse counts as "passes" (unless the program was *meant* to
-contain an early error), which is the missing-flour rule; and the try
-is a failure only if one of its failures has the same **kind** as the
-original, such as `behaviour-check` or `ts-crash`. Each call costs a
-compile and two runs, which is why big chunks come first.
-
-<Callout kind="definition">
-**Delta debugging** shrinks a failing input by deleting parts of it
-while a test still reports the failure. The result is **1-minimal**
-when deleting any single remaining part makes the failure go away.
-`fuzz.mjs --reduce` deletes chunks of lines, halving the chunk size to
-1, and counts a try as failing only if it parses and shows the **same
-kind** of failure.
-</Callout>
-
-<Formal title="1-minimal">
-
-```text
-fails(P) ∧ ∀ l ∈ P : ¬ fails(P ∖ {l})
-```
-
-<span slot="read">The reduced program P still fails, and for every line
-l in P, the program with l removed (P minus l) does not fail. It says
-nothing about removing two lines at once, or about whether some other,
-smaller program would fail too.</span>
-</Formal>
-
-<Prompts ids={['fz-reduce', 'fz-minimal']} />
-
-## Same kind, not same meaning
-
-The reducer keeps the *kind* of failure, not what the program meant,
-and the two can drift apart. Here are three of the five, as the reducer
-left them (wrapped; the first is shortened, since the last chapter showed
-it whole):
-
-<Examples of="fuzzing">
-
-```js
-function local1(m) { const ls = [];
-  /* 64 pushes, a loop over b */
-  ls[1].a = (ls.push({ a: 0, b: 0 }), 7);
-  t += ls[1].a; return t; }
-console.log(local1(0), local1(1));
-```
-
-```js
-let cells = [];
-for (let i = 0; i < 64; i++)
-  cells.push({ a: Math.sin(i) });
-for (let i = 0; i < 5; i++)
-  cells.push({ a: cells[i % cells.length]
-    .a * cells[i % cells.length].a });
-```
-
-```js
-const cells = [];
-for (let i = 0; i < 70; i++)
-  cells.push({ b: (i * 37) % 11 });
-for (let i = 0; i < cells.length; i++) {
-  const p = cells[(k++, i)]; s0 += p.b; }
-```
-
-</Examples>
-
-The first is program 90, the lost store, intact; the reducer only
-removed lines that had nothing to do with it. The second is program 31:
-a push whose new record reads two other elements, and the old engine
-crashed on it with `internal error: overlapping rewrites at 741-801`,
-because it rewrote the whole object literal as one piece while also
-rewriting the reads inside it. The third is program 12, and it is a
-trap. Its `let k` and `s0` declarations were deleted, so the *original*
-now throws `ReferenceError: k is not defined`. The compiled program
-still differed, though: the old emitter copied the index `(k++, i)`
-without its brackets and wrote `const p = k++, i;`, which is a
-`SyntaxError` (`Missing initializer in const declaration`). A
-ReferenceError against a SyntaxError is still a `behaviour-check`
-failure, so the reduction was accepted. The bug survived the
-shrinking; the program around it stopped making sense. Read a reduced
-program before you trust it.
-
-<Prompts ids={['fz-reduce-trap']} />
-
-## What the five were
-
-The engine's README lists them as bugs 11 to 15, each now with a
-program of its own in the test corpus:
-
-```
-bug                     found as
-rhs ran after the check behaviour
-store into old column   behaviour
-rewrite in push/array   ts-crash
-rewrite in an index     ts-crash
-(k++, 7) as an index    behaviour
-```
-
-All five were in both engines, because the port mirrors the reference
-line for line, so the parity oracle, which compares the engines with
-each other, was blind to every one of them; the behaviour oracle and
-the TypeScript crash found them. After the fixes, the README records a
-further 42,000 programs (seeds 5 to 7 and 101 to 103, with the
-generator extended to the constructs that found the bugs) that found
-nothing.
-
-<Prompts ids={['fz-parity-blind']} />
-
-## Did coverage plateau?
-
-When this chapter was first written, I measured the line coverage of
-the TypeScript engine (core and frontend-js, without its two unused
-parsers) at commit `c68daec`, with c8 10.1.3 and node's built-in
-coverage:
+<More title="Same kind, not same meaning; and coverage that plateaued">
+The reducer keeps the *kind* of failure, not what the program meant. One
+of the five, as reduced, lost its `let k` and `s0` declarations, so the
+*original* threw `ReferenceError: k is not defined`; the compiled one
+threw a `SyntaxError`, because the old emitter copied the index `(k++,
+i)` without its brackets into `const p = k++, i;`. Both are a
+`behaviour-check` failure, so the reduction was accepted: the bug
+survived the shrinking, and the program around it stopped making sense.
+Read a reduced program before you trust it.
 
 <Figure caption="Lines of the engine run, out of 2,614. The fuzzer ran fewer lines than the hand-written programs, and ten times as many fuzz programs ran three more." takeaway="Line coverage flattened out early; the bugs were in combinations.">
   <CoverageBars />
 </Figure>
 
-The fuzzer covered *fewer* lines than the hand-written programs, yet
-found what they missed, and ten times the programs added three lines.
-Each of the five bugs needed a combination: a write whose right-hand
-side pushes, an access inside a push. Line coverage says a line ran,
-not what it ran with; that is one reason AFL counts edges and hit
-counts, and a generator like this one finds new combinations only when
-someone teaches it new constructs, as happened after the first finds.
-
-<Prompts ids={['fz-plateau', 'fz-lines-not-bugs']} />
+Measured at commit `c68daec` with c8, the fuzzer covered *fewer* lines
+of the TypeScript engine than the hand-written programs, yet found what
+they missed: each bug needed a combination, such as a write whose
+right-hand side pushes. Line coverage says a line ran, not what it ran
+with, which is one reason AFL counts edges and hit counts.
+</More>
 
 ## Your turn
+
+<Exercise id="verdict" />
+
+For more practice: the feedback step of a coverage-guided fuzzer, and
+the line reducer, both in Rust.
+
+<Exercise id="keepIfNew" />
 
 <Exercise id="reduceLines" />
 
 ## What you learned
 
-- `fuzz.mjs` checks every program against three **oracles**:
-  behaviour, parity and early errors.
-- **Delta debugging** deletes chunks while the failure stays, halving
-  the chunk to 1, which leaves a **1-minimal** program.
-- The reducer keeps the failure's **kind**, not the program's meaning,
-  so read the result before you trust it.
-- Bugs that live in both engines are invisible to **parity**.
-- **Line coverage** flattened out while the bugs hid in
-  **combinations** of features.
+- Each test layer has an **oracle**: the TypeScript fixtures (parity,
+  wasm), the original program (the differentials), or both (the fuzzer).
+- **Parity** catches divergence and is blind to shared bugs; a bug hides
+  where no layer feeds its input or option.
+- A **coverage-guided** fuzzer keeps inputs that reach new **edges**;
+  Viscosity's fuzzer **generates** valid programs from seeds instead.
+- **Delta debugging** shrinks a failure to a **1-minimal** program,
+  which still needs reading.
+
+Next: *A command-line interface*.
 
 <Quiz />

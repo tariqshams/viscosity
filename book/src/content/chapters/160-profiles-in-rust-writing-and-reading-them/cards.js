@@ -1,71 +1,35 @@
-// Chapter 85 cards: recall prompts, examples, exercises and quiz.
+// Chapter 160 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 160, 160.
+// Merged from the old chapters PGO in Rust, and Reading a profile in Rust.
 
 export const prompts = {
-  'pg-same-finder': {
-    q: 'How does `instrument` in `profile.rs` decide which arrays to wrap?',
-    a: 'The way the compiler does: `JsPlugin.lower`, then `analyze`, then each collection’s initialiser span.',
-  },
   'pg-reverse': {
-    q: 'Why are the edits sorted with `Reverse(start)` before they are applied?',
+    q: 'When several byte-range replacements are applied to one string in place, why apply them in order of start offset, last first?',
     a: 'Replacing a span changes the length of the text after it. Going last-first, every span still to do is before the change, so its offsets are still right.',
   },
   'pg-node-writes': {
-    q: 'Why is the Rust CLI’s profile JSON byte-identical to the TypeScript CLI’s?',
+    q: 'Why is the profile JSON written by Viscosity’s Rust CLI byte-identical to the TypeScript CLI’s?',
     a: 'Neither engine formats it: Node writes it, with `JSON.stringify(p, null, 2)` in a prelude that is the same in both.',
   },
-  'pg-command': {
-    q: 'What does `Command::new("node")…status()` do in `profile.rs`?',
-    a: 'Starts `node` on the instrumented file as a child process, waits for it, and returns its exit status; stdin is empty and stdout discarded.',
-  },
-  'pg-path': {
-    q: 'The TS CLI runs `process.execPath`. Which `node` does the Rust CLI run?',
-    a: 'Whatever `node` is on the `PATH`. The Rust binary has no Node of its own; if none is found it says profiling needs Node.js.',
-  },
   'pg-drop': {
-    q: 'How does `profile` make sure its temporary directory is removed, even when it returns early with `?`?',
-    a: 'The directory is owned by a `TempDir` guard whose `Drop` calls `remove_dir_all`; `drop` runs on every way out of the function.',
+    q: 'In Rust, how can a function make sure its temporary directory is removed on every way out, early returns through `?` included?',
+    a: 'Own the directory through a guard value whose `Drop` impl calls `fs::remove_dir_all`; `drop` runs whenever the guard goes out of scope.',
   },
   'pg-exit-error': {
-    q: 'Why is a non-zero exit from the profiled program an error, even though the exit hook wrote the JSON?',
+    q: 'Why does `viscosity profile` treat a non-zero exit of the profiled program as an error, even though its exit hook wrote the JSON?',
     a: 'A partial run’s sizes could mislead the planner, so both CLIs refuse to use them.',
-  },
-  'pg-literal': {
-    q: 'What does `instrument` make of `const ps = [{ x: 1 }, { x: 2 }];`?',
-    a: '`const ps = __vsc_track("ps", [{ x: 1 }, { x: 2 }]);`: the whole literal is wrapped, so its elements count towards the length.',
-  },
-  'pg-filter-map': {
-    q: 'What does `read_profile` accept from the JSON?',
-    a: 'An object whose every entry is an object with a finite, non-negative `maxLength`, as `name -> f64`. Anything else is an error.',
-  },
-  'pg-strict': {
-    q: 'A hand-edited profile says `"maxLength": "20"`. What do the two CLIs do?',
-    a: 'Both stop with the same error: the entry must be an object whose maxLength is a non-negative number. (Once, Rust skipped it and TypeScript used it.)',
   },
   'pg-collect': {
     q: 'What does collecting an iterator of `Result<(String, f64), String>` into `Result<HashMap<String, f64>, String>` do?',
     a: 'It builds the map while every item is `Ok`, and stops at the first `Err`, returning that error.',
   },
-  'pg-guard': {
-    q: 'Which `maxLength` values does the match guard `if n.is_finite() && n >= 0.0` refuse?',
-    a: 'Negative numbers, `NaN` and infinity. (A string or a missing value never reaches the guard: `as_f64` already gave `None`.)',
-  },
   'pg-by-name': {
-    q: 'Two functions each build an array called `ps`, of 1000 and 10 elements. What does the profile say?',
+    q: 'Two functions each build an array called `ps`, of 1000 and 10 elements. What does a Viscosity profile record for them?',
     a: 'One entry, `"ps": { "maxLength": 1000 }`, used for both collections. Profiles are keyed by name.',
   },
-  'pg-cant': {
-    q: 'Name two kinds of program `viscosity profile` can’t profile.',
-    a: 'Any of: an ES module with `import` (run as CommonJS), a program that throws or exits non-zero, a Python file.',
-  },
   'pg-after-safety': {
-    q: 'Can a profile make the planner transform a collection that has a bailout?',
+    q: 'Can a Viscosity profile make the planner transform a collection that has a bailout?',
     a: 'No. The profile is only read by the size rung, which comes after the safety rung; it can only move a collection across the size threshold.',
-  },
-  'pg-tests': {
-    q: 'Which tests check profiles, now that a profile-only wording bug once slipped through?',
-    a: 'Four profile fixtures run through the library and `--profile` in `parity.rs`, `profile_cli.rs` checks both CLIs’ file rule and clean-up, and the fuzzer passes a random profile to every batch.',
   },
 };
 
@@ -229,6 +193,7 @@ fn instrument(
     ],
   },
   readProfile: {
+    optional: true,
     lang: 'rust',
     title: 'One bad entry refuses the file',
     prompt: 'Write `read(es)`, the checking half of `read_profile`, over a cut-down JSON entry. Each entry `(name, e)` is accepted when `max_len(e)` is a finite number of at least 0; then it goes into the `Profile` map as `name -> n`. If any entry isn’t, return `Err(format!("bad entry {name:?}"))` for the **first** bad entry. Hint: an iterator of `Result`s can be collected into one `Result`.',
@@ -487,7 +452,7 @@ fn read(
 
 export const quiz = [
   {
-    q: 'Where is the profile JSON formatted?',
+    q: 'Where is the JSON of a Viscosity profile formatted, in both engines?',
     options: [
       {
         t: 'In Rust, with `serde_json::to_string_pretty`',
@@ -501,28 +466,6 @@ export const quiz = [
       {
         t: 'In the TypeScript engine, called from Rust',
         why: 'The Rust CLI doesn’t load the TypeScript engine.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `instrument` apply its edits last-first?',
-    options: [
-      {
-        t: 'Because `replace_range` only works backwards',
-        why: 'It works anywhere in the string.',
-      },
-      {
-        t: 'So the output lists collections in reverse',
-        why: 'The output is the program text, in its own order.',
-      },
-      {
-        t: 'Because the TS reference does, and parity requires it',
-        why: 'The order is forced by the offsets, not only by parity.',
-      },
-      {
-        t: 'Each replacement changes the length of the text after it; edits behind it keep valid offsets',
-        correct: true,
-        why: 'Going from the end, no edit moves a span still to be done.',
       },
     ],
   },
@@ -545,25 +488,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An instrumented program prints its results and then throws. What does `viscosity profile` produce?',
-    options: [
-      {
-        t: 'The JSON, since the exit hook ran',
-        why: 'The hook did write the file, but the CLI checks the exit status first.',
-      },
-      {
-        t: 'An error: “the profiled program failed (exit code 1)”',
-        correct: true,
-        why: 'A non-zero status is a failure, in both CLIs, and the temporary directory is removed anyway.',
-      },
-      {
-        t: 'An empty profile `{}`',
-        why: 'Nothing is printed on failure.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `profile` own its temporary directory through a `TempDir` value with a `Drop` impl?',
+    q: 'Why does the Rust CLI’s `profile` own its temporary directory through a `TempDir` value with a `Drop` impl?',
     options: [
       {
         t: 'Because Rust has no function to delete a directory',
@@ -581,25 +506,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A profile file is `[1]`. What does `viscosity explain --profile` do?',
-    options: [
-      {
-        t: 'Ignores the file and uses the estimates',
-        why: 'A broken profile is an error, not a hint to ignore.',
-      },
-      {
-        t: 'Stops with “the profile must be a JSON object: …”',
-        correct: true,
-        why: '`as_object` is `None` for an array, and `ok_or(...)?` returns the error.',
-      },
-      {
-        t: 'Treats it as one collection of size 1',
-        why: 'Entries are looked up by name, and an array has no names.',
-      },
-    ],
-  },
-  {
-    q: 'A profile has `"ps"` with `maxLength` 20 and `"qs": 5`. What happens?',
+    q: 'A Viscosity profile file has `"ps"` with `maxLength` 20 and `"qs": 5`. What does `explain --profile` do?',
     options: [
       {
         t: 'The whole file is refused, naming `"qs"`',
@@ -617,7 +524,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which statement about a profile is true?',
+    q: 'Which statement about a Viscosity profile is true?',
     options: [
       {
         t: 'It holds per-field read counts',
@@ -635,42 +542,6 @@ export const quiz = [
         t: 'Each length is read once, when the program exits',
         correct: true,
         why: 'The exit hook reads `a.length` of every tracked array and keeps the maximum per name.',
-      },
-    ],
-  },
-  {
-    q: 'Why can’t `viscosity profile` run a program that starts with `import fs from "node:fs";`?',
-    options: [
-      {
-        t: 'The analysis refuses modules',
-        why: 'The compiler handles imports; the problem is running the instrumented file.',
-      },
-      {
-        t: 'Node is too old',
-        why: 'It fails on any version: the file is CommonJS.',
-      },
-      {
-        t: 'The instrumented file is `instrumented.cjs`, run as CommonJS, where `import` is a syntax error',
-        correct: true,
-        why: 'Node reports “Cannot use import statement outside a module”, and the CLI reports the failed run.',
-      },
-    ],
-  },
-  {
-    q: 'The planner’s measured-size message was once worded differently in the two engines, and every test passed. What closed that gap?',
-    options: [
-      {
-        t: 'Profile fixtures run through both engines, and a random profile for every fuzzer batch',
-        correct: true,
-        why: 'The fixtures had never used `--profile`; now four do, through the library and the CLI.',
-      },
-      {
-        t: 'Nothing: the engines still differ there',
-        why: 'They print the same bytes today; the parity test checks it.',
-      },
-      {
-        t: 'Turning off profiles in the parity test',
-        why: 'The opposite: the test now runs them.',
       },
     ],
   },

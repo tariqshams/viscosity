@@ -1,6 +1,6 @@
-// Chapter 86 cards: recall prompts, examples, exercises and quiz.
+// Chapter 163 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 163, 163, 163.
+// Merged from the old chapters TypeScript vs Rust: differential tests, Fuzzing the Rust engine, and Shrinking a failing program.
 
 export const prompts = {
   'ep-oracle': {
@@ -8,100 +8,32 @@ export const prompts = {
     a: 'Whatever it trusts to give the right answer: here the TS engine’s output, or the original program’s behaviour.',
   },
   'ep-parity-blind': {
-    q: 'What kind of bug can byte-for-byte parity never catch?',
+    q: 'What kind of bug can a byte-for-byte parity test between two compiler implementations never catch?',
     a: 'One both engines share. Parity compares Rust with TS, so if both are wrong the same way, it passes.',
   },
   'ep-diff-blind': {
-    q: 'The node differential passes. What can still be wrong?',
+    q: 'Viscosity’s node differential test (each original and compiled program run under node, output compared) passes. What can still be wrong?',
     a: 'Anything that doesn’t change behaviour (explain text, frames), anything outside its 68 programs, and anything only `--bounds assume` reaches.',
   },
-  'ep-wasm': {
-    q: 'What can the wasm layer catch that native parity can’t, and what can’t it check?',
-    a: 'Differences that depend on the target (the same code built for wasm32). Its API takes no profile and returns no frames.',
-  },
   'ep-shared': {
-    q: 'Why were all five of the fuzzer’s finds bugs in both engines?',
+    q: 'Why were all five bugs that Viscosity’s differential fuzzer found present in both engines?',
     a: 'The port mirrors the reference, so their bugs are shared. Parity can’t see shared bugs; the behaviour and no-crash oracles could.',
-  },
-  'ep-option': {
-    q: 'Why did the “about 20 (measured) elements” wording pass every test?',
-    a: 'No layer compiled with `--profile`: no fixture variant, no fuzzer option, no wasm parameter.',
-  },
-  'ep-input': {
-    q: 'Why did no test notice that the two CLIs read `"maxLength": "20"` differently?',
-    a: 'Every profile a test could use came from `viscosity profile`, which writes numbers. No layer’s inputs could produce that file.',
-  },
-  'ep-equal': {
-    q: 'When both engines fail on a program, why does the fuzzer not compare their messages?',
-    a: 'oxc and acorn word errors differently, so it compares errors by presence only: “one failed and the other didn’t” is the failure.',
   },
   'fz-coverage': {
     q: 'Which inputs does a coverage-guided fuzzer keep?',
     a: 'Only those whose run reached coverage no earlier input reached (for AFL, a new branch edge or a new hit-count bucket). The rest are thrown away.',
-  },
-  'fz-generation': {
-    q: 'What makes `scripts/fuzz.mjs` generation-based rather than coverage-guided?',
-    a: 'It writes every program from its own model of the language, starting from a seed. Nothing measured during a run feeds back into what it writes next.',
-  },
-  'fz-afl-edge': {
-    q: 'AFL adds `shared_mem[cur ^ prev]++` to every block. What does one counter stand for?',
-    a: 'An edge: a step from the previous block to the current one, since the index mixes both block numbers.',
   },
   'fz-blocks': {
     q: 'Why does AFL count edges rather than blocks?',
     a: 'Two runs can visit the same blocks in a different order (A→B→C→D and A→C→B→D). Block counts cannot tell them apart; edge counts can.',
   },
   'fz-valid': {
-    q: 'Why are mutated bytes a poor input for Viscosity?',
+    q: 'Why are randomly mutated bytes a poor fuzzing input for Viscosity?',
     a: 'Nearly all are syntax errors, refused while parsing, so the analyses never run, and there is no program for node to run as an oracle.',
   },
-  'fz-seed': {
-    q: 'Why does program k of a campaign get a seed mixed from (S, k), rather than continuing one random stream?',
-    a: 'So any one program can be made again on its own: `--seed S --only k` rebuilds it without generating the k programs before it.',
-  },
-  'fz-order': {
-    q: 'In `ls[1].a = (ls.push(...), 7)`, which runs first in JavaScript: finding where to store, or the right-hand side?',
-    a: 'Finding where to store (the reference `ls[1].a`, or in the old compiled code the column `ls.a`); the right-hand side runs after it.',
-  },
-  'fz-oracle': {
-    q: 'What is an oracle, in fuzzing?',
-    a: 'Something that says whether a run was right, such as “the compiled program prints what the original prints” or “the program did not crash”.',
-  },
-  'fz-three-oracles': {
-    q: 'What are the three oracles of `fuzz.mjs`?',
-    a: 'Behaviour (original and compiled program print and throw the same under node), parity (the two engines give the same code, explain text and frames) and early errors (both reject the programs given one).',
-  },
-  'fz-batch': {
-    q: 'How does fuzz.mjs keep the Rust engine’s process starts cheap?',
-    a: 'It compiles a batch of 250 programs per CLI call (`viscosity build a.js b.js ... -o dir/`), so it pays one process start per batch, not per program.',
-  },
-  'fz-ci': {
-    q: 'What does `crates/cli/tests/fuzz.rs` run on every `cargo test`?',
-    a: 'fuzz.mjs with seed 1 and 200 programs, against the freshly built binary; any failing program fails the test.',
-  },
   'fz-reduce': {
-    q: 'When does `fuzz.mjs --reduce` keep a deletion?',
+    q: 'When does Viscosity’s `fuzz.mjs --reduce` keep a deletion of lines?',
     a: 'When what is left still parses and still shows the same kind of failure (for example `behaviour-check` or `ts-crash`).',
-  },
-  'fz-minimal': {
-    q: 'What does it mean that a reduced program is 1-minimal?',
-    a: 'It still fails, and deleting any single one of its lines makes the failure go away.',
-  },
-  'fz-reduce-trap': {
-    q: 'The reduced program 12 uses an undeclared `k`. Why did the reducer accept that?',
-    a: 'It checks only that the same kind of failure remains. The original now threw a ReferenceError and the compiled one a SyntaxError: still a behaviour difference.',
-  },
-  'fz-parity-blind': {
-    q: 'Why could the parity oracle not find any of the five bugs?',
-    a: 'All five were in both engines (the port mirrors the reference), and parity only compares the engines with each other.',
-  },
-  'fz-plateau': {
-    q: 'In the chapter’s measurement, what did 3,000 fuzz programs add over 300 to the engine’s line coverage?',
-    a: 'Three lines: 2,433 of 2,614 against 2,430. The generator’s coverage had already flattened out.',
-  },
-  'fz-lines-not-bugs': {
-    q: 'The fuzzer ran fewer engine lines than the hand-written programs, yet found five bugs they missed. How?',
-    a: 'The bugs needed combinations (a push inside the right-hand side of a field write, an access inside a push). Line coverage records that a line ran, not with what.',
   },
 };
 
@@ -489,6 +421,7 @@ fn verdict(
     ],
   },
   keepIfNew: {
+    optional: true,
     lang: 'rust',
     title: 'The feedback step',
     prompt: 'Write `keep(seen, path)`, the step a coverage-guided fuzzer takes after every run. `path` lists the blocks the run went through, as numbers, in order. Work out each edge as AFL does: start with `prev = 0`; for each block `cur`, the edge index is `(cur ^ prev) % seen.len()`, and then `prev = cur >> 1`. Set `seen[e] = true` for every edge of the run, and return `true` if at least one of them was not set before.',
@@ -663,6 +596,7 @@ fn keep(
     ],
   },
   reduceLines: {
+    optional: true,
     lang: 'rust',
     title: 'Shrink a failing program',
     prompt: 'Write `reduce(lines, fails)`, the reducer of `fuzz.mjs --reduce`. Start with chunks of half the lines (at least 1). Try deleting each chunk in turn; keep a deletion if `fails` still returns true for what is left, and otherwise move on by one chunk. Repeat the pass until nothing changes, then halve the chunk size, down to 1. Never call `fails` on an empty program, and keep the lines in order.',
@@ -896,86 +830,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which layer would notice a difference that appears only in the WebAssembly build?',
-    options: [
-      {
-        t: 'Parity, since it uses the same fixtures',
-        why: 'Parity runs the native build.',
-      },
-      {
-        t: 'The wasm layer, which runs the wasm build against the fixtures',
-        correct: true,
-        why: 'Same oracle, different target: that is what it is for.',
-      },
-      {
-        t: 'The fuzzer',
-        why: 'It calls the native `viscosity` binary.',
-      },
-      {
-        t: 'None of them',
-        why: 'One of them builds and loads the wasm.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the fuzzer run only the TypeScript engine’s output, and not the Rust engine’s?',
-    options: [
-      {
-        t: 'The Rust output is compared with it byte for byte, so when parity passes it has effectively been run too',
-        correct: true,
-        why: 'Two checks compose: Rust = TS (parity), TS ≡ original (behaviour).',
-      },
-      {
-        t: 'Rust output can’t be run in node',
-        why: 'It is JavaScript like any other.',
-      },
-      {
-        t: 'To save time, at the cost of missing Rust miscompiles',
-        why: 'A Rust miscompile would also be a parity difference.',
-      },
-    ],
-  },
-  {
-    q: 'Rust skips `"maxLength": "20"` in a profile; TypeScript uses it. Which change would most directly have caught that?',
-    options: [
-      {
-        t: 'More corpus programs',
-        why: 'The difference is in the profile, not the program.',
-      },
-      {
-        t: 'Comparing error messages exactly',
-        why: 'Neither CLI reports an error here; they make different decisions.',
-      },
-      {
-        t: 'Running the fuzzer longer',
-        why: 'It never passes a profile, however long it runs.',
-      },
-      {
-        t: 'Feeding both CLIs odd profiles (strings, arrays, negative numbers) and comparing their output',
-        correct: true,
-        why: 'A layer finds only what its inputs can produce; `viscosity profile` only ever writes numbers.',
-      },
-    ],
-  },
-  {
-    q: 'The python3 differential compares stdout and the last line of stderr. What could it miss?',
-    options: [
-      {
-        t: 'A different exception type',
-        why: 'The last line of a traceback names the exception type and message.',
-      },
-      {
-        t: 'A warning printed earlier on stderr by only one of the programs',
-        correct: true,
-        why: 'Only the last line is compared.',
-      },
-      {
-        t: 'A different printed number',
-        why: 'All of stdout is compared.',
-      },
-    ],
-  },
-  {
     q: 'What does a coverage-guided fuzzer do with an input whose run reached no new edge?',
     options: [
       {
@@ -1016,7 +870,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which statement about `scripts/fuzz.mjs` is accurate?',
+    q: 'Which statement about Viscosity’s fuzzer, `scripts/fuzz.mjs`, is accurate?',
     options: [
       {
         t: 'It mutates the corpus programs byte by byte',
@@ -1034,25 +888,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A run reports `FAIL program 90 (--seed 5 --only 90)`. How do you see that program again?',
-    options: [
-      {
-        t: 'Run the whole campaign again and wait for program 90',
-        why: 'Not needed: each program’s seed depends only on (S, k).',
-      },
-      {
-        t: '`node scripts/fuzz.mjs --seed 5 --only 90 --print`',
-        correct: true,
-        why: 'It rebuilds just that program and prints it.',
-      },
-      {
-        t: 'It is lost unless you passed `--keep`',
-        why: 'The seed rebuilds it (and failing programs are written to a temporary folder anyway).',
-      },
-    ],
-  },
-  {
-    q: 'Why did the old engine lose the `7` in `ls[1].a = (ls.push({ a: 0, b: 0 }), 7)`?',
+    q: 'Before the fix, Viscosity compiled `ls[1].a = (ls.push({ a: 0, b: 0 }), 7)` to a plain column store, `ls.a[i] = (…)`, and the `7` was lost when the push grew the container. Why?',
     options: [
       {
         t: 'The push threw an error',
@@ -1066,100 +902,6 @@ export const quiz = [
       {
         t: 'The bounds check rejected index 1',
         why: 'Index 1 was in bounds.',
-      },
-    ],
-  },
-  {
-    q: 'The reducer has 20 lines and the failure needs 2 of them. Why does it start by deleting chunks of 10?',
-    options: [
-      {
-        t: 'Because single lines cannot be deleted',
-        why: 'They can, and are, at the end.',
-      },
-      {
-        t: 'Because each try costs a compile and two runs, and big chunks remove most of the noise in a few tries',
-        correct: true,
-        why: 'Halving first, single lines last.',
-      },
-      {
-        t: 'Because acorn only parses even numbers of lines',
-        why: 'Nothing like that; tries that do not parse are rejected.',
-      },
-    ],
-  },
-  {
-    q: 'Why did the reduced program 12 refer to an undeclared `k`?',
-    options: [
-      {
-        t: 'The generator writes programs with undeclared variables',
-        why: 'The original program 12 declared `k` on its second line; the reducer removed it.',
-      },
-      {
-        t: 'The emitter deleted the declaration',
-        why: 'The emitter’s bug was the missing brackets in `const p = k++, i;`.',
-      },
-      {
-        t: 'The reducer keeps the kind of failure, not the program’s meaning',
-        correct: true,
-        why: 'Original (ReferenceError) and compiled (SyntaxError) still differed, so the deletion was accepted.',
-      },
-    ],
-  },
-  {
-    q: 'A reduced program is 1-minimal. Which statement must be true?',
-    options: [
-      {
-        t: 'No smaller program shows the same failure',
-        why: '1-minimal only says no single line can go; a different, smaller program might still fail.',
-      },
-      {
-        t: 'Deleting any one of its lines makes the failure go away',
-        correct: true,
-        why: 'That is the definition.',
-      },
-      {
-        t: 'Deleting any two of its lines keeps the failure',
-        why: 'It says nothing about pairs, and deleting lines it needs removes the failure.',
-      },
-    ],
-  },
-  {
-    q: 'Why did the parity oracle miss all five fuzz finds?',
-    options: [
-      {
-        t: 'The fuzzer does not compare the engines',
-        why: 'It does: code, explain text and frames, byte for byte.',
-      },
-      {
-        t: 'They were in both engines, and parity only compares the engines',
-        correct: true,
-        why: 'The behaviour oracle and the TypeScript crash found them.',
-      },
-      {
-        t: 'The Rust engine crashed first',
-        why: 'In the reproduction the Rust engine was not even run (`--no-rust`).',
-      },
-    ],
-  },
-  {
-    q: 'The fuzzer ran fewer TypeScript-engine lines than the hand-written programs. What follows?',
-    options: [
-      {
-        t: 'The fuzzer is useless next to the corpus',
-        why: 'It found five bugs the corpus missed.',
-      },
-      {
-        t: 'More fuzz programs would raise coverage a lot',
-        why: '3,000 programs ran 3 more lines than 300.',
-      },
-      {
-        t: 'The corpus must already have contained the five bugs',
-        why: 'It did not; programs for them were added after they were found.',
-      },
-      {
-        t: 'Line coverage does not show which combinations of features were exercised',
-        correct: true,
-        why: 'All five bugs needed one construct inside another.',
       },
     ],
   },

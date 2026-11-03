@@ -1,107 +1,35 @@
-// Chapter 86 cards: recall prompts, examples, exercises and quiz.
+// Chapter 162 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 162, 162, 162.
+// Merged from the old chapters Shipping Viscosity, Semantic versioning: what a version promises, and The npm package.
 
 export const prompts = {
   'pkg-what': {
     q: 'What is an npm package?',
     a: 'A folder described by a `package.json`, packed into a tarball and published to a registry so others can install it by name.',
   },
-  'pkg-identity': {
-    q: 'Which two `package.json` fields together identify a published package?',
-    a: '`name` and `version`.',
-  },
-  'pkg-scope': {
-    q: 'What is the `@viscosity/` in `@viscosity/cli`?',
-    a: 'A scope: a namespace owned by an npm user or organisation.',
-  },
   'pkg-ts': {
-    q: 'Why did the first installed CLI fail with ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING?',
-    a: 'Node strips TypeScript types by default, but deliberately refuses to for files under `node_modules`. Packages must ship JavaScript.',
-  },
-  'pkg-deps': {
-    q: 'Why did installing the CLI tarball install only one package?',
-    a: 'The CLI imports the core by a relative path into the repo and declared no dependencies, so npm didn’t know it needed anything else. The bundle now inlines everything.',
-  },
-  'pkg-main': {
-    q: 'Why did the bundled CLI print nothing when run through `npx`?',
-    a: 'It only called `main()` when `import.meta.url` matched `process.argv[1]`, and through npm’s bin link `argv[1]` is the link’s path, not the file’s.',
-  },
-  'pkg-order': {
-    q: 'Why were the six Rust crates published in a fixed order (vir, core, the front ends, cli, wasm)?',
-    a: 'Each crate depends on the ones before it, and cargo will not publish a crate whose dependencies are not on crates.io yet.',
-  },
-  'pkg-files': {
-    q: 'What does the `files` field in `package.json` do?',
-    a: 'It limits the tarball to the listed files and folders (package.json is always included).',
-  },
-  'pkg-dryrun': {
-    q: 'How do you see exactly which files a package would contain, without publishing anything?',
-    a: '`npm pack --dry-run`.',
+    q: 'Node 22.18 and later strip TypeScript types by default. Why can an npm package still not ship its `.ts` sources as its entry point?',
+    a: 'Node deliberately refuses to strip types in files under `node_modules` (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING), to discourage publishing TypeScript; packages must ship JavaScript.',
   },
   'sv-rules': {
     q: 'In semver, which part do you bump for a backward compatible new feature, and what happens to the part after it?',
     a: 'MINOR; PATCH resets to 0.',
   },
-  'sv-zero': {
-    q: 'What does semver promise for versions 0.y.z?',
-    a: 'Nothing: major version zero is for initial development, and anything may change at any time.',
-  },
-  'sv-caret': {
-    q: 'Which versions does the range `^0.1.0` accept?',
-    a: 'Only 0.1.x (at least 0.1.0, below 0.2.0): in 0.x the minor number is treated as breaking.',
-  },
   'sv-numeric': {
-    q: 'Is `1.10.0` newer than `1.9.0`? What does the string comparison `\'1.10.0\' > \'1.9.0\'` say?',
+    q: 'Under semver, is `1.10.0` newer than `1.9.0`, and what does the JavaScript string comparison `\'1.10.0\' > \'1.9.0\'` say?',
     a: 'Yes, because the parts compare as numbers (10 > 9). The string comparison says `false`, because it compares characters.',
   },
-  'sv-api': {
-    q: 'Name two things besides the CLI options that are part of Viscosity’s public API.',
-    a: 'Any two of: the plugin API, the explain report’s text, and its layout decisions.',
-  },
-  'sv-immutable': {
-    q: 'Can a published npm version be changed or reused after a mistake?',
-    a: 'No. A name and version, once published, can never be used again, even after unpublishing: a fix needs a new version.',
-  },
-  'sv-prerelease': {
-    q: 'Which comes first in version order, `1.0.0-beta.1` or `1.0.0`?',
-    a: '`1.0.0-beta.1`: a pre-release sorts before the release it leads up to.',
+  'sv-caret': {
+    q: 'Which versions does the npm range `^0.1.0` accept?',
+    a: 'Only 0.1.x (at least 0.1.0, below 0.2.0): in 0.x the minor number is treated as breaking.',
   },
   'sv-cargo': {
-    q: 'Why did Viscosity start at 0.0.1 rather than 0.1.0 or 1.0.0?',
+    q: 'Why were Viscosity’s packages and crates first released as 0.0.1 rather than 0.1.0 or 1.0.0?',
     a: 'Under the caret rule (npm’s and Cargo’s), 0.0.1 is compatible with no other version, so no dependent picks up a newer release without asking.',
   },
   'native-vs-wasm-what': {
-    q: 'What is the choice between **native binaries and WebAssembly** when you ship Rust?',
+    q: 'When you ship a Rust tool through npm, what is the trade-off between native binaries and one WebAssembly module?',
     a: 'Native: one compiled binary per OS and CPU, fastest, chosen at install. WebAssembly: one `.wasm` for every platform, run inside a JS engine, slower and with no threads or files of its own.',
-  },
-  'esbuild-26': {
-    q: 'How does esbuild get the right native binary onto your machine through npm?',
-    a: 'It lists 26 platform packages as `optionalDependencies`. Each declares `os` and `cpu`, and npm installs only the one that matches.',
-  },
-  'exports-order': {
-    q: 'In a conditional `"exports"` map, which entry does Node pick?',
-    a: 'The first key, in object order, whose condition is active. `"default"` always matches, so it goes last.',
-  },
-  'exports-fallthrough': {
-    q: 'A nested condition object matches nothing. What does Node do?',
-    a: 'It goes back and tries the parent’s remaining keys, like a nested `if` that falls through.',
-  },
-  'two-copies': {
-    q: 'Why does the tarball contain the 1.4 MB `.wasm` twice?',
-    a: 'Each glue file loads the module next to itself, and the node and web modules differ by 64 bytes. It costs about 1.4 MB unpacked.',
-  },
-  'licences-67': {
-    q: 'Why must `THIRD_PARTY_LICENSES.txt` ship with the `.wasm`?',
-    a: 'The `.wasm` statically links 71 third-party crates, and their licences require their notices to go wherever the code goes.',
-  },
-  'oxc-licence': {
-    q: 'What was missing from oxc’s published crates, and what does the build do about it?',
-    a: 'Their licence file. The package carries copies of the files from oxc’s repositories.',
-  },
-  'smoke-what': {
-    q: 'What does `smoke.mjs` check?',
-    a: 'It packs and installs the package in an empty folder, then compiles 60 corpus programs three ways (require, import, web with bytes): all must match the TS CLI. It type-checks a consumer too.',
   },
 };
 
@@ -174,6 +102,7 @@ fn main() {
 
 export const exercises = {
   packList: {
+    optional: true,
     title: 'What goes in the tarball?',
     prompt: 'Write `packList(paths, files)`, a simplified version of how npm decides what to pack. `paths` lists every file in the package folder, and `files` is the `files` field of `package.json` (or `undefined` if there is none). Return, sorted, the paths that are packed: `package.json` always; with no `files` field, everything; otherwise every path that equals an entry of `files` or lies inside a folder named by one (`dist` covers `dist/viscosity.mjs`, but not `distant.txt`).',
     starter: `function packList(paths, files) {
@@ -696,29 +625,7 @@ fn resolve(
 
 export const quiz = [
   {
-    q: 'What happens today if someone runs `npm install viscosity`?',
-    options: [
-      {
-        t: 'They get this book’s compiler, version 0.0.1',
-        why: 'The name belongs to someone else; the compiler is `@viscosity/cli`.',
-      },
-      {
-        t: 'npm refuses, because the package doesn’t exist',
-        why: 'A package with that name does exist; it just isn’t this one.',
-      },
-      {
-        t: 'They get an unrelated Sass library that owns the name',
-        correct: true,
-        why: '`npm view viscosity` shows version 0.3.0, “a sass library for fluid containers…”.',
-      },
-      {
-        t: 'They get `@viscosity/cli`, because npm adds the scope',
-        why: 'npm never adds a scope by itself; you have to ask for `@viscosity/cli` by name.',
-      },
-    ],
-  },
-  {
-    q: 'Why couldn’t the CLI be published as it first was, with `bin` pointing at `src/cli.ts`?',
+    q: 'Viscosity’s TypeScript CLI, as first written, had `bin` pointing at `src/cli.ts`, which imported the core by a relative path. Why could it not be published like that?',
     options: [
       {
         t: 'npm doesn’t accept `.ts` files in a tarball',
@@ -736,68 +643,6 @@ export const quiz = [
       {
         t: 'Scoped packages can’t have a `bin`',
         why: 'Scoped packages can install commands like any other.',
-      },
-    ],
-  },
-  {
-    q: 'After bundling, `npx viscosity explain a.js` printed nothing and exited 0. Why?',
-    options: [
-      {
-        t: 'The bundle was empty',
-        why: 'It was about 1 MB of code, and the fixed entry used the same bundle.',
-      },
-      {
-        t: 'npx swallows output',
-        why: 'npx shows output; the fixed version printed the report.',
-      },
-      {
-        t: 'The file had no `#!/usr/bin/env node` line',
-        why: 'Then it wouldn’t have been run by Node at all; it was run, and exited 0.',
-      },
-      {
-        t: 'The main check compares the module URL with `argv[1]`, which is npm’s link, not the real file',
-        correct: true,
-        why: 'So `main()` is never called. A bin entry that calls `main()` unconditionally fixes it.',
-      },
-    ],
-  },
-  {
-    q: 'The CLI’s `files` field is `["bin", "dist", "LICENSE", "THIRD_PARTY_LICENSES.txt"]`. Which file is *not* in the published tarball?',
-    options: [
-      {
-        t: '`package.json`',
-        why: 'It is always packed, whatever `files` says.',
-      },
-      {
-        t: '`src/cli.ts`',
-        correct: true,
-        why: 'The TypeScript sources are compiled into `dist/viscosity.mjs`; `src` is not listed, so it stays out.',
-      },
-      {
-        t: '`dist/viscosity.mjs`',
-        why: 'It is inside the listed folder `dist`.',
-      },
-      {
-        t: '`THIRD_PARTY_LICENSES.txt`',
-        why: 'It is listed by name: a bundle contains other people’s code, so their licences ship with it.',
-      },
-    ],
-  },
-  {
-    q: 'crates.io answered the sixth crate, `viscosity-wasm`, with HTTP 429. What happened next?',
-    options: [
-      {
-        t: 'All six crates had to be published again under 0.0.2',
-        why: 'The first five were fine; and a re-run skips crates already on crates.io.',
-      },
-      {
-        t: 'A re-run about ten minutes later skipped the five already published and published the sixth',
-        correct: true,
-        why: 'The limit was on creating many *new* crates in a short time, so waiting was enough.',
-      },
-      {
-        t: 'The wasm crate was renamed',
-        why: 'Nothing was wrong with its name; 429 means “too many requests”.',
       },
     ],
   },
@@ -824,72 +669,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'A project depends on `^0.1.0`. Which release will npm install for it?',
-    options: [
-      {
-        t: '1.0.0',
-        why: 'Far outside: caret never crosses the left-most non-zero part.',
-      },
-      {
-        t: '0.2.0',
-        why: 'In 0.x the minor number is the breaking one, so `^0.1.0` stops below 0.2.0.',
-      },
-      {
-        t: '0.1.7',
-        correct: true,
-        why: '`^0.1.0` means at least 0.1.0 and below 0.2.0.',
-      },
-      {
-        t: 'Only exactly 0.1.0',
-        why: 'That would be the range `0.1.0` with no caret.',
-      },
-    ],
-  },
-  {
-    q: 'A new Viscosity release keeps a collection it used to transform. Output is identical, but the program is slower. What does the chapter conclude?',
-    options: [
-      {
-        t: 'It must be a major release by semver’s rules',
-        why: 'Semver’s rules are about the declared API. Identical output fits a fix or a feature.',
-      },
-      {
-        t: 'It can’t happen, because the differential tests would fail',
-        why: 'Those tests check output and layouts in the corpus, not your program’s speed.',
-      },
-      {
-        t: 'Semver says nothing until the project declares whether decisions are part of its public API',
-        correct: true,
-        why: 'The numbers only mean something relative to a declared API; deciding that is part of shipping.',
-      },
-      {
-        t: 'It should be a patch, because speed never matters',
-        why: 'For an optimiser, speed is the whole point; that’s why it needs deciding.',
-      },
-    ],
-  },
-  {
-    q: 'Version 1.9.4 gains a new option, and nothing old changes. What is the next version?',
-    options: [
-      {
-        t: '`1.9.5`',
-        why: 'A patch is for fixes; a new feature bumps the minor.',
-      },
-      {
-        t: '`1.10.0`',
-        correct: true,
-        why: 'Minor + 1 (9 + 1 = 10, as a number) and the patch resets to 0.',
-      },
-      {
-        t: '`1.91.0`',
-        why: 'That is `\'9\' + 1` as strings. The parts are numbers.',
-      },
-      {
-        t: '`2.0.0`',
-        why: 'Nothing broke, so the major stays.',
-      },
-    ],
-  },
-  {
     q: 'A project depends on `"@viscosity/cli": "^0.0.1"`, and 0.0.2 is released. What does `npm install` give it?',
     options: [
       {
@@ -904,78 +683,6 @@ export const quiz = [
       {
         t: 'An error: the range is invalid',
         why: 'It is a valid range; it just matches only one version.',
-      },
-    ],
-  },
-  {
-    q: 'esbuild lists 26 platform packages. How many end up on a typical machine after `npm install`?',
-    options: [
-      {
-        t: 'All 26: npm can’t know which you need',
-        why: 'Each declares `os` and `cpu`, and npm compares them with `process.platform` and `process.arch`.',
-      },
-      {
-        t: 'One: the package whose `os` and `cpu` match',
-        correct: true,
-        why: 'On this book’s Linux x64 machine, only `@esbuild/linux-x64` was installed.',
-      },
-      {
-        t: 'None until the first run downloads one',
-        why: 'The binary arrives at install time, as an optional dependency.',
-      },
-    ],
-  },
-  {
-    q: 'The exports map lists `"node"`, then `"browser"`, then `"types"`, then `"default"`. A bundler building for the web asks with `["browser", "import"]`. What does it get?',
-    options: [
-      {
-        t: 'The nodejs glue, because `"node"` is listed first',
-        why: 'Listed first, but not active: `"node"` isn’t among the bundler’s conditions, so it is skipped.',
-      },
-      {
-        t: 'The web glue, through the `"browser"` key',
-        correct: true,
-        why: 'The first active key in order is `"browser"`, and inside it `"default"` gives `dist/web/viscosity_wasm.js`.',
-      },
-      {
-        t: 'Nothing: `"import"` is not a key in the map',
-        why: 'A condition with no key is simply never asked for. Resolution doesn’t require every condition to appear.',
-      },
-    ],
-  },
-  {
-    q: 'What does the `.wasm` statically linking 71 crates mean for the package?',
-    options: [
-      {
-        t: 'It must include their licence texts',
-        correct: true,
-        why: 'Their code is inside the file you distribute, so their notices must ship too. `build.mjs` collects them into `THIRD_PARTY_LICENSES.txt`.',
-      },
-      {
-        t: 'Users must install those crates with cargo',
-        why: 'Nothing is installed: the crates are compiled into the `.wasm`.',
-      },
-      {
-        t: 'npm lists them as dependencies',
-        why: 'npm knows nothing about Rust crates. The package has no runtime dependencies.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `smoke.mjs` install the packed tarball into an empty folder instead of importing `dist/` directly?',
-    options: [
-      {
-        t: 'To make the test faster',
-        why: 'It is slower: it packs and installs first.',
-      },
-      {
-        t: 'Because Node can’t import from `dist/`',
-        why: 'It can. The point is to test what a user would get.',
-      },
-      {
-        t: 'To test exactly what a user would get: the `files` list, the exports map and the types',
-        correct: true,
-        why: 'A file missing from `files` or a wrong export path works in the repository and fails only after installing (the chapter *Shipping Viscosity* found three such bugs).',
       },
     ],
   },

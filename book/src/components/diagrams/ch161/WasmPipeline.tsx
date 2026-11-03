@@ -3,7 +3,7 @@
 // the book's Playground engine. Sizes are from dist/sizes.json of the
 // committed build (wasm-bindgen 0.2.106, wasm-opt 132): cargo 1,844,592
 // bytes; after wasm-bindgen 1,759,823 (web); after wasm-opt -O3
-// 1,373,422 (498,049 gzipped). @viscosity/wasm 0.0.1 is on npm; --book
+// 1,373,422 (498,049 gzipped). @viscosity/wasm is on npm (0.0.2); --book
 // copies the web build to book/public/wasm and book/src/vendor.
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
@@ -36,7 +36,7 @@ export default function WasmPipeline() {
       })}
       <Box x={8} y={yEnd} w={186} h={52} r={5} fill={tok('safe', 0.12)} stroke={tok('safe')}>
         <T x={18} y={yEnd + 16} size={12} weight={700} fill={tok('ink')}>npm: @viscosity/wasm</T>
-        <T x={18} y={yEnd + 34} size={11} fill={tok('muted')}>0.0.1; Node and browsers</T>
+        <T x={18} y={yEnd + 34} size={11} fill={tok('muted')}>0.0.2; Node and browsers</T>
       </Box>
       <Box x={206} y={yEnd} w={186} h={52} r={5} fill={tok('brand', 0.12)} stroke={tok('brand')}>
         <T x={216} y={yEnd + 16} size={12} weight={700} fill={tok('ink')}>this book's Playground</T>

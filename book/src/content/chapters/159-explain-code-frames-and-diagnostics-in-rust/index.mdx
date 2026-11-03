@@ -3,27 +3,15 @@ n: 159
 day: 28
 part: IX
 title: 'explain, code frames and diagnostics in Rust'
-tagline: 'The Rust engine writes the same report as the TypeScript one, word for word: a header per collection and a line per reason. Here is the function that writes it, how each refusal remembers where in the source it was found, and why the first place always wins.'
+tagline: 'The Rust engine writes the same report as the TypeScript one, word for word, and with --frames it points at the code each refusal is about. Here is the function that writes it, how each refusal remembers where it was found, what makes a message a diagnostic, and why a position always needs a unit.'
 objectives:
   - Read explain_text in plan.rs, and predict every line of a report from a plan.
-  - Explain how explain and explain_with_frames share one function through an Option.
-  - Explain how Collection::bail records a bailout site, why the first one wins, and when a reason can find its site.
-  - Implement the plain report in Rust, with tests.
-  - Explain when explain --frames prints a frame, and how Option::zip decides it.
-  - Build a code frame from byte offsets, counting columns in code points and keeping tabs.
-  - Say why a Rust byte offset, a TypeScript UTF-16 offset and a code-point column differ, and why the frames still match.
-  - Say what the 14 frames fixtures check, and what a frame still gets wrong.
+  - Explain how Collection::bail records a bailout site, and why the first one wins.
   - Say what makes a message a diagnostic, using rustc’s parts as the model.
-  - Trace a source position from oxc’s span through SourceRef and the bailout site to the caret.
-  - Explain why a frame is only as good as the span it was given, using the for...of case.
-  - Draw the caret line under a span, tabs and all, in Rust.
-  - Count a position in bytes, characters and UTF-16 units, and say which part of the system uses which.
-  - Name the line breaks JavaScript counts, and read LineIndex and its binary search.
-  - Explain how oxc’s span was once dropped from syntax errors, and how the port now prints acorn’s (line:column).
-  - Compute acorn’s line and column from a byte offset in Rust.
+  - Explain how a code frame is drawn from byte offsets, and why both engines’ frames match.
 introduces: [rust-explain, diagnostic]
-uses: [viscosity-rs, ir-arena, rust-cost-model, rust-escape-pass, optimization-report, bailout, cross-implementation-tests, test-corpus, source-location, ssa, option, match, struct, vec, hashmap, rust-iterator, rust-closure, string-vs-str, cargo-test, fuzzing, utf8-utf16, slice, char-code, oxc, syntax-error, enum, result, error-enum, byte, escape-analysis]
-sources: ['klabnik2026', rustc-dev-guide-diagnostics, acorn]
+uses: [viscosity-rs, ir-arena, rust-cost-model, rust-escape-pass, optimization-report, bailout, cross-implementation-tests, test-corpus, source-location, ssa, option, match, struct, vec, hashmap, rust-iterator, rust-closure, string-vs-str, cargo-test, fuzzing, slice, char-code, oxc, syntax-error, enum, result, error-enum, byte, escape-analysis]
+sources: [rustc-dev-guide-diagnostics, acorn]
 ---
 import ReportSteps from '../../../components/diagrams/ch159/ReportSteps';
 import SitesMap from '../../../components/diagrams/ch159/SitesMap';
@@ -34,16 +22,12 @@ import DiagnosticParts from '../../../components/diagrams/ch159/DiagnosticParts'
 import ColumnSteps from '../../../components/diagrams/ch159/ColumnSteps';
 import LineBreaks from '../../../components/diagrams/ch159/LineBreaks';
 
-{/* ── merge: from old chapter 159, explain in Rust ── */}
-
 ## Every decision, with a reason
 
-A compiler that quietly rearranges your data is hard to trust unless it
-tells you what it did and why. *viscosity explain* made that a promise
-in the TypeScript engine: one header line per collection, then one line
-per reason, every decision accounted for. The Rust engine has to keep
-the promise in exactly the same words, because the parity test compares
-the two reports byte for byte. Here is a small program:
+*viscosity explain* promised a reason for every decision, and the Rust
+engine has to keep that promise in exactly the same words, because the
+parity test compares the two reports byte for byte. Here is a small
+program, indented with tabs:
 
 ```js
 const ps = [];
@@ -58,9 +42,8 @@ const t = "🎉"; f(t, ps[2]);
 function f() {}
 ```
 
-(it is indented with tabs, which the next chapter cares about) and the
-Rust CLI's report on it (I ran `viscosity explain` here, release build,
-rustc 1.97; long lines wrapped):
+and the Rust CLI's report on it (release build, rustc 1.97; long lines
+wrapped):
 
 ```
 ps (line 1) {x} → kept as array of objects
@@ -73,101 +56,83 @@ keep (line 4) {} → kept as array of objects
     is not a fresh object literal
 ```
 
-The TypeScript CLI printed the same bytes. This chapter reads the Rust
-that writes those lines, and how each refusal remembers where in the
-source it was found, which the next chapter, *Code frames in Rust*,
-uses to point at the code.
+The TypeScript CLI printed the same bytes.
 
 <Analogy title="a referee's match report">
-After a match the referee writes one line per team and, under it, a
-line for each decision: the minute, the player, the reason. Nothing is
-left out, and the wording follows a fixed form, so that anyone reading
-two reports can compare them line by line.
+After a match the referee writes one line per team and, under it, a line
+for each decision: the minute, the player, the reason. Nothing is left
+out, and the wording follows a fixed form, so that anyone reading two
+reports can compare them line by line.
 <span slot="breaks">A referee writes from memory and may phrase things
 freely; the report here is generated from the plan, in a fixed order,
 and two engines must produce the same characters, down to the middle
 dot.</span>
 </Analogy>
 
-<Analogy extra title="a marked exam paper">
-A marked paper has the total at the top and a short note beside each
-lost mark, written next to the line where the mistake is.
-<span slot="breaks">A marker writes the note on the page itself; the
-report keeps the message and the place apart (the place is only shown
-with `--frames`), and a mark lost twice for the same reason is noted
-once.</span>
+<Analogy extra title="a finger on the page">
+A note in the margin says "see line 7". A friend leaning over says "this
+one, here", with a finger on the word. The report already had the margin
+notes; frames add the finger.
+<span slot="breaks">A finger is placed by someone who sees the page; the
+carets are placed by counting characters, and a count can be wrong where
+the page is drawn differently from how it is counted (an emoji drawn two
+columns wide).</span>
 </Analogy>
 
 ## One function, two outputs
 
-`crates/core/src/plan.rs` has two public functions, `explain(p)` and
-`explain_with_frames(p, source)`. Both call one private function, and
-the only difference is an `Option<&str>`: `None` for the plain report,
-`Some(source)` when frames were asked for. Here it is, rewrapped, with
-the frame part left as a comment for the next chapter:
+In `crates/core/src/plan.rs`, `explain(p)` and `explain_with_frames(p,
+source)` both call one private function, passing `None` or
+`Some(source)`. Its body, rewrapped:
 
 ```rust
-fn explain_text(p: &Plan,
-    frames: Option<&str>) -> String
-```
-
-and its body:
-
-```rust
+// fn explain_text(p: &Plan,
+//     frames: Option<&str>) -> String
 let mut lines = Vec::new();
 for cp in &p.collections {
     let c = &cp.collection;
-    let verdict = match cp.layout {
-        Layout::Aos => "kept as array \
-            of objects".to_string(),
-        Layout::Soa =>
-            "struct of arrays".to_string(),
-        Layout::Aosoa => format!(
-            "AoSoA, blocks of {}",
-            js_number(
-                cp.block_size as f64)),
-    };
+    let verdict = match cp.layout { … };
     lines.push(format!(
         "{} (line {}) {{{}}} → {verdict}",
         c.name, c.line,
         c.fields.join(", ")));
-    // one reason per bailout?
     let refused = !c.bailouts.is_empty()
         && cp.reasons.len()
             == c.bailouts.len();
     for (k, r) in cp.reasons.iter()
         .enumerate() {
         lines.push(format!("  · {r}"));
-        // --frames: a code frame here
+        let at = if refused {
+            c.bailout_sites
+                .get(&c.bailouts[k])
+                .copied().flatten()
+        } else { None };
+        if let Some((src, at)) =
+            frames.zip(at) {
+            lines.push(code_frame(
+                src, at, "    "));
+        }
     }
 }
 lines.join("\n")
 ```
 
-The verdict is a `match` on the layout, with `js_number` printing the
-block size as JavaScript would (`8`, not `8.0`). In a format string
-`{{` and `}}` stand for a literal brace, so `"{{{}}}"` is a brace, the
-field list, and a brace: `{x}`, or `{}` when no field could be seen.
-`refused` asks whether the collection was kept with exactly one reason
-per bailout, which is what the safety rung of *The cost model in Rust*
-produces; only then is reason `k` known to be about bailout `k`.
-`enumerate` hands out each reason with its number `k`, and the lines
-are joined with line breaks, with none at the end (the CLI adds one
-when it prints). Step through it on the program above:
+The verdict is a `match` on the layout, and `{{` and `}}` are literal
+braces, so the header shows `{x}`. `refused` asks whether the collection was kept with
+exactly one reason per bailout, which is what the safety rung of *The
+cost model and thresholds in Rust* produces; only then is reason `k`
+about bailout `k`. `Option::zip` gives `Some((src, at))` only when both
+are `Some`: a source to quote and a place for this reason.
+Step through it on the program above:
 
 <ReportSteps client:visible />
 
-The TypeScript reference has one function, `explain(p, { frames })`,
-with an options object; the port has two public functions, so a caller
-who wants the plain report can't pass a source by accident, and
-`compile` in `crates/core/src/lib.rs` calls `explain(&p)`.
-
-<Prompts ids={['rx-one-fn', 'rx-two-fns', 'rx-braces', 'rx-refused']} />
+<Prompts ids={['rx-one-fn', 'rx-zip']} />
 
 ## Where a refusal happened
 
-The places come from the analysis. Every bailout in `analysis.rs` goes
-through one small method:
+The places come from the analysis, where every bailout goes through one
+small method on `Collection` (from `crates/core/src/analysis.rs`):
 
 ```rust
 fn bail(&mut self, msg: String,
@@ -179,69 +144,27 @@ fn bail(&mut self, msg: String,
 }
 ```
 
-`bailout_sites` is an `IndexMap<String, Option<SourceRef>>`, keyed by
-message. `entry(...).or_insert(at)` writes `at` only when the key is
-new, so the *first* place a message was found wins, and later ones
-with the same words are ignored. `at` is an `Option` because some
-bailouts have no single place ("no records are ever added" has `None`).
-At the end of the analysis the messages are deduplicated, keeping the
-first of each, by collecting them through an `IndexSet`:
-
-```rust
-let unique: IndexSet<String> =
-    c.bailouts.drain(..).collect();
-c.bailouts = unique.into_iter().collect();
-```
-
-`drain(..)` moves every message out of the vector, the `IndexSet`
-keeps each once in first-seen order, and the vector is filled again.
-So the planner sees each message once, writes it as `unsafe: ...`,
-and reason `k` can look up `c.bailout_sites[&c.bailouts[k]]`.
+`bailout_sites` is an `IndexMap` keyed by message, and
+`entry(...).or_insert(at)` writes only when the key is new, so the
+*first* place a message was found wins (`at` is `None` for bailouts with
+no single place). The messages are later deduplicated, first of each
+kept, so reason `k` finds its site by its message.
 
 <Figure caption="Reason k of a refused collection is bailout k, and the bailout's message is the key to the place it was first found." takeaway="Matching positions, then a lookup by message, connect a reason to its source.">
   <SitesMap />
 </Figure>
 
-The site is the span of the instruction the bailout is about: the
-element `ps[i]` for an escape, the record literal for a shape mismatch,
-`ps = []` for a reassignment. Sometimes that instruction isn't on the
-line the message names. In the corpus program `string_index.js`, the
-message is about the access `ps[k]` on line 6, but the site is on line
-4, because the bailout's instruction is the index *value*: in SSA
-(*SSA form*), `k` is the constant `'5'`, and its `SourceRef` is where
-that constant was written (arguably the more useful place to point).
+The site is a `SourceRef`: a start and an end (a **span**) and a line,
+made once, when oxc's syntax node is lowered to a VIR instruction, so the
+"line 7" in a reason and the frame under it cannot disagree.
 
-<Formal title="The shape of a report">
-
-```text
-report ::= block ( "\n" block )*
-block  ::= header ( "\n" reason )*
-header ::= name " (line " n ") {"
-           fields "} → " verdict
-reason ::= "  · " text
-```
-
-<span slot="read">A report is one block, then any number of further
-blocks, each after a line break. A block is a header followed by any
-number of reasons, each on its own line. A header is the collection's
-name, its line in brackets, its fields in braces, an arrow and the
-verdict; a reason is two spaces, a middle dot, a space and the reason's
-text.</span>
-</Formal>
+<SpanSteps client:visible />
 
 <Examples of="rust-explain">
 
 ```
 ps (line 1) {x, vx} → struct of arrays
-  · loop at line 4 in <module>() …
   · about 100 elements
-```
-
-```
-ps (line 2) {x, y, vx} → AoSoA, blocks
-  of 4
-  · annotated @viscosity aosoa(4) at
-    line 1
 ```
 
 ```
@@ -254,124 +177,93 @@ ps (line 2) {x} → kept as array of
 
 </Examples>
 
-All three are lines of the Rust CLI's reports from earlier chapters,
-wrapped and shortened with `…`. The first is a transformed collection,
-whose reasons come from `describe`: its loops, its columns, its size
-and its bounds proofs. The second is an annotated one, whose verdict
-prints the block size with `js_number`. The third is `string_index.js`,
-refused, with one reason for its one bailout; with `--frames` it is the
-one that points at line 4.
+Both are from the Rust CLI, wrapped. The first is transformed, so its
+reasons (from `describe`) are not bailouts and get no frame.
+The second is the corpus program `string_index.js`, refused for its one
+bailout, whose site is the index *value*: in SSA that is the constant
+`'5'`, so the reason names line 6 but its frame shows line 4.
 
 <Callout kind="definition">
-**explain in Rust** is `plan::explain`, a call to `explain_text(p,
-None)`: for each collection in plan order, a **header** (`name (line n)
-{fields} → verdict`) and one **`  · `** line per reason. Each bailout's
-first **site** is recorded by **`Collection::bail`** in
-`bailout_sites`, keyed by message (`entry().or_insert`), and a kept
-collection whose reasons are **exactly its bailouts** can match reason
-`k` to that site, which `explain_with_frames` uses.
+**explain in Rust** is `explain_text(p, None)`: per collection, in plan
+order, a **header** (`name (line n) {fields} → verdict`) and one **`  · `**
+line per reason. **`Collection::bail`** records each bailout's first
+**site**, and `explain_with_frames` draws it under the matching
+reason.
 </Callout>
 
-<Prompts ids={['rx-first-site', 'rx-dedupe', 'rx-string-index', 'rx-none-site']} />
+<Prompts ids={['rx-first-site']} />
 
-## Your turn
+## What a diagnostic has
 
-<Exercise id="reportText" />
+With `--frames`, the first refusal gets the line `7 | keep.push(ps[i]);`
+and five carets under `ps[i]`. rustc's developer guide lists the parts
+of an error message<Cite id="rustc-dev-guide-diagnostics" />: a
+**level** such as `error`; an optional **code** such as `E0308`; a
+**message** that makes sense on its own; and a window onto the code,
+with the file, line and column where the **primary span** begins, the
+code itself, and **labels** under the spans.
 
-## What you learned
+<Figure caption="Top: rustc 1.97 on a line that gives a string to an i32 (trimmed). Bottom: the Rust Viscosity CLI with --frames." takeaway="Viscosity’s frames have a message, a line, the code and a span; no level, code, file name or column.">
+  <DiagnosticParts />
+</Figure>
 
-- **`explain_text(p, frames)`** serves both `explain` and
-  `explain_with_frames`; the `Option` decides whether frames are added.
-- A report is a **header** per collection and a **reason line** per
-  reason, in plan order, joined with line breaks and with `{{`/`}}` for
-  the literal braces.
-- `Collection::bail` records each message's **first site**
-  (`entry().or_insert`), and the messages are **deduplicated** through
-  an `IndexSet`, so reason `k` of a refused collection finds bailout
-  `k`'s place.
+Viscosity's frame has the message, the line, the code and the carets,
+but no level (a refusal to optimise is not an error), no code, no file
+name and no column.
 
+<Callout kind="definition">
+A **diagnostic** is a compiler message tied to the source: a **message**
+that makes sense on its own, plus a **span**, the stretch of source it is
+about. A message without a span is only an error message.
+</Callout>
 
-{/* ── merge: from old chapter 159, Code frames in Rust ── */}
-
-## Which ps[i]?
-
-*explain in Rust* printed this reason for the tab-indented program of
-that chapter: `unsafe: line 7: an element is used by push`. The loop
-there reads `ps[i]` twice, once in the test on line 6 and once in the
-push on line 7, and a reason names only a line. In a long file, with
-several element reads on one line, you'd go hunting. So both engines have `viscosity explain
---frames`, which prints the source line under each refusal, with carets
-under the code (I ran it here, release build, rustc 1.97; reasons
-wrapped):
+<Examples of="diagnostic">
 
 ```
-  · unsafe: line 7: an element is used by
-    push
-    7 | 		keep.push(ps[i]);
-      | 		          ^^^^^
-  · unsafe: line 9: an element is passed
-    to a function call
-    9 | const t = "🎉"; f(t, ps[2]);
-      |                     ^^^^^
+    5 | for (const p of ps) keep.push(p);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-The TypeScript CLI printed the same bytes. Two things in it are less
-simple than they look: the caret line starts with the same two tabs as
-the code, and on line 9 the carets have to get past an emoji, which is
-one character to you but four bytes to Rust and two units to
-JavaScript.
-
-<Analogy title="a finger on the page">
-A note in the margin says "see line 7". A friend leaning over says
-"this one, here", with a finger on the word. The report already had the
-margin notes; frames add the finger.
-<span slot="breaks">A finger is placed by someone who sees the page;
-the carets are placed by counting characters, and a count can be wrong
-where the page is drawn differently from how it is counted (an emoji
-drawn two columns wide, at the end of this chapter).</span>
-</Analogy>
-
-<Analogy extra title="a street address in three alphabets">
-"Number 20 on this street" is clear until houses are numbered in
-different ways: one town counts plots of land, another counts front
-doors. Two maps can disagree on the number and still agree on the
-house, if both are translated back to counting houses.
-<span slot="breaks">A town picks one numbering for good; each engine
-keeps its own offsets for slicing, and translates to the shared count
-only for the column it prints.</span>
-</Analogy>
-
-## When a frame is printed
-
-In `explain_text` (*explain in Rust*), the frame part that the last
-chapter left as a comment is a few lines (rewrapped):
-
-```rust
-let at = if refused {
-    c.bailout_sites.get(&c.bailouts[k])
-        .copied().flatten()
-} else { None };
-let site = frames.zip(at);
-if let Some((src, at)) = site {
-    lines.push(code_frame(src, at, "    "));
-}
+```
+viscosity: Unexpected token (1:12)
 ```
 
-`get` returns `Option<&Option<SourceRef>>` (the map may have no entry,
-and the entry itself may be `None`), so `copied().flatten()` turns it
-into one `Option<SourceRef>`. Then `Option::zip` combines two options:
-it gives `Some((src, at))` only when both are `Some`, a source to quote
-(frames were asked for) and a place (this reason has one). Either
-missing, and the reason is printed exactly as plain `explain` prints
-it.
+</Examples>
 
-<Prompts ids={['rx-flatten']} />
+The first is a refusal in a `for...of` loop: the element `p` was made by
+the statement itself, so its `SourceRef` is the whole statement, and both
+engines underline the whole line; correct, and nearly useless, since a
+frame is only as good as its span. The second is the Rust CLI on `const
+ps = [;`: a message and a position (line 1, column 12 from 0), but no
+picture of the code.
 
-## Drawing the frame
+<Prompts ids={['dg-parts', 'dg-span', 'dg-forof']} />
 
-`code_frame(source, at, indent)` turns a span into the two lines. From
-`plan.rs`, rewrapped, with the last four lines (the line number, the
-gutter, a space before the text, and the final `format!`) left out:
+## Bytes, units and code points
+
+A Rust `SourceRef` holds UTF-8 byte offsets, since oxc's spans are
+bytes; the TypeScript one holds UTF-16 offsets, since JavaScript strings
+are indexed in 16-bit units (`🎉` is four bytes, two units, and one
+character to you). So `ps` on line 9 starts at different offsets in the
+two engines:
+
+<Figure caption="Where ps starts on line 9 of the program, counted three ways." takeaway="Each engine slices in its own units and counts columns in a shared one.">
+  <Columns />
+</Figure>
+
+`code_frame` in `plan.rs` counts the characters before the span with
+`chars()`, the TypeScript one with `Array.from`; both get 20. Each engine slices in
+its own units and counts the column in a shared one. The pad before the
+carets turns every character but a tab into a space, so the carets line
+up however wide a tab is drawn. Step through it on line 7:
+
+<FrameSteps client:visible />
+
+<Prompts ids={['rx-tabs', 'rx-bytes']} />
+
+<More title="code_frame, line by line">
+From `plan.rs`, rewrapped, with the last few lines (the line number, the
+gutter and the final `format!`) left out:
 
 ```rust
 let start = (at.start as usize)
@@ -402,455 +294,68 @@ let pad: String = before.chars()
     .collect();
 ```
 
-`s` is where the span's line starts: the last line break before
-`start`, plus that break's length in bytes (U+2028 is three bytes, so
-`char::len_utf8` is used instead of `+ 1`), or 0 when there is none.
-`e` is where the line ends. `is_line_break` is true for `\n`, `\r`,
-U+2028 and U+2029, the breaks acorn counts lines by. `text` is the line
-without trailing blanks. `col` counts the code points before the span,
-which is the column. The end of the span is cut at the end of its
-first line (`min(e)`), so a span across lines gets carets to the end of
-the first one; the width never runs past the trimmed text, and
-`saturating_sub` and `max(1)` give an empty span one caret instead of
-underflowing. And `pad` copies the text before the span with every
-character but a tab turned into a space, so two tabs before the code
-give two tabs before the carets, which line up whatever width your
-editor gives a tab. Step through it on line 7:
+`s` is where the span's line starts: the last line break before `start`,
+plus that break's length in bytes (U+2028 is three bytes, so
+`char::len_utf8` is used instead of `+ 1`). `e` is where the line ends.
+`is_line_break` is true for `\n`, `\r`, U+2028 and U+2029, the breaks
+acorn counts lines by. A span across lines gets carets to the end of its
+first line (`min(e)`), the width never runs past the trimmed text, and
+`saturating_sub` and `max(1)` give an empty span one caret.
 
-<FrameSteps client:visible />
+`scripts/gen_expected.mjs` writes a `.frames.txt` fixture for 14
+programs with the TypeScript engine, and the parity test checks the Rust
+output against every one; all 14 matched when I ran them. One,
+`tests/extra/frames_columns.js`, was written to break exactly this: tabs,
+accented letters and an emoji before a span, a CRLF line end, a U+2028
+inside a line, and an element written across two lines.
 
-<Formal title="Where the carets go">
-
-```text
-col   = |chars(line[0 .. start])|
-width = max(1, min(|chars(line[0 .. end])|,
-                   |chars(text)|) − col)
-pad   = line[0 .. start] with each
-        non-tab character → ' '
-```
-
-<span slot="read">The column is the number of code points on the line
-before the span's start. The width is the number of code points up to
-the span's end (cut at the line's end), or the length of the trimmed
-text if that is smaller, minus the column, and at least one. The pad is
-the text before the span with every character that isn't a tab
-replaced by a space.</span>
-</Formal>
-
-<Prompts ids={['rx-zip', 'rx-tabs', 'rx-clip', 'rx-line-start']} />
-
-## Bytes, units and code points
-
-Here is the problem parity had to solve. A Rust `SourceRef` holds
-UTF-8 byte offsets, because oxc's spans are bytes and Rust strings are
-sliced by bytes. The TypeScript one holds UTF-16 offsets, because
-JavaScript strings are indexed in 16-bit units (*Strings and Unicode*).
-The same `ps` has different offsets in the two engines:
-
-<Figure caption="Where ps starts on line 9 of the program, counted three ways." takeaway="Each engine slices in its own units and counts columns in a shared one.">
-  <Columns />
-</Figure>
-
-Neither offset is a column. The TypeScript `codeFrame` turns the text
-before the span into an array of code points with `Array.from` and
-counts them; the Rust one counts `chars()`. Both get 20. That is the
-whole trick: each engine slices in its own units, which is always safe
-in its own string, and counts the column in a shared one. Try it; the
-last line asks Rust whether byte 3, inside `ï`, is a place a string may
-be cut:
+One thing both engines still get wrong: a code point is not a screen
+column. Many fonts draw an emoji two columns wide, so on line 9 the
+carets start one column early wherever `🎉` is drawn double; getting it
+right would need a table of character widths, which neither engine has.
 
 <Run id="offsets" />
-
-<Examples of="rust-explain">
-
-```
-    7 | 		keep.push(ps[i]);
-      | 		          ^^^^^
-```
-
-```
-    9 | const t = "🎉"; f(t, ps[2]);
-      |                     ^^^^^
-```
-
-```
-    4 | const k = '5';
-      |           ^^^
-```
-
-</Examples>
-
-All three are frames the Rust CLI printed. The first copies two tabs
-into its pad, so the carets sit under `ps[i]` however wide a tab is
-drawn. The second counts the emoji as one column, so the carets start
-20 places in, after 23 bytes. The third is `string_index.js`, whose
-reason names line 6 but whose site is the constant `'5'` on line 4
-(*explain in Rust* explains why).
-
-## Held to the same bytes
-
-`scripts/gen_expected.mjs` writes a `.frames.txt` fixture for each of
-14 programs (its `FRAMES` list: 12 JavaScript, 2 Python) with the
-TypeScript `explain(plan, { frames: source })`, and the parity test
-`code_frames_equal_typescript_code_frames` in `parity.rs` checks every
-`.frames.txt` it finds; all 14 matched when I ran it here. One of them,
-`tests/extra/frames_columns.js`, was written to break exactly this: tabs
-before the code, accented letters and an emoji before a span, a CRLF
-line end, a U+2028 inside a line, and an element written across two
-lines. The fuzzer also compares `explain --frames` on every program it
-generates.
-
-<Callout kind="definition">
-A **code frame** is the line a bailout site starts on, with its number,
-and a second line of **carets** under the site: clipped to that line,
-never past its trimmed text, at least one wide, with **tabs copied**
-into the pad. Its column is a count of **code points**, which is the
-same in both engines even though Rust's offsets are **UTF-8 bytes** and
-TypeScript's are **UTF-16 units**. `explain --frames` prints one under
-each refused reason whose site is known (`frames.zip(at)`).
-</Callout>
-
-<Prompts ids={['rx-bytes', 'rx-fixtures']} />
-
-<Callout kind="engine" label="Under the hood">
-A code point is not a screen column. An emoji is one code point, but
-many fonts draw it two columns wide, so in the frame for line 9 the
-carets under `ps[2]` start one column early wherever `🎉` is drawn
-double. Both engines make the same mistake, so parity can't notice it;
-getting it right would need a table of character widths, which neither
-engine has.
-</Callout>
-
-<Prompts ids={['rx-display']} />
-
-## Your turn
-
-<Exercise id="codeFrame" />
-
-## What you learned
-
-- `frames.zip(at)` prints a frame only when there is a **source** and a
-  **site**; `copied().flatten()` turns the map's answer into one
-  `Option<SourceRef>`.
-- A **code frame** is the site's first line plus carets: clipped to
-  that line, blanks trimmed, **tabs copied** into the pad.
-- Rust slices in **UTF-8 bytes** and TypeScript in **UTF-16 units**,
-  but both **count columns in code points**, so the 14 frames fixtures
-  match byte for byte. Code points still aren't screen columns.
-
-
-{/* ── merge: from old chapter 159, Diagnostics ── */}
-
-## Three messages
-
-Here are three things the Rust CLI printed for me (release build,
-rustc 1.97), for three small files. The first is a six-line program
-whose sixth line starts with a tab (wrapped):
-
-```
-$ viscosity explain --frames k.js
-ps (line 1) {x, y} → kept as array of
-  objects
-  · unsafe: line 6: an element is used by
-    push
-    6 | 	if (ps[i].x > 3) keep.push(ps[i]);
-      | 	                           ^^^^^
-```
-
-The second is for a file that holds only `const ps = [;`, and the third
-for a file that does not exist:
-
-```
-$ viscosity explain bad.js
-viscosity: Unexpected token (1:12)
-$ viscosity explain nope.js
-viscosity: cannot read nope.js: No such
-  file or directory (os error 2)
-```
-
-All three say *what* went wrong and *where*. The first is the richest:
-it names the collection, gives the reason, and draws the line of code
-with **carets** (`^`) under the exact five characters it is about,
-`ps[i]`, because pushing an element of `ps` into another array means
-Viscosity can no longer move that element into columns. The second
-gives a line and a column, 1 and 12. The third names the file. It was
-not always so: when this chapter was first written, the second printed
-`viscosity: SyntaxError: Unexpected token` with no position, and the
-third `viscosity: No such file or directory (os error 2)` with no file
-name, which is a puzzle when you passed ten files. (The TypeScript CLI
-now prints the same second message; for the third it names the file
-too, followed by Node's wording, `ENOENT: no such file or directory,
-open 'nope.js'`.) The next
-chapter, *Lines and columns*, follows how the position came back; this
-one is about what such a message is made of, and how the first one is
-drawn.
-
-<Analogy title="a car at the garage">
-"Your car is making a noise" is a complaint. "The front left brake pad
-squeals when you stop, because it is worn to the metal" is a diagnosis:
-it names the part and the reason, so you know where to look and what to
-do.
-<span slot="breaks">A mechanic can only guess at what you heard; a
-compiler knows the exact characters it was reading when it gave up, so
-a diagnostic can be precise to the character, not only to the part.</span>
-</Analogy>
-
-<Analogy extra title="directions to a café">
-"The café is somewhere in town" is true and useless. "The café on Mill
-Street, third door past the bakery" gets you there, and a sketch of the
-street with an arrow is better still.
-<span slot="breaks">A street stays put; a file changes between runs, so
-a position is only right for the exact text that was compiled, which is
-why tools quote the line of code itself rather than only its
-number.</span>
-</Analogy>
-
-<Prompts ids={['dg-missing', 'dg-why-place']} />
-
-## What a diagnostic has
-
-rustc's own developer guide lists the parts of an error
-message<Cite id="rustc-dev-guide-diagnostics" />: a **level** such as
-`error` or `warning`; an optional **code** such as `E0308`; a
-**message** that makes sense on its own; and a window onto the code,
-with the file, line and column where the **primary span** begins (a
-**span** is a stretch of the source, from one position to another), the
-code itself, and **labels** under the spans. Here is a real one from
-rustc next to Viscosity's frame:
-
-<Figure caption="Top: rustc 1.97 on a line that gives a string to an i32 (trimmed). Bottom: the Rust Viscosity CLI on k.js." takeaway="Viscosity’s frames have a message, a line, the code and a span; no level, code, file name or column.">
-  <DiagnosticParts />
-</Figure>
-
-rustc says it is an `error`, gives it the code `E0308` (whose long
-explanation `rustc --explain E0308` prints), and points at `e.rs`, line
-2, column 18, with a label under the carets that says what it expected.
-Viscosity's frame has the message, the line number, the line of code and
-the carets. It has no level (every reason is a refusal to optimise, not
-an error in your program), no code, no file name (the file is printed
-once, above, when there are several) and no column.
-
-<Callout kind="definition">
-A **diagnostic** is a compiler message tied to the source: a
-**message** that makes sense on its own, plus a **span**, the stretch of
-source it is about, given by where it starts and ends. A tool turns the
-span into a file, a line, a column and a picture of the code. A message
-without a span is only an error message.
-</Callout>
-
-<Formal title="A diagnostic as data">
-
-```text
-span = [start, end)    byte offsets
-diag = (level?, code?, message, span)
-line(p) = 1 + #line breaks before p
-```
-
-<span slot="read">A span runs from the byte offset start up to, but not
-including, end (the square bracket includes, the round one excludes). A
-diagnostic is a message and a span, with a level and a code that may be
-missing (the question marks). The line of a position p is one more than
-the number of line breaks that come before it.</span>
-</Formal>
-
-The same parts, small enough to run: a level, a made-up code, a message
-and a span, laid out the way rustc lays one out.
-
-<Run id="render-diag" />
-
-`render` finds where the span's line starts (just after the last `\n`
-before it) and ends (the next `\n`), counts the line breaks before the
-span to get the line number, takes the column as the distance from the
-line start plus one, and pads the caret line with that many spaces. It
-prints `error[V001]`, then ` --> k.js:2:11`, then line 2 and five carets
-under `ps[1]`.
-
-<Prompts ids={['dg-parts', 'dg-span']} />
-
-## From a span to a caret
-
-*Code frames in Rust* drew the frame; here is where its numbers come
-from.
-oxc, the parser, gives every node of the syntax tree a `Span`, its start
-and end as byte offsets, and nothing else. During lowering, the
-JavaScript plugin turns that span into a `SourceRef` and attaches it to
-the VIR instruction it makes (`Lowerer::src` in
-`crates/frontend-js/src/lower.rs`, rewrapped):
-
-```rust
-fn src(&self, span: Span) -> SourceRef {
-    SourceRef {
-        node: NodeRef(0),
-        start: span.start,
-        end: span.end,
-        line: self.lines.line(span.start),
-    }
-}
-```
-
-It copies the start and end, and works out the line once, with the
-plugin's `LineIndex` (the next chapter opens it up). `node` points back
-at the syntax node when an emitter needs it; `NodeRef(0)` means "none".
-Step through the journey of the second `ps[i]` on line 6:
-
-<SpanSteps client:visible />
-
-Three facts to notice. The position is made once, at lowering, and then
-rides along on the instruction; no later pass changes it. The "line 6"
-in the message and the frame under it come from the same `SourceRef`,
-so they cannot disagree. And a frame is only as good as its span.
-
-<Examples of="diagnostic">
-
-```
-  · unsafe: line 6: an element is used by
-    push
-    6 | 	if (ps[i].x > 3) keep.push(ps[i]);
-      | 	                           ^^^^^
-```
-
-```
-    5 | for (const p of ps) keep.push(p);
-      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-```
-
-```
-viscosity: Unexpected token (1:12)
-```
-
-</Examples>
-
-The first is the good case: the span is the member expression `ps[i]`,
-so the five carets sit under exactly that, and the tab at the start of
-the line is copied into the caret line, so the carets line up however
-wide your terminal draws a tab. The second is the same refusal for
-`for (const p of ps) keep.push(p);`: here the element `p` was made by
-the `for...of` statement itself, so its `SourceRef` is the whole
-statement, and both engines underline the whole line. It is correct,
-and nearly useless. The third is a syntax error: the message and a
-position, `(1:12)`, which is line 1 and column 12 counted from 0 (the
-`;` that should have been a value), but no picture of the code.
-
-`tests/extra/frames_columns.js` holds the opposite of the `for...of`
-case: carefully pointed spans after tabs and accented letters and
-emoji, CRLF and U+2028 line breaks, spans over several lines, and
-trailing blanks. Its `.frames.txt` fixture is the
-TypeScript engine's output, and the parity test checks the Rust output
-against it byte for byte.
-
-<Prompts ids={['dg-once', 'dg-same-line', 'dg-forof', 'dg-tab']} />
-
-<Callout kind="engine" label="Under the hood">
-rustc's guide asks two things of a diagnostic that Viscosity could
-copy. A primary span should make sense even if it were the only thing
-shown, say as an underline in an editor. And when a longer explanation
-would say more than the message, the error gets a code, whose
-explanation `--explain` prints<Cite id="rustc-dev-guide-diagnostics" />.
-Viscosity's `unsafe:` reasons are stable sentences, so they could carry
-codes. Its `for...of` frames fail the first test: nobody chose that
-span; the element has the span of the statement that made it.
-The CLI's own errors (a bad option, a missing file) are a different
-kind of message again, and Part XIV's *A command-line interface* reads
-how it tells them apart.
-</Callout>
-
-## Your turn
-
-<Exercise id="caretLine" />
-
-## What you learned
-
-- A **diagnostic** is a message plus a **span**; rustc adds a
-  **level**, a **code** and **labels**.
-- oxc gives byte-offset **spans**; lowering turns each into a
-  `SourceRef` **once**, and both the message's line and the frame come
-  from it.
-- A frame is only as precise as its span: the `for...of` element gets
-  the whole statement.
-- The caret line copies **tabs** and turns every other character before
-  the span into one space.
-
-
-{/* ── merge: from old chapter 159, Lines and columns ── */}
-
-## Byte 19, column 17
-
-Here is a one-line file with a syntax error at its very end; the `;`
-after the `[` should have been a value:
-
-```js
-const s = "🎉"; [;
-```
-
-Both CLIs print `viscosity: Unexpected token (1:17)`: line 1, column
-17. Count the characters before that last `;` and you get 16. Ask
-oxc, the Rust engine's parser, and its span says the error starts at 19.
-Nobody is wrong; they are counting in three different units, and
-*Diagnostics* showed that a diagnostic is only useful if its position
-is right. This chapter is about getting the position right, and about
-the day it went missing altogether.
-
-## Three ways to count
-
-Text in a computer is stored as numbers, and there is more than one way
-to store the same character. Rust strings are **UTF-8**, which uses 1
-byte for a plain English letter and up to 4 for other characters; a
-**byte** offset counts those bytes. A **character** in Rust (a `char`)
-is one Unicode code point, whatever its size. JavaScript strings are
-**UTF-16**, which uses one 16-bit **unit** for most characters and two
-(a *surrogate pair*) for characters beyond the first 65,536, such as
-most emoji. Step along the line and watch three counters:
+</More>
+
+<More title="Lines and columns for syntax errors">
+A syntax error prints a column, and there the unit matters. For the
+one-line file `const s = "🎉"; [;`, both CLIs print `viscosity:
+Unexpected token (1:17)`. Count the characters before the last `;` and
+you get 16; oxc's span says 19 (bytes); acorn, the parser behind the
+TypeScript engine, counts columns in UTF-16 units<Cite id="acorn" />,
+which gives 17, and the Rust CLI promises to print what the TypeScript
+CLI prints.
 
 <ColumnSteps client:visible />
 
-<Analogy title="measuring a walk">
-Ask three people how far the post box is, and one says "12 of my
-steps", another "9 metres", a third "18 of my little boy's steps". All
-three are right, and all three point at the same post box; trouble only
-starts if you take one person's number and walk it in another person's
-steps.
-<span slot="breaks">Steps vary from stride to stride, while every
-character has an exact size in each unit; and a distance can stop
-anywhere, while a byte offset can land in the middle of a character,
-which is not a position at all.</span>
-</Analogy>
-
-<Analogy extra title="books on a shelf">
-You can say where a book is by how many centimetres from the left end
-it starts, by how many titles come before it, or by how many volumes do
-(some titles come in two volumes). The centimetres are bytes, the
-titles are characters, and the volumes are UTF-16 units.
-<span slot="breaks">Half of a two-volume set is still a readable book;
-half of a surrogate pair is not a character, and a column that points
-between the two halves points at nothing.</span>
-</Analogy>
-
-Each part of the system has its own unit. oxc's spans and Rust's string
-indexes count bytes. The code frames of *Diagnostics* count characters
-(`chars()`), one space per character in the caret line. acorn, the
-parser behind the TypeScript engine, counts columns in UTF-16 units,
-because that is what a JavaScript string's length counts<Cite id="acorn" />,
-and the Rust CLI promises to print exactly what the TypeScript CLI
-prints. As such, the port must turn oxc's byte 19 into acorn's 17. Try
-the three counts yourself:
-
 <Run id="three-counts" />
 
-The program finds the byte offset of the last `;` with `rfind`, slices
-the line up to it, and counts that slice three ways: `len()` gives
-bytes (19), `chars().count()` gives characters (16) and
-`encode_utf16().count()` gives UTF-16 units (17). The loop shows why:
-`a` is 1 byte and 1 unit, `é` is 2 bytes but 1 unit, and `🎉` is 4
-bytes and 2 units.
+The JavaScript plugin records where every line starts, once per file, in
+`LineIndex` (`crates/frontend-js/src/lines.rs`), counting the breaks
+ECMAScript counts: `\n`, `\r\n` as one break, a lone `\r`, and U+2028
+and U+2029.
 
-<Callout kind="definition">
-A **position** in source text is an offset from its start, and it only
-means something together with its **unit**: bytes (UTF-8),
-characters (code points) or UTF-16 units. A **line and column** is a
-position split in two: the line number, and the offset from the start
-of that line. acorn, and so both Viscosity CLIs, print the line counted
-from 1 and the column counted from 0, in UTF-16 units.
-</Callout>
+<Figure caption="Five lines, separated by the four kinds of break JavaScript counts. The ; on line 5 is the error." takeaway="\r\n is one break; a lone \r, U+2028 and U+2029 are breaks too.">
+  <LineBreaks />
+</Figure>
+
+```rust
+pub fn line(&self, offset: u32) -> u32 {
+    self.starts
+        .partition_point(|&s| s <= offset)
+        as u32
+}
+```
+
+`partition_point` binary-searches the sorted line starts for how many
+are at or before the offset, which is the 1-based line; `line_column`
+adds the column as `encode_utf16().count()` of the slice from the line's
+start. When the Rust chapters were first written, the port printed
+`viscosity: SyntaxError: Unexpected token` with no position, because
+`OxcDiagnostic`'s `Display` prints only its message, and the span lives
+in its **labels**. Today `syntax_error` in
+`crates/frontend-js/src/lib.rs` takes the first label's offset, turns it
+into acorn's line and column with `LineIndex`, and appends `(line:col)`.
 
 <Formal title="acorn’s column">
 
@@ -862,151 +367,46 @@ u16(c) = 1 if c < U+10000, else 2
 
 <span slot="read">The column of position p is the sum of u16 of c, over
 every character c that comes before p on p's line. u16 of a character is
-1 if its code point is below hexadecimal 10000 (the first 65,536), and
-2 otherwise, because UTF-16 needs a surrogate pair for it.</span>
+1 if its code point is below hexadecimal 10000, and 2 otherwise, because
+UTF-16 needs a surrogate pair for it.</span>
 </Formal>
 
-<Prompts ids={['lc-units', 'lc-who', 'lc-emoji']} />
+The deep dive *Strings and Unicode* covers the encodings themselves.
+</More>
 
-## Where lines break
+<More title="A diagnostic, small enough to run">
+The same parts as rustc's: a level, a made-up code, a message and a
+span. `render` finds the span's line, counts the breaks before it for the
+line number, and pads the caret line; it prints `error[V001]`, then `
+--> k.js:2:11`, then line 2 and five carets under `ps[1]`.
 
-A column restarts on every line, so first we need the lines. ECMAScript
-has more line breaks than most people expect:
-
-<Figure caption="Five lines, separated by the four kinds of break JavaScript counts. The ; on line 5 is the error." takeaway="\r\n is one break; a lone \r, U+2028 and U+2029 are breaks too.">
-  <LineBreaks />
-</Figure>
-
-`\n` is a line feed; `\r\n`, which Windows writes, is a carriage return
-and a line feed that together count as *one* break; a lone `\r` is a
-break of its own; and U+2028 and U+2029 (the line and paragraph
-separators) are breaks too. The JavaScript plugin records where every
-line starts, once per file, in `LineIndex` (`lines.rs`, rewrapped):
-
-```rust
-pub fn new(source: &str) -> Self {
-    let mut starts = vec![0];
-    let bytes = source.as_bytes();
-    for (i, c) in source.char_indices() {
-        let next = i + c.len_utf8();
-        match c {
-            '\n' =>
-                starts.push(next as u32),
-            '\r' if bytes.get(next)
-                != Some(&b'\n') =>
-                starts.push(next as u32),
-            '\u{2028}' | '\u{2029}' =>
-                starts.push(next as u32),
-            _ => {}
-        }
-    }
-    LineIndex { starts }
-}
-```
-
-`starts` begins with 0, since line 1 starts at byte 0. `char_indices`
-walks the characters with the byte offset of each, and `next` is the
-byte just after the character, where a new line would begin. A `\n`
-always starts a new line; a `\r` does only when the next byte is *not*
-a `\n` (otherwise the `\n` will do it, so `\r\n` counts once); and the
-two separators do too. Finding the line of an offset is then a search
-of that sorted list:
-
-```rust
-pub fn line(&self, offset: u32) -> u32 {
-    self.starts
-        .partition_point(|&s| s <= offset)
-        as u32
-}
-```
-
-`partition_point` does a binary search (halving the list each step,
-so a 10,000-line file takes about 14 steps) for how many line starts
-are at or before the offset, and that count is the 1-based line number.
-`line_column` adds the column: it takes the slice from the line's start
-to the offset and returns `encode_utf16().count()` of it (first moving
-an offset that falls inside a character back to the character's start).
-
-<Examples of="source-location">
-
-```
-const ps = [;          → (1:12)
-```
-
-```
-let é = [;             → (1:9)
-const s = "🎉"; [;     → (1:17)
-```
-
-```
-let a;\r\nlet b = ;    → (2:8)
-let a; U+2028 let b = ;  → (2:9)
-```
-
-</Examples>
-
-Each line is a file, and after the arrow is what both CLIs printed for
-it when I ran them. The first is all ASCII, so bytes, characters and
-units agree, and the column is the byte offset, 12. In the second
-group, `é` is two bytes but one unit, so the `;` at byte 10 is column 9,
-and the emoji line is the one we started with. In the third, the
-`\r\n` counts as one break, so `let b = ;` is line 2 and its `;` is
-column 8; with U+2028 instead (written out here, a single invisible
-character in the file), the second line starts after it, with a space,
-so the column is 9.
-
-<Prompts ids={['lc-crlf', 'lc-partition']} />
-
-## Where the position went
-
-When this chapter was first written, the Rust CLI printed
-`viscosity: SyntaxError: Unexpected token` for `const ps = [;`, while
-the TypeScript CLI printed `Unexpected token (1:12)`. oxc knew where
-the error was: its parser builds an `OxcDiagnostic` with a **label**, a
-span marking the bad token. But `OxcDiagnostic`'s `Display` prints only
-the message (I read it in the oxc 0.156.0 sources: its `fmt` is
-`self.message.fmt(f)`), and the plugin wrote `format!("SyntaxError:
-{e}")`. The span was dropped on the floor. Today the plugin does this
-(`syntax_error` in `crates/frontend-js/src/lib.rs`, rewrapped):
-
-```rust
-match e.labels.first() {
-    Some(label) => {
-        let (line, column) =
-            LineIndex::new(source)
-            .line_column(source,
-                label.offset());
-        CompileError(format!(
-            "{e} ({line}:{column})"))
-    }
-    None => CompileError(e.to_string()),
-}
-```
-
-It takes the first label, turns its byte offset into acorn's line and
-column with the `LineIndex` above, and appends them in acorn's format;
-an error without a label keeps only its message. The words can still
-differ from acorn's, since oxc writes its own messages, and so can the
-position of an early error that oxc pins to a different token
-(*Parsing with oxc*); `early_errors.rs` lists the programs where the
-two engines must agree on the position.
-
-<Prompts ids={['lc-label', 'lc-display', 'lc-frames']} />
+<Run id="render-diag" />
+</More>
 
 ## Your turn
+
+<Exercise id="reportText" />
+
+For more practice: draw a full code frame, draw only the caret line, or
+turn a byte offset into acorn's line and column.
+
+<Exercise id="codeFrame" />
+
+<Exercise id="caretLine" />
 
 <Exercise id="acornLineCol" />
 
 ## What you learned
 
-- A **position** needs a **unit**: oxc counts **bytes**, the code
-  frames count **characters**, acorn counts **UTF-16 units**.
-- JavaScript breaks lines at `\n`, `\r\n` (once), a lone `\r`,
-  U+2028 and U+2029; `LineIndex` records every line start and finds a
-  line by **binary search**.
-- oxc's position lives in the diagnostic's **label**; its `Display`
-  prints only the message, so the port once **dropped** the span.
-- Both CLIs now print acorn's `(line:column)`: line from 1, column
-  from 0, in UTF-16 units.
+- **`explain_text(p, frames)`** writes a **header** per collection and a
+  **reason line** per reason, with a frame when `frames.zip(at)` is `Some`.
+- `Collection::bail` keeps each message's **first site**.
+- A **diagnostic** is a message plus a **span**, and a frame is only as
+  precise as its span.
+- Rust slices in **bytes**, TypeScript in **UTF-16 units**; both count
+  columns in **code points**.
+
+Next: *Profiles in Rust: writing and reading them*, where measured sizes
+come back into the planner.
 
 <Quiz />

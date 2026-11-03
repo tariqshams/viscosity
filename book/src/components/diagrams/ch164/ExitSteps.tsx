@@ -10,7 +10,7 @@ type Arm = 'early' | 'ok' | 'okf' | 'usage' | 'other';
 type S = { cmd: string; arm: Arm; out: string; err: string[]; code: number; note: string };
 
 const STATES: S[] = [
-  { cmd: 'viscosity --version', arm: 'early', out: 'viscosity 0.0.1', err: [], code: 0, note: 'main looks at the first word before anything else. --version (and --help, -h, or no words at all) is answered at once, on stdout, with status 0; run() is never called.' },
+  { cmd: 'viscosity --version', arm: 'early', out: 'viscosity 0.0.2', err: [], code: 0, note: 'main looks at the first word before anything else. --version (and --help, -h, or no words at all) is answered at once, on stdout, with status 0; run() is never called.' },
   { cmd: 'viscosity explain p.js', arm: 'ok', out: 'ps (line 1) {x, vx} → struct …', err: [], code: 0, note: 'A normal run. run() parses the words, compiles p.js and writes the report to stdout. It returns Ok(true), and main turns that into ExitCode::SUCCESS, status 0.' },
   { cmd: 'viscosity explain p.js bad.js', arm: 'okf', out: '== p.js ==  ps (line 1) …', err: ['viscosity: bad.js: Unexpected', '  token (1:8)'], code: 1, note: 'Two files, one broken. p.js is still reported; bad.js gets one line on stderr. The run itself worked, so run() returns Ok(false): no help, but status 1, so a script can tell.' },
   { cmd: 'viscosity explain p.js --mode fast', arm: 'usage', out: '', err: ['viscosity: --mode must be auto', '  or opt-in', '(blank line, then the help)'], code: 1, note: 'The command line itself is wrong. parse_args returns Err(Usage(...)), and main prints the message, a blank line and the 27-line help, all on stderr, with status 1. Nothing was compiled.' },

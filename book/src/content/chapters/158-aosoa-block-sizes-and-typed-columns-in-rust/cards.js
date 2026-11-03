@@ -1,71 +1,39 @@
-// Chapter 84 cards: recall prompts, examples, exercises and quiz.
+// Chapter 158 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 158, 158.
+// Merged from the old chapters AoSoA in Rust, and Block sizes and typed columns in Rust.
 
 export const prompts = {
   'ao-slot': {
     q: 'With `F` fields and blocks of `B = 2^sh`, where is field `k` of element `i`?',
     a: 'At `(i >> sh) * F*B + k*B + (i & (B - 1))`: the block’s start, the field’s run inside it, then the lane.',
   },
-  'ao-stride': {
-    q: 'For records `{x, y, vx}` in blocks of 4, what are the block stride and the offset of `vx`?',
-    a: 'Stride 3 × 4 = 12 slots per block; `vx` is field 2, so its run starts at 2 × 4 = 8.',
-  },
   'ao-grow': {
-    q: 'Why doesn’t `grow()` have to move any element of an AoSoA container?',
+    q: 'Why does growing a Viscosity AoSoA container (copying `data` into a `Float64Array` twice as long) move no element?',
     a: 'A slot depends only on `i` and `k`, never on the capacity. Copying the old array to the front of the new one keeps every slot.',
   },
-  'ao-cap': {
-    q: 'Why does the AoSoA constructor compute `Math.ceil(cap / B) * B`?',
-    a: 'So the capacity is a whole number of blocks: the last block’s field runs must all fit in `data`.',
-  },
   'ao-simple': {
-    q: 'When does an AoSoA access go through `__vsc_aosoa(...)` instead of inline arithmetic?',
+    q: 'In Viscosity’s emitted AoSoA code, when does a field access call `__vsc_aosoa(...)` instead of writing the arithmetic inline?',
     a: 'When the index isn’t simple, such as a `__vsc_bc` call: the inline form repeats the index twice, so it must be an identifier or a literal.',
   },
   'ao-log2': {
     q: 'What does `log2_exact` in `emit.rs` return for 8, and for 6?',
     a: '`Some(3)` (`8.trailing_zeros()`), and `None`: 6 isn’t a power of two.',
   },
-  'ao-js-number': {
-    q: 'Why are the stride, offset and mask computed as `f64` and printed with `js_number`?',
-    a: 'So the text is exactly what the TypeScript reference prints from its doubles, `12` and not `12.0`, byte for byte.',
-  },
-  'ao-shift-why': {
-    q: 'For `B = 2^sh`, why is `i >> sh` the same as `i / B` rounded down?',
-    a: 'Shifting right by `sh` bits drops the low `sh` binary digits, which is dividing by 2^sh and throwing the remainder away.',
-  },
   'ao-refuse-1': {
-    q: 'Why is `aosoa(1)` refused even though 1 is a power of two?',
+    q: 'Why does Viscosity refuse `// @viscosity aosoa(1)`, although 1 is a power of two?',
     a: 'A block of one element isn’t AoSoA. The planner requires `b >= 2` as well as `b.is_power_of_two()`.',
   },
   'ao-text-none': {
-    q: 'What does `// @viscosity aosoa(x)` do, and how does the Rust planner tell it apart from a bare `aosoa`?',
-    a: 'It is refused, quoting `aosoa(x)`. Text was written but isn’t a number, so `b` is `None`; a bare `aosoa` has no text at all, and `unwrap_or(8)` gives blocks of 8.',
-  },
-  'ao-three-places': {
-    q: 'The power-of-two rule is checked by the planner, by `container_class` and by `slot`. Why three times?',
-    a: 'The planner refuses first, so the others never fire for a real program; they turn a slip upstream into an error instead of wrong arithmetic.',
+    q: 'Viscosity accepts a bare `// @viscosity aosoa` as blocks of 8. What does it do with `// @viscosity aosoa(x)`?',
+    a: 'It refuses it, quoting what was written (“annotated aosoa(x), but the block size must be a power of two”): text that is not a whole number never falls back to 8.',
   },
   'ao-huge': {
-    q: 'What went wrong with `// @viscosity aosoa(1073741824)` before the size limit?',
+    q: 'Before Viscosity capped AoSoA block sizes at 65536, what happened to a program annotated `// @viscosity aosoa(1073741824)`?',
     a: 'Both engines accepted it, and the compiled program failed with “RangeError: Array buffer allocation failed”. Now both refuse it: the block size must be at most 65536.',
-  },
-  'ao-numeric-only': {
-    q: 'Why must every field of an AoSoA collection be numeric?',
-    a: 'All fields share one `Float64Array`, `data`, so there is nowhere to put a string or an object.',
   },
   'ao-type-not-heat': {
     q: 'In Viscosity, what decides whether a field gets a `Float64Array` column or a plain array?',
     a: 'Only its type: proven always a number gives a typed column. How often loops touch it plays no part.',
-  },
-  'ao-partition': {
-    q: 'What does `Iterator::partition` do in `describe`?',
-    a: 'It walks the fields once and splits them into two vectors: those the closure accepts (numeric, typed) and the rest (plain).',
-  },
-  'ao-affinity': {
-    q: 'What would a real split by heat need that the port doesn’t do today?',
-    a: 'A planner that reads the per-loop access tables (which fields are touched together) and groups fields by them; it would only matter where fields share storage, as in AoSoA blocks.',
   },
 };
 
@@ -282,6 +250,7 @@ fn slot(
     ],
   },
   blockCheck: {
+    optional: true,
     lang: 'rust',
     title: 'Checking a block size',
     prompt: 'Write `check(text, size)`, the planner’s two block-size rungs. First work out `b`: `None` when text was written but `size` is `None` (not a whole number), otherwise `size`, or 8 when nothing was written. Let `w` be the text as written, or `"8"` when there was none. If `b` is above `MAX`, return `Err("aosoa({w}): at most 65536")`. Otherwise, if `b` is a power of two of at least 2, return `Ok(b)`; in every other case (including `None`), `Err("aosoa({w}): power of two")`. The size limit is checked first.',
@@ -544,42 +513,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why must an AoSoA block size be a power of two?',
-    options: [
-      {
-        t: 'Because Float64Array lengths must be powers of two',
-        why: 'Typed arrays can have any length.',
-      },
-      {
-        t: 'Because SIMD registers hold a power of two of lanes',
-        why: 'JavaScript has no SIMD here; that isn’t the reason.',
-      },
-      {
-        t: 'The emitted code finds the block and lane with `>>` and `&`, which equal `/` and `%` only for powers of two',
-        correct: true,
-        why: 'The planner refuses other sizes rather than emit wrong arithmetic.',
-      },
-    ],
-  },
-  {
-    q: 'In Rust, how does `log2_exact(b)` compute the shift?',
-    options: [
-      {
-        t: '`(b as f64).log2() as u32`',
-        why: 'The TS reference uses `Math.log2`; the port uses integer methods.',
-      },
-      {
-        t: '`b.is_power_of_two().then(|| b.trailing_zeros())`',
-        correct: true,
-        why: 'One bit set; the number of zeros below it is the exponent.',
-      },
-      {
-        t: 'A loop that divides by 2',
-        why: 'Not needed: `trailing_zeros` does it.',
-      },
-    ],
-  },
-  {
     q: 'Why does an access like `ps[10].y` with an unproven index compile to `__vsc_aosoa(__vsc_bc(ps, 10, …), 2, 12, 4, 3)` rather than inline arithmetic?',
     options: [
       {
@@ -616,64 +549,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which annotation does the planner accept?',
-    options: [
-      {
-        t: '`// @viscosity aosoa(6)`',
-        why: '6 is `0b110`: two bits set, so not a power of two.',
-      },
-      {
-        t: '`// @viscosity aosoa()`',
-        why: 'Brackets with nothing in them are text that isn’t a number, so it is refused.',
-      },
-      {
-        t: '`// @viscosity aosoa`',
-        correct: true,
-        why: 'No brackets means the default, blocks of 8.',
-      },
-      {
-        t: '`// @viscosity aosoa(1)`',
-        why: '1 is 2⁰, but the planner also requires at least 2.',
-      },
-    ],
-  },
-  {
-    q: 'What happens with `// @viscosity aosoa(1073741824)` on a small numeric collection today?',
-    options: [
-      {
-        t: 'It works, with one huge block',
-        why: 'Before the limit, the constructor’s allocation failed first.',
-      },
-      {
-        t: 'The planner refuses it: the block size must be at most 65536',
-        correct: true,
-        why: 'Both engines check the 2¹⁶ limit before the power-of-two rule, and keep the array of objects.',
-      },
-      {
-        t: 'Both engines accept it, and the compiled program throws a RangeError',
-        why: 'That is what happened before the limit: a miscompile, since the original runs fine.',
-      },
-    ],
-  },
-  {
-    q: 'Why would block sizes of 2³² and up compute wrong slots, even with enough memory?',
-    options: [
-      {
-        t: 'JavaScript takes a shift count modulo 32, so `i >> 32` is `i`',
-        correct: true,
-        why: 'The emitted `i >> sh` would stop dividing at all.',
-      },
-      {
-        t: 'Float64Array can’t hold that many numbers',
-        why: 'That is the allocation problem; the arithmetic problem is separate.',
-      },
-      {
-        t: '`trailing_zeros` overflows',
-        why: 'It returns at most 64 for a `u64`; the trouble is on the JavaScript side.',
-      },
-    ],
-  },
-  {
     q: 'Which statement about Viscosity’s hot/cold splitting is accurate?',
     options: [
       {
@@ -692,7 +567,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`// @viscosity aosoa(4)` above records `{ x, name }`, where `name` is a string. What happens?',
+    q: 'Viscosity is given `// @viscosity aosoa(4)` for a collection of records `{ x, name }`, where `name` is a string. What happens?',
     options: [
       {
         t: 'AoSoA for `x`, a plain array for `name`',
