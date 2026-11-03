@@ -2,11 +2,33 @@
 title: How to use this book
 order: 2
 ---
-import { TOTAL_DAYS } from '../../data/book.js';
+import { CORE_DAYS, SECTION_DAYS } from '../../data/book.js';
 
-**Fifteen minutes, four times a day, for {TOTAL_DAYS} days.** Every chapter is
-sized to about fifteen minutes, including its exercises and quiz. Four
-chapters make a day. The [day-by-day plan](/book/days/) shows where you are.
+**Pick your door.** The book is three sections, read in order, and you
+choose where to start:
+
+- **Already know TypeScript?** Start with the **core path** (Part II): in
+  {CORE_DAYS} days, at about an hour and four chapters a day, you build Drip,
+  its virtual machine and Viscosity in TypeScript, then learn Rust and
+  rebuild both in it, and ship them. It opens with a short refresher, so you
+  never sit through what you already know.
+- **New to programming, or new to JavaScript?** Start with the **Prelude**
+  (Part I, about {SECTION_DAYS.prelude} days), which teaches JavaScript and
+  TypeScript from the very beginning, and then carry straight on into the
+  core.
+- **The deep dives** (Parts X to XVIII) come after the core: parsing and type
+  theory, the rest of the middle end, a native back end, real JavaScript
+  engines, how language features are implemented, garbage collection, more
+  Rust, and extras. Read them in order, or pick the ones you need; each one
+  builds on the core and never repeats it.
+
+**Each chapter has a main path, and dropdowns.** The main path is the
+essential explanation, one picture, one strong example and an exercise,
+sized so that four chapters fit in an hour. Everything else (another
+analogy, more examples, the same idea in other languages, the formal
+notation, the deeper theory) waits in a closed dropdown for when you want
+it; the reading time in each chapter's header counts only the main path.
+The [day-by-day plan](/book/days/) shows where you are.
 
 **Start each day with your reviews.** As you read, you’ll meet *Quick
 recall* boxes. Try to answer each one in your head *before* you reveal it,
