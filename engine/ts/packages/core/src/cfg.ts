@@ -1,4 +1,4 @@
-// Control-flow graph utilities (the book's chapters “Basic blocks and control-flow graphs”, “Dominators” and “Loops”): reverse
+// Control-flow graph utilities (the book's chapters “IR, three-address code and control-flow graphs” and “Dominators and natural loops”): reverse
 // postorder, dominators, and natural loops.
 //
 // Dominators use the iterative algorithm of Cooper, Harvey and Kennedy
@@ -68,7 +68,7 @@ export interface Loop {
   depth: number;
 }
 
-/** Natural loops: for each back edge t→h where h dominates t (chapter “Loops”). */
+/** Natural loops: for each back edge t→h where h dominates t (chapter “Dominators and natural loops”). */
 export function naturalLoops(f: Func, idom = dominators(f)): Loop[] {
   const byHeader = new Map<BlockId, Set<BlockId>>();
   for (const b of f.blocks) {

@@ -1,4 +1,4 @@
-//! Control-flow graph utilities (the book's chapters “Basic blocks and control-flow graphs”, “Dominators” and “Loops”): reverse
+//! Control-flow graph utilities (the book's chapters “IR, three-address code and control-flow graphs” and “Dominators and natural loops”): reverse
 //! postorder, dominators, and natural loops.
 //!
 //! Dominators use the iterative algorithm of Cooper, Harvey and Kennedy
@@ -131,7 +131,7 @@ pub struct Loop {
 }
 
 /// Natural loops: one per header, the union of the loops of every back edge
-/// `t → h` where `h` dominates `t` (chapter “Loops”). Loops are listed in the
+/// `t → h` where `h` dominates `t` (chapter “Dominators and natural loops”). Loops are listed in the
 /// order their headers are first found.
 pub fn natural_loops(f: &Func, idom: &Dominators) -> Vec<Loop> {
     let mut by_header: IndexMap<BlockId, BTreeSet<BlockId>> = IndexMap::new();

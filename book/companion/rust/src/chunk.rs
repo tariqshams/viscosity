@@ -1,4 +1,4 @@
-//! Bytecode chunks and the instruction set (the book's chapters “Why bytecode?” and “Bytecode as data”).
+//! Bytecode chunks and the instruction set (the book's chapters “Why bytecode” and “Bytecode as data, and a disassembler”).
 //!
 //! Operands follow the opcode byte: a constant index is two bytes
 //! (big-endian), a stack slot, upvalue index or count is one byte, and a

@@ -1,4 +1,4 @@
-//! The layout analyses (the book's chapters “Finding collections” to “The cost model”). They run on VIR, so they work
+//! The layout analyses (the book's chapters “Finding collections, and inferring shapes” to “The cost model”). They run on VIR, so they work
 //! for any language plugin.
 //!
 //! | step | what it finds |
@@ -868,7 +868,7 @@ impl<'m> Analyzer<'m> {
                 }
             }
             // Fields that may hold non-numbers still get a column, just a
-            // plain array instead of a Float64Array (the book's chapter “Hot/cold splitting”).
+            // plain array instead of a Float64Array (the book's chapter “AoSoA and hot/cold splitting”).
             let c = &mut self.collections[ci];
             for (k, f) in c.fields.iter().enumerate() {
                 if self.col_numeric[ci][k] {

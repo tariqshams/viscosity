@@ -1,4 +1,4 @@
-// The syntax tree (the book's chapter “Syntax trees”). Every node is a plain object tagged with
+// The syntax tree (the book's chapter “Syntax trees and a tree printer”). Every node is a plain object tagged with
 // a `kind`, so TypeScript can narrow on it: a discriminated union
 // (the book's chapter “TypeScript II: unions and narrowing”).
 import type { Token } from './token.ts';
@@ -48,7 +48,7 @@ export type Stmt =
   | { kind: 'return'; keyword: Token; value: Expr | null }
   | { kind: 'class'; name: Token; superclass: (Expr & { kind: 'variable' }) | null; methods: (FunctionDecl & { name: Token })[] };
 
-/** Print an expression as a fully parenthesized string (chapter “Syntax trees”). */
+/** Print an expression as a fully parenthesized string (chapter “Syntax trees and a tree printer”). */
 export function printExpr(e: Expr): string {
   switch (e.kind) {
     case 'literal':

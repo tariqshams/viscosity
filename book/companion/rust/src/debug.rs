@@ -1,4 +1,4 @@
-//! A disassembler: bytecode as readable text (the book's chapter “Reading bytecode back: a disassembler”). The
+//! A disassembler: bytecode as readable text (the book's chapter “Bytecode as data, and a disassembler”). The
 //! layout matches the TypeScript `disassembleChunk` column for column.
 
 use crate::chunk::{Chunk, OpCode};

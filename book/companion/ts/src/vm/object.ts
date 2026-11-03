@@ -1,4 +1,4 @@
-// Heap objects and values (the book's chapters “Tagging values at run time” to “Objects that live on the heap” and “Frames: calling and returning in the VM” to “Objects and method calls in the VM”).
+// Heap objects and values (the book's chapters “Tagging values at run time” to “Heap objects and lists in the VM” and “Frames: calling and returning” to “Classes and method calls in the VM”).
 // A Value is a JavaScript primitive for none, booleans and numbers, or an
 // Obj: our own heap object, which the VM allocates and garbage-collects.
 import type { Chunk } from './chunk.ts';
@@ -53,7 +53,7 @@ export type Obj =
 export const isObj = (v: Value): v is Obj => typeof v === 'object' && v !== null;
 export const isString = (v: Value): v is ObjString => isObj(v) && v.type === 'string';
 
-/** FNV-1a: a simple, decent hash for strings (chapter “Finding things fast: hash tables”). */
+/** FNV-1a: a simple, decent hash for strings (chapter “Hash tables”). */
 export function hashString(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -117,7 +117,7 @@ export function describe(v: Value): string {
 }
 
 /** Drip's `==`. Strings are interned, so equal strings are the same object
- *  (chapter “String interning”) and identity is enough for every type. */
+ *  (chapter “String interning and globals by name”) and identity is enough for every type. */
 export const valuesEqual = (a: Value, b: Value): boolean => a === b;
 
 export const isFalsey = (v: Value): boolean => v === null || v === false;

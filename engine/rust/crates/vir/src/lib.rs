@@ -1,4 +1,4 @@
-//! VIR: Viscosity's intermediate representation (the book's chapter “VIR: Viscosity’s IR”).
+//! VIR: Viscosity's intermediate representation (the book's chapter “VIR: records, collections and opaque values”).
 //!
 //! VIR is language-neutral: a front-end plugin lowers its syntax tree into
 //! VIR, the analyses run on VIR, and the plugin uses the resulting plan to

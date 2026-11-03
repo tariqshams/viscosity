@@ -1,4 +1,4 @@
-// A hash table with open addressing and linear probing (the book's chapter “Finding things fast: hash tables”).
+// A hash table with open addressing and linear probing (the book's chapter “Hash tables”).
 // Keys are interned strings, so keys compare by identity.
 //
 // Storage is a struct of arrays: one array of keys and one of values,

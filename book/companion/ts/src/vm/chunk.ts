@@ -1,4 +1,4 @@
-// Bytecode chunks and Drip's instruction set (the book's chapters “Why bytecode?” to “Bytecode as data”).
+// Bytecode chunks and Drip's instruction set (the book's chapters “Why bytecode” to “Bytecode as data, and a disassembler”).
 //
 // Operands follow the opcode byte:
 //   k   a two-byte constant index (big-endian), so a function can hold

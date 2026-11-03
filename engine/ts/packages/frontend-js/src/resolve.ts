@@ -1,4 +1,4 @@
-// Scope analysis for JavaScript (the book's chapters “Finding every name before running: the resolver” and “Lowering JavaScript to VIR”): resolve every
+// Scope analysis for JavaScript (the book's chapters “The resolver” and “Lowering JavaScript to VIR”): resolve every
 // identifier to the binding it refers to, and record which function each
 // reference occurs in, so lowering knows which variables closures capture.
 import type { Node } from './estree.ts';

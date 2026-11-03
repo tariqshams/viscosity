@@ -1,5 +1,5 @@
 //! Differential test: every compiled program must behave exactly like the
-//! original when run with Node.js (the book's chapter “Differential testing at scale”), and every compiled
+//! original when run with Node.js (the book's chapter “End to end: benchmarks and differential testing at scale”), and every compiled
 //! Python program like the original when run with `python3`. Each half is
 //! skipped, with a message, when its interpreter is not installed.
 //!

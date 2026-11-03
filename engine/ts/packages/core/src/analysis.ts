@@ -1,4 +1,4 @@
-// The layout analyses (the book's chapters “Finding collections” to “The cost model”): run on VIR, so they work for
+// The layout analyses (the book's chapters “Finding collections, and inferring shapes” to “The cost model”): run on VIR, so they work for
 // any language plugin.
 //
 //  numeric      which values are provably JavaScript numbers (a dataflow
@@ -435,7 +435,7 @@ export function analyze(m: Module): Analysis {
       }
     }
     // Fields that may hold non-numbers still get a column, just a plain
-    // JavaScript array instead of a Float64Array (the book's chapter “Hot/cold splitting”).
+    // JavaScript array instead of a Float64Array (the book's chapter “AoSoA and hot/cold splitting”).
     for (const f of c.fields) if (colNumeric.get(`${c.binding}.${f}`)) c.numericFields.add(f);
   }
 

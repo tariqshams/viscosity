@@ -1,11 +1,11 @@
-// Runtime values and environments (the book's chapters “Running expressions: a tree that computes” to “Records with behaviour: classes in Drip”).
+// Runtime values and environments (the book's chapters “Running expressions: a tree that computes” to “Classes, methods and inheritance in Drip”).
 import type { FunctionDecl } from './ast.ts';
 import type { Token } from './token.ts';
 import { RuntimeError } from './errors.ts';
 
 export type Value = null | boolean | number | string | DripList | DripFunction | NativeFunction | DripClass | DripInstance;
 
-/** A table of names to values, with a link to the enclosing table (chapter “Environments and scope”). */
+/** A table of names to values, with a link to the enclosing table (chapter “Statements, environments and control flow”). */
 export class Environment {
   readonly values = new Map<string, Value>();
   readonly enclosing: Environment | null;
@@ -44,7 +44,7 @@ export class DripFunction {
     this.closure = closure;
     this.isInitializer = isInitializer;
   }
-  /** The same method, with `self` bound to `instance` (chapter “Records with behaviour: classes in Drip”). */
+  /** The same method, with `self` bound to `instance` (chapter “Classes, methods and inheritance in Drip”). */
   bind(instance: DripInstance): DripFunction {
     const env = new Environment(this.closure);
     env.define('self', instance);

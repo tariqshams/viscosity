@@ -1,5 +1,5 @@
 // Run a program in a fresh, isolated VM context, capturing console.log and
-// any uncaught error. Used for differential testing (the book's chapter “Differential testing at scale”).
+// any uncaught error. Used for differential testing (the book's chapter “End to end: benchmarks and differential testing at scale”).
 import vm from 'node:vm';
 import { inspect } from 'node:util';
 
