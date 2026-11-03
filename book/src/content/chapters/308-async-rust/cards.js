@@ -1,4 +1,4 @@
-// Chapter 278 cards: recall prompts, examples, exercises and quiz.
+// Async Rust cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -12,11 +12,11 @@ export const prompts = {
   },
   'waker-why': {
     q: 'A future returns `Poll::Pending` but never touches the waker in its `Context`. What happens?',
-    a: 'Nothing ever polls it again (in a real executor), so it never finishes. Pending must come with an arranged wake.',
+    a: 'No executor is obliged to poll it again, so it may never finish: an executor polls a task after its waker is called, and nothing will call it. Returning `Pending` means promising a wake.',
   },
   'pin-read': {
     q: 'In `poll(self: Pin<&mut Self>, ...)`, what does `Pin` add to `&mut Self`?',
-    a: 'A promise that the future will not be moved in memory from now on.',
+    a: 'A promise that the value it points to will not be moved in memory again (unless its type is `Unpin`, for which moving is harmless), so a future that points into itself stays valid.',
   },
   lazy: {
     q: 'You call an `async fn` in Rust and throw away the result. Does its body run?',

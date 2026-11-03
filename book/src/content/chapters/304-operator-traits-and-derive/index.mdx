@@ -2,82 +2,54 @@
 n: 304
 day: 35
 part: XVII
-title: 'Operator traits and derive'
-tagline: 'In Rust, a + b is a method call in disguise, so your own types can have +, [], == and += by implementing a trait. And for the traits whose impls are pure routine, #[derive] writes them for you, field by field.'
+title: 'Operator traits, Drop and derive'
+tagline: 'An operator is a trait call, so v * 2.0, a += b and heap[h] are three more impls; the end of a scope is a trait call too, and Drop is the trait it calls, in an order you can read off the source.'
 objectives:
-  - Implement Add, Mul, Neg, AddAssign and Index for your own types, choosing the right Rhs and Output.
-  - Rewrite an expression with operators into the trait method calls rustc turns it into.
-  - Use #[derive] for Debug, Clone, Copy, PartialEq, Default and friends, and say what each derived impl does.
-  - Explain when derive cannot be used, or adds bounds you do not want.
-introduces: []
-uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, borrow, struct, impl, self-receiver, enum, match, vec, trait, rust-generics, trait-bound, associated-type, std-traits, arena, typed-index, operator-overloading, typescript, garbage-collection, hash-table, operator-traits, derive]
-sources: [rust-book-advanced-traits, rust-std-ops-add, rust-std-ops-index, rust-book-derivable-traits, rust-std-clone, rust-std-fmt, klabnik2026]
+  - Implement Mul with a right-hand type of its own, AddAssign and Index for your own types, and rewrite an expression into the trait calls rustc makes of it.
+  - Say which bounds derive adds on a generic type, and write the impl by hand when they are wrong.
+  - Implement Drop, and predict when it runs and in what order, for locals, struct fields, let _ and temporaries.
+  - Use std::mem::drop where x.drop() is refused, and explain why a Drop type can be neither Copy nor taken apart by a move.
+introduces: [drop-trait, operator-trait]
+uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, struct, impl, self-receiver, enum, match, vec, trait, rust-generics, trait-bound, associated-type, std-traits, arena, typed-index, rc, operator-overloading, typescript, garbage-collection, operator-traits, derive]
+sources: [rust-book-advanced-traits, rust-std-ops-add, rust-std-ops-index, rust-book-derivable-traits, rust-std-clone, rust-reference-destructors, klabnik2026]
 ---
 import DesugarSteps from '../../../components/diagrams/ch304/DesugarSteps';
-import DeriveExpand from '../../../components/diagrams/ch304/DeriveExpand';
+import DropOrderSteps from '../../../components/diagrams/ch304/DropOrderSteps';
 
-{/* ── remnant of old chapter 125: keep only what goes beyond the core ── */}
+## One line of physics
 
-## Particles that add
+You met operators as trait calls (`a + b` is `Add::add(a, b)`) and
+`#[derive]` in *Traits, trait objects and derive*, and values dropped
+when their owner goes in *Ownership: moves, copies and clones*. This
+chapter goes further: operators whose two sides have different types,
+the assigning and indexing operators, the bounds a derive quietly adds,
+and the `Drop` trait itself.
 
-Viscosity's whole subject is particles: a position and a velocity,
-moved a little every frame. With a small vector type we would like to
-write the physics the way it is written on paper:
+Viscosity's whole subject is particles, and the line we want to write
+is the one from a physics book:
 
 ```rust
 p.pos += p.vel * dt;
 ```
 
-TypeScript cannot do this: JavaScript gives you no way to say what `+`
-means for your own objects, so a TypeScript game writes
-`add(pos, scale(vel, dt))`. Rust can, because to rustc an operator is
-only a short way of writing a call to a trait method
-(*Operators, sugar and desugaring* showed this in its MIR). Step
-through how rustc reads the line:
+With only `Add` it does not compile: `p.vel * dt` multiplies a `V2` by
+an `f64`, and `+=` is a different operator from `+`. Step through how
+rustc reads the line, and which impls it goes looking for:
 
 <DesugarSteps client:visible />
 
 <Analogy title="a keyboard shortcut">
 Ctrl+C means "copy" in every program, but each program decides what
 copying a thing means: text in an editor, a file in a file manager. `+`
-means "call `Add::add`" for every type, and each type decides what
-adding means by implementing `Add`.
+means "call `Add::add`" for every type, `+=` means "call
+`AddAssign::add_assign`", and each type decides what they do by
+implementing the trait.
 <span slot="breaks">Programs can invent new shortcuts; Rust has a fixed
 list of operators, each tied to one trait, and you cannot add a new
 operator or redefine `+` for `i32`.</span>
 </Analogy>
 
-Here is `Add` for a two-number vector, the simplest impl there is:
-
-```rust
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct V2 { x: f64, y: f64 }
-
-impl Add for V2 {
-    type Output = V2;
-    fn add(self, o: V2) -> V2 {
-        V2 { x: self.x + o.x,
-             y: self.y + o.y }
-    }
-}
-```
-
-`impl Add for V2` is short for `impl Add<V2> for V2`: the trait has a
-generic parameter `Rhs` (the type on the right of `+`) that defaults to
-`Self`<Cite id="rust-book-advanced-traits" />. `type Output = V2;` is an
-associated type (last chapter) saying what `a + b` produces. `add`
-takes both sides *by value*, which is why `V2` derives `Copy`: without
-it, `a + b` would move `a` and `b` away.
-
-<Callout kind="definition">
-The **operator traits** are the traits rustc calls for operators:
-`Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg`, `Not` and the bitwise ones in
-`std::ops`, their assigning forms `AddAssign` and so on, `Index` and
-`IndexMut` for `a[i]`<Cite id="rust-std-ops-index" />, and `PartialEq`
-and `PartialOrd` in `std::cmp` for `==` and `<`. The arithmetic traits
-take a generic `Rhs` (default `Self`) and an associated `Output`; `a +
-b` means `Add::add(a, b)`<Cite id="rust-std-ops-add" />.
-</Callout>
+## The operator traits in full
 
 <Formal title="What rustc writes for each operator">
 
@@ -93,11 +65,24 @@ a < b   ⇝ PartialOrd::lt(&a, &b)
 <span slot="read">Read ⇝ as "is compiled as". Plus passes both sides
 by value; plus-equals borrows the left side mutably; indexing borrows
 the container and then follows the reference it gets back (or uses
-IndexMut when the place is assigned to); equality and ordering borrow
-both sides, so comparing never moves anything.</span>
+IndexMut when the place is assigned to or mutably borrowed); equality
+and ordering borrow both sides, so comparing never moves
+anything.</span>
 </Formal>
 
-<Examples of="operator-traits">
+<Callout kind="definition">
+An **operator trait** is a trait in `std::ops` (or `std::cmp`) that
+rustc calls for an operator: `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg`,
+`Not` and the bitwise ones, their assigning forms `AddAssign` and so
+on, `Index` and `IndexMut` for `a[i]`<Cite id="rust-std-ops-index" />,
+and `PartialEq` and `PartialOrd` for `==` and `<`. The binary
+arithmetic traits have a generic parameter `Rhs`, the type on the
+right, which defaults to `Self`, and an associated type `Output`, the
+type of the result; the assigning forms have `Rhs` but no `Output`,
+because they change the left side in place<Cite id="rust-std-ops-add" /><Cite id="rust-book-advanced-traits" />.
+</Callout>
+
+<Examples of="operator-trait">
 
 ```rust
 impl Mul<f64> for V2 {      // v * 2.0
@@ -131,157 +116,238 @@ impl<T: HeapObject> Index<Gc<T>> for Heap {
 </Examples>
 
 The first picks a different right-hand side: `Mul<f64>` makes `v * 2.0`
-legal (but not `2.0 * v`, which would need `impl Mul<V2> for f64`). The
-second has no `Output`, because `+=` changes its left side in place
-through `&mut self`. The third is drip-rs: the heap keeps one arena per
-object type, and this impl lets the VM write `heap[h]` for a handle of
-any of them; `index` returns a reference, and rustc adds the `*`.
-Forget the impl, and rustc says plainly what is missing:
+legal, but not `2.0 * v`, because the *left* operand chooses the impl,
+and that one would be `impl Mul<V2> for f64` (which you may write,
+since `V2` is yours). The second has no `Output`: `+=` takes the left
+side as `&mut self` and changes it, so the whole expression is `()`.
+The third is drip-rs: the heap keeps one arena per kind of object, and
+this impl lets the VM write `heap[h]` for a handle to any of them.
+`index` returns a *reference* and rustc adds the `*`, so `heap[h]`
+names the object in place instead of copying it out; its twin,
+`IndexMut`, returns `&mut T` and is what `heap[h].field = x` calls.
+
+<Prompts ids={['op-rhs', 'op-assign', 'op-index', 'op-cmp']} />
+
+## The bound that derive adds
+
+A derive writes the impl you would have written, field by field; on a
+generic type it also writes a bound you may not want. drip-rs's handle
+type is an index plus a zero-size marker that remembers which kind of
+object it points to:
+
+```rust
+#[derive(Clone, Copy)]
+struct Gc<T> {
+    index: u32,
+    marker: PhantomData<T>,
+}
+```
+
+That derive expands to `impl<T: Clone> Clone for Gc<T>`, with a bound
+on `T`, because derive cannot see that no field holds a `T`. A
+`Gc<Closure>` then has no `clone` when `Closure` is not `Clone`, and
+rustc 1.97 says so, with a hint that names the cure (trimmed):
 
 ```text
-error[E0369]: cannot add `V2` to `V2`
-note: an implementation of `Add` might be
-  missing for `V2`
+error[E0599]: the method `clone` exists for
+  struct `Gc<Closure>`, but its trait
+  bounds were not satisfied
+  = help: consider manually implementing
+    the trait to avoid undesired bounds
 ```
 
-<Prompts ids={['op-desugar', 'op-rhs', 'op-byvalue', 'op-index']} />
-
-## derive: the routine impls, written for you
-
-Look back at `V2`'s first line. Writing `Debug`, `Clone`, `Copy` and
-`PartialEq` by hand would take twenty lines that all say the obvious
-thing: print each field, clone each field, compare each field.
-
-<Analogy extra title="a form filled from your profile">
-A website that already knows your name and address fills in the
-delivery form for you, box by box, from what it knows. `#[derive]` fills
-in an impl the same way, field by field, from each field's own impl.
-<span slot="breaks">Autofill leaves a box empty when it knows nothing.
-derive refuses outright: if one field lacks the trait, there is no impl
-at all, and rustc says which field is to blame.</span>
-</Analogy>
-
-<Figure takeaway="derive writes the impl you would have written: one line per field." caption="What #[derive(Clone, PartialEq, Debug)] produces for V2, written out by hand (simplified). Each method uses the same trait on every field, in order.">
-  <DeriveExpand />
-</Figure>
-
-<Callout kind="definition">
-**`#[derive(...)]`** on a struct or enum asks the compiler to write
-impls of the named traits, using each field's own impl: `Debug` prints
-`V2 { x: 1.0, y: 2.0 }`, `Clone` clones each field, `PartialEq` is true
-when every field is equal, `PartialOrd` compares fields in the order
-they are declared, `Default` uses each field's default, and `Hash`
-hashes each field<Cite id="rust-book-derivable-traits" />. Every field
-must implement the trait. For a generic type, derive also requires the
-trait of each type parameter (`T: Clone`)<Cite id="rust-std-clone" />.
-`Display` cannot be derived, because only you know how a value should
-look to a user<Cite id="rust-std-fmt" />.
-</Callout>
-
-<Examples of="derive">
-
-```rust
-#[derive(Debug, Default)]
-struct Args {          // the Viscosity CLI
-    cmd: String,
-    files: Vec<PathBuf>,
-    // ...
-}
-```
-
-```rust
-// companion/rust/src/value.rs
-// "The derived `==` is Drip's `==`"
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Value {
-    None,
-    Bool(bool),
-    Number(f64),
-    // ... handles to heap objects
-}
-```
+So drip-rs writes them by hand, with no bound at all:
 
 ```rust
 // companion/rust/src/object.rs
-// derive would demand T: Clone, ...
 impl<T> Clone for Gc<T> {
     fn clone(&self) -> Self { *self }
 }
 impl<T> Copy for Gc<T> {}
 ```
 
-</Examples>
+<Prompts ids={['derive-bound']} />
 
-The first is the command line tool's parsed arguments. `parse_args`
-starts from `Args { cmd: ..., ..Args::default() }`, and the derived
-`Default` fills each field with its own default: an empty `String`, an
-empty `Vec`, and for the `opts` field the hand-written
-`CompileOptions::default()` from the last chapter. The second is Drip's value type, where derive is
-the specification: two `Number`s are equal exactly when their `f64`s are
-`==`, so `NaN` is not equal to itself, as Drip requires. The third is
-where derive is wrong. A `Gc<T>` is only an index (with a zero-size
-marker naming `T`), so it can always be copied; but `#[derive(Clone)]`
-would write `impl<T: Clone> Clone for Gc<T>`, and a handle to a
-non-cloneable object would lose `clone`. So drip-rs writes `Clone`, `Copy`,
-`PartialEq`, `Eq` and `Debug` for it by hand.
+<More title="More: when derive is the specification">
 
-The classic refusal is `Copy` on a type that owns heap memory:
+The same file writes `PartialEq`, `Eq` and `Debug` for `Gc<T>` by hand
+for the same reason. Where there is no generic parameter, derive is
+often the specification itself: drip-rs's `Value` enum derives
+`PartialEq`, and the derived `==` compares two `Number`s with `f64`'s
+own `==`, so `NaN` is not equal to itself, exactly as Drip
+requires<Cite id="rust-book-derivable-traits" />.
 
-```text
-error[E0204]: the trait `Copy` cannot be
-  implemented for this type
-1 | #[derive(Clone, Copy)]
-  |                 ---- in this derive
-  |                 macro expansion
-2 | struct Tok { text: String, line: u32 }
-  |        ^^^   ------------ this field
-  |              does not implement `Copy`
-```
+</More>
 
-<OtherLanguages title="Equal points">
+## Drop: code that runs at the end
+
+Some values own more than memory: a lock to release, a file to flush,
+a string that only C's `free` may release. When a type needs to do
+something at the moment it is dropped, it implements `Drop`:
 
 ```rust
-#[derive(PartialEq)]
-struct Pt { x: f64, y: f64 }
+struct Noisy(&'static str);
 
-let same = Pt { x: 1.0, y: 2.0 }
-    == Pt { x: 1.0, y: 2.0 }; // true
+impl Drop for Noisy {
+    fn drop(&mut self) {
+        println!("drop {}", self.0);
+    }
+}
 ```
 
-```ts
-const a = { x: 1, y: 2 };
-const b = { x: 1, y: 2 };
-a === b; // false: two objects
-a.x === b.x && a.y === b.y; // true
+`Drop` has one method, `drop(&mut self)`, which rustc calls just
+before the value's memory is reclaimed. Now give `Noisy` some company:
+a `Pair` that owns two of them and has a `Drop` of its own, which
+prints the names of its fields. Step through a `main` that makes a few,
+and watch the order in which the lines appear:
+
+<DropOrderSteps client:visible />
+
+<Run id="drop-order" />
+
+Four rules are at work, all from the Rust
+Reference<Cite id="rust-reference-destructors" />. Locals are dropped
+in reverse order of declaration, as you saw in *Ownership*. A value's
+own `drop` runs *first*, while its fields are still whole (which is why
+`Pair` can print them), and then its fields are dropped in the order
+they are *declared*, the opposite of the rule for locals. `let _ =
+Noisy("underscore")` binds nothing, because `_` is a pattern that
+matches without taking ownership, so the new value has no owner and is
+dropped at the end of that statement (while `let _ = x;` on an
+existing variable leaves `x` exactly as it was); give it a name, even
+`_u`, and it lives to the end of the block. And a
+temporary, a value that is never given a name, such as the `Noisy` in
+`let n = Noisy("t").0.len();`, is dropped at the end of the statement
+that made it, so "drop t" prints before the next line runs (a rule
+that matters for lock guards, as *Checkpoint: a concurrent file indexer
+in Rust* will show).
+
+<Analogy extra title="checking out of a hotel">
+When you check out, you hand back the key and the room is cleaned; you
+never ring for the cleaner yourself, and the hotel never cleans a room
+you are still in. `drop` is the cleaning, and leaving is the end of the
+owner's scope.
+<span slot="breaks">A guest can leave early and ask for the bill; in
+Rust you leave early with `drop(x)`, which moves the value away, never
+by asking the room to clean itself with `x.drop()`.</span>
+</Analogy>
+
+What you may not do is call the method yourself:
+
+```text
+error[E0040]: explicit use of destructor
+  method
+help: consider using `drop` function
 ```
 
-</OtherLanguages>
+If `x.drop()` were allowed, `x` would still be owned afterwards and
+would be dropped *again* at the end of its scope. `std::mem::drop`
+(in the prelude, so plain `drop`) avoids that by taking ownership; its
+source says it "is not magic; it is literally defined as `pub fn
+drop<T>(_x: T) {}`", so the value is dropped when that empty function
+returns, and `x` is moved and cannot be used again.
 
-In TypeScript `===` on objects asks "the very same object?", and there
-is no way to change that, so comparing fields is a helper you write.
-Rust's `==` asks `PartialEq`, and one derive makes it compare fields.
+<Callout kind="definition">
+The **`Drop` trait** has one method, `fn drop(&mut self)`, which rustc
+calls automatically when a value goes out of scope, is overwritten by
+an assignment, or is moved into a function that lets it go, such as
+`std::mem::drop`. A value's own `drop` runs before its fields are
+dropped; fields are dropped in declaration order and locals in reverse
+order of declaration. Calling `drop` as a method is error E0040, a
+type with a `Drop` impl cannot be `Copy` (E0184), and you cannot move
+a field out of such a value (E0509)<Cite id="rust-reference-destructors" />.
+</Callout>
 
-<Run id="particle-ops" />
+<Examples of="drop-trait">
 
-<Prompts ids={['derive-what', 'derive-fields', 'derive-display', 'derive-bound']} />
+```rust
+struct Timer(&'static str, Instant);
+impl Drop for Timer {
+    fn drop(&mut self) {
+        eprintln!("{}: {:?}", self.0,
+                  self.1.elapsed());
+    }
+}
+let _t = Timer("parse", Instant::now());
+```
+
+```rust
+#[derive(Clone, Copy)]
+struct H(u32);
+impl Drop for H { fn drop(&mut self) {} }
+// error[E0184]: the trait `Copy` cannot be
+//   implemented for this type; the type
+//   has a destructor
+```
+
+</Examples>
+
+The first is a **guard**, a value whose only job is its `drop`: `_t`
+lives to the end of the block, so the time it prints covers the whole
+block, however it is left (the end, `return` or `?`). A
+`MutexGuard` (in *Sharing and sending between threads*) is the same
+idea, releasing a lock instead of printing a time. The second is why
+`Copy` and `Drop` exclude each other: a copy is made by copying bits,
+so two values would both run the same `drop`, and the one resource
+would be released twice.
+
+<More title="More: moving out, panics, forget, and what drop cannot do">
+
+The same worry as `Copy` stops you taking a value apart:
+
+```rust
+struct Pair { left: String, right: String }
+impl Drop for Pair { fn drop(&mut self) {} }
+fn take(p: Pair) -> String { p.left }
+// error[E0509]: cannot move out of type
+//   `Pair`, which implements the `Drop`
+//   trait
+```
+
+`Pair::drop` still runs when `p` goes, and it may read both fields, so
+rustc will not let you take `left` away first. Clone it, or use
+`std::mem::take(&mut p.left)` (with `mut p`), which leaves an empty
+`String` in its place.
+
+When a thread panics, Rust *unwinds* by default: it leaves each
+function in turn, and drops every value those functions own on the
+way, exactly as if each scope had ended. So guards run even on a
+panic, which is what lets a `Mutex` notice that its holder panicked
+and mark itself poisoned. (A program built with `panic = "abort"`
+skips this and stops at once.)
+
+`std::mem::forget(x)` does the opposite of `drop`: it takes ownership
+and never runs `x`'s destructor. It is safe to call, because leaking
+memory is not undefined behaviour, which in turn means unsafe code may
+never *rely* on a `drop` running; that rule shapes the design of every
+safe wrapper (*Safety invariants and safe wrappers*).
+
+Finally, `drop` takes `&mut self`, not `self`: it cannot move the
+fields out or stop them being dropped afterwards. To hand a field on
+from inside `drop`, store it in an `Option` and `take()` it.
+
+</More>
+
+<Prompts ids={['drop-fields', 'drop-underscore', 'drop-explicit', 'drop-copy']} />
 
 ## Your turn
 
-<Exercise id="vec2" />
+<Exercise id="tally" />
+
+<Exercise id="grid" />
 
 ## What you learned
 
-- Operators are trait calls: `a + b` is `Add::add(a, b)`, `a[i]` is
-  `*Index::index(&a, i)`, `a == b` is `PartialEq::eq(&a, &b)`.
-  Implement the **operator trait** to give your type the operator.
-- `Rhs` (default `Self`) chooses the right-hand type; the associated
-  `Output` chooses the result.
-- **`#[derive]`** writes `Debug`, `Clone`, `Copy`, `PartialEq`,
-  `PartialOrd`, `Default` and `Hash` field by field; every field must
-  have the trait, generic types get `T: Trait` bounds, and `Display`
-  is always yours to write.
+- `Rhs` (default `Self`) picks an operator's right-hand type, the left
+  operand picks the impl, and `Output` is the result; `+=` borrows the
+  left side mutably, and `a[i]` is `*Index::index(&a, i)`.
+- On a generic type, `#[derive]` adds `T: Trait` bounds; when no field
+  holds a `T`, write the impl by hand.
+- **`Drop`** runs a value's own `drop`, then its fields in declaration
+  order; locals go in reverse order, `let _ =` and temporaries at the
+  end of the statement. Write `drop(x)`, never `x.drop()`.
 
-Next: threads, and the two marker traits that make data races a compile
-error.
+Next: *Threads, Send and Sync*, and the two marker traits that make
+data races a compile error.
 
 <Quiz />

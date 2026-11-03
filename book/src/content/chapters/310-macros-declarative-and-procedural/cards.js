@@ -1,4 +1,4 @@
-// Chapter 280 cards: recall prompts, examples, exercises and quiz.
+// Macros: declarative and procedural cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'Rust pastes the matched `expr` as one syntax-tree node, so it acts like `(1 + 2) * (1 + 2)`; C pastes text, giving `1 + 2 * 1 + 2`.',
   },
   'hygiene-rust': {
-    q: 'A macro’s transcriber uses a variable `x` that the macro was not given, and the caller has a `let x`. What happens?',
+    q: 'A `macro_rules!` macro defined outside any function has a transcriber that uses a local variable `x` it was not given. It is called where the caller has `let x = 10;`. What happens?',
     a: 'Error E0425 “cannot find value `x`”: hygiene stops the macro from capturing the caller’s local. Pass it in as an `ident`.',
   },
 };

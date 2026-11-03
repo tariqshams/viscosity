@@ -262,7 +262,7 @@ fn for_each_parallel<T: Send>(
 </Examples>
 
 The first swaps `Rc` for `Arc`, whose count is atomic, so it is `Send`.
-The second swaps `RefCell` for an atomic counter (*Atomics and happens-before*, in Part X), which is
+The second swaps `RefCell` for an atomic counter (*Atomics and happens-before*), which is
 `Sync`, so two scoped threads may both increment it through `&`. The
 third is the signature of Viscosity's parallel build: every result `T`
 must be `Send`, because it is made on a worker thread and handed back,

@@ -1,4 +1,4 @@
-// Chapter 285 cards: recall prompts, examples, exercises and quiz.
+// Docs, doc tests and clippy cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -338,7 +338,7 @@ export const quiz = [
       {
         t: 'When `cargo test` runs, which fails the doc test with “assertion `left == right` failed”',
         correct: true,
-        why: 'That is what happened to the broken `to_f` example under cargo 1.97.',
+        why: 'A doc test fails with the same message a `#[test]` would give.',
       },
     ],
   },

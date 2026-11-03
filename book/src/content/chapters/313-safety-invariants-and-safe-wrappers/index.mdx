@@ -71,7 +71,8 @@ touch the drawer.</span>
 Three words, three different promises. A **safety contract** belongs
 to an `unsafe fn`: the conditions its *caller* must make true, written
 in a `# Safety` section of its documentation, as with
-`get_unchecked`'s "the index is in bounds" in *Unsafe Rust*. A
+`get_unchecked`'s "the index is in bounds" in *unsafe and raw
+pointers*. A
 **safety invariant** belongs to a *type*: a condition every value of
 it satisfies whenever safe code can see it, such as "every byte of an
 `Ascii` is below 128", or the standard library's "a `str` is always
@@ -173,7 +174,7 @@ rustc's error E0603. The runnable one wraps memory owned by C. `CText`
 holds a pointer from C's `strdup`, and its invariant is "non-null,
 NUL-terminated, from `strdup`, and freed by nobody else". Its methods
 rely on that (`CStr::from_ptr` needs it), and its `Drop` impl (the
-trait from *Associated types and the standard traits*) calls C's
+trait from *Operator traits, Drop and derive*) calls C's
 `free` exactly once. It prints `"hi from C"`, `9 bytes`, and then
 `free("hi from C")` as the value goes out of scope.
 
@@ -185,7 +186,7 @@ program printed:
 ```text
 "hi from C"
 free("hi from C")
-free("\x16\xc3\xf6C\x94U")
+free("@\x88\xfb\xc1\x9fU")
 free(): double free detected in tcache 2
 Aborted
 ```

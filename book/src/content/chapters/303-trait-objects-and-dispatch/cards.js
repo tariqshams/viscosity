@@ -1,4 +1,4 @@
-// Chapter 273 cards: recall prompts, examples, exercises and quiz.
+// Trait objects and dispatch cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,8 +7,8 @@ export const prompts = {
     a: 'Loads the vtable pointer from the fat pointer, then loads the method’s address from a fixed slot in the vtable; then it makes an indirect call.',
   },
   'dyn-inline': {
-    q: 'Why could rustc vectorise `total::<Sq>` but not `total_dyn`?',
-    a: 'In the generic copy it knew the body of `area` and inlined it; through `dyn` the body is unknown until run time, so it can only call it, one element at a time.',
+    q: 'A loop sums `s.area()` over a slice. Why can rustc vectorise it when the elements are a concrete type reached through a generic `S: Shape`, but not when they are `&dyn Shape`?',
+    a: 'In the generic copy the body of `area` is known, so it is inlined and the loop can be vectorised; through `dyn` the body is unknown until run time, so the loop can only call it, one element at a time.',
   },
   'dyn-enum': {
     q: 'When is an `enum` a better choice than `dyn Trait` for a set of types?',
@@ -28,11 +28,11 @@ export const prompts = {
   },
   'compat-fix': {
     q: 'What does adding `where Self: Sized` to one method of a trait do?',
-    a: 'It leaves that method out of the vtable: concrete types can still call it, `dyn Trait` cannot, and the trait becomes usable as `dyn`.',
+    a: 'It leaves that method out of the vtable: concrete types can still call it, `dyn Trait` cannot, and that method no longer stops the trait being used as `dyn`.',
   },
   'compat-trace': {
-    q: 'Why can drip-rs’s collector take its roots as `&[&dyn Trace]`?',
-    a: '`Trace` has one method, `trace(&self, ...)`, with no generics and no `Self` outside the receiver, so it is dyn compatible.',
+    q: 'A trait `Trace` has one method, `fn trace(&self, m: &mut Marks)`. Why can a function take a list of roots as `&[&dyn Trace]`?',
+    a: 'The method takes `&self`, has no type parameters and mentions `Self` nowhere else, so a vtable can hold it: the trait is dyn compatible.',
   },
 };
 
@@ -274,7 +274,7 @@ fn total(xs: &[Box<dyn Shape>]) -> f64 {
 
 export const quiz = [
   {
-    q: 'In the chapter’s listings, why does `total::<Sq>` handle eight shapes per loop trip while `total_dyn` handles one?',
+    q: 'Compiled with `-O`, a generic `fn total<S: Shape>(xs: &[S])` called with `S = Sq` handles eight elements per loop trip, while the same loop over `&[&dyn Shape]` handles one. Why?',
     options: [
       {
         t: 'Generic code is always unrolled eight times.',
@@ -350,7 +350,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Viscosity decides a collection’s layout at run time. Where should a `dyn Layout` call go for speed?',
+    q: 'A program chooses each collection’s data layout at run time and reaches it through `dyn Layout`. Where should the `dyn` call go for speed?',
     options: [
       {
         t: 'Inside the loop, once per particle.',

@@ -9,7 +9,7 @@ objectives:
   - Use rayon::join for divide-and-conquer work.
   - Explain work stealing, and why it balances uneven work better than equal chunks.
   - Compare rayon with the shared counter in Viscosity's parallel build, and say when each fits.
-introduces: [rayon, work-stealing]
+introduces: [data-parallelism, rayon, work-stealing]
 uses: [rust, cargo, crate, rust-functions, slice, vec, struct, result, trait, rust-generics, trait-bound, associated-type, rust-closure, rust-iterator, rust-thread, send-sync, arc-mutex, atomics, data-race, rc, webassembly, typescript, event-loop, promise]
 sources: [rayon-readme, rayon-faq, rayon-core-source, crossbeam-deque-docs, rust-std-thread-scope, rust-std-available-parallelism]
 ---
@@ -59,6 +59,28 @@ compiled by this book's exercise checker, which has no access to
 crates, so the rayon code here was built and run separately, as a cargo
 project using rayon 1.12.0 with Rust 1.97; the exercise uses only
 `std`.)
+
+That chain is **data parallelism**: one operation, applied to many
+independent items, with the items shared out among cores. It is the
+opposite of giving each thread a different *job* (a parser here, a
+logger there); every worker does the same thing, to its own part of the
+data, and the answer is the same as the sequential one.
+
+<Examples of="data-parallelism">
+
+```rust
+// same work, every element, every core
+let lens: Vec<usize> = names
+    .par_iter()
+    .map(|s| s.len())
+    .collect();
+```
+
+</Examples>
+
+Each length depends only on its own string, so no two elements need to
+talk to each other; rayon can hand any slice of `names` to any worker,
+and `collect` puts the lengths back in the order of `names`.
 
 <Analogy title="a removal crew">
 You point at a room and say "all of this goes in the van". You do not
@@ -137,7 +159,7 @@ it captures (use `.sum()`, or an atomic). And a `Vec<Rc<i64>>` has no
 `par_iter` at all (E0599, "trait bounds were not satisfied"), because
 `Rc` is not `Sync`.
 
-<Prompts ids={['rayon-what', 'rayon-order', 'rayon-fn', 'rayon-crate']} />
+<Prompts ids={['data-par', 'rayon-what', 'rayon-order', 'rayon-fn', 'rayon-crate']} />
 
 ## Work stealing
 

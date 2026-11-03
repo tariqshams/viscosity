@@ -1,4 +1,4 @@
-// Chapter 283 cards: recall prompts, examples, exercises and quiz.
+// Safety invariants and safe wrappers cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,11 +19,11 @@ export const prompts = {
     a: 'Otherwise any safe code anywhere could set the field and break it. Privacy limits the code you must check to one module.',
   },
   'derive-clone': {
-    q: 'Why did `#[derive(Clone)]` on `CText` (which owns a C pointer) crash the program?',
+    q: 'A wrapper owns a pointer from C’s `strdup` and calls `free` on it in its `Drop`. Why does adding `#[derive(Clone)]` lead to a double free?',
     a: 'The derived clone copied the pointer, so two values owned one string and both freed it: “double free detected”.',
   },
   'drop-once': {
-    q: 'What invariant lets `CText`’s `Drop` call C’s `free` safely?',
+    q: 'A type’s `Drop` calls C’s `free` on a pointer it holds. What must its invariant say about that pointer for this to be safe?',
     a: 'The pointer is non-null, came from `strdup`, and nothing else frees it, so it is freed exactly once.',
   },
   'trust-generic': {
@@ -338,7 +338,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`Ascii`’s field is made `pub`. Its `new`, `push` and `as_str` are unchanged and all tests pass. Is it still sound?',
+    q: '`pub struct Ascii(Vec<u8>)` keeps the invariant “every byte is less than 128” by checking in `new` and `push`, and its `as_str` calls `from_utf8_unchecked`. The field is made `pub`, nothing else changes, and all tests pass. Is it still sound?',
     options: [
       {
         t: 'Yes: the unsafe block did not change',
@@ -365,7 +365,7 @@ export const quiz = [
       {
         t: '`#[derive(Clone)]`',
         correct: true,
-        why: 'It copies the pointer, so two values free the same memory: here, “free(): double free detected”.',
+        why: 'It copies the pointer, so two values free the same memory: glibc then reports “free(): double free detected”.',
       },
       {
         t: 'A method that returns `&CStr` borrowed from `&self`',

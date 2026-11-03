@@ -57,8 +57,8 @@ token stream as "roughly equivalent to `Vec<TokenTree>`", where a
 **token tree** is an identifier (`Ident`), a punctuation mark
 (`Punct`), a literal (`Literal`), or a **group**: a bracketed run of
 token trees, delimited by `( )`, `[ ]` or `{ }`<Cite id="rustref-procedural-macros" />.
-They are the scanner's tokens of Part III, with the brackets already
-matched up, and nothing more: "somewhere between tokens and the
+They are the tokens of *Tokens and a scanner*, with the brackets
+already matched up, and nothing more: "somewhere between tokens and the
 AST", as the Little Book of Rust Macros puts it<Cite id="tlborm" />.
 
 <Examples of="token-stream">
@@ -89,8 +89,8 @@ returns it unchanged, so `show!(1 + 2)` is still 3. Three trees, flat. The secon
 that prints its input: only three trees at the top, because the whole
 body is one `Group`, with the fields inside it. Notice that the
 compiler hands a derive the struct without the `#[derive]` line
-itself. The runnable one is a toy lexer (in the spirit of Part III's
-scanner) that turns a string into the same kind of trees, so you can
+itself. The runnable one is a toy lexer (in the spirit of the scanner in
+*Tokens and a scanner*) that turns a string into the same kind of trees, so you can
 try other inputs. Step through the real thing:
 
 <TokenTreeSteps client:visible />

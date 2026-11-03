@@ -117,8 +117,9 @@ on an enum tells other crates that variants may be added later, so
 their `match` must have a `_` arm<Cite id="rustref-non-exhaustive" />.
 In a scratch crate, a `match` on `Volume` from another crate without
 one failed with rustc 1.97's error E0004, "non-exhaustive patterns:
-`_` not covered", noting that "`Volume` is marked as non-exhaustive,
-so a wildcard `_` is necessary". That error is the point: adding
+`_` not covered", noting that the enum (named with its crate's path) "is marked as
+non-exhaustive, so a wildcard `_` is necessary to match
+exhaustively". That error is the point: adding
 `Whisper` in version 1.1 will not break anyone, because nobody could
 write a `match` that assumed there were only two.
 
@@ -205,7 +206,7 @@ and `default` lists the ones that are on unless a user says otherwise.
 The second compiles `to_k` only when `kelvin` is on; otherwise the
 method does not exist at all, so a user's `Celsius(20.0).to_k()` gets
 rustc 1.97's error E0599, "no method named `to_k` found for struct
-`Celsius`". With `cargo run --features kelvin` the same program
+`temps::Celsius`". With `cargo run --features kelvin` the same program
 printed `293.15`. The third, in the style of the Cargo book, makes a
 dependency optional: it is not even compiled unless the `serde`
 feature is on, and `dep:serde` names the dependency rather than a

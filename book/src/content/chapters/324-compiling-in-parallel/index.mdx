@@ -9,8 +9,8 @@ objectives:
   - Read for_each_parallel, and say what the scope, the atomic counter and the mutex each guarantee.
   - Say why a shared counter beats fixed shares when files take different times.
   - Implement a parallel map whose results come back in index order.
-introduces: [data-parallelism]
-uses: [viscosity-rs, compile-time-performance, cpu, borrow, shared-vs-mutable, ownership, lifetime, rust-closure, rust-generics, trait-bound, option, result, vec, rust-iterator, rust-thread, send-sync, arc-mutex, atomics, work-stealing, cargo-test]
+introduces: []
+uses: [data-parallelism, viscosity-rs, compile-time-performance, cpu, borrow, shared-vs-mutable, ownership, lifetime, rust-closure, rust-generics, trait-bound, option, result, vec, rust-iterator, rust-thread, send-sync, arc-mutex, atomics, work-stealing, cargo-test]
 sources: [rust-std-thread-scope, rust-std-atomic-fetch-add, rust-std-mutex]
 ---
 import WorkSteps from '../../../components/diagrams/ch324/WorkSteps';

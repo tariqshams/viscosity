@@ -1,10 +1,10 @@
-// Chapter 275 cards: recall prompts, examples, exercises and quiz.
+// Threads, Send and Sync cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'spawn-static': {
     q: 'Why can’t a closure passed to `thread::spawn` borrow a local variable?',
-    a: 'The thread may outlive the function that owns the variable, so the closure must be `\'static`: it has to own what it uses (`move`).',
+    a: 'The thread may outlive the function that owns the variable, so the closure must be `\'static`: it may borrow only data that lives for the whole program, and must own everything else (`move`).',
   },
   'spawn-join': {
     q: 'What does `handle.join()` return?',
@@ -27,8 +27,8 @@ export const prompts = {
     a: 'Its reference count is updated with plain, non-atomic arithmetic, so two threads cloning or dropping at once could corrupt it. `Arc` uses atomics.',
   },
   'race-closed': {
-    q: 'Why can’t two threads in safe Rust both write the same `u32`?',
-    a: 'Writing needs `&mut`, which is exclusive (E0499), or a shared type with interior mutability, which must be `Sync`, i.e. synchronised (a `Mutex` or an atomic).',
+    q: 'In safe Rust, what stops two threads writing the same `u32` without synchronisation?',
+    a: 'Writing needs either `&mut`, which is exclusive, so two threads cannot both hold it (E0499), or a type with interior mutability shared through `&`, which is allowed only if it is `Sync`, meaning it synchronises (a `Mutex<u32>` or an `AtomicU32`).',
   },
   'auto-trait': {
     q: 'You define `struct P { x: f64, name: String }`. Is it `Send`, and who decided?',
@@ -246,7 +246,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does Viscosity’s `for_each_parallel` require `f: impl Fn(usize) -> T + Sync`?',
+    q: 'A function runs one closure on several worker threads at once, every worker calling the same `f`. Why does it require `f: impl Fn(usize) -> T + Sync`?',
     options: [
       {
         t: 'Because `Sync` makes `f` run faster.',

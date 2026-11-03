@@ -1,4 +1,4 @@
-// Chapter 276 cards: recall prompts, examples, exercises and quiz.
+// Sharing and sending between threads cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,16 +15,16 @@ export const prompts = {
     a: '`Rc`’s count is not atomic, so `Rc` is not `Send` and cannot move into a thread; `Arc` counts atomically and is `Send` and `Sync`.',
   },
   'lock-short': {
-    q: 'Why does Viscosity’s parallel build lock its result slots only after compiling a file?',
-    a: 'While one thread holds the guard every other thread waits; holding it during slow work would make the threads run one at a time.',
+    q: 'Worker threads store results in a shared `Mutex<Vec<_>>`. Why should each lock it only to store a finished result, not while doing the work?',
+    a: 'While one thread holds the guard, every other thread that wants the lock waits; holding it during slow work would make the threads run one at a time.',
   },
   'chan-move': {
     q: 'After `tx.send(s)`, why can’t the sending thread use `s`?',
     a: '`send` takes `s` by value: ownership moved into the channel (E0382 if you try).',
   },
   'chan-drop': {
-    q: 'Why does `for x in rx` sometimes never end?',
-    a: 'It ends only when every `Sender` has been dropped; a forgotten original `tx` keeps the channel open.',
+    q: 'When does `for x in rx` over an `mpsc::Receiver` end?',
+    a: 'When every `Sender` (every clone, and the original) has been dropped and the queued values are used up; while any `Sender` is alive, even an unused one, it waits.',
   },
   'chan-mpsc': {
     q: 'What does “mpsc” stand for, and how do you get several producers?',
@@ -305,7 +305,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In Viscosity’s parallel build, why is the next file number an `AtomicUsize` rather than a `Mutex<usize>`?',
+    q: 'Worker threads take the next job number from one shared counter. Why is an `AtomicUsize` a better fit for it than a `Mutex<usize>`?',
     options: [
       {
         t: 'Because a `Mutex` cannot hold a number.',

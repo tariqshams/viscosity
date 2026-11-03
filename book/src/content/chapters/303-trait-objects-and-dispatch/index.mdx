@@ -18,9 +18,12 @@ import VtableBuild from '../../../components/diagrams/ch303/VtableBuild';
 
 ## Two loops, one answer
 
-Here is a trait, one type, and the same sum written twice: once with
-a generic (*Generics and trait bounds*) and once over trait objects
-(*Traits*).
+You met trait objects in *Traits, trait objects and derive*: a `&dyn
+Trait` is a data pointer and a vtable pointer, and a call goes through
+the table. This chapter goes further: what that call really costs, and
+why some traits cannot be put behind `dyn` at all. Here is a trait, one
+type, and the same sum written twice: once with a generic (*Generics
+and monomorphization*) and once over trait objects.
 
 ```rust
 trait Shape { fn area(&self) -> u32; }
@@ -73,8 +76,8 @@ trip with vector instructions. Step through both:
 <Analogy title="a switchboard">
 Ringing a company's main number, you ask reception for Sam and wait to
 be put through; with Sam's direct line you skip that. A dyn call rings
-reception: it looks the method up in the vtable (chapter 265,
-*Objects, vtables and dynamic dispatch*) before it can call it.
+reception: it looks the method up in the vtable (*Objects, vtables and dynamic
+dispatch*) before it can call it.
 <span slot="breaks">Reception is the cheap part. The real loss is that
 the caller cannot see what Sam will do once connected, so it cannot plan
 the work around it, which is what inlining lets a compiler do.</span>
@@ -94,13 +97,12 @@ the card, because it does not know which card it will be.</span>
 The **cost of dynamic dispatch** has four parts. The call itself: load
 the vtable pointer, load the method's address from it, and make an
 indirect call (cheap when the processor predicts the target, as in
-*Pipelines and branch prediction*). Lost **inlining**: the compiler cannot see the body, so it cannot
+*Prefetching, pointer chasing, branches and SIMD*). Lost **inlining**: the compiler cannot see the body, so it cannot
 fold it into the caller, vectorise the loop or drop work that turns out
 useless<Cite id="rust-book-trait-objects" />. Indirection in the data:
 `Vec<Box<dyn Shape>>` stores each value in its own heap allocation,
 which is pointer chasing. And size: every `&dyn` is two words, a fat
-pointer (chapter 266, *Interfaces and traits: dictionary
-passing*)<Cite id="rust-reference-trait-object" />. In return you get
+pointer (*Interfaces and traits: dictionary passing*)<Cite id="rust-reference-trait-object" />. In return you get
 one copy of the code, one list holding many types, and a choice made at
 run time.
 </Callout>
@@ -157,7 +159,7 @@ fn report(ls: &[&dyn Layout]) -> f64 {
 
 The first pays every cost: a heap box per shape, a fat pointer per box
 and an indirect call per element. The second suits a set of types you
-know in full: an `enum` (chapter 271, *Sum types in memory*) stores the
+know in full: an `enum` (*Sum types in memory*) stores the
 variants side by side with no boxes, and the `match` is a decision tree
 the compiler can inline like any other code. The third keeps `dyn` but
 moves it out of the hot loop: each layout makes *one* dyn call and then
@@ -188,7 +190,7 @@ function total(xs: Shape[]): number {
 
 In TypeScript every method call is dynamic: `s.area()` looks up a
 property, and V8's inline cache makes the lookup cheap once it has seen
-the shapes (*Inline caches*). You never choose. In Rust you do: a generic
+the shapes (*Shapes, inline caches and elements kinds*). You never choose. In Rust you do: a generic
 is resolved before the program runs, `dyn` while it runs, and the type
 tells the reader which one they are looking at.
 
@@ -296,7 +298,7 @@ the vtable would need one `put` for every `T` in the program.
   built: no generic methods, no `Self` outside the receiver, no
   `Sized` supertrait; `where Self: Sized` opts one method out.
 
-Next: types that a trait lets each implementation choose, and the
-standard traits every Rust type is expected to know.
+Next: *Operator traits, Drop and derive*: how `+`, `+=` and `[]`
+become trait calls, and the code Rust runs when a value is dropped.
 
 <Quiz />

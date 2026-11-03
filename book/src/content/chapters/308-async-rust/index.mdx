@@ -67,8 +67,8 @@ pub trait Future {
 }
 ```
 
-`Output` is an associated type (from *Associated types and the
-standard traits*): the type of the answer. `poll` asks "are you done
+`Output` is an associated type (from *Closures, iterators and
+associated types*): the type of the answer. `poll` asks "are you done
 yet?", and an enum, `Poll`, holds the two answers: `Poll::Ready(value)`
 or `Poll::Pending`. The `cx` argument carries a **waker**, a handle the
 future uses to say "poll me again" once it can make progress; a future

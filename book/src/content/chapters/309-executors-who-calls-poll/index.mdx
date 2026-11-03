@@ -16,14 +16,16 @@ sources: [klabnik2026, rust-std-future, rust-std-thread, async-book, tokio-readm
 import ExecutorSteps from '../../../components/diagrams/ch309/ExecutorSteps';
 import RuntimeMap from '../../../components/diagrams/ch309/RuntimeMap';
 
-## Fifty-eight million questions
+## Two hundred million questions
 
-The last chapter ran its futures with the crudest driver there is: a
-loop that polls, and if the answer is `Pending`, polls again at once.
+You met futures, `poll` and the waker in *Async Rust*, driven by the
+crudest driver there is: a loop that polls, and if the answer is `Pending`, polls again at once.
 For futures that are always nearly done, that works. Now give it a
 future that waits 100 milliseconds for a timer on another thread. In a
-release build on this book's machine, that loop asked "are you done
-yet?" 58 million times before the answer was yes, with one CPU core
+release build with rustc 1.97 on a 4-core cloud machine, that loop
+asked "are you done yet?" about 200 million times before the answer was
+yes (between 176 and 267 million over eight runs, and about 7 million
+in a debug build), with one CPU core
 running flat out to learn nothing. We want a driver that asks once,
 then sleeps until the future says it is worth asking again.
 
@@ -110,8 +112,8 @@ Step through one wait, with a timer future whose helper thread sleeps
 
 The runnable version prints each event. Its output is `task: start`,
 `poll: pending`, `park`, then, 100 ms later, `timer: wake`,
-`waker: unpark`, `poll: ready`, `task: end`: two polls instead of 58
-million.
+`waker: unpark`, `poll: ready`, `task: end`: two polls instead of
+about 200 million.
 
 <Prompts ids={['exec-what', 'spin-cost', 'park-unpark', 'early-wake']} />
 
@@ -197,11 +199,11 @@ milliseconds with `tokio::time::sleep`, then returns the name's length,
 and `ms` is short for `Duration::from_millis`). `#[tokio::main]` is a
 macro that starts a runtime and calls `block_on` on your async `main`.
 `tokio::join!` polls both futures in turn on one task, so the waits
-overlap: it printed `posts done`, `users done`, `10 in 301.038126ms`,
+overlap: it printed `posts done`, `users done`, `10 in 302.005458ms`,
 the longer of the two waits rather than their sum. The third hands
 10,000 futures to the scheduler as separate **tasks** with
 `tokio::spawn`, each sleeping 100 ms, then awaits their handles; it
-printed `49995000 in 108.950191ms`. Ten thousand waits overlapped on a
+printed `49995000 in 109.193243ms`. Ten thousand waits overlapped on a
 few worker threads, where ten thousand threads would have reserved
 twenty gigabytes of stack.
 
@@ -233,8 +235,8 @@ One rule comes with every executor: **never block inside a future**.
 `std::thread::sleep` is not an `.await`; it stops the whole thread,
 and the executor with it. On Tokio's single-threaded runtime,
 `join!(nap(200), nap(200))` with `std::thread::sleep` inside took
-`400.35442ms`; with `tokio::time::sleep(...).await` it took
-`201.471359ms`. The Async Book calls blocking a thread "very bad for
+`400.385501ms`; with `tokio::time::sleep(...).await` it took
+`201.334473ms`. The Async Book calls blocking a thread "very bad for
 performance"<Cite id="async-book" />; slow work belongs on a thread of
 its own (Tokio has `spawn_blocking` for that).
 
@@ -257,5 +259,7 @@ step in between: an executor that runs a list of tasks, taking turns.
 - Futures are **pinned** because they may point into themselves.
 - **Tokio** is a runtime: `#[tokio::main]`, `join!` and `spawn` run
   many futures on a few threads, as long as no future blocks.
+
+Next: *Macros: declarative and procedural*, code that writes code.
 
 <Quiz />

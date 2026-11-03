@@ -18,15 +18,15 @@ import HygieneFigure from '../../../components/diagrams/ch310/HygieneFigure';
 
 ## Something a function cannot do
 
-You have been calling `println!` and `vec!` since the start of this
-part, and the `!` has been quietly telling you something: they are not
+You have been calling `println!` and `vec!` since *Why Rust, and
+cargo*, and the `!` has been quietly telling you something: they are not
 functions. A Rust function takes a fixed number of arguments of fixed
 types, so no function could accept `vec![1, 2, 3]` today and
 `vec![1, 2, 3, 4, 5]` tomorrow, or check a format string against its
 arguments before the program runs. A **macro** can, because it works
 one step earlier: it is handed *code*, as tokens, and hands code back,
 which the compiler then reads as if you had typed it. *Macros and
-hygiene* in Part X showed this idea in general; this chapter is Rust's
+hygiene* showed this idea in general; this chapter is Rust's
 version, starting with the kind you will write most, `macro_rules!`.
 
 <Analogy title="a mail merge">
@@ -84,7 +84,8 @@ A `macro_rules!` definition is a list of **rules**, each written
 `(matcher) => { transcriber };`. The **matcher** is a pattern over
 tokens, and `$x:expr` in it means "match one complete Rust expression
 here, and call it `$x`". The **transcriber** is the code to produce
-(a quasiquote, in Part X's word: a template of code with holes), with
+(a quasiquote, in the word *Macros and hygiene* used: a template of
+code with holes), with
 `$x` standing for whatever matched<Cite id="rustref-macros-by-example" />.
 
 `square!` has one rule; `square!(1 + 2)` matches `$x` against
@@ -258,8 +259,9 @@ When should you write a macro at all? When a function cannot do it:
 any number of arguments, new items such as structs and `impl`s,
 or syntax of your own. Otherwise use a function, which is easier to
 read, to type-check and to debug; the Rust book gives the same
-advice<Cite id="klabnik2026" />. The next chapter covers the other
-kind, procedural macros, which are Rust programs that write Rust.
+advice<Cite id="klabnik2026" />. The next chapter, *Procedural macros
+and token streams*, covers the other kind: Rust programs that write
+Rust.
 
 ## Your turn
 

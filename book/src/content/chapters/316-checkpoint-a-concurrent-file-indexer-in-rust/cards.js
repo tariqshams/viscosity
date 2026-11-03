@@ -1,4 +1,4 @@
-// Chapter 286 cards: recall prompts, examples, exercises and quiz.
+// Checkpoint: a concurrent file indexer in Rust cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,7 +15,7 @@ export const prompts = {
     a: 'Wrapped as `Arc<Mutex<Receiver<_>>>`: `Arc` for shared ownership across threads, `Mutex` so only one worker calls `recv` at a time.',
   },
   'drop-tx': {
-    q: 'Why does `index_parallel` call `drop(tx)` after sending every path?',
+    q: 'A thread sends every job on an `mpsc` channel to workers that loop on `recv`. Why must it then drop its `Sender`?',
     a: 'So the channel closes once it is empty: `recv` then returns `Err`, and each worker’s loop ends instead of waiting forever.',
   },
   'while-let-lock': {
@@ -23,16 +23,16 @@ export const prompts = {
     a: '`while let` keeps the lock guard alive for the whole loop body, so only one worker can work at a time.',
   },
   closed: {
-    q: 'The main thread loops `for part in parts`. When does that loop end?',
-    a: 'When every sender is gone: each worker’s clone is dropped when it finishes, and `main` dropped its own with `drop(out)`.',
+    q: 'Workers each hold a clone of the results `Sender`, and the thread that made them loops `for part in parts` over the `Receiver`. What must that thread have done for the loop to end?',
+    a: 'Dropped its own original `Sender` (`drop(out)`). The loop ends only when every `Sender` is gone; the workers’ clones go as each worker finishes, but the original would keep the channel open for ever.',
   },
   bottleneck: {
-    q: 'Four workers made the indexer only 2.4 times faster than one. What was the slow stage?',
-    a: 'The single main thread merging every per-file index into the result; it was busy for nearly the whole run.',
+    q: 'A pool of workers sends per-file results to one thread that merges them all, and four workers run only about 2.5 times faster than one. What is the likely slow stage, and how do you confirm it?',
+    a: 'The single collecting thread that merges every result: the workers wait on it. Confirm it by timing the merge loop; if it is busy for nearly the whole run, it is the bottleneck.',
   },
   'local-merge': {
-    q: 'What change took the 4-worker run from about 251 ms to 152 ms?',
-    a: 'Each worker merged into its own index and sent one result at the end, so far less merging happened on the main thread.',
+    q: 'In a worker pool where one collecting thread merges every result, how do you take most of the merging off that thread?',
+    a: 'Let each worker merge its own results into a local index and send that one index when its jobs run out; the collecting thread then merges only one result per worker.',
   },
 };
 
@@ -1158,7 +1158,7 @@ fn search(idx: &Index, query: &str)
 
 export const quiz = [
   {
-    q: 'In the indexer, why is the job receiver wrapped in `Arc<Mutex<...>>` while the results sender is cloned?',
+    q: 'In a worker pool built on `std::sync::mpsc`, why is the job `Receiver` wrapped in `Arc<Mutex<...>>` while the results `Sender` is cloned?',
     options: [
       {
         t: 'A channel allows many senders but only one receiver, so the receiver must be shared under a lock',
@@ -1176,7 +1176,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The program indexes every file but never returns. Which line is most likely missing?',
+    q: 'A worker pool finishes every job, but the collecting loop `for part in parts` never ends. Which line is most likely missing?',
     options: [
       {
         t: '`out.sort()`',
@@ -1212,16 +1212,16 @@ export const quiz = [
     ],
   },
   {
-    q: 'With four workers, the main thread spent about 250 ms of a 251 ms run merging. What does that tell you?',
+    q: 'With four workers, the collecting thread spent about 206 ms of a 210 ms run merging results. What does that tell you?',
     options: [
       {
         t: 'The workers are too slow and more threads would help',
-        why: 'Eight workers were no faster than four: the workers were waiting on the merger.',
+        why: 'If the merger is busy for nearly the whole run, the workers are already waiting on it; more of them cannot help.',
       },
       {
         t: 'The single merging thread is the bottleneck, so the next improvement should reduce its work',
         correct: true,
-        why: 'Merging per worker first cut the run to 152 ms.',
+        why: 'In the measured run, merging per worker first cut the time from 210 ms to 126 ms.',
       },
       {
         t: 'Reading files from disk is the slow part',

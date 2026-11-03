@@ -1,4 +1,4 @@
-// Chapter 282 cards: recall prompts, examples, exercises and quiz.
+// FFI and unsafe boundaries cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -16,7 +16,7 @@ export const prompts = {
   },
   'ffi-safe': {
     q: 'Which types may cross an FFI boundary?',
-    a: 'Types with a C-compatible layout: integers, floats, raw pointers, `extern "C" fn` pointers and `#[repr(C)]` structs. Not `String`, `Vec` or `&str`.',
+    a: 'Types with a C-compatible layout, such as integers, floats, raw pointers, `extern "C" fn` pointers and `#[repr(C)]` structs. Not `String`, `Vec` or `&str`.',
   },
   'abi-why': {
     q: 'Why must a Rust function called from C be `extern "C"`?',
@@ -24,7 +24,7 @@ export const prompts = {
   },
   'no-mangle': {
     q: 'What does `#[no_mangle]` do, and why is it needed?',
-    a: 'It keeps the function’s symbol name as written. Otherwise rustc mangles it (here into `_RNv…6hidden`), and C’s linker cannot find it by name.',
+    a: 'It keeps the function’s symbol name as written. Otherwise rustc gives it a mangled name (such as `_RNv…6hidden`) and does not export it under its own name, so a C linker looking for `hidden` cannot find it.',
   },
   callback: {
     q: 'How does C’s `qsort` call back into Rust?',
@@ -381,7 +381,7 @@ export const quiz = [
     q: 'A C program cannot link against `pub extern "C" fn hidden` in your Rust static library. Why?',
     options: [
       {
-        t: 'It needs `#[no_mangle]`: without it, the symbol is a mangled name like `_RNv…6hidden`',
+        t: 'It needs `#[no_mangle]` (`#[unsafe(no_mangle)]` in the 2024 edition): without it, the function is not exported under the plain name `hidden`',
         correct: true,
         why: 'The linker matches names exactly, and C asks for plain `hidden`.',
       },

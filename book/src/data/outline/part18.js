@@ -24,7 +24,6 @@ export default {
       playground: 'the compiler running in a web page',
     } },
     { n: 324, title: 'Compiling in parallel', introduces: {
-      'data-parallelism': 'splitting work across CPU cores',
     } },
     { n: 325, title: 'One bad file, and how fast it gets', introduces: {} },
     { n: 326, title: 'The research frontier', introduces: {

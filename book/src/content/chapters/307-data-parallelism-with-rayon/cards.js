@@ -1,13 +1,17 @@
-// Chapter 277 cards: recall prompts, examples, exercises and quiz.
+// Data parallelism with rayon cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
+  'data-par': {
+    q: 'What is **data parallelism**?',
+    a: 'Applying the same operation to many independent items at once, with the items shared out among cores (as rayon’s `par_iter().map(...)` does), rather than giving each thread a different task.',
+  },
   'rayon-what': {
     q: 'What is the usual one-word change that makes an iterator chain run in parallel with rayon?',
     a: '`iter()` becomes `par_iter()` (with `use rayon::prelude::*;`).',
   },
   'rayon-order': {
-    q: 'Does `files.par_iter().map(f).collect::<Vec<_>>()` keep the results in the order of `files`?',
+    q: 'With rayon, does `files.par_iter().map(f).collect::<Vec<_>>()` on a `Vec` keep the results in the order of `files`?',
     a: 'Yes: it gives the same result as the sequential chain. Only side effects such as printing may happen in another order.',
   },
   'rayon-fn': {
@@ -263,7 +267,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Viscosity’s build uses a shared atomic counter instead of rayon. When is that the better fit?',
+    q: 'Worker threads can share out jobs by each taking the next index from one shared atomic counter, instead of using rayon. When is that the better fit?',
     options: [
       {
         t: 'For millions of tiny tasks.',
@@ -281,7 +285,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Total work is 100 units, the span is 10 units, and you have 20 workers. What is the best possible time?',
+    q: 'Total work is 100 units, the span is 10 units, and you have 20 workers. What lower bound on the running time does `T_P ≥ max(T₁ / P, T∞)` give?',
     options: [
       {
         t: '5 units',

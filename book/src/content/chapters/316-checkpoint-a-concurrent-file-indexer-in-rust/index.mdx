@@ -103,8 +103,7 @@ let next = rx.lock().unwrap().recv();
 ```
 
 Both compile and give the same answer, which is what makes the first
-dangerous. A `let` statement drops its temporaries (here the lock
-guard) when the statement ends, while `while let` keeps them until the
+dangerous. As *Operator traits, Drop and derive* showed, a `let` statement drops its temporaries (here the lock guard) when the statement ends, while `while let` keeps them until the
 end of the loop body, so the first version holds the lock while it
 reads and indexes the file, and the workers take turns instead of
 working at once<Cite id="klabnik2026" />.
@@ -157,10 +156,10 @@ assert_eq!(words("Hello, World!"),
 ```
 
 ```text
-382 files, 12344 words
-1 worker   602 ms
-4 workers  251 ms   (merging: ~250)
-4, merging per worker  152 ms
+326 files, 12618 words
+1 worker   533 ms
+4 workers  210 ms   (merging: ~206)
+4, merging per worker  126 ms
 ```
 
 <Run id="pool" />
@@ -169,13 +168,14 @@ assert_eq!(words("Hello, World!"),
 
 The first is the smallest piece, and the place to start: the warm-up
 exercise. The second is the finished indexer, timed for this chapter
-on the book's own 382 chapter files, as the book stood then (release build, rustc 1.97, a
-4-core cloud machine, median of five runs). Four workers were 2.4
+on the `index.mdx` of each of the book's 326 chapters, as the book
+stood then (release build, rustc 1.97, a
+4-core cloud machine, median of five runs). Four workers were 2.5
 times faster than one, not four, and timing the merge loop showed why:
-with four workers the main thread spent about 250 ms merging, nearly
+with four workers the main thread spent about 206 ms merging, nearly
 the whole run, so the single clerk was the bottleneck. Letting each
 worker merge into its own index and send one result at the end cut it
-to 152 ms. The runnable one is the pool pattern on its own, squaring
+to 126 ms. The runnable one is the pool pattern on its own, squaring
 numbers; on a fast machine one worker may grab every job, because each
 takes nanoseconds.
 

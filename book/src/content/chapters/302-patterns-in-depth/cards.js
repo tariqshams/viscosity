@@ -1,4 +1,4 @@
-// Chapter 272 cards: recall prompts, examples, exercises and quiz.
+// Patterns in depth: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,8 +11,8 @@ export const prompts = {
     a: 'In move mode `s` took the `String` out of `name`, so `name` is partially moved (E0382).',
   },
   'mode-ref': {
-    q: 'What does the `ref` in `Some(ref s)` match against?',
-    a: 'Nothing. It only says “bind `s` as a shared borrow instead of moving”.',
+    q: 'In the pattern `Some(ref s)`, what does the `ref` keyword change?',
+    a: 'Only how `s` is bound: as a shared borrow (`&T`) of the matched part instead of moving it. `ref` matches nothing itself, so `Some(ref s)` fits exactly the values `Some(s)` fits.',
   },
   'guard-or': {
     q: 'In the arm `4 | 5 | 6 if ok => ...`, which alternatives does the guard apply to?',
@@ -31,8 +31,8 @@ export const prompts = {
     a: '`x` is a `&i32` (the first element) and `rest` is a `&[i32]` view of the remaining elements; nothing is copied.',
   },
   'slice-len': {
-    q: 'What does rustc test first when it runs a slice match?',
-    a: 'The slice’s length; element comparisons come after the length has picked a branch.',
+    q: 'In a Rust `match` on a slice, why must the length be tested before any element is compared?',
+    a: 'An element can only be read if it exists: a pattern such as `[a, b, ..]` first needs the length to be at least 2, so the compiled match branches on the length and only then compares elements.',
   },
 };
 
@@ -120,7 +120,7 @@ fn otherwise_first_then_count() {
 - \`[f, .., l] if f == l => { format!("ring {f}") }\` fits slices of length two or more, naming the first as \`f\` and the last as \`l\`; the \`..\` in the middle swallows zero or more elements. The guard compares the two \`&i32\`s (comparing references compares the numbers they point to). If the guard is false, matching simply moves on to the next arm.
 - \`[f, rest @ ..] => { let k = rest.len(); format!("{f} then {k}") }\` fits every slice of length one or more, but lengths 0 and 1 were already taken, so in practice it sees the "two or more, ends differ" case. \`rest @ ..\` binds the remaining elements as a slice, and \`rest.len()\` counts them, kept in \`k\` so it can be printed with \`{k}\`.
 
-rustc accepts this match as exhaustive because the unguarded arms \`[]\`, \`[x]\` and \`[f, rest @ ..]\` cover every length on their own; the guarded arm is ignored for that check, exactly as the chapter says.
+rustc accepts this match as exhaustive because the unguarded arms \`[]\`, \`[x]\` and \`[f, rest @ ..]\` cover every length on their own; the guarded arm is ignored for that check, as guarded arms always are.
 
 **Common wrong attempts.**
 

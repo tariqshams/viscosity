@@ -18,10 +18,13 @@ import SliceTree from '../../../components/diagrams/ch302/SliceTree';
 
 ## The name that took the string
 
-The patterns you met with `match` (just after enums) matched values
-you owned. Real code mostly
-matches values it has *borrowed*: a parser looks at `&self.tokens`, a
-collector looks at `&self.slots[i]`. Here is the first surprise:
+You met patterns in *Enums, match and patterns*: variants, literals,
+ranges, `|`, the wildcard and a first guard, all matched against values
+you owned. This chapter goes further, into what a name in a pattern
+really binds, what a guard may and may not do, and the patterns for
+slices. Real code mostly matches values it has *borrowed*: a parser
+looks at `&self.tokens`, a collector looks at `&self.slots[i]`. Here is
+the first surprise:
 
 ```rust
 let name = Some(String::from("drip"));
@@ -147,14 +150,14 @@ name binding a part of type T then gets T, &T or &mut T.</span>
 
 ## Guards
 
-*Patterns* met the **match guard**,
-`pattern if condition`. Three
-details matter. First, a guard after an
+*Enums, match and patterns* used a **match guard**,
+`pattern if condition`, as one more test an arm must pass. Three
+details of it matter. First, a guard after an
 or-pattern covers *every* alternative: `4 | 5 | 6 if ok` means
 `(4 | 5 | 6) if ok`<Cite id="rust-book-patterns" />. Second, the guard
 sees the names by shared reference and the value is moved into them
-only once the guard has said yes, so a guard can never mutate and a
-failed guard moves nothing<Cite id="rustref-match" />. Third, the
+only once the guard has said yes, so a guard cannot change what the
+pattern bound, and a failed guard moves nothing<Cite id="rustref-match" />. Third, the
 compiler does not try to prove anything about your conditions:
 
 ```rust
@@ -261,9 +264,10 @@ match args {
 
 </Examples>
 
-The first uses **range patterns**: `0..=12` includes both ends and
-`13..` has no top, so together they cover every `u32`. The second
-**nests** patterns three deep and uses an **@ binding**: `n @ 0..=9`
+The first adds a half-open range to the closed ones you know:
+`0..=12` includes both ends and `13..` has no top, so together they
+cover every `u32`. The second nests patterns three deep and uses an
+**@ binding**: `n @ 0..=9`
 tests the range *and* keeps the number in `n`<Cite id="rust-book-patterns" />.
 The third reads command line arguments, a slice of `&str`s: a **slice
 pattern** `[a, b, c]` fits slices of exactly that length, element by
@@ -282,8 +286,8 @@ pattern `..`, which matches zero or more elements and may be bound as
 `rest @ ..`<Cite id="rustref-patterns" />.
 </Callout>
 
-rustc runs a slice match as a decision tree (chapter 270, *Compiling
-pattern matching*): it reads the length once, branches on it, and only
+rustc runs a slice match as a decision tree (*Compiling pattern
+matching*): it reads the length once, branches on it, and only
 then compares elements. Here is the tree from rustc 1.97's optimised MIR for the
 exercise below:
 
@@ -332,7 +336,7 @@ nothing.
 - Ranges, `@`, nesting and **slice patterns** with `rest @ ..`
   describe shapes; slice matches test the length first.
 
-Next: what a `dyn` call really costs, and why some traits cannot be
-put behind `dyn` at all.
+Next: *Trait objects and dispatch*, what a `dyn` call really costs,
+and why some traits cannot be put behind `dyn` at all.
 
 <Quiz />

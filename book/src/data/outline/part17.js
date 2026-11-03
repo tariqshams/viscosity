@@ -11,7 +11,10 @@ export default {
       'dyn-dispatch-cost': 'what a vtable call costs compared with a generic',
       'object-safety': 'which traits can be trait objects',
     } },
-    { n: 304, title: 'Operator traits and derive', introduces: {} },
+    { n: 304, title: 'Operator traits, Drop and derive', introduces: {
+      'drop-trait': 'the Drop trait: code that runs when a value is dropped, and std::mem::drop',
+      'operator-trait': 'std::ops traits such as Add and Index, which give operators their meaning',
+    } },
     { n: 305, title: 'Threads, Send and Sync', introduces: {
       'rust-thread': 'std::thread::spawn and scoped threads',
       'send-sync': 'the marker traits that make data races compile errors',
@@ -21,6 +24,7 @@ export default {
       channel: 'sending values between threads',
     } },
     { n: 307, title: 'Data parallelism with rayon', introduces: {
+      'data-parallelism': 'splitting work across CPU cores',
       rayon: 'a crate that parallelises iterators',
       'work-stealing': 'idle threads taking work from busy ones',
     } },
