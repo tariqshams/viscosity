@@ -64,6 +64,10 @@ function runRust(code, tests) {
   } catch (e) {
     const out = String(e.stdout ?? '');
     return { results: tests ? parseTestOutput(out) : [], error: tests ? null : `runtime error: ${String(e.stderr ?? e).slice(0, 200)}`, stdout: out };
+  } finally {
+    // Each binary is several MB; delete it as soon as it has run, so a full
+    // check never fills the disk (and a killed run leaves little behind).
+    for (const f of [bin, file]) { try { rmSync(f, { force: true }); } catch {} }
   }
 }
 
