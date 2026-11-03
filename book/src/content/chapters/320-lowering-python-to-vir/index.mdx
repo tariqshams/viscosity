@@ -18,7 +18,11 @@ import CounterSteps from '../../../components/diagrams/ch320/CounterSteps';
 
 ## Two loops that look alike
 
-Here are two loops, one in each language:
+You met lowering in *Lowering JavaScript to VIR*, where the JavaScript
+plugin turned a syntax tree into VIR; this chapter goes further, to a
+second language whose code can look like JavaScript and still mean
+something else. Here are two loops, one in each language (`range(3)`
+is Python's sequence 0, 1, 2):
 
 ```js
 for (let i = 0; i < 3; i++) {
@@ -150,7 +154,8 @@ body, and then increments the *counter*, so whatever the body did to
 <CounterSteps client:visible />
 
 The hidden counter is *better* for the analyses, too: it is a clean
-induction variable (from *Induction variables and loop invariants*),
+induction variable (from *Induction variables, the call graph and
+inlining*),
 so a bounds proof about it holds even when the body reassigns `i`. In
 this program the body does `i += 50` and then indexes again:
 
@@ -229,7 +234,9 @@ float or an int, the quotient is provably a float.</span>
 
 A field gets a typed column only if every value stored in it is
 provably a float. In `ints_stay_ints.py` the field `count` holds `i`
-and `weight` holds `i / 2`, and the report says so: `typed array('d')
+and `weight` holds `i / 2`, and the report (with `--python-auto`, which
+lets Viscosity give a Python list columns without an annotation) says
+so: `typed array('d')
 columns for weight; list columns for count (may hold non-floats)`.
 
 The int fact has a second use: an index must be an int, because
@@ -259,8 +266,8 @@ conditions: a dataclass call is modelled only with its arguments in
 field order and literal defaults.
 
 <Callout kind="pitfall">
-Defaults are a false friend, and the plugin got them wrong at first
-(since fixed). Python evaluates a field's default *once*, when the
+Defaults are a false friend, and the plugin once got them wrong (since
+fixed). Python evaluates a field's default *once*, when the
 class is defined, but the lowering copied the default's expression to
 every call, so with `y: float = K` and a later `K = 3.0` the compiled
 program stored `3.0` where Python stored `2.0`. Now only literal

@@ -19,7 +19,10 @@ import Playground from '../../../components/playground/Playground';
 
 ## Where the edge is
 
-Take a perfectly ordinary program: make 1,000 particles, sort them by
+You met Viscosity's refusals in *What Viscosity refuses to touch*, as
+the safe answer to a question it cannot settle; this last chapter goes
+further and asks which of them anybody knows how to remove. Take a
+perfectly ordinary program: make 1,000 particles, sort them by
 `x`, then update them in a loop. Ask Viscosity about it:
 
 ```text
@@ -212,14 +215,14 @@ Some languages hand the choice to you. In Odin, `#soa[N]Vector3` stores
 an array as columns while you keep writing `v[0].x`<Cite id="odin-overview-soa" />,
 and ISPC's `soa<N>` types do the same for blocked
 layouts<Cite id="ispcdocs" />. Viscosity's `@viscosity soa` annotation
-(from *Opting in with @viscosity*) sits in between: you ask, and it
+(from *Telling Viscosity more: annotations and profiles*) sits in between: you ask, and it
 still checks safety. Whether an automatic tool can match an expert's
 choice, and how it should explain itself when it disagrees with one, is
 open.
 
-<Prompts ids={['op-proof', 'op-cost', 'op-who']} />
+<Prompts ids={['op-proof', 'op-cost-why', 'op-who']} />
 
-<Callout kind="engine" label="Under the hood">
+<More title="More: when the engine closes an edge for you">
 Sometimes the engine closes an edge for you. In this book's
 microbenchmarks, a SoA loop that built a small object per element and
 passed it to a function did **not** lose to objects: V8 inlined the
@@ -230,12 +233,13 @@ for `ps[0] = ps[1]`, explain used to say "the array is stored into an
 array at line 5", when the array was really the *target* of the store;
 the decision was right and the sentence was wrong, and the reason now
 reads "the array is written with an index store at line 5".
-</Callout>
+</More>
 
 ## Measuring the frontier
 
-How do you choose which edge to work on? The same way Part VIII chose
-its optimisations: measure. Run `viscosity explain` over a corpus of
+How do you choose which edge to work on? The same way *Benchmarking
+honestly* and *End to end: benchmarks and differential testing at
+scale* settled every question about speed: measure. Run `viscosity explain` over a corpus of
 real programs and count the reasons; the refusal that blocks the most
 programs is the one worth an idea. (Over the engine's own 40-program
 JavaScript test corpus, 27 collections become struct of arrays, 2
@@ -266,5 +270,30 @@ builds.
   solved.
 - To choose a problem, **measure** which refusals are common, on code
   nobody wrote for the purpose.
+
+## The whole machine, and after
+
+This is the end of the book, so it is worth looking back at how far
+the road ran. You started, in the Prelude, with variables and loops in
+JavaScript and TypeScript; in the core you measured why the layout of
+an array of records matters to a cache, built Drip twice (a tree that
+computes, then a bytecode virtual machine with its own garbage
+collector), learned the compiler essentials Viscosity needs (IR, SSA,
+dominators, dataflow, alias and escape analysis, and the testing that
+keeps them honest), built Viscosity, learned Rust, ported both Drip and
+Viscosity to it and shipped them; and the deep dives took each of
+those ideas further, from automata and type theory to a native back
+end, real engines, garbage collectors and, in this last part, a second
+language, a browser, many cores and the edge of what is known.
+
+None of the refusals above is a dead end. Each one is a small, honest
+statement of the form "here is a program, and here is why no tool I
+know of can prove this rewrite safe", which is exactly how a research
+question starts; and you now have what it takes to work on one: you
+can read the papers this book cited (and their notation, from the
+deep dives on semantics and types), build a corpus, write the
+analysis, test it against the original program by running both, and
+measure whether it pays on more than one engine. Pick the refusal you
+find most annoying, and start there.
 
 <Quiz />

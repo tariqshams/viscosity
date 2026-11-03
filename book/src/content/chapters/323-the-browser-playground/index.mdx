@@ -19,7 +19,12 @@ import Playground from '../../../components/playground/Playground';
 
 ## The engine in the page
 
-This one starts on the Rust engine. Edit the program and watch the
+You met the Rust engine compiled to WebAssembly in *WebAssembly: the
+target, and the engine compiled to it*, which ended with the module in
+`book/public/wasm`; this chapter goes further, to the page that loads
+it: when it is fetched, how replies that arrive too late are dropped,
+and what happens when Rust panics in a browser. This Playground starts
+on the Rust engine. Edit the program and watch the
 status line under the output:
 
 <Playground client:visible engine="rust" title="Rust, as WebAssembly, in your browser" initial={`const ps = [];
@@ -34,8 +39,8 @@ console.log(ps[999].x);`} />
 The decisions should begin `ps (line 1) {x, vx} → struct of arrays`,
 followed by the loop, the typed columns and the bounds proof. Press
 **TS** and they do not change, byte for byte: that is the parity of
-the chapter *TypeScript vs Rust: differential tests*, now in front of
-you. One thing does differ: type `let = ;` on each engine and compare,
+*TypeScript against Rust: differential tests, fuzzing and shrinking*,
+now in front of you. One thing does differ: type `let = ;` on each engine and compare,
 because syntax errors come from two different parsers, oxc and acorn,
 each wording them its own way.
 
@@ -76,13 +81,13 @@ one above does, which is meant only for chapters about the Rust port,
 since it costs every reader the download. The third hides the toggle,
 for a chapter where switching engines would only distract.
 
-<Prompts ids={['playground-what']} />
+<Prompts ids={['playground-def']} />
 
 ## Only when asked
 
 The `.wasm` is 1.4 MB, so pages that never use it must not pay for it.
-The chapter *Compiling the engine to WebAssembly* showed `build.mjs
---book` copying the web glue into `book/src/vendor` and the module into
+*WebAssembly: the target, and the engine compiled to it* showed
+`build.mjs --book` copying the web glue into `book/src/vendor` and the module into
 `book/public/wasm`; files in `public/` are served as they are, never
 bundled. The loading happens in a **worker**, a script running on a
 background thread, apart from the page, which talks to the page only
@@ -131,7 +136,7 @@ so the next request tries again instead of reusing a rejection
 forever. The TypeScript engine, by contrast, is imported into the page
 itself and called synchronously.
 
-<Prompts ids={['lazy-wasm', 'memo-promise']} />
+<Prompts ids={['lazy-wasm-why', 'memo-promise']} />
 
 ## One ticket per keystroke
 
@@ -189,8 +194,9 @@ Step through one reader's session:
 
 ## When Rust panics
 
-The Rust engine should not panic (the chapter *Fuzzing the Rust
-engine* hunts for inputs that make it, and its finds are fixed), but
+The Rust engine should not panic (the fuzzing of *TypeScript against
+Rust: differential tests, fuzzing and shrinking* hunts for inputs that
+make it, and its finds are fixed), but
 the playground must survive one anyway. In native Rust a panic
 *unwinds*: Rust walks back up the stack and cleans up each function's
 data on the way<Cite id="klabnik2026" />, and `catch_unwind` can stop
@@ -203,7 +209,9 @@ It prints `caught: true`, then `free again: true`, then `[1, 2]`: the
 closure borrowed `seen` mutably, pushed 2 and panicked, and on the way
 out the borrow guard `v` was dropped, so the `RefCell` is free.
 
-WebAssembly built by cargo does not unwind. By default, Rust panics
+WebAssembly built by cargo does not unwind; you saw the short version
+in *WebAssembly: the target, and the engine compiled to it*, and here is
+what it means for state. By default, Rust panics
 there compile with `panic=abort`, "which aborts the WebAssembly
 instance on panic"<Cite id="wasm-pack-book" />, and from JavaScript
 the abort is a **trap**, thrown as a `WebAssembly.RuntimeError`<Cite id="mdn-wasm-runtimeerror" />.
@@ -245,7 +253,7 @@ compile starts a new worker, with a new instance and new memory.
 
 <Callout kind="engine" label="Under the hood">
 `scripts/smoke.mjs` checks all this in a real browser (Playwright), on
-the Playground in the chapter *Emitting JavaScript*. On the TS engine,
+the Playground in *Emitting JavaScript, and round-trip testing*. On the TS engine,
 no `.wasm` may be requested; after pressing **Rust**, exactly one
 request, for `/wasm/viscosity_wasm_bg.wasm`. The compiled code and the
 decisions must be identical on both engines, **Run both** on the Rust

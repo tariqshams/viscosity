@@ -1,4 +1,4 @@
-// Chapter 289 cards: recall prompts, examples, exercises and quiz.
+// Chapter 319 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,7 +11,7 @@ export const prompts = {
     a: 'The parser refuses it, the plugin returns an empty module, and the file is emitted exactly as it was.',
   },
   'ps-chain': {
-    q: 'Why does the parser refuse `a < b < c` instead of parsing it as two `<`?',
+    q: 'Why does Viscosity’s Python parser refuse `a < b < c` instead of parsing it as two `<`?',
     a: 'In Python it means `a < b and b < c`. Parsing it like JavaScript’s `(a < b) < c` would build the wrong tree.',
   },
   'pp-block': {
@@ -22,9 +22,9 @@ export const prompts = {
     q: 'How does Viscosity’s parser handle `elif`?',
     a: 'It rewrites the `elif` token to `if` and parses a nested `if` as the `else` branch.',
   },
-  'ps-explain': {
-    q: 'A file is refused by the parser. What does `viscosity explain` print for it today?',
-    a: '“No arrays of objects found.” The reason is kept inside the plugin (`unsupported`) but not yet shown.',
+  'ps-refuse': {
+    q: 'Why is it safer for an optimising source-to-source compiler to refuse a construct it only half understands than to guess its meaning?',
+    a: 'A refusal only loses an optimisation (the file is left as it was); a wrong guess builds the wrong tree and can change what the program does, which no later analysis can detect.',
   },
   'pp-notin': {
     q: 'How does the parser recognise the operator `not in`, which is two words?',
@@ -169,11 +169,11 @@ For the nested test, the outer \`block()\` reads \`'def f(ps):'\`, calls \`block
 
 export const quiz = [
   {
-    q: 'A file uses `d = {}` once, far from any list. What does Viscosity output?',
+    q: 'A Python file uses `d = {}` once, far from any list. What does Viscosity output for it?',
     options: [
       {
         t: 'The file with the dict line removed',
-        why: 'Viscosity never deletes code.',
+        why: 'The parser stopped at the dict, so nothing in the file was analysed or rewritten.',
       },
       {
         t: 'A transformed file, skipping that line',
@@ -235,7 +235,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `block()`, what happens if the token after `if x:` and its NEWLINE is not INDENT?',
+    q: 'In Viscosity’s Python parser, what happens if the token after `if x:` and its NEWLINE is not INDENT?',
     options: [
       {
         t: 'The next line is quietly treated as the body',
@@ -243,7 +243,7 @@ export const quiz = [
       },
       {
         t: 'The tokenizer inserts an INDENT',
-        why: 'The tokenizer only measures widths; it never invents tokens the source does not have.',
+        why: 'The tokenizer emits INDENT only for a line wider than the open block; it does not look at colons.',
       },
       {
         t: 'The `if` gets an empty body',

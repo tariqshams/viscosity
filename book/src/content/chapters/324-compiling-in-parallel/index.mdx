@@ -21,7 +21,8 @@ import SharesFigure from '../../../components/diagrams/ch324/SharesFigure';
 The committed measurements in
 `engine/rust/results/parallel-build-2026-10-31.md` put the Rust
 engine's cost at about a tenth of a millisecond per test program
-(*How fast is the compiler?* timed it in other ways). That sounds like
+(*The final benchmark matrix, and how fast the compiler is* timed it
+in other ways). That sounds like
 the end of the speed story, until someone hands it a whole project:
 
 ```
@@ -36,6 +37,14 @@ could compile four files at the same moment, yet a plain loop over the
 files uses one core and leaves three idle. So the Rust CLI compiles
 them in parallel, with one thread per core by default, or `--jobs N`.
 
+You met the pieces in *Rust beyond the core*: threads, scoped threads,
+`Send` and `Sync` in *Threads, Send and Sync*; a mutex and the shared
+counter, in a few trimmed lines, in *Sharing and sending between
+threads*; and rayon's work stealing, compared with that counter, in
+*Data parallelism with rayon*. This chapter goes further: the whole
+helper the CLI uses, why its output is the same for any number of
+threads, and how that is checked.
+
 <Analogy title="markers and a pile of exam papers">
 A stack of 400 exam papers is to be marked. One teacher marks them one
 after another; four teachers sitting round a table, each taking the
@@ -43,8 +52,8 @@ next paper from the pile, finish in about a quarter of the time,
 because marking one paper never needs another paper.
 <span slot="breaks">Teachers who finish all at once still need someone
 to put the marks into the register in order, one at a time, and that
-part does not get faster with more teachers; the next chapter measures
-exactly that serial part.</span>
+part does not get faster with more teachers; *One bad file, and how
+fast it gets* measures exactly that serial part.</span>
 </Analogy>
 
 <Analogy extra title="a post office with a ticket machine">
@@ -65,65 +74,45 @@ it. Step through three threads compiling six files:
 
 <WorkSteps client:visible />
 
-<Prompts ids={['dp-independent', 'dp-what-thread']} />
+<Prompts ids={['dp-independent', 'dp-what']} />
 
-## Threads that may borrow
+## Same answer, whoever finishes first
 
-A **thread** is a separate line of execution inside one program: it has
-its own place in the code and its own stack (the memory for its local
-variables), but it shares the program's other memory with every other
-thread, and the operating system runs threads on different cores at
-the same time (*Threads, Send and Sync*). Sharing memory is what makes
-threads useful and dangerous: two threads changing the same value at
-once is a data race, and Rust refuses to compile one.
-
-`std::thread::scope` creates threads that may borrow the caller's local
-variables, because the scope joins (waits for) every thread it started
-before it returns, so no thread can outlive what it borrowed
-<Cite id="rust-std-thread-scope" />. The borrowing rules still hold
-across threads: many threads may share `&x`, but nothing can be changed
-through a shared reference unless its type is built for it.
+Data parallelism has two parts that are not parallel at all: handing
+out the pieces, and putting the results back together. Here they are
+in one runnable program and one real command:
 
 <Examples of="data-parallelism">
-
-```rust
-let xs = [1, 2, 3, 4, 5, 6];
-let (l, r) = xs.split_at(3);
-let sum = |h: &[i32]| h.iter().sum::<i32>();
-let (a, b) = std::thread::scope(|s| {
-    let ha = s.spawn(|| sum(l));
-    let hb = s.spawn(|| sum(r));
-    (ha.join().unwrap(), hb.join().unwrap())
-});
-// a == 6, b == 15
-```
 
 <Run id="shares-vs-counter" />
 
 ```
 $ viscosity explain --jobs 4 a.js b.js c.js
+== a.js ==
+ps (line 1) {x, y} → kept as array of ...
+== b.js ==
+qs (line 1) {v} → struct of arrays ...
+== c.js ==
+rs (line 1) {w, h} → struct of arrays ...
 ```
 
 </Examples>
 
-The first is the smallest case: `split_at(3)` splits the six numbers
-into two halves, `sum` is a closure that adds up a slice, `spawn` starts
-a thread for each half (each closure borrows its half, which the scope
-allows), and `join` waits for a thread and hands back its answer, 6 and
-15. The second runs:
-six made-up "files", two slow (40 ms) and four fast (10 ms), compiled on
-three threads twice. With fixed shares (thread `t` takes files `2t` and
-`2t + 1`), thread 1 gets both slow files and the run takes about 80 ms;
-with one shared counter, each thread takes the next file when it is
-free, and it takes about 40 ms (I ran it here: 81 and 40). The third is
-the real thing: four threads, and the explanations printed in the order
-`a.js`, `b.js`, `c.js` whichever finishes first.
+The first compiles six made-up "files", two slow (40 ms) and four
+fast (10 ms), on three scoped threads, twice. With fixed shares (thread
+`t` takes files `2t` and `2t + 1`), thread 0 gets both slow files and
+the run takes about 80 ms; with one shared counter, each thread takes
+the next file when it is free, and it takes about 40 ms (I ran it here:
+81 and 40). The second is the real thing, trimmed: four threads, three
+files, and the explanations printed in the order `a.js`, `b.js`,
+`c.js`, whichever finished first; run it with `--jobs 1` or `--jobs 16`
+and the bytes do not change.
 
 <Figure caption="The same six files (times 4, 4, 1, 1, 1, 1) on three threads. Fixed shares leave two threads idle while one does both slow files; a shared counter keeps them busy." takeaway="Handing out work one piece at a time copes with pieces of different sizes.">
   <SharesFigure />
 </Figure>
 
-<Prompts ids={['dp-scope', 'dp-shares']} />
+<Prompts ids={['dp-shares']} />
 
 ## One counter, numbered slots
 
@@ -179,7 +168,8 @@ The signature promises three things. `n` is the number of files and
 `f(k)` compiles file `k`; `T: Send` says a result may be moved from the
 thread that made it to the main thread, and `f: Sync` says `f` may be
 called from several threads at once (both from *Threads, Send and
-Sync*). `clamp` keeps the thread count between 1 and `n`, and one thread
+Sync*). `clamp` keeps the thread count between 1 and `n` (more
+threads than files would only sit idle), and one thread
 skips the machinery altogether.
 
 Then come the two shared things. `next` is an `AtomicUsize`, and
@@ -223,14 +213,18 @@ over several files with `--jobs` 1, 3 and 16 and requires the same
 bytes each time, and runs `build` with `--jobs` 1 and 4 and requires
 the same output files.
 
-<Prompts ids={['dp-fetch-add', 'dp-relaxed', 'dp-order', 'dp-send-sync']} />
+<Prompts ids={['dp-fetch-add', 'dp-relaxed', 'dp-order', 'dp-send-sync', 'dp-test']} />
 
 <Callout kind="engine" label="Under the hood">
-*Data parallelism with rayon* would write this as one line,
-`(0..n).into_par_iter().map(f).collect()`, with rayon's work-stealing
-pool doing the hand-out. The CLI uses only the standard library (its
-`Cargo.toml` has no rayon), and for its job, a few hundred pieces of
-similar size and no nesting, one counter does what work-stealing would.
+Notice what the helper does *not* need. No result is ever read while a
+worker may still write one, because `std::thread::scope` joins every
+thread before it returns<Cite id="rust-std-thread-scope" />, and the
+join is what makes the stores to `slots` visible to the main thread;
+that is why the counter can stay `Relaxed`. And the lock is taken only
+to store a finished result, never while compiling, so the threads wait
+for each other for a few nanoseconds per file, not for a whole compile.
+For the rayon version of the same job, and why the CLI does without it,
+see *Data parallelism with rayon*.
 </Callout>
 
 ## Your turn

@@ -1,4 +1,4 @@
-// Chapter 287 cards: recall prompts, examples, exercises and quiz.
+// Chapter 317 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,24 +15,24 @@ export const prompts = {
     a: '`lower`: turn source text into a VIR module. `emit`: given the source, the lowered module and the plan, write the rewritten program.',
   },
   'ml-free': {
-    q: 'Name three things the Python plugin reuses from the core without writing its own.',
+    q: 'Name three things Viscosity’s Python plugin reuses from the shared core instead of writing its own.',
     a: 'Any three of: collection discovery, the safety (escape) checks, numeric inference, bounds proofs, loop and access-pattern analysis, the planner, `explain`.',
   },
   'ml-step': {
-    q: 'In `particles.py` the hot loops are inside `step(arr, dt)`. Why does the report still list them?',
-    a: 'The shared core follows the list into the function call, exactly as it does for JavaScript.',
+    q: 'In a Python program, Viscosity finds the hot loops over a list even though they sit inside a function the list is passed to. Which part of Viscosity makes that work?',
+    a: 'The shared core: its analysis follows the list into the function it is passed to, on VIR, exactly as it does for JavaScript; the Python plugin does nothing special.',
   },
   'ml-float': {
-    q: 'Why does the core need to know a module is Python when deciding if a field is numeric?',
-    a: 'In Python only a float may go in an `array(\'d\')` column; an int would come back as a float. In JavaScript any number fits a Float64Array.',
+    q: 'Why does Viscosity’s shared core need to know a module is Python when deciding whether a field can have a typed column?',
+    a: 'Python keeps ints and floats apart, and an int stored in an `array(\'d\')` comes back as a float (`1` becomes `1.0`), so the field must be provably a float. In JavaScript every number is a double and fits a Float64Array.',
   },
-  'ml-wording': {
-    q: 'Why was “pushes something that is not a fresh object literal” a poor reason in a Python report?',
-    a: 'The decision was right, but Python has no object literals. Python reports now say “appends something that is not a fresh dataclass instance”.',
+  'ml-reason-words': {
+    q: 'In a multi-language compiler, why must the wording of a shared refusal reason depend on the source language, even when the decision is the same?',
+    a: 'The reason has to name constructs the reader actually wrote: Python has `append` and dataclass instances, not `push` and object literals, so a reason worded for JavaScript misleads a Python reader.',
   },
   'ml-profile': {
-    q: 'What happens if you run `viscosity profile` on a `.py` file today?',
-    a: 'The CLI refuses: profiling runs JavaScript programs only. (It used to run the file with Node, which failed with a SyntaxError.)',
+    q: 'Why does `viscosity profile` refuse a `.py` file?',
+    a: 'It records collection sizes by running the instrumented program with Node, so it can only profile JavaScript; it says so up front rather than fail on Python syntax.',
   },
 };
 
@@ -284,7 +284,7 @@ export const quiz = [
       },
       {
         t: 'The escape (safety) checks',
-        why: 'Shared too: `escapes_print.py` is refused by the same check as JavaScript.',
+        why: 'Shared too: `print(ps[0])` is refused by the same check that refuses `console.log(ps[3])` in JavaScript.',
       },
       {
         t: 'A tokenizer, parser, lowering and emitter',
@@ -311,7 +311,7 @@ export const quiz = [
       },
       {
         t: 'For constant folding',
-        why: 'Viscosity doesn’t fold constants; the note is a type fact.',
+        why: 'Viscosity’s core does not fold constants; the note is a fact about the kind of number.',
       },
     ],
   },
@@ -338,24 +338,24 @@ export const quiz = [
     ],
   },
   {
-    q: 'The first report for `not_dataclass.py` said “pushes something that is not a fresh object literal”. What did that show?',
+    q: 'A Python program appends instances of an ordinary (non-dataclass) class to a list, and a report says the list “pushes something that is not a fresh object literal”. What is wrong?',
     options: [
       {
-        t: 'The decision is wrong',
-        why: 'It is right: the class is not a dataclass, so Viscosity can’t see its fields.',
+        t: 'The decision: the list should have been transformed',
+        why: 'Keeping the list is right: the class is not a dataclass, so its fields cannot be seen.',
       },
       {
-        t: 'Shared messages were written in one language’s terms',
+        t: 'The wording: a shared reason was written in JavaScript’s terms',
         correct: true,
-        why: 'Python has no object literals. The core now words it for Python: “appends something that is not a fresh dataclass instance”.',
+        why: 'Python has neither `push` nor object literals; Viscosity words it for Python as “appends something that is not a fresh dataclass instance”.',
       },
       {
         t: 'The Python plugin lowered the program as JavaScript',
-        why: 'It lowered it as Python; the wording lives in the shared analysis.',
+        why: 'The lowering is Python’s; the wording lives in the shared analysis.',
       },
       {
-        t: 'Python does not support push',
-        why: '`append` is lowered to the same VIR `push`.',
+        t: 'Python lists cannot be appended to',
+        why: '`append` is lowered to the same VIR `push` as JavaScript’s method.',
       },
     ],
   },

@@ -1,22 +1,22 @@
-// Chapter 291 cards: recall prompts, examples, exercises and quiz.
+// Chapter 321 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'em-edits': {
-    q: 'Does the Python emitter regenerate the program from VIR?',
+    q: 'Does Viscosity’s Python emitter regenerate the program from VIR?',
     a: 'No. It collects edits to source ranges and applies them, leaving every other character as it was.',
   },
   'em-index': {
-    q: 'After the rewrite, what is `p` in `for p in _vsc_iter(ps):`?',
+    q: 'In Viscosity’s Python output for a list stored as columns, what is `p` in `for p in _vsc_iter(ps):`?',
     a: 'An int index into the columns, not a record object.',
   },
   'em-ix': {
-    q: 'Which indexes does `_vsc_ix(c, i)` accept?',
+    q: 'Which indexes does Viscosity’s generated Python bounds check `_vsc_ix(c, i)` accept?',
     a: 'Exactly `-c.n <= i < c.n`, like a list. Anything else raises `IndexError(\'list index out of range\')`.',
   },
   'em-slots': {
-    q: 'Why must the generated `__slots__` include `n`?',
-    a: 'With `__slots__` there is no per-instance dictionary, so assigning an attribute that isn’t listed (`self.n = 0`) raises AttributeError.',
+    q: 'A Python class declares `__slots__ = (\'x\', \'vx\')` and its `__init__` does `self.n = 0`. What happens, and why?',
+    a: 'AttributeError: with `__slots__` (and no base class providing a `__dict__`) instances have no per-instance dictionary, so only the listed attributes can be assigned.',
   },
   'pa-what': {
     q: 'What does `array(\'d\')` store?',
@@ -27,15 +27,15 @@ export const prompts = {
     a: 'The float `1.0`: the int was converted when it was stored.',
   },
   'pa-slow': {
-    q: 'Why is reading an `array(\'d\')` column slower than reading `p.x` in CPython?',
+    q: 'In CPython, why is reading a float from an `array(\'d\')` slower than reading a float attribute `p.x` of an object?',
     a: 'Each read creates a new float object (`PyFloat_FromDouble`); a dataclass field already holds one.',
   },
-  'pa-memory': {
-    q: 'What did columns win in the committed CPython benchmark?',
-    a: 'Memory: about 4.9 times less (16.0 MB of objects against 3.3 MB of columns for 100,000 records).',
+  'pa-bytes': {
+    q: 'On 64-bit CPython, about how many bytes per value does a list of distinct floats take, against an `array(\'d\')`?',
+    a: 'About 32 against 8: the list holds an 8-byte pointer to a separate 24-byte float object per value, while the array stores each 8-byte double directly.',
   },
   'pa-js': {
-    q: 'Same plan, same safety proofs: why does JavaScript get columns by default but Python doesn’t?',
+    q: 'Same plan, same safety proofs: why does Viscosity give JavaScript lists columns by default but not Python lists?',
     a: 'Measurement: V8’s optimising compiler reads Float64Array elements as raw doubles, while CPython boxes every read. The cost model follows the data.',
   },
 };
@@ -283,7 +283,7 @@ The access rewriting uses the same function, so \`p.n\` becomes \`ps.f0_[p]\` ev
 
 export const quiz = [
   {
-    q: 'What does `ps.append(P(float(i), 1.0))` become?',
+    q: 'When Viscosity stores the list `ps` of dataclass `P(x, vx)` as columns, what does `ps.append(P(float(i), 1.0))` become?',
     options: [
       {
         t: '`ps.append(P(float(i), 1.0))`, unchanged',
@@ -305,7 +305,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A program reads `ps[-1].x`, which the analysis can’t prove in bounds. What does the compiled program do when `ps` has 100 elements?',
+    q: 'A Python program reads `ps[-1].x`, which Viscosity can’t prove in bounds. What does the compiled program do when `ps` has 100 elements?',
     options: [
       {
         t: 'Reads the last element, as the original does',
@@ -327,29 +327,29 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the generated container use `__slots__`?',
+    q: 'What does declaring `__slots__` on a Python class do?',
     options: [
       {
-        t: 'To make `array(\'d\')` faster',
-        why: 'Slots affect the container’s own attributes, not its columns.',
+        t: 'It makes the `array(\'d\')` columns stored in those attributes faster',
+        why: 'Slots affect how the instance stores its own attributes, not the objects held in them.',
       },
       {
-        t: 'Because dataclasses require it',
-        why: 'The container is not a dataclass.',
+        t: 'It turns the class into a dataclass',
+        why: 'That is the `@dataclass` decorator; slots are an independent feature.',
       },
       {
-        t: 'To store the elements',
-        why: 'The elements are in the columns.',
+        t: 'It makes the instances immutable',
+        why: 'Listed attributes can still be reassigned; only unlisted ones cannot be created.',
       },
       {
-        t: 'It declares the container’s attributes, so it has no per-instance dictionary',
+        t: 'It declares the instance attributes up front, so instances have no per-instance dictionary',
         correct: true,
         why: 'Python’s data model: slots reserve space for the listed names and prevent a `__dict__`.',
       },
     ],
   },
   {
-    q: 'A field `count` always holds ints. What column does it get, and why?',
+    q: 'Viscosity stores a Python list as columns, and its field `count` always holds ints. What column does `count` get, and why?',
     options: [
       {
         t: 'A plain list, because `array(\'d\')` would turn its ints into floats',
@@ -371,7 +371,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the committed CPython benchmark, which ordering of time per element is right (fastest first)?',
+    q: 'In a CPython 3.13 measurement of the loop `x += vx * 0.016` over 100,000 records, which ordering of time per element is right (fastest first)?',
     options: [
       {
         t: '`array(\'d\')` columns, list columns, objects',
@@ -380,7 +380,7 @@ export const quiz = [
       {
         t: 'Objects, list columns, `array(\'d\')` columns',
         correct: true,
-        why: '26.7, 43.3 and 72.7 ns per element in this book’s run.',
+        why: '26.7, 43.3 and 72.7 ns per element: every read of an `array(\'d\')` builds a new float object.',
       },
       {
         t: 'List columns, objects, `array(\'d\')` columns',

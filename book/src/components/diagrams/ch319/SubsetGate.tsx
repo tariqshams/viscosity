@@ -1,6 +1,6 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 318 (second half): what pythonPlugin().lower does with a file
+// The Python subset and its parser: what pythonPlugin().lower does with a file
 // (frontend-python/src/index.ts). Inside the subset it lowers to VIR as
 // usual; outside it, the PySyntaxError is caught, an empty module is
 // returned, and emit hands back the source unchanged.

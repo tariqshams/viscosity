@@ -18,9 +18,14 @@ import BracketJoin from '../../../components/diagrams/ch318/BracketJoin';
 
 ## Where does the loop end?
 
-The Python plugin begins where every front end begins, with a
-tokenizer (the *scanner* you wrote for Drip, which groups characters
-into tokens). Here is a Python function for it to read:
+You met scanners in *Tokens and a scanner*, where Drip's braces and
+semicolons made the job a matter of grouping characters; this chapter
+goes further, to a language whose layout is part of its grammar. The
+Python plugin begins where every front end begins, with a tokenizer
+(Python's own name for a scanner). Here is a Python function for it to
+read (`def` declares a function, a colon opens a block, and `for p in
+ps:` visits each element of the list `ps`, like JavaScript's `for (const
+p of ps)`):
 
 ```py
 def step(ps):
@@ -34,7 +39,8 @@ In JavaScript a `}` would close the loop body; here nothing closes
 anything. The body of the `for` is everything indented further than the
 `for`, and it ends at `return`, which moves back to the left; the
 spaces at the start of a line *are* syntax. The parsers you wrote for
-Drip ignore whitespace entirely, so Python's answer is neat: let the
+Drip in *Recursive descent, precedence and associativity* and *Pratt
+parsing* ignore whitespace entirely, so Python's answer is neat: let the
 tokenizer measure the spaces and turn each change into a token, and the
 parser never sees a space at all.
 
@@ -218,8 +224,7 @@ measured, only when no bracket is open.
 </Figure>
 
 <Callout kind="pitfall">
-The real tokenizer had a bug exactly here, found while this chapter was
-first written and since fixed. A line end inside brackets used to set
+Viscosity's tokenizer once had a bug exactly here (since fixed). A line end inside brackets used to set
 `atLineStart` anyway, and the flag was still set when the bracket
 closed, so the line end *after* `1.0))` was taken for a blank line and
 its NEWLINE was lost. The next statement ran into this one, the parser
@@ -252,7 +257,8 @@ difference.
 ## Your turn
 
 The parser's side of these tokens, and the part of Python that
-Viscosity agrees to read, come in the next chapter. First, build the
+Viscosity agrees to read, come next, in *The Python subset and its
+parser*. First, build the
 bracket rule yourself.
 
 <Exercise id="logicalLines" />

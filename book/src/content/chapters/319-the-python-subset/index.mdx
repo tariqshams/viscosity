@@ -18,12 +18,15 @@ import SubsetGate from '../../../components/diagrams/ch319/SubsetGate';
 
 ## How much Python?
 
-The previous chapter turned Python's indentation into tokens. Now
+*A small Python front-end* turned Python's indentation into tokens. Now
 those tokens need a parser, and the parser needs an answer to a harder
 question first: *how much* of Python should Viscosity read? Python has
-list comprehensions, dictionaries, slices, generators, exceptions,
-decorators of every kind, `with`, `lambda`, `async` and much more, and
-each of them has its own exact meaning.
+list comprehensions (`[p.x for p in ps]`, a list built by a loop
+written inside the brackets), dictionaries, slices (`xs[1:3]`, a copy of
+part of a list), generators, exceptions, decorators of every kind
+(`@name` above a function or class, which passes it through `name`),
+`with`, `lambda`, `async` and much more, and each of them has its own
+exact meaning.
 
 Viscosity does not need all of that. It needs the part of Python that
 numeric, data-heavy code uses (lists of records and loops over them),
@@ -57,7 +60,8 @@ was put.</span>
 The parser, `frontend-python/src/parser.ts`, accepts:
 
 - `def` functions, `return`, `pass`, `break`, `continue` and `global`;
-- `@dataclass` classes with annotated fields;
+- `@dataclass` classes with annotated fields (`x: float`, a field named
+  `x` declared to hold a float);
 - `if`, `elif` and `else`, `while`, and `for x in ...`;
 - assignment, `+=` and its friends, and `x: float = ...`;
 - arithmetic, comparisons, `and`, `or` and `not`, calls (with keyword
@@ -185,7 +189,7 @@ The cost of failing closed is that the reason stays inside the plugin:
 says only `No arrays of objects found.`, although the plugin knows
 precisely which construct it stopped at.
 
-<Prompts ids={['ps-fail', 'ps-explain']} />
+<Prompts ids={['ps-fail', 'ps-refuse']} />
 
 ## Blocks are braces
 
@@ -217,7 +221,8 @@ NEWLINE, the body is on the same line (`if x: y = 1`) and one simple
 line is parsed. Otherwise the NEWLINE is skipped (`p++`), an INDENT is
 required and skipped, and statements are parsed until a DEDENT (or the
 end of the file), which is skipped in turn. It is the recursive descent
-you wrote for Drip, with INDENT for `{` and DEDENT for `}`. Step
+of *Recursive descent, precedence and associativity*, with INDENT for
+`{` and DEDENT for `}`. Step
 through it:
 
 <BlockSteps client:visible />
@@ -271,7 +276,7 @@ Python's own reference divides the indentation errors the same way: an
 inconsistent dedent is found while tokenizing, while an indent where no
 block may start is found by the parser<Cite id="python-lexical" />.
 After those two stages the Python plugin holds an ordinary syntax tree,
-and the next chapter lowers it into the same VIR as JavaScript.
+and *Lowering Python to VIR* lowers it into the same VIR as JavaScript.
 </Callout>
 
 ## Your turn

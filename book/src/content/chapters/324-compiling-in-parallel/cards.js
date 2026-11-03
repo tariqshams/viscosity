@@ -1,18 +1,14 @@
-// Chapter 297 cards: recall prompts, examples, exercises and quiz.
+// Chapter 324 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'dp-independent': {
-    q: 'Why can the Rust CLI compile `a.js` and `b.js` at the same time?',
+    q: 'Why can Viscosity’s Rust CLI compile `a.js` and `b.js` at the same time?',
     a: 'They are independent: Viscosity’s analyses never look from one file into another, so compiling one needs nothing from the other.',
   },
-  'dp-what-thread': {
-    q: 'What is a thread?',
-    a: 'A separate line of execution inside one program, with its own place in the code and its own stack, sharing the program’s other memory; threads can run on different cores at once.',
-  },
-  'dp-scope': {
-    q: 'Why may the closures passed to `s.spawn` inside `thread::scope` borrow local variables?',
-    a: 'The scope joins every thread it started before it returns, so no thread can outlive what it borrowed. Plain `thread::spawn` needs `\'static` data instead.',
+  'dp-what': {
+    q: 'What is data parallelism?',
+    a: 'Running the same operation on many independent pieces of data at once, on different cores, with no state shared between the pieces.',
   },
   'dp-shares': {
     q: 'Six files take 4, 4, 1, 1, 1 and 1 units on three threads. Why do fixed shares (two files each) finish later than a shared counter?',
@@ -23,11 +19,15 @@ export const prompts = {
     a: 'The value before the addition. Reading and adding happen as one indivisible (atomic) step.',
   },
   'dp-relaxed': {
-    q: 'Why is `Ordering::Relaxed` enough for the CLI’s counter?',
+    q: 'Scoped worker threads draw work indices from an `AtomicUsize` and store results behind a `Mutex`. Why is `Ordering::Relaxed` enough for the counter?',
     a: 'The counter only hands out numbers; no other data is passed through it. Results go through the mutex, and are read only after the scope has joined every thread.',
   },
+  'dp-test': {
+    q: 'How can you test that a parallel build is deterministic?',
+    a: 'Run it with several thread counts (say 1, 3 and 16) on the same inputs and require byte-identical output every time.',
+  },
   'dp-order': {
-    q: 'Why does `explain a.js b.js c.js` print in the same order for every `--jobs`?',
+    q: 'Why does Viscosity’s `explain a.js b.js c.js` print in the same order for every `--jobs`?',
     a: 'Each result goes into its own slot, `slots[k]`, and the main thread reads the slots in index order after all threads finish.',
   },
   'dp-send-sync': {
@@ -385,7 +385,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is `viscosity explain a.js b.js c.js` printed in the same order for every `--jobs`?',
+    q: 'Why is Viscosity’s `explain a.js b.js c.js` printed in the same order for every `--jobs`?',
     options: [
       {
         t: 'Each result is stored in its own slot, and the main thread prints the slots in input order after the threads finish',
@@ -403,20 +403,24 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why can the closures passed to `s.spawn` borrow `next` and `slots`?',
+    q: 'A parallel map stores `f(k)` in slot `k` and returns the slots in order. What must be true of `f` for the output to be the same under every thread schedule?',
     options: [
       {
-        t: 'Because `next` and `slots` are `static`',
-        why: 'They are local variables of the function.',
-      },
-      {
-        t: 'Because atomics and mutexes are `Copy`',
-        why: 'They are not, and every thread uses the same one.',
-      },
-      {
-        t: 'Because `thread::scope` joins every thread before it returns, so no thread outlives them',
+        t: '`f(k)` must depend only on `k`, with no state shared between calls',
         correct: true,
-        why: 'Plain `thread::spawn` would need `\'static` data.',
+        why: 'Then each slot gets the same value whichever thread computes it, and whenever.',
+      },
+      {
+        t: '`f` must be called in index order',
+        why: 'The slots already put the results in order; the calls may happen in any order.',
+      },
+      {
+        t: '`f` must take the same time for every `k`',
+        why: 'Timing changes who computes what and when, not the values stored.',
+      },
+      {
+        t: '`f` must return a `Copy` type',
+        why: 'Results are moved into their slots; `Send` is what matters, not `Copy`.',
       },
     ],
   },
@@ -439,7 +443,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `for_each_parallel`, why is `f(k)` called before `slots.lock()`, not while holding the lock?',
+    q: 'Worker threads compute `f(k)` and then store it with `slots.lock()...[k] = Some(r)`. Why compute `f(k)` before taking the lock, not while holding it?',
     options: [
       {
         t: 'So that other threads can compile while this one does; only the short store needs the lock',

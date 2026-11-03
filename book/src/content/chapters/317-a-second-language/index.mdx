@@ -18,15 +18,21 @@ import PluginRoute from '../../../components/diagrams/ch317/PluginRoute';
 
 ## The second customer
 
-Part VIII built a compiler for one language: its front end reads
-JavaScript, and its core finds arrays of objects, proves them safe,
-picks a layout and explains itself. Now somebody asks the obvious
+You met the plugin API in *The architecture of Viscosity and its plugin
+API*: a language gives the core an `id`, its file extensions, `lower`
+and `emit`, and everything in between is shared. This chapter goes
+further and tests that promise against a second, real language. The
+core you built in Core 5 (and ported to Rust in Core 8) reads JavaScript, finds arrays of objects, proves them safe,
+picks a layout and explains itself; now somebody asks the obvious
 question, which is whether it works on Python.
 
 Python programs have exactly the same problem. A list of small records
 and a loop that touches two fields of each record is the same shape of
 data whichever language spells it; only the spelling differs (`append`
-rather than `push`, indentation rather than braces). The question this
+rather than `push`, indentation rather than braces, and a record
+written as a **dataclass**, a class marked `@dataclass` whose
+constructor Python generates from its annotated fields, rather than an
+object literal). The question this
 chapter answers is what that second language *costs*: a second
 compiler, or something much smaller?
 
@@ -61,8 +67,8 @@ then with one:
 
 <BillSteps client:visible />
 
-Without a shared IR (an *intermediate representation*, the compiler's
-own internal language from *What an IR is for*), each analysis is
+Without a shared IR (the compiler's own internal language, from *IR,
+three-address code and control-flow graphs*), each analysis is
 written against one language's syntax tree, so every language needs its
 own copy of every analysis. With VIR in the middle, an analysis is
 written once, against VIR, and a language costs one **plugin**: a
@@ -101,24 +107,12 @@ language means, not only what the first one meant.
 ## One pipeline, two plugins
 
 The contract between a language and the core is the `LanguagePlugin`
-interface from *The plugin API*. This is it, from
-`core/src/plugin.ts`, wrapped to fit:
-
-```ts
-interface LanguagePlugin {
-  id: string;           // 'python'
-  extensions: string[]; // ['.py']
-  lower(source: string,
-        filename?: string): LoweredModule;
-  emit(source: string,
-       lowered: LoweredModule,
-       plan: Plan): string;
-}
-```
-
-A plugin has a name, its file extensions and two jobs: `lower` turns
-source text into a VIR module, and `emit` takes the source, that module
-and the core's plan, and returns the rewritten program.
+interface, and the function that runs it is `compile`, both from *The
+architecture of Viscosity and its plugin API*: `lower` turns source
+text into a VIR module, the shared `analyze`, `plan` and `explain` run
+on that module, and the same plugin's `emit` writes the program back
+out. What that chapter could only promise is that nothing in the middle
+cares which plugin it was handed; with two plugins, we can check.
 
 Here is how the CLI chooses, from `cli/src/cli.ts`:
 
@@ -141,26 +135,9 @@ the CLI asks which language it holds.
   <PluginRoute />
 </Figure>
 
-And here is `compile` from `core/src/index.ts`, the function the CLI
-calls for every file in every language (wrapped, with one line that
-fills in default options left out):
-
-```ts
-function compile(source, plugin, opts) {
-  const lowered = plugin.lower(source);
-  const analysis = analyze(lowered.module);
-  const p = plan(analysis, { /* opts */ });
-  const code =
-    plugin.emit(source, lowered, p);
-  return { code, plan: p, analysis,
-           explain: explain(p) };
-}
-```
-
-The plugin lowers; `analyze` finds collections, shapes, loops and
-safety; `plan` picks a layout; the *same* plugin writes the new program;
-`explain` writes the report. Only the two plugin calls touch a
-language.
+`compile` itself never asks: it calls `plugin.lower`, the shared
+passes and `plugin.emit`, so the two plugin calls are the only places a
+language is touched.
 
 <Prompts ids={['ml-plugin']} />
 
@@ -168,7 +145,9 @@ language.
 
 The Python plugin, `packages/frontend-python`, is 1,085 lines: a
 tokenizer, a parser, a lowering, an emitter and 44 lines joining them
-(the next three chapters walk through it). It has no safety analysis,
+(*A small Python front-end*, *The Python subset and its parser*,
+*Lowering Python to VIR* and *Emitting Python with column storage* walk
+through it). It has no safety analysis,
 no loop finder, no bounds proofs, no cost model and no report writer;
 it did not need them.
 
@@ -209,7 +188,10 @@ plugin produces these same five instructions (only the value numbers
 are one higher), so the analyses cannot tell the languages apart.
 
 The second is the report each language gets for that program (trimmed;
-Python run with `--python-auto`, explained in the emitter chapter).
+Python run with `--python-auto`, the flag that lets Viscosity give a
+Python list columns without an annotation). `array('d')` is a Python
+standard-library array that packs C doubles, one after another, the
+nearest thing Python has to a `Float64Array`.
 Only the line numbers and the name of the column type differ, because
 one planner wrote both.
 
@@ -279,7 +261,7 @@ that depends on what a value *means* in a language belongs to that
 language, even when it runs in the core, and a good multi-language IR
 makes those facts explicit and few.
 
-<Prompts ids={['ml-float', 'ml-wording', 'ml-profile']} />
+<Prompts ids={['ml-float', 'ml-reason-words', 'ml-profile']} />
 
 <Callout kind="engine" label="Under the hood">
 Big compilers are built the same way. LLVM's core processes an

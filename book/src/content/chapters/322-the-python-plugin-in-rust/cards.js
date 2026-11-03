@@ -1,22 +1,22 @@
-// Chapter 292 cards: recall prompts, examples, exercises and quiz.
+// Chapter 322 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
-  'py-four': {
-    q: 'Which TypeScript file does each module of `frontend-python` port?',
-    a: '`tokens.rs` ← `tokens.ts`, `parser.rs` ← `parser.ts`, `lower.rs` ← `lower.ts`, `emit.rs` ← `emit.ts`; the crate root ← `index.ts`.',
+  'py-bytes': {
+    q: 'A Rust tokenizer scans `src.as_bytes()`, while the JavaScript one it ports indexes a UTF-16 string. Why do both cut tokens at the same characters for Python source?',
+    a: 'Every character the tokenizer inspects is ASCII, one byte in UTF-8 and one unit in UTF-16; non-ASCII characters appear only inside strings and comments, which are skipped as wholes.',
   },
   'py-fail-closed': {
-    q: 'The Python source uses a list comprehension. What does the Rust plugin do?',
+    q: 'A Python file uses a list comprehension. What does Viscosity’s Rust Python plugin do with it?',
     a: 'Fails closed: the parser’s `PySyntaxError` makes it lower an empty module, so nothing is reported and the file is emitted unchanged.',
   },
-  'py-depth': {
-    q: 'What does a line break inside `( )` produce, and why?',
-    a: 'No token: with bracket depth above 0 it is whitespace, and the next line’s indentation isn’t measured. The call stays one logical line.',
+  'py-at': {
+    q: 'In Rust, why is `s.get(k).copied().unwrap_or(0)` a safe way for a scanner to read byte `k` of the slice `s`?',
+    a: '`get` returns `None` past the end instead of panicking, and `unwrap_or(0)` turns that into byte 0, which no character class a scanner tests (digits, letters, `e`) contains, so every scanning loop stops at the end.',
   },
-  'py-eof': {
-    q: 'Why did a file ending in `k = 1` make `1` a float in the old reference tokenizer?',
-    a: 'Past the end, `src[i]` was `undefined`, and `/[eE]/.test(undefined)` tests the string "undefined", which has an `e`.',
+  'py-undefined': {
+    q: 'In JavaScript, why does `/[eE]/.test(src[i])` return true when `i` is past the end of the string `src`?',
+    a: '`src[i]` is `undefined`, and `test` converts its argument to a string, so it tests `"undefined"`, which contains an `e`. Reading with `src.charAt(i)` gives `""` instead.',
   },
   'py-children': {
     q: 'In what order does `Ast::children` list a `For` node’s children, and why that order?',
@@ -27,12 +27,12 @@ export const prompts = {
     a: 'The VIR instructions it emits come out in another order, so `explain` lists reasons in another order: same decisions, failed parity.',
   },
   'py-literal': {
-    q: 'Why are only literal dataclass defaults modelled?',
+    q: 'Why does Viscosity model only literal dataclass defaults?',
     a: 'Python evaluates a default once, at class definition, but the emitter copies its text to every call. Only a literal gives the same value both ways.',
   },
   'py-tests': {
-    q: 'What holds the Rust Python plugin to the reference?',
-    a: '54 fixture pairs (27 programs, both bounds modes), compared byte for byte, and a `python3` differential test on every program.',
+    q: 'Which two kinds of test hold viscosity-rs’s Python plugin to the TypeScript one?',
+    a: 'Parity: every Python test program, in both bounds modes, must give byte-for-byte the same code and explain text. Differential: each original and compiled program runs under `python3`, and their output and final exception must match.',
   },
 };
 
@@ -468,7 +468,7 @@ fn children(
 
 export const quiz = [
   {
-    q: 'A Python file uses `lambda`. What does `viscosity explain` print for it?',
+    q: 'A Python file uses `lambda`. What does Viscosity’s `explain` print for it?',
     options: [
       {
         t: 'A syntax error, and the build fails',
@@ -486,24 +486,24 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the tokenizer, line 3 is indented 2 columns, between two open levels of 0 and 4. When is that not an error?',
+    q: 'In Rust, what does `s.get(k)` return when `k` is past the end of the slice `s`?',
     options: [
       {
-        t: 'When line 2 ended inside an open bracket',
+        t: '`None`',
         correct: true,
-        why: 'With depth above 0 the line break is whitespace, and line 3’s width is never measured.',
+        why: '`get` returns an `Option`: `Some(&s[k])` in range, `None` past the end.',
       },
       {
-        t: 'When line 3 is a comment',
-        why: 'A comment-only line is skipped too, but that isn’t what the question describes.',
+        t: 'It panics',
+        why: 'That is indexing, `s[k]`; `get` is the checked version that never panics.',
       },
       {
-        t: 'Never: 2 is always inconsistent',
-        why: 'Only widths measured at the start of a logical line are compared.',
+        t: '`Some(&0)`',
+        why: 'There is no byte there to borrow; the 0 comes only from a later `unwrap_or(0)`.',
       },
       {
-        t: 'When tabs are used',
-        why: 'A tab only moves the width to the next multiple of 8.',
+        t: '`undefined`',
+        why: 'That is JavaScript’s answer for `src[i]` past the end; Rust has no such value.',
       },
     ],
   },
@@ -526,11 +526,11 @@ export const quiz = [
     ],
   },
   {
-    q: '`tag: str = f"k={K}"` is a dataclass default. What does the Rust lowering do?',
+    q: '`tag: str = f"k={K}"` is a dataclass default. What does Viscosity’s lowering do with the class?',
     options: [
       {
         t: 'Copies the f-string to each call, like any string',
-        why: 'That was the reference’s bug: the compiled program then printed a later value of `K`.',
+        why: 'Python evaluates the default once, when the class is defined; copying it to each call would read a later value of `K`.',
       },
       {
         t: 'Evaluates it at compile time',
@@ -544,7 +544,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which field gets an `array(\'d\')` column?',
+    q: 'When Viscosity stores a Python list as columns, which fields get an `array(\'d\')` column?',
     options: [
       {
         t: 'Every numeric field',

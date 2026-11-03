@@ -2,7 +2,7 @@ import { StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
 // Chapter 317: the bill for adding languages, with and without a shared IR.
-// Six analyses from Part VIII; line counts are `wc -l` of the repository's
+// Six analyses from the Viscosity core (Core 5, Building Viscosity); line counts are `wc -l` of the repository's
 // engine/ts/packages/{core,frontend-js,frontend-python}/src at the time of
 // writing.
 const ANALYSES = ['find', 'shape', 'safe', 'numeric', 'bounds', 'loops'];
@@ -11,7 +11,7 @@ const LANGS = ['JavaScript', 'Python', 'a third'];
 type S = { mode: 'grid' | 'ir'; langs: number; hi: number; leak?: boolean; total: string; note: string };
 
 const STATES: S[] = [
-  { mode: 'grid', langs: 1, hi: -1, total: '6 pieces of analysis', note: 'One language. Part VIII built six analyses for JavaScript: find the collections, read their shapes, prove them safe, infer numeric fields, prove bounds, find the loops. Each box is code you wrote and tested.' },
+  { mode: 'grid', langs: 1, hi: -1, total: '6 pieces of analysis', note: 'One language. The core you built for JavaScript has six analyses: find the collections, read their shapes, prove them safe, infer numeric fields, prove bounds, find the loops. Each box is code you wrote and tested.' },
   { mode: 'grid', langs: 2, hi: 1, total: '12 pieces of analysis', note: 'Add Python with no shared IR. Every analysis would have to be written again against Python’s syntax tree: six new boxes, six new sets of bugs, and two copies to keep in step for ever.' },
   { mode: 'grid', langs: 3, hi: 2, total: '18 pieces of analysis', note: 'A third language makes it 18. The bill is languages × analyses, and every new analysis is paid once per language too.' },
   { mode: 'ir', langs: 2, hi: -1, total: '6 analyses + 2 plugins', note: 'With VIR in the middle, the analyses run once, on VIR. Each language pays for one plugin: a parser, a lowering, an emitter. The bill is languages + analyses.' },

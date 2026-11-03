@@ -1,4 +1,4 @@
-// Chapter 290 cards: recall prompts, examples, exercises and quiz.
+// Chapter 320 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,27 +11,27 @@ export const prompts = {
     a: 'Three times. `for` takes the next value from `range(3)` on each pass, whatever the body did to `i`.',
   },
   'sd-counter': {
-    q: 'Why does the Python plugin lower `for i in range(n)` with a hidden counter instead of using `i` itself?',
+    q: 'Why does Viscosity’s Python plugin lower `for i in range(n)` with a hidden counter instead of using `i` itself?',
     a: 'Because reassigning `i` in the body must not change the iteration. The counter carries the iteration; `i` just gets a copy each pass.',
   },
   'sd-proof': {
-    q: 'What does the hidden counter give the bounds proofs?',
-    a: 'A clean induction variable: an access through the counter’s value is proven even if the body reassigns the loop variable later.',
+    q: 'Viscosity lowers `for i in range(len(xs))` with a hidden counter. Why can `xs[i]` at the top of the body still be proven in bounds when the body later reassigns `i`?',
+    a: 'The counter is a clean induction variable that the body cannot change; `i` is a fresh copy of it on each pass, so at the top of the body `i` is still the counter’s value, which lies in range.',
   },
   'sd-int': {
-    q: 'Why may an int never go into an `array(\'d\')` column?',
+    q: 'Why can storing a Python int field in an `array(\'d\')` column change what a program prints?',
     a: 'The column stores C doubles, so the int comes back as a float and prints differently (`1` becomes `1.0`).',
   },
   'sd-index': {
-    q: 'Besides typed columns, what else needs Python’s “is an int” fact?',
+    q: 'In Viscosity’s analysis of Python, which question besides “may this field have a typed column?” needs the fact “this value is an int”?',
     a: 'Indexing: a list index must be an int, so a possibly non-int index makes Viscosity keep the list.',
   },
   'sd-dataclass': {
-    q: 'Which Python classes does the plugin treat as records?',
+    q: 'Which Python classes does Viscosity’s Python plugin treat as records?',
     a: 'Module-level `@dataclass` classes whose bodies contain only annotated fields.',
   },
   'sd-kwargs': {
-    q: 'Why is `P(y=1.0, x=v)` (keywords out of field order) not lowered to a record?',
+    q: 'For a dataclass with fields `x, y`, why does Viscosity not lower `P(y=1.0, x=v)` (keywords out of field order) to a record?',
     a: 'Python evaluates arguments left to right; reordering them into field order could change that, so the plugin refuses instead.',
   },
 };
@@ -214,7 +214,7 @@ With \`xs = [10, 20, 30]\`: \`pyIndex(xs, -3)\` is \`xs[0]\`, \`10\`; \`pyIndex(
 **Common wrong attempts.**
 
 - Using JavaScript's idea of a valid index, \`0 <= i < n\`: \`-1\` is rejected, though in Python it is the last element, and a float index slips through.
-- Handling negatives but not the range: \`pyIndex(xs, 3)\` returns \`undefined\` where Python would have stopped with an \`IndexError\`, so the two programs would behave differently. The next chapter's \`_vsc_ix\` helper is this check, written in Python.`,
+- Handling negatives but not the range: \`pyIndex(xs, 3)\` returns \`undefined\` where Python would have stopped with an \`IndexError\`, so the two programs would behave differently. The \`_vsc_ix\` helper of *Emitting Python with column storage* is this check, written in Python.`,
     wrong: [
       {
         code: `function pyIndex(xs, i) {
@@ -243,7 +243,7 @@ With \`xs = [10, 20, 30]\`: \`pyIndex(xs, -3)\` is \`xs[0]\`, \`10\`; \`pyIndex(
 
 export const quiz = [
   {
-    q: 'A Python loop `for i in range(len(ps)):` reads `ps[i].x`, then does `i = 0`. What happens to the bounds proof for `ps[i]` at the top of the body?',
+    q: 'A Python loop `for i in range(len(ps)):` reads `ps[i].x`, then does `i = 0`. In Viscosity, what happens to the bounds proof for `ps[i]` at the top of the body?',
     options: [
       {
         t: 'It still holds: the access uses the hidden counter’s value for this pass',
@@ -265,7 +265,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A field holds `i` for every element, where `i` comes from `range`. What column does it get?',
+    q: 'When Viscosity gives a Python list column storage, what column does a field get that holds `i` for every element, where `i` comes from `range`?',
     options: [
       {
         t: '`array(\'d\')`, because ints are numbers',
@@ -287,7 +287,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which expression does Python’s rule (as in the core) classify as a float?',
+    q: 'Which of these Python expressions is always a float?',
     options: [
       {
         t: '`i // 2` where `i` is an int',
@@ -309,7 +309,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `P(y=1.0, x=v)` lower to, for a dataclass with fields `x, y`?',
+    q: 'What does Viscosity lower `P(y=1.0, x=v)` to, for a dataclass with fields `x, y`?',
     options: [
       {
         t: 'record.new with `v, 1.0`',
@@ -331,7 +331,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why can’t the shared core catch a lowering that copies Python’s spelling but not its meaning?',
+    q: 'Why can a multi-language compiler’s shared core not catch a lowering that copies Python’s spelling but not its meaning?',
     options: [
       {
         t: 'The core does catch it, with the safety analysis',
@@ -342,8 +342,8 @@ export const quiz = [
         why: 'The implementation language is irrelevant.',
       },
       {
-        t: 'It can, if you pass `--python-auto`',
-        why: 'That flag only changes the planner’s default verdict.',
+        t: 'It can, if you pass Viscosity’s `--python-auto`',
+        why: 'That flag only changes the planner’s default verdict for Python lists.',
       },
       {
         t: 'It only sees VIR, and the wrong VIR is a consistent program',

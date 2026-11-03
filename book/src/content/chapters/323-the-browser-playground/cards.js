@@ -1,38 +1,38 @@
-// Chapter 296 cards: recall prompts, examples, exercises and quiz.
+// Chapter 323 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
-  'playground-what': {
-    q: 'What does the book’s **playground** run, and where?',
-    a: 'The real compiler, in the reader’s browser: the TS engine on the page, or the Rust engine as WebAssembly in a worker. It shows decisions and code, and runs both versions.',
+  'playground-def': {
+    q: 'What is a compiler **playground**?',
+    a: 'The compiler running in a web page: the reader edits a program and sees the compiler’s output (for an optimiser, its decisions and the compiled code, and often a check that both versions behave the same).',
   },
-  'lazy-wasm': {
-    q: 'When does the playground download the Rust engine’s `.wasm`?',
-    a: 'Only the first time a reader picks Rust (or a page sets `engine="rust"`). TS-only pages never fetch it.',
+  'lazy-wasm-why': {
+    q: 'Why should a page load a large WebAssembly module with a dynamic `import()` on first use, rather than with the page?',
+    a: 'So readers who never use it never pay for the download; a dynamic `import()` fetches the glue (and the glue the module) only when that line runs.',
   },
   'memo-promise': {
-    q: 'How does `play.worker.ts` make sure the module is loaded only once?',
-    a: '`rust ??= import(...).then(init)`: every request awaits the same promise. On failure it resets `rust` to `null`, so a later request can try again.',
+    q: 'In JavaScript, how do you make sure an asynchronous resource is loaded at most once, yet loaded again after a failed attempt?',
+    a: 'Memoise the promise, `p ??= load()`, so every caller awaits the same one, and in its `.catch` set `p = null` before rethrowing, so the next caller starts a new load.',
   },
   ticket: {
-    q: 'How does the playground ignore a stale compile result?',
+    q: 'How can a user interface ignore the result of an asynchronous request that a newer request has overtaken?',
     a: 'Each compile takes a ticket, `++latest`. A result is shown only if its ticket still equals `latest`.',
   },
   'stale-switch': {
-    q: 'Without tickets, what could go wrong when a reader switches from Rust to TS while the `.wasm` loads?',
-    a: 'The TS result appears first; then the Rust reply to an older edit arrives and replaces it.',
+    q: 'A page sends a compile to a slow worker, then the reader switches to a fast engine on the page, whose result shows at once. Without a staleness check, what goes wrong?',
+    a: 'The worker’s reply to the older request arrives later and overwrites the newer result on screen.',
   },
   'panic-trap': {
-    q: 'What does a Rust panic look like from JavaScript, in this build?',
-    a: 'A `WebAssembly.RuntimeError` (here, “unreachable”): `panic=abort`, so the instance traps instead of unwinding.',
+    q: 'In Rust compiled to `wasm32-unknown-unknown` with the default `panic=abort`, what does a panic look like from JavaScript?',
+    a: 'A trap, thrown as a `WebAssembly.RuntimeError` (typically “unreachable”): the instance aborts instead of unwinding.',
   },
   'refcell-stuck': {
-    q: 'After a trap, why can’t you just keep using the instance?',
-    a: 'Nothing unwound, so no destructors ran. In this chapter’s test a `RefCell` stayed borrowed forever, and every later call trapped.',
+    q: 'A Rust function compiled to WebAssembly with `panic=abort` panics while it holds a `RefCell` borrow. Why does that `RefCell` stay borrowed if the instance is used again?',
+    a: 'Nothing unwinds, so the borrow guard’s destructor never runs and the borrow flag is never reset; every later borrow of it panics, which traps again.',
   },
   'fatal-new-worker': {
-    q: 'What does the playground do with a reply marked `fatal`?',
-    a: 'Terminates the worker and forgets it. The next compile starts a fresh worker, which loads a fresh instance.',
+    q: 'What is the safe way for a page to recover after its WebAssembly engine traps on a Rust panic?',
+    a: 'Discard the instance: terminate the worker that holds it and start a new one, with a fresh instance and fresh memory, for the next request.',
   },
 };
 
@@ -338,7 +338,7 @@ impl Pg {
 
 export const quiz = [
   {
-    q: 'A chapter page has one Playground with the default `engine="ts"`. When is the `.wasm` downloaded?',
+    q: 'A page’s only Playground uses the default `engine="ts"`, and the Rust engine is loaded lazily in a worker. When is the `.wasm` downloaded?',
     options: [
       {
         t: 'When the page loads, so the toggle is instant',
@@ -392,7 +392,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the experiment in this chapter, after a trap, an unrelated exported function still worked. Why does the playground replace the worker anyway?',
+    q: 'After a `panic=abort` trap, an unrelated exported function of the same WebAssembly instance can still work. Why replace the instance anyway?',
     options: [
       {
         t: 'Because terminated workers are faster',
@@ -405,12 +405,12 @@ export const quiz = [
       {
         t: 'Because no destructors ran, the state may be corrupt in ways nobody can check',
         correct: true,
-        why: 'In the test a `RefCell` stayed borrowed and every call that touched it trapped. A fresh instance is the only state you can trust.',
+        why: 'For example, a `RefCell` borrowed at the panic stays borrowed, and every call that touches it traps. A fresh instance is the only state you can trust.',
       },
     ],
   },
   {
-    q: 'In `play.worker.ts`, `loadRust` resets `rust = null` if loading fails. What would happen without that?',
+    q: 'A loader memoises its promise with `rust ??= load()` and resets `rust = null` if loading fails. What would happen without the reset?',
     options: [
       {
         t: 'A failed download would stick: every later compile would get the same rejected promise',

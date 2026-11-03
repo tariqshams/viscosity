@@ -1,4 +1,4 @@
-// Chapter 288 cards: recall prompts, examples, exercises and quiz.
+// Chapter 318 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -27,8 +27,8 @@ export const prompts = {
     a: 'Two DEDENTs, one for each width above 0, so every open block is closed.',
   },
   'it-cpython': {
-    q: 'Which part finds an *unexpected* indent (an INDENT where no block may start): the tokenizer or the parser?',
-    a: 'The parser: the tokenizer only compares widths, and whether a block may start there is a question of grammar.',
+    q: 'In CPython, which stage reports an *unexpected* indent (an INDENT where no block may start): the tokenizer or the parser?',
+    a: 'The parser: the tokenizer only compares widths and emits the INDENT, and whether a block may start there is a question of grammar.',
   },
   'it-tab': {
     q: 'How wide is a tab in Viscosity’s tokenizer?',
@@ -259,24 +259,24 @@ export const quiz = [
     ],
   },
   {
-    q: 'Before it was fixed, the real tokenizer dropped a NEWLINE after a bracket that closed on a continuation line. What was the effect?',
+    q: 'A Python file has three lines: `xs = [1,`, then `      2]`, then `print(xs)`. How many NEWLINE tokens does the tokenizer produce?',
     options: [
       {
-        t: 'The program was mis-transformed and printed different output',
-        why: 'The parser stopped with “expected end of line”, so the file was not transformed at all.',
+        t: 'Three, one per physical line',
+        why: 'The line end after `[1,` is inside an open bracket, so it does not end a statement.',
       },
       {
-        t: 'Python itself rejects such files',
-        why: 'They are perfectly good Python.',
-      },
-      {
-        t: 'The file was left untouched: safe, but a missed opportunity',
+        t: 'Two, one per logical line',
         correct: true,
-        why: 'Failing closed protected correctness; the cost was that many real files were skipped. `multiline_call.py` now pins the fix.',
+        why: 'The bracket joins the first two lines into one statement; NEWLINE marks the end of a logical line. (CPython’s `tokenize` module reports the inner line end as `NL`, a non-logical newline that the parser never sees.)',
       },
       {
-        t: 'Only the bracketed line was skipped',
-        why: 'A syntax error stops the whole file.',
+        t: 'One, at the end of the file',
+        why: '`print(xs)` is a statement of its own, so the first statement needs its own NEWLINE.',
+      },
+      {
+        t: 'Two, plus an INDENT for the second line',
+        why: 'Inside brackets the second line’s width is never measured, so no INDENT is made.',
       },
     ],
   },

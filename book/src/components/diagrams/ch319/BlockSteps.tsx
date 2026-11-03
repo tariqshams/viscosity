@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 318 (second half): parsePython (frontend-python/src/parser.ts)
+// The Python subset and its parser: parsePython (frontend-python/src/parser.ts)
 // reading the real token stream for
 //   for p in ps:
 //       if p.x > 9:

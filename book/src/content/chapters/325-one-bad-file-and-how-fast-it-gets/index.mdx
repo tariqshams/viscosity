@@ -43,9 +43,9 @@ prints `b.js`, and returns `Ok(false)`, which `main` turns into exit
 status 1, so a script that runs the CLI knows something failed. `build`
 behaves the same way; `out/` gets `a.js` and `b.js`, and no `bad.js`.
 
-A **panic** is different: it is Rust's way of stopping when a bug is
-found (an index out of range, an `unwrap` of `None`), and it would
-normally end the thread that hit it, and with a scope, the whole run.
+A **panic** is different: it is a bug (an index out of range, an
+`unwrap` of `None`), and it would normally end the thread that hit it,
+and with a scope, the whole run.
 With 396 files, a bug that one strange file triggers should cost that
 file, not the other 395. So `compile_file` wraps the compiler (rewrapped):
 
@@ -64,9 +64,10 @@ let r = std::panic::catch_unwind(|| {
     .to_string())?;
 ```
 
-`catch_unwind` runs the closure, and if it panics by unwinding (Rust's
-usual way, which climbs back up the call stack cleaning up as it goes),
-it returns `Err` instead of letting the panic go on<Cite id="rust-std-catch-unwind" />.
+You met unwinding and `catch_unwind` in *The browser playground*, where
+WebAssembly's `panic=abort` took them away; a native build keeps them,
+so `catch_unwind` runs the closure and, if it panics by unwinding,
+returns `Err` instead of letting the panic go on<Cite id="rust-std-catch-unwind" />.
 `map_err` replaces that `Err` with a message, and `?` returns it as
 this file's error. "See above" points at the panic message itself,
 which Rust's panic hook has already printed to stderr. And because the
@@ -94,12 +95,12 @@ process at the first one, and the documentation warns that it "might not catch a
 <Cite id="rust-std-catch-unwind" />.</span>
 </Analogy>
 
-<Prompts ids={['dp-fail', 'dp-panic', 'dp-see-above', 'dp-unwind-only']} />
+<Prompts ids={['dp-fail', 'dp-panic', 'dp-panic-hook', 'dp-unwind-only']} />
 
 ## Reading the numbers
 
-`engine/rust/results/parallel-build-2026-10-31.md` timed 396 files (the
-66 JavaScript and Python test programs, copied six times) on a shared
+`engine/rust/results/parallel-build-2026-10-31.md` timed 396 files (66
+JavaScript and Python test programs and benchmarks, copied six times) on a shared
 cloud VM with 4 virtual CPUs, best of 11 runs, median in brackets, in
 milliseconds (wrapped):
 

@@ -1,30 +1,30 @@
-// Chapter 298 cards: recall prompts, examples, exercises and quiz.
+// Chapter 325 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'dp-fail': {
-    q: 'One of 396 files has a syntax error. What does the Rust CLI do with it and with the others?',
+    q: 'One of several files given to Viscosity’s Rust CLI has a syntax error. What does the CLI do with it and with the others?',
     a: 'It reports `viscosity: bad.js: ...` on stderr, still compiles and prints every other file in order, and exits with status 1.',
   },
   'dp-panic': {
-    q: 'Why does `compile_file` wrap the compiler in `catch_unwind`?',
+    q: 'Why does Viscosity’s Rust CLI wrap the compiler in `catch_unwind` for each file?',
     a: 'A panic is a compiler bug; with many files it should cost only the file that triggered it, not the whole run.',
   },
-  'dp-see-above': {
-    q: 'Where is the panic message when the CLI reports “internal error: the compiler panicked (see above)”?',
-    a: 'Just above, on stderr: Rust’s panic hook printed it when the panic happened, before `catch_unwind` caught it.',
+  'dp-panic-hook': {
+    q: 'A Rust program catches a panic with `catch_unwind`. With the default panic hook, has the panic message already been printed, and where?',
+    a: 'Yes, to stderr: the panic hook runs when the panic starts, before unwinding reaches `catch_unwind`, which returns only an `Err` with the payload.',
   },
   'dp-unwind-only': {
     q: 'Which panics can `catch_unwind` not catch?',
     a: 'Panics that do not unwind: a program built to abort on panic ends at once. It catches only unwinding panics.',
   },
   'dp-disk': {
-    q: 'Why did 4 threads make `build` only 1.24 times faster when writing to the VM’s disk?',
-    a: 'Creating 396 files cost about 65 ms whatever the thread count (the virtual disk did it one at a time); threads could shrink only the rest.',
+    q: 'A parallel build writes one output file per input to a disk that creates files one at a time. Why do more threads barely speed it up?',
+    a: 'File creation is a serial part that costs the same whatever the thread count, so threads can shrink only the rest (Amdahl’s law); on one VM it was about 65 ms of an 85 ms run.',
   },
   'dp-explain': {
-    q: 'Why did `explain` gain less from threads than `build` to tmpfs?',
-    a: 'All of its text, about as large as its input, is printed by the main thread after the workers finish: a serial part threads cannot shrink.',
+    q: 'A parallel command prints all of its output from the main thread, in order, after the workers finish, and the output is about as large as the input. Why does it scale worse than one that writes little?',
+    a: 'The printing is a serial part that threads cannot shrink, and here it is large, so it caps the speed-up.',
   },
   'dp-amdahl': {
     q: 'What does Amdahl’s law say limits the speed-up from more threads?',
@@ -279,7 +279,7 @@ fn limit(t1: f64, s: f64) -> f64 {
 
 export const quiz = [
   {
-    q: 'A bug makes the compiler panic on one file out of 396. What does the Rust CLI do?',
+    q: 'A bug makes the compiler panic on one file out of 396. What does Viscosity’s Rust CLI do?',
     options: [
       {
         t: 'Aborts the whole run',
@@ -297,11 +297,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'With 396 files on the measured VM, which change would most improve `build` to disk?',
+    q: 'A 4-thread build of 396 files takes 85 ms, about 65 ms of it spent creating output files one at a time on a virtual disk. Which change would help most?',
     options: [
       {
         t: 'More threads',
-        why: '4 threads gave only 1.24 times: about 65 ms went to creating files, whatever the thread count.',
+        why: 'The 65 ms of file creation does not shrink with threads; at most the other 20 ms can.',
       },
       {
         t: 'Using `Ordering::SeqCst` for the counter',
@@ -310,7 +310,7 @@ export const quiz = [
       {
         t: 'Faster file creation (a faster disk, or tmpfs)',
         correct: true,
-        why: 'To tmpfs the same build was 2.95 times faster with 4 threads.',
+        why: 'File creation is the serial part; on a memory-backed folder (tmpfs) the same build was 2.95 times faster with 4 threads than one.',
       },
     ],
   },
@@ -333,7 +333,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why did `explain` scale worse than `build` to tmpfs?',
+    q: 'Viscosity’s `explain` and `build` (to a memory-backed folder) compile the same files on the same threads, yet `explain` scaled worse. Why?',
     options: [
       {
         t: 'Explaining is more work than building',
@@ -341,7 +341,7 @@ export const quiz = [
       },
       {
         t: 'It uses only one thread',
-        why: 'It uses the same `for_each_parallel`.',
+        why: 'It hands out files through the same parallel helper.',
       },
       {
         t: 'All of its text is printed by the main thread after the workers finish, and its output is as large as its input',

@@ -18,9 +18,12 @@ import WalkOrderSteps from '../../../components/diagrams/ch322/WalkOrderSteps';
 
 ## Same columns, for the same reasons
 
-Here is most of `ints_stay_ints.py`, from the TypeScript engine's
-Python test programs (the chapter *Emitting Python with column
-storage* showed what that engine does with programs like it):
+You met the Rust workspace and its plugin trait in *VIR and the plugin
+trait in Rust*, and the JavaScript plugin's port in *Parsing with oxc
+and lowering to VIR*; this chapter goes further and ports the second
+plugin, the Python one of *A small Python front-end* through *Emitting
+Python with column storage*. Here is most of `ints_stay_ints.py`, from
+the TypeScript engine's Python test programs:
 
 ```python
 @dataclass
@@ -39,9 +42,9 @@ for i in range(len(cs)):
 I ran the Rust CLI on the real file with `--python-auto` (the flag
 that lets it transform a Python list without an annotation). It turns
 `cs` into a struct of arrays, with "typed array('d') columns for
-weight; list columns for count (may hold non-floats)". So `weight` gets an `array('d')` column (Python's compact array of
-doubles, which holds only floats<Cite id="python-array" />), while
-`count` gets a plain list, because an int stored in an `array('d')`
+weight; list columns for count (may hold non-floats)". So `weight` gets
+an `array('d')` column<Cite id="python-array" />, while `count` gets a
+plain list, because an int stored in an `array('d')`
 comes back as a float, and `cs[5].count` would print `6.0` instead of
 `6`. Every byte of the output is what the TypeScript engine prints;
 this chapter is about how the port manages that, and what it found.
@@ -62,8 +65,9 @@ The crate `crates/frontend-python` depends only on the core, the IR and
 `tokens.rs` (INDENT and DEDENT), `parser.rs` (the subset, into a tree),
 `lower.rs` (scopes and dataclasses, into VIR) and `emit.rs` (the
 container classes). The crate root implements `LanguagePlugin` for `PyPlugin`, the trait
-from the chapter *The plugin trait*, and its `lower` **fails closed**:
-when unsure, it does nothing rather than something risky. If the
+from *VIR and the plugin trait in Rust*, and its `lower` **fails
+closed**, as the TypeScript one does in *The Python subset and its
+parser*. If the
 parser returns a `PySyntaxError` (a list comprehension, a `lambda`, a
 `try`, a base class, anything outside the subset), the plugin lowers an
 empty module, so `explain` prints "No arrays of objects found." and
@@ -100,30 +104,17 @@ the update writes straight into the `x` column, and `ps[3].x`, not
 proven in range, goes through `_vsc_ix`, which raises the `IndexError`
 a list would.
 
-<Prompts ids={['py-four', 'py-fail-closed']} />
+<Prompts ids={['py-fail-closed']} />
 
 ## Indentation from bytes
 
-Python marks a block by indenting it, so the tokenizer (which cuts
-source into words, **tokens**) turns indentation changes into tokens: **INDENT** where a block opens,
-**DEDENT** where it closes<Cite id="python-lexical" />. After that, the
-parser treats them like an opening and a closing brace.
-
-<Analogy extra title="the landings of a staircase">
-Going down a staircase you can step back to any landing you have
-already stood on, but you cannot stop in the air between two. The tokenizer's stack of widths is the list
-of landings: a deeper line climbs to a new one (INDENT), a shallower
-one goes back down past one or more (a DEDENT each), and a width
-between two landings is the error "inconsistent indentation".
-<span slot="breaks">On real stairs you can climb several steps at once;
-a Python line opens at most one new level, and only after a line ending
-in a colon (the parser, not the tokenizer, checks that part).</span>
-</Analogy>
-
-The tokenizer reads `src.as_bytes()`; everything it inspects is ASCII
-(other characters appear only in strings and comments), so its byte
-offsets cut where the reference's UTF-16 offsets do. It keeps a stack of widths, `indents`, starting as
-`[0]`, and `depth`, the number of open brackets:
+The rule is the one from *A small Python front-end*: a stack of widths
+starting at `[0]`, an INDENT for each push, a DEDENT for each pop, and
+a bracket depth that turns line ends into whitespace. What is new is
+how Rust holds it. The tokenizer reads `src.as_bytes()`; everything it
+inspects is ASCII (other characters appear only in strings and
+comments), so its byte offsets cut where the reference's UTF-16 offsets
+do. Here is the port on a program that mixes both rules:
 
 <IndentSteps client:visible />
 
@@ -149,29 +140,12 @@ if col > top {
 }
 ```
 
-`col` is the line's width (a space adds one, a tab moves to the next
-multiple of 8) and `top` the width of the current block. A wider line
-pushes its width; otherwise the `while` pops a level, one DEDENT each,
-while the line is shallower than the top, and a line that then misses
-every earlier width is the error. All this runs only when `depth == 0`:
-inside brackets a newline is whitespace, so a call spread over three
-lines stays one logical line.
-
-<Formal title="The indentation rule">
-
-```text
-stack S, t = top(S), line width w
-w > t:  push w onto S, emit INDENT
-w = t:  nothing
-w < t:  while w < top(S): pop, DEDENT
-        then w ≠ top(S)  ⇒  error
-```
-
-<span slot="read">Wider than the top: push the width, emit INDENT.
-Equal: nothing. Narrower: pop widths, a DEDENT each, until it is not
-narrower than the top; if it is then not equal to the top, the
-indentation is inconsistent.</span>
-</Formal>
+`indents` is a `Vec<u32>`, so `last()` returns an `Option` (a vector
+can be empty), and each `.expect("non-empty")` states the invariant
+that makes it safe: the 0 at the bottom is never popped, because no
+width is less than 0. The rest is the TypeScript loop again, with
+`return Err(...)` where the reference throws, so a bad dedent becomes a
+`PySyntaxError` that `lower` turns into an unchanged file.
 
 One small closure in the tokenizer fixed a real bug: `at(k)`, which
 reads byte `k`, is `s.get(k).copied().unwrap_or(0)`. The reference used to read `src[i]`, which past the end of a
@@ -183,13 +157,14 @@ Rust, `s.get(k)` is `None` past the end, which the closure turns into
 byte 0, which no character class contains. The reference now reads
 with `charAt`, and two new corpus programs hold both engines to it.
 
-<Prompts ids={['py-depth', 'py-eof']} />
+<Prompts ids={['py-bytes', 'py-at', 'py-undefined']} />
 
 ## An arena that walks like objects
 
 The reference's parser builds plain objects, and `lower.ts` often
 walks them generically: every key, in the order it was created. The
-port keeps its nodes in an **arena**, as the chapter *VIR in Rust* did:
+port keeps its nodes in an **arena**, as *VIR and the plugin trait in
+Rust* did:
 one `Vec` owns every node, and nodes refer to each other by index
 (`NodeId`). A node's `Kind` is an enum of 29 variants, and a variant
 has fields, not keys, so there is nothing to iterate. Instead `Ast::children` spells out each kind's children in the order

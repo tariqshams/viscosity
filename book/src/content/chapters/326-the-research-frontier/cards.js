@@ -1,4 +1,4 @@
-// Chapter 299 cards: recall prompts, examples, exercises and quiz.
+// Chapter 326 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,11 +7,11 @@ export const prompts = {
     a: 'Every column must be permuted in exactly the same way, and the comparator expects element objects that no longer exist.',
   },
   'op-nested': {
-    q: 'Viscosity transforms `ps.push({ pos: { x, y }, m })`. Why is the result only half a win?',
+    q: 'Viscosity stores `ps.push({ pos: { x, y }, m })` as struct of arrays. Why is the result only half a win?',
     a: '`pos` becomes a plain column of objects, so reading `pos.x` still chases a pointer. Only `m` gets a typed column.',
   },
   'op-size': {
-    q: 'What does “size unknown statically” mean for a transformed collection?',
+    q: 'In an ahead-of-time layout optimiser, what does it mean that a transformed collection’s size is unknown statically?',
     a: 'The size depends on a run-time value (like a parameter `n`), so the transform is a bet; a profile can replace the guess with a measurement.',
   },
   'op-what': {
@@ -23,19 +23,19 @@ export const prompts = {
     a: 'A gap needs time and work; an open problem needs a new idea (and often new evidence).',
   },
   'op-class': {
-    q: 'Why is “arrays of class instances” a gap rather than an open problem for Viscosity?',
-    a: 'Recognising the fields a simple constructor creates is known technique; Viscosity just doesn’t lower classes yet.',
+    q: 'Why is laying out arrays of instances of a simple class (whose constructor always sets the same fields) as columns an engineering gap rather than an open problem?',
+    a: 'Recognising the fields such a constructor creates, in order, is known technique (it is shape inference over the constructor); only the lowering, the analysis and the tests need writing.',
   },
   'op-proof': {
     q: 'Why can a JIT try layouts that Viscosity must refuse?',
     a: 'A JIT can speculate and deoptimise when it is wrong. Viscosity runs before the program and has no way back, so it must prove safety.',
   },
-  'op-cost': {
-    q: 'Name one measurement from this book that shows the cost model is still rough.',
-    a: 'Any of: gains shrink to about 1.3–2.3× at 1,000 elements; AoSoA often loses there; in the benchmark matrix nbody gains 1.2× on Node and 0.97× on Bun; in CPython columns lose on time.',
+  'op-cost-why': {
+    q: 'Why can a fixed element-count threshold not decide whether struct of arrays will pay?',
+    a: 'The gain depends on more than size: on the engine (the same SoA program can gain about 4× on one JavaScript engine and nothing on another), on the language (CPython column reads build objects and lose time), and on how often whole records must be rebuilt.',
   },
   'op-who': {
-    q: 'How does Odin’s `#soa` differ from Viscosity’s approach?',
+    q: 'How does Odin’s `#soa` differ from an automatic layout optimiser such as Viscosity?',
     a: 'In Odin the programmer chooses SoA with a keyword; Viscosity chooses automatically (or checks an annotation) and must prove it safe.',
   },
   'op-measure': {
@@ -239,7 +239,7 @@ With \`{ length: 2, x: [1, 2, 99, 99] }\` the loop stops after two elements, so 
 
 **Common wrong attempts.**
 
-- Looping over the whole column (\`for (const v of ps.x)\`): the spare capacity is summed too, so the example gives 201. Containers that double their capacity as they grow, as in *Growing collections*, are almost always longer than their contents.
+- Looping over the whole column (\`for (const v of ps.x)\`): the spare capacity is summed too, so the example gives 201. Containers that double their capacity as they grow, as in *Rewriting field accesses and growing collections*, are almost always longer than their contents.
 - Testing \`Array.isArray(ps)\` the other way round works too, but testing for the layout you want to be fast keeps the fast path first, which is how a JIT orders its guards. Ahead of time, Viscosity would have to emit both loops for every hot loop, which is the code-size cost the chapter mentions.`,
     wrong: [
       {
@@ -260,7 +260,7 @@ With \`{ length: 2, x: [1, 2, 99, 99] }\` the loop stops after two elements, so 
 
 export const quiz = [
   {
-    q: 'Viscosity refuses `ps.sort(...)`. Which kind of edge is that?',
+    q: 'An ahead-of-time struct-of-arrays rewriter refuses arrays that are sorted with `ps.sort(...)`. Which kind of edge is that?',
     options: [
       {
         t: 'A bug: sorting is always safe to rewrite',
@@ -282,7 +282,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Arrays of class instances are refused today. Why does the chapter call that a gap, not an open problem?',
+    q: 'Why is transforming arrays of instances of simple classes an engineering gap, not an open problem?',
     options: [
       {
         t: 'Classes can never be transformed',
@@ -297,9 +297,9 @@ export const quiz = [
         why: 'Whether V8 solved something isn’t the test.',
       },
       {
-        t: 'The technique is known; the lowering just hasn’t been written',
+        t: 'The technique is known; what is missing is the work of writing the lowering and its tests',
         correct: true,
-        why: 'Today the JS lowering treats a class declaration as code it doesn’t model.',
+        why: 'Seeing which fields a constructor sets, in which order, is the same shape inference engines and compilers already do.',
       },
     ],
   },
@@ -326,12 +326,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which observation from this book’s measurements shows the cost model is still a heuristic?',
+    q: 'Which of these measured results shows that an element-count threshold alone cannot decide whether a layout pays?',
     options: [
       {
-        t: 'At 1,000 elements AoSoA was often slower than plain objects',
+        t: 'At 1,000 elements, AoSoA was often slower than plain objects in V8 microbenchmarks',
         correct: true,
-        why: 'FINDINGS.md section 3. Size and layout interact in ways a fixed threshold doesn’t capture.',
+        why: 'Size, layout and engine interact in ways a fixed threshold doesn’t capture.',
       },
       {
         t: 'SoA always wins by 3.8×',
@@ -343,29 +343,29 @@ export const quiz = [
       },
       {
         t: 'Every end-to-end program gained at least 3×',
-        why: 'In the benchmark matrix nbody gained 1.2× and boids 1.31× on Node, and nbody 0.97× on Bun.',
+        why: 'Measured gains were far smaller for some programs: nbody gained 1.2× on Node and 0.97× on Bun.',
       },
     ],
   },
   {
-    q: 'For `ps[0] = ps[1]`, explain used to say “the array is stored into an array at line 5”. That was…',
+    q: 'For `ps[0] = ps[1]`, an optimiser keeps `ps` as objects and explains “the array is stored into an array”, although `ps` is the target of the store, not the value stored. What kind of problem is that?',
     options: [
       {
-        t: 'Accurate: ps is copied into itself',
-        why: 'Nothing copies the array; an element is stored into it.',
+        t: 'A soundness bug: the program will behave differently',
+        why: 'The array was kept as it was, so the program behaves exactly as written.',
       },
       {
-        t: 'A correct refusal with a misleading sentence: ps is the target of the store',
+        t: 'A wording bug: the decision is right and the explanation is misleading',
         correct: true,
-        why: 'The message didn’t say which operand of the store the array was. Now it does: “the array is written with an index store at line 5”.',
+        why: 'The reason names the wrong operand; a clearer one is “the array is written with an index store”.',
       },
       {
-        t: 'A sign Viscosity would have transformed it incorrectly',
-        why: 'It refused, which is the safe outcome.',
+        t: 'An open problem',
+        why: 'Saying which operand of a store the array is needs no new idea, only a better sentence.',
       },
       {
-        t: 'Output from the Python plugin',
-        why: 'This is the JavaScript front-end on a JavaScript program.',
+        t: 'A cost-model error',
+        why: 'The refusal is a safety decision, not a cost one.',
       },
     ],
   },
@@ -374,11 +374,11 @@ export const quiz = [
     options: [
       {
         t: 'It analyses your program and chooses automatically',
-        why: 'That’s Viscosity’s approach.',
+        why: 'That is what an automatic optimiser such as Viscosity does.',
       },
       {
         t: 'It converts arrays at run time',
-        why: 'That’s the GraalJS research.',
+        why: 'That is what the GraalJS research did inside a JIT.',
       },
       {
         t: 'It has no SoA support',

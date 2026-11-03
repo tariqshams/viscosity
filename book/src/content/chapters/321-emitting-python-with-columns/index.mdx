@@ -18,7 +18,10 @@ import PyLayoutBars from '../../../components/diagrams/ch321/PyLayoutBars';
 
 ## What comes out
 
-Put `# @viscosity soa` on the line above a list, and `viscosity build`
+You met column storage in *Generating SoA storage*, where the JavaScript
+emitter wrote one `Float64Array` per numeric field; this chapter goes
+further, to the same plan carried out in Python, with Python's types
+and Python's costs. Put `# @viscosity soa` on the line above a list, and `viscosity build`
 turns this:
 
 ```py
@@ -46,8 +49,8 @@ one column per field, `p` is now an index into those columns, and
 `ps[3].x` became column `x`, slot 3, with a bounds check because the
 analysis could not prove 3 is in range. It is the same plan the
 JavaScript emitter carries out in *Generating SoA storage* and
-*Rewriting field accesses*, written in Python's syntax and with
-Python's rules.
+*Rewriting field accesses and growing collections*, written in
+Python's syntax and with Python's rules.
 
 ## One edit at a time
 
@@ -82,7 +85,11 @@ class _Vsc_ps:
         return self.n
 ```
 
-`n` counts the elements; `__init__` makes one empty column per field
+(In Python a class's methods take the instance as an explicit first
+parameter, `self`, which plays the part of JavaScript's `this`, and
+methods whose names begin and end with two underscores are hooks the
+language calls itself: `__init__` when an instance is made, `__len__`
+for `len(x)`.) `n` counts the elements; `__init__` makes one empty column per field
 (`_vsc_array` is `array`, imported under a name your program cannot
 clash with); `append` takes one value per column and adds each to its
 own column; and `__len__` makes `len(ps)` keep working. `__slots__`
@@ -107,11 +114,14 @@ def _vsc_iter(c):
         i += 1
 ```
 
-`_vsc_ix` is Python's indexing rule from the lowering chapter: negative
-indexes are fine, and anything past an end raises the same
+`_vsc_ix` is Python's indexing rule (as in *Lowering Python to VIR*,
+an index must be an int, and here it must also be in range): negative
+indexes count from the end and are fine, and anything past an end raises the same
 `IndexError`, with the same message, that a list would. (It uses a
 chained comparison, which Python itself is happy with; only Viscosity's
-*reader* refuses them.) `_vsc_iter` is a generator that yields indexes
+*reader* refuses them.) `_vsc_iter` is a **generator**, a function containing `yield` that
+hands out one value each time a `for` loop asks for the next, so it
+yields indexes
 and re-reads `c.n` on every step, so a loop that appends while it
 iterates sees the new elements, just as it would with a list.
 
@@ -220,7 +230,9 @@ on top).</span>
 
 Everything above works: the corpus programs print the same output and
 raise the same exceptions as the originals. And yet, by default,
-Viscosity keeps Python lists as objects. This is why:
+Viscosity keeps Python lists as objects, which *The architecture of
+Viscosity and its plugin API* reported as a measured fact; here is the
+measurement, and the reason for it in CPython's source:
 
 <Figure takeaway="In CPython, columns save memory and cost time." caption="CPython 3.13, 100,000 elements, from this book's benchmark run (packages/bench/e2e-py/layouts.py, results/python-layouts-2026-10-31.json). The time is one update loop, x += vx * 0.016, written by hand for each layout.">
   <PyLayoutBars />
@@ -254,7 +266,7 @@ benchmark loop does not. No end-to-end Python result is committed yet;
 original and the compiled program.
 </Callout>
 
-<Prompts ids={['pa-slow', 'pa-memory', 'pa-js']} />
+<Prompts ids={['pa-slow', 'pa-bytes', 'pa-js']} />
 
 <Callout kind="engine" label="Under the hood">
 This is the multi-language bargain in one chapter. The emitter,
