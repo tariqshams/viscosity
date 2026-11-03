@@ -34,7 +34,6 @@ if (!Number.isInteger(after) || after < 0 || !Number.isInteger(by) || by < 1) {
   console.error('usage: node scripts/renumber.mjs --after N --by K [--dry-run]');
   process.exit(2);
 }
-const CHAPTERS_PER_DAY = 4;
 const map = (n) => (n > after ? n + by : n);
 const pad = (n) => String(n).padStart(3, '0');
 const log = [];
@@ -94,9 +93,9 @@ for (const p of textFiles) {
   let t = rewritePaths(rewriteRefs(s, relative(repo, p)));
   // Frontmatter n/day of a chapter, and `n:` in the outline.
   if (p.startsWith(chaptersDir) && p.endsWith('index.mdx')) {
-    t = t.replace(/^(---\n(?:[\s\S]*?\n)?n: )(\d+)(\nday: )(\d+)/, (_, a, n, b) => {
+    t = t.replace(/^(---\n(?:[\s\S]*?\n)?n: )(\d+)(\nday: )(\d+)/, (_, a, n, b, d) => {
       const m = map(Number(n));
-      return `${a}${m}${b}${Math.ceil(m / CHAPTERS_PER_DAY)}`;
+      return `${a}${m}${b}${d}`; // day: recomputed by sync_days.mjs below
     });
   }
   if (p.startsWith(join(root, 'src/data/outline')) && /part\d+\.js$/.test(p)) {
@@ -119,18 +118,7 @@ for (const f of [...folders].sort().reverse()) {
   if (existsSync(rOld)) move(rOld, join(refsNewDir, `${to}.js`));
 }
 
-// 3. Each part's days range, from its (new) chapter numbers.
-const outlineDir = join(root, 'src/data/outline');
-for (const f of readdirSync(outlineDir).filter((x) => /^part\d+\.js$/.test(x))) {
-  const p = join(outlineDir, f);
-  const s = readFileSync(p, 'utf8');
-  const ns = [...s.matchAll(/\{\s*n:\s*(\d+)/g)].map((m) => Number(m[1]));
-  if (!ns.length) continue;
-  const lo = Math.ceil(Math.min(...ns) / CHAPTERS_PER_DAY);
-  const hi = Math.ceil(Math.max(...ns) / CHAPTERS_PER_DAY);
-  const t = s.replace(/days: '[^']*'/, `days: '${lo === hi ? lo : `${lo}–${hi}`}'`);
-  if (t !== s) { log.push(`days ${f}: ${s.match(/days: '[^']*'/)?.[0]} -> days: '${lo === hi ? lo : `${lo}–${hi}`}'`); write(p, t); }
-}
+// 3. Days count within a section; recompute them from the outline (step 5).
 
 // 4. Record the move (for the browser migration) and the redirects.
 const renumPath = join(root, 'src/data/renumbering.js');
@@ -160,3 +148,6 @@ write(redirPath, `${banner('Old chapter URLs (under the /book base) and where th
 const logPath = join(root, 'renumber-log.txt');
 writeFileSync(logPath, log.join('\n') + '\n');
 console.log(`${dry ? '[dry run] ' : ''}chapters after ${after} moved up by ${by}: ${moved.length} folders, ${log.filter((l) => l.startsWith('ref ')).length} text references, ${log.filter((l) => l.startsWith('skip')).length} skipped (other books). Review ${relative(process.cwd(), logPath)}.`);
+
+// 5. Days, recomputed from the outline's sections.
+if (!dry) execFileSync(process.execPath, [join(root, 'scripts/sync_days.mjs')], { stdio: 'inherit' });
