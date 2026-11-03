@@ -3,26 +3,15 @@ n: 147
 day: 25
 part: VIII
 title: 'Profiling and optimising drip-rs, and three implementations compared'
-tagline: 'drip-rs runs fib 4.7 times as fast as the TypeScript VM, but strings only 1.3 times. Guessing why is easy and usually wrong; this chapter measures instead, with callgrind, and draws what it finds as a flame graph.'
+tagline: 'drip-rs runs fib 4.7 times as fast as the TypeScript VM, but strings only 1.3 times. Guessing why is easy and usually wrong; measuring shows where the time goes, which changes pay, how three implementations compare, and what Rust gave and cost.'
 objectives:
-  - Say what a profiler measures, and the difference between counting instructions and sampling time.
-  - Profile drip-rs with valgrind’s callgrind, exactly as this chapter did, and read self and inclusive costs.
+  - Say what a profiler measures, the difference between counting instructions and sampling time, and read self and inclusive costs.
   - Read a flame graph, and explain why fib and strings.drip have such different ones.
-  - Parse callgrind_annotate’s output in Rust, with tests.
-  - Say what a bounds check is, what get_unchecked promises instead, and why drip-rs forbids it.
-  - Measure a change in instructions and in wall-clock time, and tell a real speed-up from noise.
-  - Explain why the chunk register was worth far more than removing checks, and why a fast path for whole numbers was worth more still on strings.drip.
-  - Write a noise-aware speed-up verdict in Rust, with tests, on this chapter’s real timings.
-  - Say exactly how the committed numbers of 2026-11-02 were measured, and what they include.
-  - Read speed-ups between all three implementations, summarise them with a geometric mean, and say why some vary more than others.
-  - Explain, from profiles, why the TypeScript VM loses to the tree-walker on four programs.
-  - Compute speed-ups and their geometric mean in Rust, with tests on the committed results.
-  - List the designs ownership forced on drip-rs, and why each was needed.
-  - Tell the bugs Rust caught at compile time from the ones it could not see.
-  - Count what the port cost in lines and build time, and say what the count does and does not mean.
-  - State drip-rs’s speed-up with its scope and caveats.
+  - Say what get_unchecked promises, why drip-rs forbids it, and why removing checks saved no time here.
+  - Read speed-ups between three implementations, summarise them with a geometric mean, and explain why the TypeScript VM loses on four programs.
+  - List what Rust forced, caught, missed, cost and bought in drip-rs.
 introduces: [profiling, flamegraph, unchecked-indexing, implementation-comparison, rust-tradeoffs]
-uses: [drip-rs, shared-corpus, runtime-stack-trace, match-dispatch, frame-stack, string-interner, arena-gc, value-enum, call-stack, inlining, cargo, cargo-test, release-build, vec, hashmap, string-vs-str, option, question-mark, slice, struct, match, rust-iterator, drip, typescript, unsafe, rc, hash-table, open-addressing, dispatch-loop, instruction-pointer, object-handle, constant-pool, global-table, upvalue, branch-prediction, vectorization, register, benchmark-isolation, criterion, compiler, tree-walking-interpreter, virtual-machine, bytecode, global-variable, end-to-end-benchmark, jit-warmup, median-p95, enum, ownership, borrow, shared-vs-mutable, borrow-checker, arena, typed-index, garbage-collection, roots, mark-sweep, exhaustiveness]
+uses: [drip-rs, shared-corpus, runtime-stack-trace, match-dispatch, frame-stack, string-interner, arena-gc, value-enum, call-stack, inlining, cargo, release-build, vec, option, match, drip, typescript, unsafe, hash-table, dispatch-loop, instruction-pointer, object-handle, branch-prediction, register, compiler, tree-walking-interpreter, virtual-machine, bytecode, end-to-end-benchmark, jit-warmup, enum, ownership, borrow, borrow-checker, arena, typed-index, garbage-collection, roots, mark-sweep, exhaustiveness]
 sources: [valgrind-callgrind-manual, gregg-flamegraph, rust-std-slice-get-unchecked, rust-std-array-tryfrom-slice, rustref-ub, rust-std-iter, v8-launch-ignition-turbofan, klabnik2026]
 ---
 import FlameSteps from '../../../components/diagrams/ch147/FlameSteps';
@@ -34,22 +23,14 @@ import WhereVmTime from '../../../components/diagrams/ch147/WhereVmTime';
 import LedgerSteps from '../../../components/diagrams/ch147/LedgerSteps';
 import LocBars from '../../../components/diagrams/ch147/LocBars';
 
-{/* ── merge: from old chapter 147, Profiling the Rust VM ── */}
-
 ## Two programs, two very different speed-ups
 
-In this book's benchmark run (`drip-rs-bench-2026-11-02.md`), drip-rs
-ran `fib.drip` in 406 ms against the TypeScript VM's 1,906 ms, 4.69
-times as fast, but `strings.drip` in 305 ms against 383 ms, only 1.26
-times. The same VM, the same machine, the same day: something about
-`strings.drip` makes drip-rs's advantage almost vanish. You could guess
-(the hash table? the garbage collector?), but a guess about where a
-program spends its time is wrong more often than not, and changing code
-on a wrong guess makes it more complicated and no faster. So we measure.
-
-**Profiling** means measuring where a program's time (or instructions,
-or memory) goes, function by function or line by line, rather than
-timing the program as a whole. A **profiler** is the tool that does it.
+In the committed benchmark run (`results/drip-rs-bench-2026-11-02.md`, a
+shared cloud VM), drip-rs ran `fib.drip` in 406 ms against the
+TypeScript VM's 1,906 ms, 4.69 times as fast, but `strings.drip` in 305
+ms against 383 ms, only 1.26 times. A guess about why is wrong more
+often than not, so we measure, as *Measuring and speeding up the VM* did
+for the TypeScript VM, and then settle the account of the whole port.
 
 <Analogy title="a month of bank statements">
 You know you spent too much last month, but not on what. You could
@@ -62,6 +43,46 @@ second, so small costs can be missed or blurred. callgrind, used below,
 is the exception that counts everything.</span>
 </Analogy>
 
+## Counting every instruction
+
+valgrind 3.22's **callgrind** runs a program on a simulated CPU and
+counts every instruction, by function and source line, with who called
+whom<Cite id="valgrind-callgrind-manual" />. With
+debug info added from an environment variable (paths
+shortened):
+
+```text
+CARGO_PROFILE_RELEASE_DEBUG=true \
+  cargo build --release
+valgrind --tool=callgrind drip-rs fib.drip
+callgrind_annotate --inclusive=yes \
+  --tree=calling callgrind.out.*
+```
+
+The run took 29 seconds instead of 0.4, but the counts are the same on
+every run, which no timing on a shared machine can promise. A function's
+**self cost** is its own instructions; its **inclusive cost** adds
+everything it called.
+
+<Examples of="profiling">
+
+```text
+5,593,942,673 (100.0%)  PROGRAM TOTALS
+  775,407,050 (13.86%)  > Vm::call_value
+                          (7,049,155x)
+```
+
+</Examples>
+
+Two lines of fib's call tree (names shortened): `call_value` is called
+7,049,155 times, exactly the calls `fib(32)` makes, a sign the profile
+is honest. `Vm::run`'s self cost is 65.2%, because with `lto = true`
+small functions such as `read_byte` are inlined into it (its two lines
+are 5.7% each). In `strings.drip`, `run` is only 17.9%, and the big
+names are `malloc`, `free`, `fmod` and Rust's formatting machinery.
+
+<SelfBars />
+
 <Analogy extra title="a traffic survey">
 A council that wants to know which junction to widen counts the cars at
 each one, for a whole day, rather than asking drivers which road feels
@@ -72,136 +93,24 @@ instruction count treats them the same, so a count is a strong hint
 about time, not a measurement of it.</span>
 </Analogy>
 
-<Prompts ids={['prof-what', 'prof-sample', 'cg-not-time']} />
-
-## What I ran
-
-This machine has no `perf` (the usual Linux sampling profiler), but it
-has valgrind 3.22, and valgrind's **callgrind** tool runs a program on a
-simulated CPU and counts every instruction it executes (the event `Ir`),
-attributed to the function and source line it came from, together with
-who called whom and how many times<Cite id="valgrind-callgrind-manual" />.
-To get function and line names, the release build needs debug info,
-which Cargo can add from an environment variable without touching
-`Cargo.toml`; I built into a scratch directory, from
-`book/companion/rust`:
-
-```text
-CARGO_PROFILE_RELEASE_DEBUG=true \
-CARGO_TARGET_DIR=$SCRATCH/target \
-  cargo build --release
-valgrind --tool=callgrind \
-  --callgrind-out-file=fib.cg \
-  $SCRATCH/target/release/drip-rs \
-  ../corpus/benchmark/fib.drip
-callgrind_annotate --auto=no fib.cg
-callgrind_annotate --inclusive=yes \
-  --tree=calling fib.cg
-```
-
-The run took 29 seconds instead of drip-rs's usual 0.4, about seventy
-times slower, which is the price of simulating every instruction; the
-counts, however, are the instructions the program really runs, and they
-come out the same on every run, which no timing on a shared cloud
-machine can promise. The first `callgrind_annotate` lists each
-function's **self cost**, the instructions in its own body; the second
-adds the **inclusive cost**, self plus everything it called, and the
-call counts.
-
-<Examples of="profiling">
-
-```drip
-let t = clock();
-fib(25);
-print clock() - t; # seconds
-```
-
-```text
-5,593,942,673 (100.0%)  PROGRAM TOTALS
-  775,407,050 (13.86%)  > Vm::call_value
-                          (7,049,155x)
-```
-
-<Run id="stopwatch" />
-
-</Examples>
-
-The first is the crudest profiler there is, a stopwatch round one call,
-which tells you how long but not where. The second is two lines of
-callgrind's call tree for fib (names shortened): 5.6 billion
-instructions in all, and `call_value` called 7,049,155 times, which is
-a good sign the profile is honest, because `fib(32)` makes exactly
-7,049,155 calls (2 × fib(33) − 1, which you can check by hand). The
-third, which you can run, times two loops with `clock()` and shows that
-even the stopwatch can point you somewhere: the loop that calls `str`
-is the slow one.
-
-<SelfBars />
-
-For fib, `Vm::run` alone is 65.2% of all instructions. That is not the
-`match` statement on its own: the release build is compiled with link
-time optimisation (`lto = true`), so small functions such as `push`,
-`pop` and `read_byte` are **inlined** into `run`, and their
-instructions count as `run`'s. With debug info, callgrind can still
-split them out by source line, and two lines stand out: `read_byte`'s
-`let byte = self.chunk.code[self.ip];` and `self.ip += 1;` are 5.7% of
-the whole program each. The rest is `pop_numbers` (10.3%), the
-bookkeeping of a call (10.2%), and `Table::get` (6.0%), which is the
-global lookup of `fib` itself, made 7,049,155 times.
-
-`strings.drip` looks nothing like that. `run`'s self cost is only
-17.9%, and the big names are not drip-rs's at all: libc's `free` and
-`malloc`, `fmod` (the `%` operator), and Rust's formatting machinery.
-
-<Prompts ids={['self-incl', 'call-check', 'inlined']} />
+<Prompts ids={['prof-sample', 'self-incl']} />
 
 ## Drawing it: the flame graph
 
-A list of numbers hides the shape of the calls; a **flame graph** shows
-it. Each box is a function on a particular call path, its width is the
-share of the cost spent there (inclusive), and a box sits on top of the
-function that called it, so the bare top edge of a box is its self
-cost<Cite id="gregg-flamegraph" />. The left-to-right order means
-nothing; boxes are only arranged so that identical paths merge.
+In a **flame graph** each box is a function on one call path, its width
+its inclusive share, sitting on its caller, so its bare top edge is its
+self cost<Cite id="gregg-flamegraph" />; left-to-right order means
+nothing.
 
 <FlameSteps client:visible />
 
-fib's graph is a wide, flat mountain: almost everything is the bare top
-of `run`, so its time is the dispatch loop itself, which is exactly what
-a bytecode VM in Rust should be good at. (It is only three boxes tall
-even though fib recurses thirty levels deep, because a Drip call is a
-frame on the VM's own stack, not a Rust call.) `strings.drip`'s graph is
-a tall, thin tower: 60.9% of the program is inside `call_value`
-running the native `str`, and climbing the tower, `format_number` is
-48.2% on its own, with `format!` inside it (called 2,138,403 times, about
-three times per number) at 35.3%. drip-rs spends most of `strings.drip`
-turning small whole numbers like `42` into text, the slow way; that is
-why its lead shrinks there, and the next chapter acts on it.
-
 <Callout kind="definition">
 **Profiling** is measuring where a program's cost goes, by function and
-by line. A **sampling** profiler records the call stack many times a
-second; an **instrumenting** one such as callgrind counts every
-instruction. A function's **self** cost is in its own code; its
-**inclusive** cost adds everything it calls. A **flame graph** draws
-each call path as a stack of boxes, width for inclusive cost, so the
-widest towers and the widest bare tops are where to look first.
+line: a **sampling** profiler records the stack many times a second, an
+**instrumenting** one such as callgrind counts every instruction. A
+**flame graph** draws each call path as stacked boxes, width for
+inclusive cost, so the widest towers and bare tops are where to look.
 </Callout>
-
-<Formal title="Self and inclusive cost">
-
-```text
-incl(f) = self(f) + Σ incl(g)
-          for each call f → g
-share(f) = incl(f) / incl(main)
-```
-
-<span slot="read">The inclusive cost of f is its self cost plus the
-inclusive costs of everything f calls; its share, which is a flame
-graph box's width, is that divided by the whole program's cost. (For
-recursive functions callgrind has to count each instruction once, which
-is why its tree, not a simple sum, is the thing to trust.)</span>
-</Formal>
 
 <Examples of="flamegraph">
 
@@ -211,170 +120,49 @@ main;run;pop_numbers   578030669
 main;run;call_value    204425495
 ```
 
-```text
-fib:     run ▇▇▇▇▇▇▇▇▇▇▇▇▇ (flat)
-strings: run ▇ str ▇ format ▇ fmt!
-             (a tall tower)
-```
-
-```text
-node --cpu-prof src/cli.ts --vm \
-  ../corpus/benchmark/instantiation.drip
-```
-
 </Examples>
 
-The first is the input format of Brendan Gregg's `flamegraph.pl`: one
-line per distinct call path, frames joined by `;`, then a count, here
-three of fib's paths with their self costs; the script adds up the
-widths of every prefix. The second is the shape to remember: a flat
-graph says "the loop itself", a tower says "one call path". The third is
-a sampling profiler for the other side, V8's own, run on the TypeScript
-VM; it writes a `.cpuprofile` file, and on `instantiation.drip` I found
-the VM's own hash table resizing (`Table.grow`, 12.2% of samples) and
-V8's garbage collector (13.3%) near the top. *Benchmarks: three
-implementations* uses that.
+This is the input of Brendan Gregg's `flamegraph.pl`: one line per call
+path with its self cost, here three of fib's. fib's graph is a wide,
+flat mountain, almost all the bare top of `run`, the dispatch loop
+itself. `strings.drip`'s is a tall, thin tower: 60.9% inside the native
+`str`, with `format_number` 48.2% on its own; drip-rs spends most of it
+turning small whole numbers into text, the slow way.
 
-<Prompts ids={['flame-what', 'flame-x', 'flame-flat']} />
+<Prompts ids={['flame-what']} />
 
-<Callout kind="engine" label="Under the hood">
-callgrind's counts are deterministic: two runs of the same program give
-the same count, give or take a few dozen instructions of start-up, so a
-change that saves 1% of instructions shows up as 1%, where a 1% change
-in time is lost in this shared machine's noise of tens of percent. The
-catch, as the traffic survey said, is that instructions are not time;
-the next chapter has a change that removed 8% of fib's instructions and
-did not make it measurably faster.
-</Callout>
+## Removing checks, and what actually paid
 
-## Your turn
-
-<Exercise id="annotate" />
-
-<Exercise id="fold" />
-
-## What you learned
-
-- **Profiling** measures where cost goes; callgrind **counts every
-  instruction**, a sampling profiler **glances** at the stack.
-- **Self** cost is a function's own; **inclusive** adds its callees.
-  Inlining moves small functions' cost into their caller.
-- A **flame graph**: width is inclusive cost, the bare top is self cost,
-  and left-to-right order means nothing.
-- fib is the dispatch loop (`run` 65.2%); `strings.drip` is number
-  formatting (`format_number` 48.2%), which is why drip-rs's lead
-  shrinks there.
-
-
-{/* ── merge: from old chapter 147, Optimizing the Rust VM ── */}
-
-## Two leads from the profile
-
-*Profiling the Rust VM* left two leads. In fib, the two lines of
-`read_byte` were 11.4% of all instructions, and every one of those
-reads is **bounds-checked**: before Rust reads `self.chunk.code[self.ip]`
-it compares `self.ip` with the length of `code` and panics if it is too
-big, which is what makes safe Rust safe. In `strings.drip`,
-`format_number` was 48.2% of all instructions. Each lead suggests a
-change, and the rule for this chapter is the one the last chapter
-earned: make one change at a time in a scratch copy, run the corpus and
-the stress-GC suite (a faster wrong answer is worthless), count the
-instructions with callgrind, time it in fresh processes, and keep the
-change only if the time, not just the count, improves. None of the
-changes below is in the companion code; they were measured here, on
-2026-11-02, and the copies thrown away.
-
-<Analogy title="a ticket inspector">
-A train company puts an inspector on every carriage to check that each
-passenger has a ticket. On a commuter line where everyone always has
-one, you might take the inspectors off to save their wages.
-<span slot="breaks">A fare-dodger costs the company one fare; an
-out-of-range read with the check removed costs nothing you can predict.
-The program may read another object's bytes, crash, or appear to work,
-and the compiler is allowed to assume it never happens.</span>
-</Analogy>
-
-<Analogy extra title="a stair gate">
-A stair gate keeps a toddler off the stairs; take it away because the
-child has never once tried the stairs, and every day is fine until the
-day it is not.
-<span slot="breaks">A child who falls is hurt at once and you know; a
-VM reading past its bytecode might quietly print wrong output, which is
-harder to notice than a crash.</span>
-</Analogy>
+In fib, `read_byte` reads `self.chunk.code[self.ip]`, and every such read
+is **bounds-checked**: Rust compares `ip` with the length and panics if
+it is too big. `get_unchecked(i)` skips the comparison; it is an
+`unsafe` function, because out of range its behaviour is
+**undefined**<Cite id="rust-std-slice-get-unchecked" />, which means the
+language promises nothing at all and the optimiser may assume it never
+happens<Cite id="rustref-ub" />.
 
 <BoundsCheck />
-
-<Prompts ids={['opt-measure-first', 'uc-what']} />
-
-## What get_unchecked promises
-
-Rust's slices have a method that skips the check:
-`get_unchecked(i)` returns the element at `i` without comparing `i`
-with the length, and it is an `unsafe` function, because if `i` is out
-of range the behaviour is **undefined**<Cite id="rust-std-slice-get-unchecked" />.
-Undefined behaviour is not "it panics" or "it reads garbage"; it means
-the language makes no promise at all, and the optimiser may transform
-the program on the assumption that it cannot happen<Cite id="rustref-ub" />.
-Calling it needs an `unsafe` block, which is you telling the compiler
-"I have checked this myself".
 
 <Examples of="unchecked-indexing">
 
 ```text
-let v = vec![10, 20, 30];
-v[5]
-// thread 'main' panicked at ix.rs:6:21:
-// index out of bounds: the len is 3 but
-//   the index is 5
+v[5]     // panics: index out of
+         //   bounds: the len is 3
+         //   but the index is 5
+v.get(5) // None
+unsafe { *v.get_unchecked(5) } // UB
 ```
-
-```text
-v.get(1)  // Some(20)
-v.get(5)  // None
-```
-
-<Run id="unchecked" />
 
 </Examples>
 
-The first is the checked index failing: a panic with a message that
-names the length and the index (rustc 1.97's real output, from a
-three-line program, wrapped). The second is the checked index that does
-not panic: `get` returns an `Option`, `None` when out of range, so the
-caller decides. The third, which you can run, reads a byte three ways,
-including the unchecked way, with the `SAFETY` comment Rust programmers
-write above every `unsafe` block to say why it holds.
-
-drip-rs cannot do this at all. Its `lib.rs` says
-
-```rust
-#![forbid(unsafe_code)]
-```
-
-and when I added an unchecked `read_byte` to a scratch copy without
-removing that line, the build stopped with rustc's
-``error: usage of an `unsafe` block``. So the experiment deleted the
-`forbid` and changed only `read_byte` (rewrapped):
-
-```rust
-fn read_byte(&mut self) -> u8 {
-    let ip = self.ip;
-    // SAFETY: every chunk ends with
-    // `return`, so ip < code.len().
-    let byte = unsafe {
-        *self.chunk.code
-            .get_unchecked(ip)
-    };
-    self.ip += 1;
-    byte
-}
-```
-
-The safety argument is real: the compiler's `emit_return` ends every
-function with `return`, and every jump lands inside the chunk. But it is
-an argument about the *compiler*, so a compiler bug would turn into
-undefined behaviour in the VM instead of a clean panic.
+With `let v = vec![10, 20, 30];`, the checked index panics with that
+message (rustc 1.97, wrapped), `get` lets the caller decide, and the
+unchecked read may read another object's bytes, crash, or appear to
+work. drip-rs cannot write it, because `lib.rs` says
+`#![forbid(unsafe_code)]`; in a scratch copy I deleted that line and made
+only `read_byte` unchecked, on the argument that every chunk ends with
+`return` (an argument about the compiler, whose bugs would then become
+undefined behaviour).
 
 <Callout kind="definition">
 **Unchecked indexing** reads an element without comparing its index
@@ -384,506 +172,180 @@ undefined. The checked forms are `v[i]`, which panics when out of
 range, and `v.get(i)`, which returns `None`.
 </Callout>
 
-<Formal title="Checked and unchecked reads">
-
-```text
-v[i]  = *(p + i)   if i < len(v)
-      = panic      otherwise
-get_unchecked(v, i) = *(p + i)
-      requires i < len(v)
-```
-
-<span slot="read">Reading v at i through the index operator loads the
-element at address p plus i when i is less than the length, and panics
-otherwise. get_unchecked loads it with no test, and it is only defined
-when i really is less than the length.</span>
-</Formal>
-
-<Prompts ids={['uc-forbid', 'uc-promise']} />
-
-## What the measurements said
-
 <CheckSteps client:visible />
 
-The unchecked `read_byte` did what it promised in instructions: fib went
-from 5,551,649,854 to 5,107,553,155, 8.0% fewer. In time it bought
-nothing. Over 15 fresh runs each, alternating, the committed build's
-best was 398 ms and median 427 ms, and the unchecked build's best 406
-ms and median 439 ms: no faster, within this machine's noise. The
-reason is the diagram above: the check is a comparison and a branch
-that the CPU predicts correctly every single time, and a modern CPU runs
-such instructions alongside the others, so removing them barely changes
-how long each byte takes. That is the trap the traffic survey warned
-about in the last chapter, met in practice, and it is why drip-rs keeps
-its `forbid`.
+It removed 8.0% of fib's instructions and no time: over 15 fresh runs
+each, best 398 ms (median 427) committed against 406 ms (median 439)
+unchecked, within the noise, because the check is a branch the CPU
+predicts right every time and runs alongside other work. What did pay:
+the chunk register (a copy reaching the chunk through the heap on every
+read took about 2.1 times as long), and the profile's second lead, a
+five-line fast path in `format_number` for whole numbers below 2^53,
+`(n as i64).to_string()`, which made `strings.drip` about 1.75 times as
+fast (best 176 ms against 308), the corpus still passing. It is not in
+the companion code, so the tables below leave it out.
 
-The committed design shows what a real win looks like: drip-rs keeps
-the running frame's `ip` and chunk in fields of the `Vm` (the
-"registers"), and to see what they are worth I measured the reverse: a
-copy whose `read_byte` and
-`read_constant` reach the chunk through the frame, the closure and the
-function in the heap on every read ran fib in 11,011,220,718
-instructions, almost twice as many, with a best of 842 ms and a median
-of 889 ms, about 2.1 times slower. Taking work out of the loop beats
-taking checks out of it.
+<More title="Removing checks safely, and the profiler on the TypeScript side">
 
-The second lead paid off too. `format_number` turns every number into
-text by asking Rust for `{:e}` (scientific notation) and then laying the
-digits out the way JavaScript would, which allocates several `String`s
-per number. Most numbers a Drip program prints are small whole numbers,
-so I added a fast path before the general one:
+When a check does cost time, safe Rust can often remove it for you:
+iterating with `for x in xs` needs no index<Cite id="rust-std-iter" />,
+and reading two operand bytes at once with
+`<[u8; 2]>::try_from(&code[ip..ip + 2])` turns two checks into one range
+check<Cite id="rust-std-array-tryfrom-slice" />, after which the
+optimiser can often prove later indexes in range. For the TypeScript
+VM, V8's own sampling profiler, `node --cpu-prof src/cli.ts --vm
+../corpus/benchmark/instantiation.drip`, writes a `.cpuprofile`; on
+`instantiation.drip` it put the VM's own `Table.grow` (12.2% of samples)
+and V8's garbage collector (13.3%) near the top.
 
-```rust
-if n.fract() == 0.0
-    && n.abs() < 9007199254740992.0
-{
-    return (n as i64).to_string();
-}
-```
+<Run id="unchecked" />
 
-Below 2^53 (that long constant) every whole number is exact in an
-`f64`, `as i64` converts it exactly, and JavaScript prints it as plain
-digits, so the output is byte for byte the same; the copy passed the
-corpus, the stress-GC suite and every benchmark's output. On
-`strings.drip` the instructions fell from 3,573,697,000 to
-1,989,310,781, 44% fewer, and this time the time followed: every one of
-the 15 runs was faster than every committed run, best 176 ms against
-308 ms, about 1.75 times as fast. It is a safe, five-line change that
-the profile found; it is not in the companion code yet, so the
-benchmark tables in the next chapter do not include it.
+<Run id="stopwatch" />
 
-<Prompts ids={['uc-worth', 'reg-win', 'fewer-not-faster', 'fast-int']} />
+</More>
 
-<Callout kind="engine" label="Under the hood">
-When a check does cost time, safe Rust has ways to make the compiler
-remove it for you. Iterating with `for x in xs` or `.iter()` needs no
-index, so there is nothing to check<Cite id="rust-std-iter" />; and
-reading a fixed-size piece once, such as two operand bytes with
-`<[u8; 2]>::try_from(&code[ip..ip + 2])`, turns two checks into one
-range check up front<Cite id="rust-std-array-tryfrom-slice" />. After
-such a check the optimiser can often prove later indexes are in range
-and drop their checks itself, with no `unsafe` written anywhere.
-</Callout>
+<Prompts ids={['uc-promise']} />
 
-## Your turn
+## Three implementations, one table
 
-<Exercise id="verdict" />
-
-## What you learned
-
-- A **bounds check** compares an index with the length; `v[i]` panics
-  and `v.get(i)` returns `None` when it fails.
-- **Unchecked indexing**, `get_unchecked`, skips the check and makes an
-  out-of-range read **undefined behaviour**; drip-rs forbids it with
-  `#![forbid(unsafe_code)]`.
-- Measured here: unchecked `read_byte` saved **8% of instructions and
-  no time**; removing the chunk register cost **2.1×**; a whole-number
-  fast path made `strings.drip` **1.75×** faster.
-- Keep a change only when the **time** improves beyond the noise and
-  the corpus still passes.
-
-
-{/* ── merge: from old chapter 147, Benchmarks: three implementations ── */}
-
-## Three ways to run the same program
-
-The book has now built Drip three times: a **tree-walker** in
-TypeScript (Part III), which runs a program by walking its syntax tree;
-a **bytecode VM** in TypeScript (Part IV), which compiles the program to
-bytecode first and runs that; and **drip-rs**, the same VM ported to
-Rust, function for function. All three pass the same corpus, so they
-compute the same answers. This chapter asks how fast they compute them,
-and the honest answer has a surprise in it.
-
-The programs are the ten in `corpus/benchmark`, each a few dozen lines
-that exercise one thing hard: `fib` (recursive calls), `closures`,
-`method_calls`, `fields` (reading and writing fields), `instantiation`
-(making objects), `trees` (building and walking a tree of objects),
-`particles`, `sieve`, `sort` and `strings`. On 2026-11-02 the
-TypeScript script `scripts/bench.mjs` timed both TypeScript
-implementations on Node 22.23.4, and then `scripts/bench.sh` timed
-drip-rs on the same machine a few seconds later, and wrote one table
-with all three (`results/drip-rs-bench-2026-11-02.md`). Every time is
-the best of three runs, each in a fresh process, with compiling the
-program included, so it is what a person running `drip program.drip`
-would wait for.
-
-<Analogy title="three ways to cross a city">
-A walker, a cyclist on the same streets, and the same cyclist on a
-lighter, faster bike: you time all three over the same ten routes. The
-bike changes the route's cost far more than the rider's style, and some
-routes (all traffic lights) barely care what you ride.
-<span slot="breaks">Routes do not change; our "walker" in fact rides in
-a car with a very good driver, because V8 compiles the tree-walker's
-TypeScript to machine code as it runs<Cite id="v8-launch-ignition-turbofan" />
-(the chapter *Ignition and the tiers above it*). That is part of the surprise
-below.</span>
-</Analogy>
-
-<Analogy extra title="a cooking contest with one recipe book">
-Three cooks make the same ten dishes from the same recipe book, and a
-judge times them all on the same day, in the same kitchen.
-<span slot="breaks">Cooks can be timed on one dish each; programs on a
-shared cloud machine vary from run to run by tens of percent, so one
-run is never a result. Best of three fresh runs is the book's
-compromise.</span>
-</Analogy>
-
-<Prompts ids={['bm-how', 'bm-compile']} />
-
-## The results
+The tree-walker, the TypeScript VM and drip-rs all pass the shared
+corpus, so they do the same work; on 2026-11-02 the ten benchmark
+programs were timed on all three, best of three fresh processes,
+compiling included.
 
 <ThreeWaySteps client:visible />
 
-Step through the diagram; it reads every number from the two committed
-JSON files. In the first step you see the times; the rest are
-**speed-ups**, old time divided by new time, so 2× means "twice as
-fast" and anything under 1× means slower. Three things stand out.
-
-drip-rs is faster than both TypeScript implementations on every
-program: from 1.26 to 4.94 times the TypeScript VM's speed, with a
-geometric mean of 3.94, and 3.98 against the tree-walker. Its speed-up
-over the TypeScript VM varies little, because the two VMs run the same
-bytecode with the same instructions; only `strings` stands apart, and
-*Profiling the Rust VM* showed why: there drip-rs spends half its time
-formatting numbers in library code, not in the dispatch loop.
-
-The TypeScript VM, on the other hand, is **not** reliably faster than
-the tree-walker. It wins on six programs, by at most 1.30 times
-(`method_calls`), and loses on four: `fields` (0.74), `instantiation`
-(0.69), `strings` (0.95) and `trees` (0.80). The geometric mean over the
-ten is 1.01: on these programs, on this day, compiling to bytecode in
-TypeScript bought nothing on average.
-
-A **geometric mean** is the right summary for speed-ups: multiply the
-ten ratios and take the tenth root. It treats "twice as fast" and "half
-as fast" as equal and opposite, which the ordinary average does not
-(the average of 2 and 0.5 is 1.25, which would call a wash a win).
+A speed-up is old time over new; the summary is the **geometric mean**,
+the tenth root of the product, which treats 2× and 0.5× as equal and
+opposite (their ordinary average, 1.25, would call a wash a win).
+drip-rs is 1.26 to 4.94 times the TypeScript VM, geometric mean 3.94
+(3.98 against the tree-walker). The surprise: the TypeScript VM wins on
+six programs by at most 1.30 times, loses on `fields` (0.74),
+`instantiation` (0.69), `strings` (0.95) and `trees` (0.80), and has a
+geometric mean of 1.01 over the tree-walker.
 
 <Callout kind="definition">
-An **implementation comparison** runs the same programs, with the same
-inputs and the same expected output, on two or more implementations of
-one language, on the same machine, measured the same way, and reports
-each program's speed-up (old time divided by new time) and their
-geometric mean. It is only meaningful when every implementation passes
-the same tests, so that all of them are doing the same work.
+An **implementation comparison** runs the same programs on two or more
+implementations of one language, on one machine, measured one way, and
+reports each speed-up (old time over new) and their geometric mean. It
+means something only when all of them pass the same tests.
 </Callout>
-
-<Formal title="Speed-up and its summary">
-
-```text
-speedup(p) = t_old(p) / t_new(p)
-geomean = (Πₚ speedup(p))^(1/n)
-```
-
-<span slot="read">The speed-up on program p is the old time over the
-new time. The summary over n programs is the n-th root of the product
-of all the speed-ups, so a 2× and a 0.5× cancel out exactly.</span>
-</Formal>
 
 <Examples of="implementation-comparison">
 
 ```text
-fib:   tree 2365 · TS VM 1906 · drip-rs 406
-       TS VM 1.24× tree; drip-rs 4.69× TS VM
+fields: tree 530, TS VM 712,
+        drip-rs 193 (ms)
 ```
-
-```text
-fields: tree 530 · TS VM 712 · drip-rs 193
-        TS VM 0.74× tree: slower
-```
-
-<Run id="bench" />
 
 </Examples>
 
-The first is the textbook case: each step of the book made fib faster,
-1.24 times from the tree-walker to the VM and 4.69 times from the
-TypeScript VM to drip-rs. The second is the counter-example, `fields`,
-where the TypeScript VM is slower than the tree-walker it was meant to
-replace, although drip-rs, running the same bytecode, is 3.69 times
-faster than it. The third is a small version of `fields` you can run
-here, on the VM, and time with `clock()` on your own device; try making
-the loop longer.
-
-<Prompts ids={['bm-geo', 'bm-vm-loses', 'bm-spread']} />
-
-## Why the TypeScript VM loses
-
-A bytecode VM is supposed to win by doing less work per step than a
-tree-walker. To see why that did not happen in TypeScript, I profiled
-both TypeScript implementations with V8's own sampling profiler,
-`node --cpu-prof src/cli.ts --vm ../corpus/benchmark/instantiation.drip`
-(and the same without `--vm`, and for `trees` and `fields`), and grouped
-the samples by source file:
+On `fields` the TypeScript VM is 0.74 times the tree-walker, while
+drip-rs, on the same bytecode, is 3.69 times the TypeScript VM. V8's profiler shows why: the tree-walker keeps fields in
+a `Map` and lets V8 free everything, in V8's own C++, while the
+TypeScript VM builds its own hash table and collector in TypeScript, on
+top of V8's. The design pays only once compiled, which the port did.
 
 <WhereVmTime />
 
-The difference is in what each implementation builds by hand. The
-tree-walker stores an instance's fields in a JavaScript `Map` and lets
-V8's garbage collector free everything, so both of those jobs are done
-by V8's own code, written in C++. The TypeScript VM, being a model of a
-real VM, builds both itself: its own hash table (`table.ts`, with
-open addressing and tombstones from *Finding things fast: hash tables*)
-and its own mark-and-sweep collector (`heap.ts`), written in TypeScript
-and running *on top of* V8's collector, which still has to free the
-JavaScript objects underneath. On `instantiation`, the VM's own table
-(16% of samples, much of it `Table.grow` as new instances' tables
-expand), its own collector (10%) and V8's collector (13%) add up to 39%
-of the run; on `trees`, 43%. The tree-walker's `Map`s and V8's collector
-take 30 to 31%.
+<More title="What the profiles of the two TypeScript implementations say">
 
-`fields` needs no allocation at all (two objects, half a million loop
-turns), and there the cost is per instruction: the statement
-`a.x += a.vx;` is eight VM instructions (`load.global a`, `dup`,
-`get.prop x`, `load.global a`, `get.prop vx`, `add`, `set.prop x`,
-`pop`), and five of them are probes in the VM's hand-written table;
-the VM's loop and table take 85% of the samples against the
-tree-walker's 75% for its loop and `Map` lookups. drip-rs runs the same
-eight instructions, but each is a few machine instructions of compiled
-Rust, which is where its 3.69× comes from. In short, the TypeScript VM
-models the *design* of a fast VM faithfully, and the design only pays
-once it is compiled to machine code, which is what the port to Rust
-did.
+On `instantiation`, the VM's own table (16% of samples, much of it
+`Table.grow`), its own collector (10%) and V8's collector (13%) add up to
+39% of the run; on `trees`, 43%; the tree-walker's `Map`s and V8's
+collector take 30 to 31%. `fields` allocates nothing, and there the cost
+is per instruction: `a.x += a.vx;` is eight VM instructions, five of
+them probes in the hand-written table. These are end-to-end times of
+short programs, so they include start-up and V8 warming up its
+compiler<Cite id="v8-launch-ignition-turbofan" />, and a 0.95 on a shared
+machine is best read as "about the same".
 
-<Prompts ids={['bm-map', 'bm-two-gcs', 'bm-design']} />
+<Run id="bench" />
 
-<Callout kind="engine" label="Under the hood">
-These are end-to-end times of short programs, so they include starting
-Node or the Rust binary and compiling the Drip program, and the Node
-numbers include V8 warming up its compiler on the interpreter's own
-code. A long-running server would see V8 at full speed, and smaller
-gaps between the two TypeScript implementations, or larger ones; the
-results file says what was measured, and nothing here should be read as
-a claim about other programs or machines. The noise is real too: a run
-can vary by tens of percent on this shared machine, which is why the
-tables report the best of three, and why a 0.95 for `strings` is best
-read as "about the same".
+</More>
+
+<Prompts ids={['bm-geo', 'bm-vm-loses']} />
+
+## What Rust gave, and what it cost
+
+The port met its goal: every corpus and stress-GC program passes, byte
+for byte. Ownership *forced* arenas with typed handles, roots passed in
+and reading before writing. The compiler *caught*, in seconds, missing
+match arms (E0004), double mutable borrows (E0499), references into a
+changing heap (E0502) and a class handle passed for an instance's
+(E0308). The *cost*: 3,328 code lines against the TypeScript VM's 1,714
+(1.94 times, counted without blanks, comments or tests) and a build
+step. It *bought* the 3.94×, from compiled code and registers, not from
+skipping checks, and one 594 KB executable with no dependencies.
+
+<LedgerSteps client:visible />
+
+<Callout kind="definition">
+The **Rust trade-offs**, as drip-rs paid them: memory safety without a
+runtime, type, borrow and exhaustiveness mistakes caught at compile
+time, and about four times the TypeScript VM's speed; for nearly twice
+the code, a design shaped by ownership, a build step, and logic bugs in
+safe code that only tests find.
 </Callout>
+
+<Examples of="rust-tradeoffs">
+
+```rust
+let name = a.alloc("fib");
+a.free(name); // a root was forgotten
+let other = a.alloc("zoo"); // reuses
+println!("{}", a.get(name)); // zoo
+```
+
+</Examples>
+
+What Rust cannot see, from the runnable example below, a tiny arena
+that reuses freed slots as drip-rs does in normal mode: forget a root
+and the program compiles, the object is freed while in use, the slot is
+reused, and the stale handle reads the newcomer. No crash, no undefined
+behaviour, just the wrong answer; so drip-rs's debug and stress modes
+never reuse a slot. Rust made the bug **safe**; making it impossible
+took tests.
+
+<More title="The ledger in full, and the stale handle running">
+
+<LocBars />
+
+Not all the extra lines are ownership: `value.rs` reimplements
+JavaScript's number printing, the scanner spells out each byte case, and
+`main.rs` is a 50-line command line; seven `unreachable!` calls mark
+facts the types cannot express. A clean release build with `lto` took
+about 7.5 seconds here. The Rust book describes the borrow checker as
+preventing dangling references at compile time<Cite id="klabnik2026" />;
+in drip-rs no reference can dangle, but a handle can still name a slot
+whose object has gone, the same mistake one level up.
+
+<Run id="stale-handle" />
+
+</More>
+
+<Prompts ids={['safe-not-correct', 'rust-tradeoffs']} />
 
 ## Your turn
 
 <Exercise id="summarize" />
 
-## What you learned
+<Exercise id="annotate" />
 
-- Compare implementations on the **same programs**, the **same
-  machine** and the **same measurement**, and only once they pass the
-  **same tests**.
-- Summarise speed-ups with a **geometric mean**: drip-rs is 3.94×
-  the TypeScript VM and 3.98× the tree-walker; the TypeScript VM is
-  **1.01×** the tree-walker.
-- The TypeScript VM **loses** on `fields`, `instantiation`, `strings`
-  and `trees`: it rebuilds a hash table and a collector in TypeScript
-  that the tree-walker gets from V8.
-- The VM's design pays off **once compiled**: the same bytecode in Rust
-  runs 1.26 to 4.94 times as fast.
+<Exercise id="fold" />
 
-
-{/* ── merge: from old chapter 147, What Rust bought us ── */}
-
-## The port is done
-
-Part XII set itself one goal in *Planning drip-rs*: a Rust VM that
-behaves exactly like the TypeScript VM, the same output, the same error
-messages on the same lines and the same exit codes, on every program.
-drip-rs meets it: all 334 corpus tests pass, so do the 165 stress-GC
-programs that collect before every allocation, and on 2026-11-02
-`compare_with_ts.mjs` found its output identical to the TypeScript VM's
-on 343 corpus programs and 2,000 mangled ones. It runs the ten
-benchmarks about four times as fast. Was it worth it? That depends on
-what you count, so this chapter counts everything it can, the costs as
-carefully as the gains.
-
-<Analogy title="the bills after a renovation">
-After a renovation you go through the bills. Some costs you chose, some
-the building regulations forced on you. Some problems the inspector
-caught before you moved in; one or two only showed up when you ran the
-taps. And the house is warmer. All of it goes in the ledger.
-<span slot="breaks">A house's costs are paid once; a codebase's
-extra lines are read again by everyone who works on it, and its
-design choices shape every later change, so some of the costs here
-keep being paid.</span>
-</Analogy>
-
-<Analogy extra title="learning to drive a manual car">
-A manual gearbox makes you think about things an automatic does for
-you, and for a while every journey is harder; in return you get more
-control and better fuel economy.
-<span slot="breaks">A driver who masters the clutch stops noticing it;
-Rust's borrowing rules also become habit, but they keep shaping the
-design (arenas, handles, passed-in roots) long after they stop feeling
-like friction.</span>
-</Analogy>
-
-<LedgerSteps client:visible />
-
-<Prompts ids={['rt-goal', 'rt-ledger']} />
-
-## What ownership forced
-
-Some of drip-rs's designs exist because of Rust's ownership rules (from
-*Ownership* and *Borrowing*), not because a VM needs them:
-
-- **Arenas and handles.** Objects that point at each other in any
-  pattern, cycles included, cannot be Rust references, so each kind
-  lives in its own `Arena<T>` (there are nine, from strings to bound
-  methods) owned by the `Heap`, and links between objects are `Gc<T>`
-  handles, typed indices (from *Arenas and typed indices* and *Heap
-  objects in an arena*).
-- **Roots passed in.** The heap cannot borrow the VM that owns it, so
-  the VM hands its roots to `Heap::collect` as `&dyn Trace` values (from
-  *A garbage collector in Rust*).
-- **Read first, then write.** Holding a reference into the heap while
-  changing it is E0502, so code reads what it needs into locals first:
-  the one `clone()` of a table in the whole VM is the `inherit`
-  instruction's, from *extends and super in Rust*.
-
-The TypeScript VM could skip all three; a JavaScript object can point at
-any other, and V8 frees them. None of the three is strange (arenas with
-indices are an old technique in any language), but Rust made them
-compulsory, and the code is longer for it.
-
-<Prompts ids={['forced-arena', 'forced-roots']} />
-
-## What it caught, and what it could not
-
-Each Rust chapter of this Part met the compiler's refusals: two mutable
-borrows of the compiler at once (E0499), a reference into a heap that
-was about to change (E0502), and the two below.
-
-<Examples of="rust-tradeoffs">
-
-```text
-error[E0004]: non-exhaustive patterns:
-  `Op::Print` not covered
-4 |     match op {
-  |           ^^ pattern `Op::Print`
-  |              not covered
-```
-
-```text
-error[E0308]: mismatched types
-7 |     fields(c);
-  |            ^ expected
-  |   `Gc<ObjInstance>`,
-  |   found `Gc<ObjClass>`
-```
-
-<Run id="stale-handle" />
-
-</Examples>
-
-The first is rustc 1.97 on a three-variant enum whose `match` forgets
-one (trimmed and wrapped): drip-rs's `Vm::run` matches on all 53
-`OpCode` variants, and adding a 54th opcode without an arm for it is a
-compile error, not a silent fall-through. The second is a toy with
-drip-rs's `Gc<T>` shape: a handle to a class passed where a handle to
-an instance is wanted. The TypeScript VM has types too, but its
-casts, such as `this.peek(0) as ObjClass`, switch them off wherever a
-value comes off the stack; drip-rs opens such values with a `match`. Each of these was found in
-seconds, by the compiler, before any test ran; in C the borrowing
-mistakes could have been a dangling pointer or two writers to one
-object, found only when something broke. At run time, every index is
-checked, and `#![forbid(unsafe_code)]` means no line of drip-rs can turn
-the checks off.
-
-The third, which you can run, is what Rust cannot see. A `Gc<T>` is a
-number. If the VM forgets to pass a root, the program compiles, and the
-collector frees an object that is still in use; in normal mode the
-arena reuses the slot, the next object moves in, and the stale handle
-reads *it*. No crash and no undefined behaviour, just the wrong answer:
-the example prints `zoo` where it meant `fib`. That is why drip-rs's
-debug and stress modes never reuse a slot (a stale read then panics) and
-why the 165 stress-GC programs exist. Rust made the bug **safe**;
-making it **impossible** took tests.
-
-<Formal title="Safe is not the same as correct">
-
-```text
-safe(P)    ⇒ no undefined behaviour in P
-safe(P)    ⇏ correct(P)
-passes(P, C) ⇒ correct on the programs in C
-```
-
-<span slot="read">If a program P is written in safe Rust, it has no
-undefined behaviour; but being safe does not make it correct. Passing
-the corpus C shows it is correct on the programs in C, and nothing
-more.</span>
-</Formal>
-
-<Prompts ids={['caught-compile', 'missed-root', 'safe-not-correct']} />
-
-## What it cost
-
-I counted code lines in both VMs on 2026-11-02: not blank, not
-comments, and for Rust nothing from a module's `#[cfg(test)]` onwards.
-
-<LocBars />
-
-drip-rs is 3,328 lines against the TypeScript VM's 1,714, 1.94 times as
-many. Not all of the extra is about ownership. `value.rs` reimplements
-JavaScript's way of printing numbers, which the TypeScript VM gets from
-`String(n)`; the scanner works on bytes and spells out each case; and
-`main.rs` is a 50-line command line with no twin inside `ts/src/vm`.
-Seven `unreachable!` calls mark facts the types cannot express ("the
-compiler always puts a class here"). The rest is the price of arenas,
-handles and passed-in roots, and of a `Result` on every path that can
-fail. There is also the build: a clean release build with `lto` took
-about 7.5 seconds here, where the TypeScript VM runs straight from
-source.
-
-<Prompts ids={['cost-lines', 'cost-where']} />
-
-## What it bought
-
-Speed, on the committed run of 2026-11-02: from 1.26 to 4.94 times the
-TypeScript VM's speed on the ten programs, geometric mean 3.94, and 3.98
-against the tree-walker, with the caveats of *Benchmarks: three
-implementations* attached (best of three on a shared machine, start-up
-and compiling included). Where did it come from? Not from skipping
-checks: *Optimizing the Rust VM* measured an unchecked `read_byte` and
-found 8% fewer instructions and no measurable time. It came from the
-same design running as compiled machine code, and from keeping the hot
-state in fields of the `Vm`: removing just the chunk register made fib
-about 2.1 times slower. And it bought a single 594 KB executable that
-needs nothing installed, with no dependencies at all (its `Cargo.lock`
-lists only drip-rs itself).
-
-<Callout kind="definition">
-The **Rust trade-offs**, as drip-rs paid them: memory safety without a
-garbage-collected runtime, mistakes in types, borrows and exhaustiveness
-caught at compile time, and about four times the speed of the
-TypeScript VM; in exchange, nearly twice the code, a design shaped by
-ownership (arenas, handles, roots passed in), a build step, and logic
-bugs in safe code that only tests can find.
-</Callout>
-
-<Prompts ids={['speed-scope', 'biggest-win', 'rust-tradeoffs']} />
-
-<Callout kind="engine" label="Under the hood">
-The Rust book describes the borrow checker's job as preventing data
-races and dangling references at compile time<Cite id="klabnik2026" />,
-and drip-rs shows both the reach and the limit of that: no reference in
-drip-rs can dangle, because objects are reached through handles, but a
-handle can still name a slot whose object has gone, which is the same
-mistake one level up. Part XIII builds a much larger Rust program, the
-Viscosity engine, on the same habits: arenas, typed indices, and a
-shared test suite to check what the types cannot.
-</Callout>
-
-## Your turn
+<Exercise id="verdict" />
 
 <Exercise id="counts" />
 
 ## What you learned
 
-- Ownership **forced** arenas with typed handles, roots passed in to the
-  collector, and reading before writing.
-- The compiler **caught** missing match arms, wrong handle types and
-  borrow conflicts; it **cannot** catch a forgotten root: safe, not
-  correct.
-- The port **cost** 1.94× the lines and a build step, and **bought**
-  3.94× the TypeScript VM's speed and one dependency-free binary.
+- **Profiling** and **flame graphs** find the cost; **unchecked
+  indexing** saved none of it.
+- An **implementation comparison** needs shared tests and a geometric
+  mean; the **Rust trade-offs** were safety and speed for twice the
+  code.
+
+Next: *The Rust workspace*, the start of Viscosity in Rust.
 
 <Quiz />

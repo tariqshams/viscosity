@@ -7,65 +7,33 @@ export const prompts = {
     q: 'drip-rs splits each row of the parse-rule table into three matches on `TokenKind`. What are they?',
     a: '`prefix_rule` (what the token does at the start of an expression), `infix_precedence` (how tightly it binds after one) and the `prefix` / `infix` methods (the code that runs).',
   },
-  'prt-prec-numbers': {
-    q: 'What type are drip-rs’s precedences, and why does that suit the parser?',
-    a: 'Plain `u8` constants, `PREC_NONE` = 0 up to `PREC_CALL` = 9, the same numbers as TypeScript’s `Prec`; the parser can add 1 to them.',
-  },
   'prt-none-zero': {
-    q: 'Why does `infix_precedence(Semicolon)` returning 0 end an expression?',
+    q: 'In drip-rs’s Pratt parser, where every expression is parsed at precedence 1 or more, why does `infix_precedence(Semicolon)` returning 0 end an expression?',
     a: 'Every expression is parsed at precedence 1 or more, and the loop only continues while `precedence <= infix_precedence(next)`; 0 never passes.',
   },
   'prt-enum-why': {
     q: 'What does a prefix cell of drip-rs’s table hold, and how big is it?',
     a: 'An `Option<Prefix>`: an enum naming the parse function (with data, as in `Literal(OpCode)`). It is 1 byte.',
   },
-  'prt-fnptr': {
-    q: 'What is a function pointer type such as `fn(&mut Compiler, bool)`?',
-    a: 'The address of some function with that signature, chosen at run time. It captures nothing, and is never null, so `Option` of one costs no extra space.',
-  },
   'prt-plus-one': {
-    q: 'Why does `infix` parse a binary operator’s right side at `infix_precedence(kind) + 1`?',
+    q: 'In a Pratt parser such as drip-rs’s, why does a left-associative binary operator parse its right side at its own precedence + 1?',
     a: 'So an operator of the same precedence cannot join the right side; it is left for the outer loop, and `8 - 3 - 2` groups as `(8 - 3) - 2`.',
-  },
-  'prt-can-assign': {
-    q: 'When is `can_assign` true in `continue_expression`?',
-    a: 'Only when parsing at the loosest level, `precedence <= PREC_ASSIGNMENT`. Inside `a + b`, it is false, so `a + b = 1` reports “cannot assign to this expression”.',
-  },
-  'prt-loop': {
-    q: 'In `continue_expression(precedence, prefix)`, when does the `while` loop stop?',
-    a: 'When the next token’s infix precedence is lower than `precedence`: it binds too loosely to join, so it is left for an outer call.',
   },
   'cs-why-struct': {
     q: 'Why doesn’t drip-rs write its compiler as one function whose helpers are closures over shared variables, as the TypeScript one is?',
     a: 'A closure that writes a variable holds a mutable borrow of it while it may still be called, so a second closure cannot even read it (E0502).',
   },
   'cs-closure-borrow': {
-    q: 'A closure does `pos += 1`. How does it borrow `pos`, and for how long?',
+    q: 'In Rust, a closure does `pos += 1`. How does it borrow `pos`, and for how long?',
     a: 'Mutably, for as long as the closure may still be called. Nothing else may read or write `pos` in that time.',
   },
   'cs-lifetimes': {
-    q: 'What do the two lifetimes in `Compiler<\'src, \'a>` stand for?',
+    q: 'What do the two lifetimes in drip-rs’s `Compiler<\'src, \'a>` stand for?',
     a: '`\'src` is the source text that tokens and local names borrow; `\'a` is what the caller lends: its `Heap` and its GC roots.',
   },
-  'cs-tokens': {
-    q: 'Why are drip-rs tokens cheap to copy?',
-    a: 'A `Token<\'src>` is a kind, a line and a `&str` slice of the source: it is `Copy` and never copies text.',
-  },
-  'cs-vec': {
-    q: 'The TypeScript compiler links nested functions through `enclosing`. What does drip-rs use instead?',
-    a: 'A `Vec<FunctionState>` used as a stack, innermost last; `state()` returns `functions.last_mut()`.',
-  },
-  'cs-level': {
-    q: 'How does `resolve_upvalue` reach the enclosing function without holding a reference to it?',
-    a: 'By index: it takes a `level` and looks in `self.functions[level - 1]`. A number borrows nothing.',
-  },
   'cs-read-first': {
-    q: 'Why does `self.chunk().write(byte, self.previous.line)` fail to compile, and what is the fix?',
+    q: 'In a compiler method where `self.chunk()` returns a `&mut Chunk` borrowed from `&mut self`, why does `self.chunk().write(byte, self.previous.line)` fail to compile, and what is the fix?',
     a: '`self.chunk()` borrows all of `self` mutably until `write` ends, so reading `self.previous.line` inside it is E0503. Read the line into a local first.',
-  },
-  'cs-errors': {
-    q: 'A program has both a syntax error and a broken static rule. Which does drip-rs report?',
-    a: 'Only the syntax error: `compile` appends `static_errors` only when `syntax_errors` is empty.',
   },
 };
 
@@ -221,6 +189,7 @@ fn main() {
 
 export const exercises = {
   precTable: {
+    optional: true,
     lang: 'rust',
     title: 'Three matches',
     prompt: `Build a small parse-rule table in drip-rs’s style for single-character tokens. The precedences are \`u8\` constants, as in drip-rs.
@@ -1189,7 +1158,7 @@ fn double_negation() {
       'The operand may only contain operators tighter than unary minus. With precedences 1 and 2 for the binary operators, that is `self.expr(3)`, which stops before any binary operator.',
       'After the operand, push `Op::Neg`. In the `else` branch, call `self.number()`.',
     ],
-    walkthrough: `**How to think about it.** A \`-\` at the start of an operand cannot be subtraction, because nothing is on its left; that is the idea of *Prefix and infix operators*: one token, two rules, and its position decides which. So \`prefix\` only has to ask "is the next character a minus?", and if so compile a negated operand. The question is how much the operand may contain, and the answer is: only things tighter than unary minus, so \`-2*3\` is \`(-2)*3\`.
+    walkthrough: `**How to think about it.** A \`-\` at the start of an operand cannot be subtraction, because nothing is on its left; that is the idea of *Pratt parsing*: one token, two rules, and its position decides which. So \`prefix\` only has to ask "is the next character a minus?", and if so compile a negated operand. The question is how much the operand may contain, and the answer is: only things tighter than unary minus, so \`-2*3\` is \`(-2)*3\`.
 
 **The solution, line by line.**
 
@@ -1301,28 +1270,6 @@ fn compile(s: &str) -> Vec<Op> {
 
 export const quiz = [
   {
-    q: 'In drip-rs, what does `prefix_rule(TokenKind::True)` return?',
-    options: [
-      {
-        t: 'A closure that emits `true`',
-        why: 'That is the TypeScript design. drip-rs returns a value naming the work, not a function.',
-      },
-      {
-        t: '`Some(Prefix::Literal(OpCode::True))`',
-        correct: true,
-        why: 'The variant carries the opcode to emit, so `true`, `false` and `none` share one arm of `prefix`.',
-      },
-      {
-        t: '`PREC_NONE`',
-        why: 'That is what `infix_precedence` says about `true`: it never continues an expression.',
-      },
-      {
-        t: '`None`',
-        why: '`true` can start an expression, so it has a prefix rule.',
-      },
-    ],
-  },
-  {
     q: 'Parsing at precedence `PREC_FACTOR` (7), the next token is `+` (`PREC_TERM`, 6). What happens?',
     options: [
       {
@@ -1337,28 +1284,6 @@ export const quiz = [
         t: 'The loop stops, leaving `+` for an outer call',
         correct: true,
         why: '`7 <= 6` is false: `+` binds more loosely than the operand being parsed.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `infix` parse a binary operator’s right operand at `infix_precedence(kind) + 1`?',
-    options: [
-      {
-        t: 'So that `*` binds tighter than `+`',
-        why: 'That comes from the precedences themselves (7 against 6), not from the `+ 1`.',
-      },
-      {
-        t: 'To skip the operator token',
-        why: '`advance()` already consumed it before `infix` was called.',
-      },
-      {
-        t: 'So operators of equal precedence group from the left, as in `(8 - 3) - 2`',
-        correct: true,
-        why: 'The second `-` is not tighter than the minimum, so it is left for the outer loop.',
-      },
-      {
-        t: 'Because precedences are `u8` and must not be 0',
-        why: 'No such rule exists; `PREC_NONE` is 0.',
       },
     ],
   },
@@ -1381,24 +1306,6 @@ export const quiz = [
       {
         t: 'Function pointers are always 16 bytes',
         why: 'A function pointer is 8 bytes on a 64-bit machine, and `Option` of one is 8 too.',
-      },
-    ],
-  },
-  {
-    q: 'What does drip-rs report for `a + b = 1;`?',
-    options: [
-      {
-        t: '`line 1: cannot assign to this expression`',
-        correct: true,
-        why: 'Inside `a + b`, `can_assign` is false; the `=` is left over when the outer `continue_expression` ends, and its last line reports it.',
-      },
-      {
-        t: 'Nothing: it assigns 1 to `b`',
-        why: '`b` is parsed at `PREC_TERM + 1`, where `can_assign` is false, so its `named_variable` does not take the `=`.',
-      },
-      {
-        t: '`line 1: expected an expression, found \'=\'`',
-        why: '`=` is never asked for its prefix rule here; it is found after a complete expression.',
       },
     ],
   },
@@ -1427,64 +1334,6 @@ advance();
       {
         t: '`pos` must be declared `static`',
         why: 'No. drip-rs’s fix is a struct and methods, not globals.',
-      },
-    ],
-  },
-  {
-    q: 'Where does drip-rs keep `previous`, which the TypeScript compiler keeps in a local variable of `compile`?',
-    options: [
-      {
-        t: 'In each parse function’s own locals',
-        why: 'Then it could not be shared between the functions that need it.',
-      },
-      {
-        t: 'In a field of the `Compiler` struct, reached through `&mut self`',
-        correct: true,
-        why: 'Every helper is a method, so every helper can read and write `self.previous`.',
-      },
-      {
-        t: 'In the heap',
-        why: 'Tokens never go in the Drip heap. They borrow the source text.',
-      },
-      {
-        t: 'In a mutable global variable',
-        why: 'drip-rs has none; it is a struct field.',
-      },
-    ],
-  },
-  {
-    q: 'What does the lifetime `\'src` in `Token<\'src>` let drip-rs avoid?',
-    options: [
-      {
-        t: 'Running the garbage collector during compilation',
-        why: 'Lifetimes do not control the collector; the compiler does collect, with its functions as roots.',
-      },
-      {
-        t: 'Checking for syntax errors',
-        why: 'Errors are still checked and reported.',
-      },
-      {
-        t: 'Copying each lexeme’s text: a token holds a `&str` slice of the source',
-        correct: true,
-        why: 'The lifetime promises the source outlives the tokens, so the slices stay valid.',
-      },
-    ],
-  },
-  {
-    q: 'Why does drip-rs keep nested functions in a `Vec<FunctionState>` rather than a list linked through `enclosing`?',
-    options: [
-      {
-        t: 'A `Vec` is faster to walk',
-        why: 'Speed is not the point; there are rarely more than a few nested functions.',
-      },
-      {
-        t: 'Rust cannot express linked lists',
-        why: 'It can (with `Box`, for instance). Changing several nodes at once is what gets awkward.',
-      },
-      {
-        t: 'Resolving a captured variable changes several functions’ states; in a `Vec` they are named by index, which borrows nothing',
-        correct: true,
-        why: '`resolve_upvalue(level, name)` reaches `self.functions[level - 1]` through the one `&mut self`.',
       },
     ],
   },

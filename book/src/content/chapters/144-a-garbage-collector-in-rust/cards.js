@@ -7,7 +7,7 @@ export const prompts = {
     a: 'No. The caller (the VM or the compiler) asks `should_collect()` first and, if so, calls `collect` with its roots.',
   },
   'ag-dyn': {
-    q: 'Why does `collect` take `&[&dyn Trace]` rather than a generic `&[T]`?',
+    q: 'Why does drip-rs’s `Heap::collect` take its roots as `&[&dyn Trace]` rather than a generic `&[T]`?',
     a: 'One call mixes root types: the compiler passes whatever roots the VM gave it together with its own `Vec<FunctionState>`, and a slice of trait objects can hold values of different types.',
   },
   'ag-bitmap': {
@@ -15,19 +15,15 @@ export const prompts = {
     a: 'In a separate `Marks` value, one `Vec<bool>` per arena. Tracing reads objects while marking writes bits; apart, the two borrows don’t overlap.',
   },
   'ag-take': {
-    q: 'Why does `collect` begin with `std::mem::take(&mut self.marks)`?',
+    q: 'Why does drip-rs’s `Heap::collect` begin with `std::mem::take(&mut self.marks)`?',
     a: 'To move the bitmap out of the heap, so `blacken(&self, .., &mut marks)` can borrow the heap shared and the marks mutably.',
   },
-  'ag-gray': {
-    q: 'Which drip-rs objects never go on the grey stack, and why?',
-    a: 'Strings and natives. They refer to no other objects, so `Gray` has no variant for them and marking one makes it black at once.',
-  },
   'ag-free': {
-    q: 'What does `Arena::remove(i, true)` do with slot `i`?',
+    q: 'What does drip-rs’s `Arena::remove(i, true)` do with slot `i`?',
     a: 'Takes the object out with `take` (the slot becomes `None` and the object is dropped) and, because `reuse` is true, pushes `i` on the free list, which the next `insert` pops.',
   },
   'ag-weak': {
-    q: 'Why does `collect` prune the string table before sweeping?',
+    q: 'Why does drip-rs’s `Heap::collect` prune the interned-string table before sweeping?',
     a: 'The table holds strings weakly. Its entries for unmarked strings must go, or it would keep handles to freed slots.',
   },
   'ag-stress': {
@@ -35,7 +31,7 @@ export const prompts = {
     a: '`should_collect()` is always true, so a collection runs before every allocation, and `poison_freed` is set, so freed slots are never reused.',
   },
   'ag-poison': {
-    q: 'Why must stress mode also stop reusing freed slots?',
+    q: 'Why must a GC stress mode that collects before every allocation, such as drip-rs’s, also stop reusing freed arena slots?',
     a: 'With reuse, a stale handle silently reads the new object in its slot. Without it, the slot stays `None` and the use panics.',
   },
 };
@@ -646,28 +642,6 @@ export const quiz = [
       {
         t: 'So that the TypeScript VM can share them',
         why: 'The two VMs share nothing at run time.',
-      },
-    ],
-  },
-  {
-    q: 'What does `std::mem::take(&mut self.marks)` do at the start of `collect`?',
-    options: [
-      {
-        t: 'Moves the bitmap out of the heap, leaving an empty `Marks` in its place, so it can be borrowed apart from the heap',
-        correct: true,
-        why: 'At the end, `self.marks = marks;` puts it back, so its memory is reused next time.',
-      },
-      {
-        t: 'Clears every mark bit',
-        why: 'That is `marks.reset(self)`, the next line.',
-      },
-      {
-        t: 'Copies the bitmap',
-        why: 'It moves it; nothing is copied.',
-      },
-      {
-        t: 'Frees the bitmap’s memory',
-        why: 'The bitmap is kept and put back afterwards.',
       },
     ],
   },

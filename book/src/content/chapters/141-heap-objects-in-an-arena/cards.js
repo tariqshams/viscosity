@@ -3,117 +3,37 @@
 // Merged from old chapters 141, 141, 141.
 
 export const prompts = {
-  'oh-arenas': {
-    q: 'How many arenas does drip-rs’s `Heap` have, and what decides which one an object goes in?',
-    a: 'Nine, one per kind of object (strings, lists, functions, natives, upvalues, closures, classes, instances, bound methods). The object’s Rust type decides.',
-  },
-  'oh-no-header': {
-    q: 'TypeScript heap objects carry `type`, `isMarked` and `next`. Why do drip-rs objects need none of them?',
-    a: 'The arena an object is in says its type, the sweep walks the arenas instead of a list, and mark bits live in a separate bitmap.',
-  },
-  'oh-no-null': {
-    q: 'Why does a drip-rs closure’s upvalue list, `Vec<Gc<ObjUpvalue>>`, never hold an empty entry?',
-    a: 'drip-rs captures the upvalues into a `Vec` first and allocates the closure afterwards, so the list is never half-filled.',
-  },
   'oh-handle': {
     q: 'What is an object handle in drip-rs?',
     a: 'A `Gc<T>`: a `Copy` slot number in the arena for `T`. `heap[handle]` reads the object; the handle owns nothing.',
   },
   'oh-trait': {
-    q: 'What does the `HeapObject` trait tell generic heap code?',
+    q: 'In drip-rs, what does the `HeapObject` trait tell generic heap code?',
     a: 'Which arena (and which mark bits) belong to each object type, and the object’s size, so one generic `alloc` and one `Index` impl serve all nine.',
   },
-  'oh-index-sugar': {
-    q: 'What does `heap[c]` turn into?',
-    a: '`*heap.index(c)`, a call to the `Index` trait’s method (`IndexMut::index_mut` when it is written through).',
-  },
-  'oh-chain': {
-    q: 'How does drip-rs write TypeScript’s `inst.klass.name`?',
-    a: '`let class = heap[inst].class;` then `heap[class].name`: one lookup per hop, copying each handle out.',
-  },
   'oh-two-objects': {
-    q: 'Why does `let from = &heap[a].methods; heap[b].methods.add_all(from);` fail?',
+    q: 'In drip-rs, where `heap[h]` borrows the whole `Heap`, why does `let from = &heap[a].methods; heap[b].methods.add_all(from);` fail to compile?',
     a: '`heap[...]` borrows the whole heap, so a shared borrow (of `a`’s table) and a mutable one (for `b`) overlap: E0502. Clone the table first.',
   },
-  'oh-nested': {
-    q: 'Does `heap[heap[class].name].chars.push(\'!\')` compile?',
-    a: 'No (E0502). The outer `index_mut` borrows the heap mutably while the inner `heap[class]` reads it. Copy `heap[class].name` into a local first.',
-  },
-  'oh-cost': {
-    q: 'At run time, what does `heap[closure]` check?',
-    a: 'Only the arena’s own work: a bounds check, and that the slot is not `None`. The arena itself was chosen at compile time from the handle’s type.',
-  },
-  'rvl-objlist': {
-    q: 'What is a Drip list in drip-rs, in Rust types?',
-    a: 'An `ObjList { items: Vec<Value> }` in the heap’s `lists` arena; a list value is `Value::List(Gc<ObjList>)`.',
-  },
   'rvl-same-list': {
-    q: 'After `let ys = xs; push(ys, 1);`, why is `xs` longer too?',
+    q: 'In drip-rs, where `xs` holds a list, why is `xs` longer after `let ys = xs; push(ys, 1);`?',
     a: 'The assignment copies the `Gc<ObjList>` handle, not the list: both names hold the same slot number, so they share one `Vec`.',
   },
   'rvl-build-order': {
-    q: 'In `OpCode::List`, in what order do `to_vec`, `alloc` and `truncate` happen?',
-    a: '`to_vec` copies the top `n` values, `alloc` stores the new list, and only then does `truncate` drop the elements from the stack.',
-  },
-  'rvl-on-stack': {
-    q: 'Why must the elements still be on the stack while `alloc` runs?',
-    a: '`alloc` may collect first, and the new `Vec` is only a local the collector cannot see; the stack is a root, so the elements’ objects survive.',
-  },
-  'rvl-check-order': {
-    q: 'In what order does `check_index` check, and what does `"abc"[1.5]` report?',
-    a: 'A list, then a number, then a whole number, then in range. `"abc"[1.5]` fails the first: `cannot index a string`.',
-  },
-  'rvl-cast': {
-    q: 'Why must `check_index` reject `-1` and `1.5` before it writes `i as usize`?',
-    a: 'A float-to-integer `as` never fails: it rounds towards zero and saturates, so `-1.0 as usize` is 0 and `1.5 as usize` is 1, silently.',
-  },
-  'rvl-trace': {
-    q: 'How does the collector keep a list’s elements alive?',
-    a: '`Gray::List(l) => self.lists[l].items.trace(marks)`: tracing the `Vec` marks the object each element’s handle names.',
-  },
-  'rvl-size': {
-    q: 'How many bytes does drip-rs’s heap count for a list of a million elements?',
-    a: '24, `size_of::<ObjList>()`: the `Vec`’s header only. The elements’ block is not counted when pacing collections.',
-  },
-  'si-hash-twice': {
-    q: 'Where does drip-rs store a string’s hash?',
-    a: 'Twice: in the `ObjString`, and in every `StrRef` handle to it, beside the `Gc<ObjString>`.',
+    q: 'In drip-rs’s `OpCode::List` arm, in what order do `to_vec`, `alloc` and `truncate` happen, and why that order?',
+    a: '`to_vec` copies the top `n` values, `alloc` stores the new list, and only then does `truncate` drop the elements: `alloc` may collect, and the stack (a root) keeps the elements’ objects alive meanwhile.',
   },
   'si-no-heap': {
-    q: 'Why does it matter that `Table::set` doesn’t need the heap?',
+    q: 'In drip-rs, why does it matter that `Table::set` takes only a `StrRef` key (carrying its hash) and never needs the heap?',
     a: 'Tables live inside heap objects. `heap[instance].fields.set(...)` already borrows the heap mutably, so `set` could not also borrow the strings arena (E0502).',
   },
-  'si-box-str': {
-    q: 'Why is `ObjString::chars` a `Box<str>` rather than a `String`?',
-    a: 'An interned string never grows, so it needs no capacity field: `Box<str>` is 16 bytes, `String` 24.',
-  },
   'si-interner': {
-    q: 'What does `Heap::intern(chars)` do?',
+    q: 'What does drip-rs’s `Heap::intern(chars)` do?',
     a: 'Hashes the text, probes the `interned` table for a string with that hash and those characters, and returns it; if there is none, allocates one and adds it.',
   },
   'si-disjoint': {
-    q: 'Why may `intern` call `self.interned.find_string(&self.strings, ...)`?',
+    q: 'Inside drip-rs’s `Heap::intern(&mut self, ..)`, why may it call `self.interned.find_string(&self.strings, ...)`?',
     a: 'Inside the heap’s own method, rustc sees two different fields, `interned` and `strings`, and lets them be borrowed separately.',
-  },
-  'si-owned': {
-    q: 'Why does `Vm::add` call `intern_owned(String)` for the result of `+`?',
-    a: 'It hands over the string it just built, so the heap can keep that allocation. `intern(&str)` has to copy the text.',
-  },
-  'si-fnv': {
-    q: 'What does `hash.wrapping_mul(16_777_619)` correspond to in the TypeScript VM?',
-    a: '`Math.imul(h, 16777619)`: a 32-bit multiply that keeps the low 32 bits.',
-  },
-  'si-tombstone': {
-    q: 'How does drip-rs’s table tell an empty slot from a tombstone?',
-    a: 'Both have key `None`. An empty slot has value `Value::None`; a tombstone has `Value::Bool(true)`.',
-  },
-  'si-first-tomb': {
-    q: 'Why does `find` use `tombstone.get_or_insert(index)`?',
-    a: 'To remember the first tombstone passed. If the key turns out to be absent, `set` reuses that slot.',
-  },
-  'si-columns': {
-    q: 'Measured on rustc 1.97 here, how big is a table slot as two columns, and as one pair?',
-    a: '28 bytes as columns (12 for `Option<StrRef>` plus 16 for `Value`); 32 as `(Option<StrRef>, Value)`, because of padding.',
   },
 };
 
@@ -926,6 +846,7 @@ fn inherit(
     ],
   },
   checkIndex: {
+    optional: true,
     lang: 'rust',
     title: 'check_index',
     prompt: `Write drip-rs’s \`check_index\` for this small VM, as a free function. A list value is \`Value::List(h)\`, where \`h\` is the list’s slot in \`lists\`. Return \`Ok((h, i))\` with the element index as a \`usize\`, or \`Err\` with Drip’s exact message, checking in this order:
@@ -1331,6 +1252,7 @@ With \`n = 0\`, \`start\` is the length, the slice is empty, and \`truncate\` ch
     ],
   },
   interner: {
+    optional: true,
     lang: 'rust',
     title: 'An interner',
     prompt: `Write \`intern\` for this small interner. It keeps each string's text in \`strings\` (the string's id is its index there) and finds strings again through \`keys\`, an open-addressing table of \`CAP\` slots.
@@ -2203,72 +2125,6 @@ fn find(
 
 export const quiz = [
   {
-    q: 'In drip-rs, what does `heap[c]` do when `c: Gc<ObjClosure>`?',
-    options: [
-      {
-        t: 'Follows an address stored in `c`',
-        why: 'A `Gc` holds a slot number, not an address.',
-      },
-      {
-        t: 'Calls `Index::index`, which reads slot `c.index()` of `heap.closures`',
-        correct: true,
-        why: 'The generic impl uses `ObjClosure::arena(heap)`, which is `&heap.closures`.',
-      },
-      {
-        t: 'Checks the object’s `type` field to find the right kind',
-        why: 'drip-rs objects have no `type` field. The handle’s type picks the arena at compile time.',
-      },
-      {
-        t: 'Searches all nine arenas for the slot',
-        why: 'Only the closures arena is ever looked at.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these does a drip-rs `ObjInstance` contain?',
-    options: [
-      {
-        t: 'A `next` reference to the previously allocated object',
-        why: 'That is the TypeScript object list. drip-rs sweeps by walking its arenas.',
-      },
-      {
-        t: 'An `isMarked` flag',
-        why: 'Mark bits live in a separate bitmap.',
-      },
-      {
-        t: 'An `Rc<ObjClass>`',
-        why: 'No object owns another. The class is reached through a handle.',
-      },
-      {
-        t: 'A `Gc<ObjClass>` handle, a field table and the order the fields were first set',
-        correct: true,
-        why: '`ObjInstance { class, fields, field_order }`, and nothing else.',
-      },
-    ],
-  },
-  {
-    q: 'Why does drip-rs’s heap have one generic `alloc<T: HeapObject>` rather than a constructor per kind, like TypeScript’s `newClass`?',
-    options: [
-      {
-        t: 'The `HeapObject` trait tells generic code which arena each type uses, so one body works for all',
-        correct: true,
-        why: '`T::arena_mut(self).insert(object)` is the whole job.',
-      },
-      {
-        t: 'Rust allows only one method per struct',
-        why: 'It allows as many as you like.',
-      },
-      {
-        t: 'Generic functions run faster than ordinary ones',
-        why: 'A generic function compiled for one type is as fast as hand-written code, not faster.',
-      },
-      {
-        t: 'So that `alloc` can collect garbage first',
-        why: 'The heap’s `alloc` never collects; callers ask `should_collect` first.',
-      },
-    ],
-  },
-  {
     q: `Which version compiles?
 \`\`\`rust
 // A
@@ -2295,46 +2151,6 @@ heap[sub].methods.add_all(&m);
     ],
   },
   {
-    q: 'A collector bug frees a class that is still in use. What happens the next time drip-rs reads it in a debug or stress run?',
-    options: [
-      {
-        t: 'It reads whatever object moved into that slot',
-        why: 'In debug and stress modes freed slots are never reused, so nothing moves in.',
-      },
-      {
-        t: 'Undefined behaviour',
-        why: 'drip-rs forbids `unsafe`, so a stale handle cannot cause undefined behaviour.',
-      },
-      {
-        t: 'The slot is `None`, so `use_after_free` panics with a message naming the type',
-        correct: true,
-        why: '“use after free: an object of type ObjClass was collected while still in use”.',
-      },
-      {
-        t: 'The compiler rejects the program',
-        why: 'Whether a handle is stale is only known at run time.',
-      },
-    ],
-  },
-  {
-    q: 'After `let ys = xs;`, what do `xs` and `ys` hold in drip-rs?',
-    options: [
-      {
-        t: 'Two copies of the list’s elements',
-        why: 'Assignment copies a 16-byte `Value`, and for a list that is only a handle.',
-      },
-      {
-        t: 'The same `Gc<ObjList>` handle, naming one slot of the lists arena',
-        correct: true,
-        why: 'So a `push` through either name changes the one list.',
-      },
-      {
-        t: 'An `Rc<Vec<Value>>` each',
-        why: 'drip-rs has no `Rc` for objects; the heap owns the list.',
-      },
-    ],
-  },
-  {
     q: 'In `OpCode::List`, what could go wrong if `truncate` ran before `alloc`?',
     options: [
       {
@@ -2353,90 +2169,6 @@ heap[sub].methods.add_all(&m);
       {
         t: 'A compile error from the borrow checker',
         why: 'It would compile; the bug would show at run time, under the stress collector.',
-      },
-    ],
-  },
-  {
-    q: 'What does drip-rs print for `print [1, 2, 3][3.5];`?',
-    options: [
-      {
-        t: '`runtime error: index 3.5 is out of range for a list of length 3`',
-        why: 'Wholeness is checked before range.',
-      },
-      {
-        t: '`runtime error: index 3.5 is not a whole number`',
-        correct: true,
-        why: 'The third check fails first, followed by the trace line `at line 1 in script`.',
-      },
-      {
-        t: '`3`',
-        why: 'drip-rs never rounds an index.',
-      },
-      {
-        t: '`none`',
-        why: 'Reading out of range is an error in Drip, not `none`.',
-      },
-    ],
-  },
-  {
-    q: 'Why can `check_index` end with `i as usize` without any further check?',
-    options: [
-      {
-        t: 'Because `as` panics on a bad value',
-        why: 'A float-to-integer `as` never panics; it saturates and rounds towards zero.',
-      },
-      {
-        t: 'Because Drip numbers are integers',
-        why: 'Drip numbers are 64-bit floats.',
-      },
-      {
-        t: 'Because the earlier checks proved `i` is a whole number from 0 to `len - 1`',
-        correct: true,
-        why: 'For such a number the cast is exact.',
-      },
-    ],
-  },
-  {
-    q: 'What does the collector do when it reaches a list?',
-    options: [
-      {
-        t: 'Marks the list only; its elements are roots already',
-        why: 'Elements are only reachable through the list.',
-      },
-      {
-        t: 'Copies the list to a new arena slot',
-        why: 'drip-rs’s collector never moves objects.',
-      },
-      {
-        t: 'Frees any element that is a number',
-        why: 'Numbers live inside the `Value`; there is nothing to free.',
-      },
-      {
-        t: 'Traces `items`, marking the object each element’s handle names',
-        correct: true,
-        why: '`Gray::List(l) => self.lists[l].items.trace(marks)`.',
-      },
-    ],
-  },
-  {
-    q: 'What does a drip-rs `StrRef` contain?',
-    options: [
-      {
-        t: 'The string’s characters',
-        why: 'The characters live in the `ObjString`, in the strings arena.',
-      },
-      {
-        t: 'A `Gc<ObjString>` handle and the string’s 32-bit hash',
-        correct: true,
-        why: 'The hash rides along for free inside the 16-byte `Value`.',
-      },
-      {
-        t: 'A `&str` borrowed from the source',
-        why: 'That is a token’s lexeme. A Drip string value must outlive the source text.',
-      },
-      {
-        t: 'An `Rc<str>`',
-        why: 'drip-rs’s heap owns every object; values hold handles.',
       },
     ],
   },
@@ -2477,46 +2209,6 @@ heap[sub].methods.add_all(&m);
       {
         t: 'Only when the table grows',
         why: 'Growing rehashes by the stored hashes, without reading text.',
-      },
-    ],
-  },
-  {
-    q: 'A drip-rs table slot has key `None` and value `Value::Bool(true)`. What is it?',
-    options: [
-      {
-        t: 'An empty slot',
-        why: 'An empty slot has value `Value::None`.',
-      },
-      {
-        t: 'A key whose value is `true`',
-        why: 'A live entry always has `Some(key)`.',
-      },
-      {
-        t: 'A tombstone: a deleted entry that probes must step past',
-        correct: true,
-        why: 'Lookups keep going; `set` may reuse it.',
-      },
-    ],
-  },
-  {
-    q: 'After a collection whose roots never reach the string `"lost"`, what does `heap.intern("lost")` return?',
-    options: [
-      {
-        t: 'The old `StrRef`, because the interned table keeps every string',
-        why: 'The table holds its strings weakly: the collector deleted the entry.',
-      },
-      {
-        t: 'A new `StrRef`, since the old string was freed and the table forgot it',
-        correct: true,
-        why: 'That is `gc.rs`’s own test: `assert_ne!(heap.intern("lost"), lost)`.',
-      },
-      {
-        t: 'A panic: use after free',
-        why: 'The table forgot the string before the sweep, so no stale handle is read.',
-      },
-      {
-        t: '`None`',
-        why: '`intern` always returns a `StrRef`; it makes one if need be.',
       },
     ],
   },

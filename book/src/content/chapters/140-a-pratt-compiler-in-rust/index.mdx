@@ -3,18 +3,15 @@ n: 140
 day: 24
 part: VIII
 title: 'A Pratt compiler in Rust'
-tagline: 'The Pratt parser’s table moves to Rust as three small matches: one names what a token does at the start of an expression, one says how tightly it binds after one, and one runs the code. The precedences stay plain numbers, so the TypeScript algorithm survives line for line.'
+tagline: 'The Pratt parser’s table moves to Rust as three small matches, and the TypeScript compiler’s shared closures, which the borrow checker forbids, become one struct lent to every helper as &mut self.'
 objectives:
   - Read drip-rs’s parse-rule table as three matches, prefix_rule, infix_precedence and infix, and say which question each one answers.
   - Explain why a prefix cell holds a one-byte Prefix enum that names a parse function, rather than a closure.
-  - Trace parse_precedence and continue_expression on an expression, and predict the bytecode.
-  - Explain how the + 1 in infix makes operators of equal precedence group from the left.
-  - Explain why the TypeScript compiler’s shared closures do not carry over to Rust.
-  - Read drip-rs’s Compiler struct, field by field, including its two lifetimes.
-  - Explain why nested functions are a Vec of states rather than a linked list.
+  - Trace continue_expression on an expression, and explain how the + 1 makes equal operators group from the left.
+  - Explain why the TypeScript compiler’s shared closures do not carry over to Rust, and read drip-rs’s Compiler struct and its two lifetimes.
   - Fix the borrow error that comes from reading self while a &mut self helper’s result is still in use.
 introduces: [parse-rule-table, compiler-state]
-uses: [drip-rs, token-enum, opcode-enum, match-dispatch, pratt-parser, binding-power, prefix-infix, precedence, associativity, single-pass-compiler, emit, enum, match, pattern, option, struct, impl, self-receiver, rust-closure, size-of, compiler, bytecode, chunk, disassembler, drip, compile-time-scope, upvalue, panic-mode, error-recovery, borrow, shared-vs-mutable, borrow-checker, lifetime, lifetime-annotation, vec, rc, trait-object, roots, garbage-collection]
+uses: [drip-rs, token-enum, opcode-enum, match-dispatch, pratt-parser, binding-power, prefix-infix, precedence, associativity, single-pass-compiler, emit, enum, match, pattern, option, struct, impl, self-receiver, rust-closure, size-of, compiler, bytecode, chunk, drip, compile-time-scope, upvalue, panic-mode, error-recovery, borrow, shared-vs-mutable, borrow-checker, lifetime, lifetime-annotation, vec, rc, trait-object, roots, garbage-collection]
 sources: [rustref-fn-pointer, rust-std-fn-primitive, rust-std-ord, klabnik2026]
 ---
 import PrattSteps from '../../../components/diagrams/ch140/PrattSteps';
@@ -22,28 +19,16 @@ import RuleTable from '../../../components/diagrams/ch140/RuleTable';
 import CompilerSteps from '../../../components/diagrams/ch140/CompilerSteps';
 import CompilerShape from '../../../components/diagrams/ch140/CompilerShape';
 
-{/* ── merge: from old chapter 140, A Pratt compiler in Rust, part 1 ── */}
-
 ## The table you already wrote
 
-In *One pass from source to bytecode*, the TypeScript compiler parsed
-expressions with a Pratt parser, and the parser was driven by a table:
-for every kind of token, the table says what the token does when it
-**starts** an expression (its prefix rule), and how tightly it binds
-when it **continues** one (its precedence, used by its infix rule).
-Here are two rows of the TypeScript version, from `vm/compiler.ts`:
-
-```ts
-case '(': return grouping;
-case '-': case '!': return unary;
-```
-
-`prefixRule` answers with a closure, which reaches `previous`, the
-chunk and the rest of the compiler's variables because it was written
-inside `compile`. In drip-rs the compiler's state is a struct passed
-around as `&mut self` (*A Pratt compiler in Rust, part 2* shows why), so
-a function stored in a table cannot quietly reach it; this chapter is
-about what the table becomes instead.
+In *One pass from source to bytecode* the TypeScript compiler parsed
+expressions with the Pratt parser of *Pratt parsing*, driven by a table:
+for every kind of token, what it does when it **starts** an expression
+(its prefix rule), and how tightly it binds when it **continues** one
+(its precedence, used by its infix rule). `prefixRule` answers with a
+closure written inside `compile`, which reaches every variable of the
+compiler; helpers as closures over shared variables are what Rust will
+not allow.
 
 <Analogy title="a phrasebook with one page per word">
 Picture a phrasebook with one page per word, each answering the same
@@ -59,101 +44,67 @@ to the start of the book to parse a smaller expression.</span>
 
 ## Three matches make one table
 
-drip-rs answers each of a row's three questions with a `match` on the
-token's kind. The first is how tightly a
-token binds as an infix operator, from `src/compiler.rs` (rewrapped, and
-with three arms left out):
+drip-rs answers each question with a `match` on the token's kind. How
+tightly a token binds as an infix operator (from `compiler.rs`, trimmed
+and rewrapped):
 
 ```rust
 fn infix_precedence(kind: TokenKind)
     -> u8 {
     use TokenKind as T;
     match kind {
-        T::LeftParen | T::LeftBracket
-            | T::Dot => PREC_CALL,
         T::Star | T::Slash | T::Percent
             => PREC_FACTOR,
         T::Plus | T::Minus => PREC_TERM,
-        // ...comparison, equality, &&
-        T::OrOr => PREC_OR,
+        // ... calls, comparisons, && and ||
         _ => PREC_NONE,
     }
 }
 ```
 
 The precedences are plain `u8` constants, weakest first, the numbers of
-TypeScript's `Prec`: `PREC_NONE` is 0, `PREC_ASSIGNMENT` 1, up to
-`PREC_CALL` at 9. The `_` arm gives every other token 0, lower than any
-expression asks for, which is what makes a `;` or a `)` end one. (Rust could also make precedence an enum that
-derives `Ord`, which orders the variants by position<Cite id="rust-std-ord" />;
-drip-rs keeps numbers, because the parser adds one to them.)
+TypeScript's `Prec`: `PREC_NONE` 0, `PREC_ASSIGNMENT` 1, up to `PREC_CALL`
+9. The `_` arm gives every other token 0, lower than any expression asks
+for, which is what makes a `;` or a `)` end one.
 
-The second question is what a token does at the start of an
-expression, and here the answer is not a function but a *name* for one
-(rewrapped):
-
-```rust
-#[derive(Clone, Copy)]
-enum Prefix {
-    Grouping, List, Unary, Number, String,
-    Literal(OpCode), Variable, SelfKw,
-    Super, New, Fn,
-}
-```
-
-`prefix_rule(kind)` maps each token to `Some(Prefix::...)`, `-` and `!`
-to `Unary`, `true` to `Literal(OpCode::True)`, and everything else to
-`None`. The third question, what code to run, is answered by two
-methods, `prefix(&mut self, prefix, can_assign)` and `infix(&mut self,
-op, can_assign)`, each a `match` with one arm per kind; the `Unary` arm
-parses its operand at `PREC_UNARY` and then emits `neg` or `not`.
+What a token does at the start of an expression is not a function but a
+*name* for one, `enum Prefix { Grouping, Unary, Number, Literal(OpCode),
+Variable, ... }` (eleven variants). `prefix_rule(kind)` maps `-` and `!`
+to `Some(Prefix::Unary)`, `true` to `Some(Prefix::Literal(OpCode::True))`
+and anything that cannot start an expression to `None`; the methods
+`prefix(&mut self, prefix, can_assign)` and `infix` then run the code,
+one `match` arm per kind.
 
 <Figure takeaway="One row per token: what it starts, and how tightly it continues." caption="A few rows of drip-rs’s table. prefix_rule gives the middle column, infix_precedence the right one; None means no prefix rule, and 0 means the token never continues an expression.">
   <RuleTable />
 </Figure>
 
-<Prompts ids={['prt-three', 'prt-prec-numbers', 'prt-none-zero']} />
+Why a name? Rust *can* store functions: `fn(&mut Compiler, bool)` is a
+function pointer type, and `Option` of one is 8
+bytes<Cite id="rustref-fn-pointer" /><Cite id="rust-std-fn-primitive" />.
+But `Option<Prefix>` is one byte (rustc 1.97), a `Prefix` can carry data
+(`true`, `false` and `none` share the `Literal` arm), the `match` in
+`prefix` must cover every variant, and a name can be kept: after
+consuming `fn`, `declaration` may resume an anonymous function's
+expression with `Some(Prefix::Fn)`.
 
-## Why a name and not a function
+<More title="Precedence as an Ord enum, and what the match compiles to">
 
-Rust *can* store functions in a table: a type like
-`fn(&mut Compiler, bool)` is a **function pointer**, the address of
-some function with that signature, where which function is decided at
-run time<Cite id="rustref-fn-pointer" />. A cell could then be
-`Option<fn(&mut Compiler, bool)>`, and because a function pointer is
-never null, `None` costs nothing<Cite id="rust-std-fn-primitive" />;
-it is 8 bytes either way (the extra exercise builds a table like that).
-drip-rs chose the enum instead, and measured on rustc 1.97 here,
-`Option<Prefix>` is a single byte. A `Prefix` is `Copy`, it can carry
-data (`Literal` holds the opcode to emit, so `true`, `false` and `none`
-share one arm), and the `match` in `prefix` must have an arm for every
-variant, or the crate does not compile
-(*Enums and match*).
+Rust could make precedence an enum that derives `Ord`, which orders the
+variants by position<Cite id="rust-std-ord" />; drip-rs keeps numbers,
+because the parser adds one to them. rustc may compile a `match` on a
+small enum to a jump table or a short chain of comparisons; no hashing is
+involved either way. The TypeScript `prefixRule` builds a new closure each
+time it is asked about a number, a string, a name or a literal, where
+drip-rs returns a byte.
 
-<Analogy extra title="an order ticket in a kitchen">
-The waiter does not cook; she writes "soup" on a ticket and clips it to
-the rail, and the cook, who has the whole kitchen to hand, reads the
-ticket and makes the soup. The ticket is small, it can be passed around
-or kept for later, and it needs no kitchen of its own.
-<span slot="breaks">Tickets in a kitchen wait in a queue; a `Prefix`
-is acted on at once, on the same call stack, by the only cook there is,
-and the cook can write new tickets for itself halfway through a dish.</span>
-</Analogy>
+</More>
 
-Keeping one for later really happens: a statement starting `fn (` is
-an anonymous function, but `declaration` only knows that after it has
-consumed `fn`, so it calls `expression_statement_from(Some(Prefix::Fn))`
-to resume the expression with its prefix already chosen.
+## The loop that runs the table
 
-<Prompts ids={['prt-enum-why', 'prt-fnptr']} />
-
-## The heart of the parser
-
-Two methods run the table. `parse_precedence(precedence)` advances
-past one token and asks `prefix_rule` about it; with no rule it reports
-`expected an expression, found ...`, and otherwise it hands over to
-`continue_expression` (rewrapped, its error report shortened to a
-comment):
+`parse_precedence(p)` advances past one token, asks `prefix_rule` about
+it (reporting `expected an expression` when it is `None`), and hands over
+(rewrapped, its error report shortened):
 
 ```rust
 fn continue_expression(&mut self,
@@ -168,39 +119,20 @@ fn continue_expression(&mut self,
         self.infix(self.previous,
             can_assign);
     }
-    if can_assign
-        && self.match_assign_op()
-    {
-        // "cannot assign to this
-        // expression"
-    }
+    // ... report a leftover `=`
 }
 ```
 
-It runs the prefix code (which emits the left operand), then absorbs infix operators while the next token binds at
-least as tightly as `precedence`. `can_assign` is true only at the
-loosest level, so in `a + b = 1` the `=` is still there after `a + b`,
-and the last line reports it. Step through `-1 + 2 * 3`:
+It emits the left operand, then absorbs infix operators while the next
+token binds at least as tightly as `precedence`; `can_assign` is true
+only at the loosest level, so the `=` of `a + b = 1;` is left over. A
+binary operator's arm of `infix` parses its right operand one level
+tighter, `self.parse_precedence(infix_precedence(kind) + 1)`, then emits
+the operator; that `+ 1` is why `8 - 3 - 2` is `(8 - 3) - 2`, because
+the second `-` may not join a right operand that wants something
+tighter. Step through `-1 + 2 * 3`:
 
 <PrattSteps client:visible />
-
-For a binary operator, the default arm of `infix` parses the right
-operand one level tighter than the operator itself (rewrapped):
-
-```rust
-kind => {
-    // Left-associative: the right side may
-    // only hold tighter operators.
-    self.parse_precedence(
-        infix_precedence(kind) + 1);
-    self.emit_op_at(op.line,
-        binary_op(kind));
-}
-```
-
-That `+ 1` is why `8 - 3 - 2` means `(8 - 3) - 2`: the second `-` has
-the same precedence as the first, so it may not join the right operand
-(which wants something tighter) and is left for the outer loop.
 
 <Callout kind="definition">
 A **parse-rule table** maps each token kind to a prefix parse function
@@ -231,90 +163,38 @@ operator.</span>
 <Examples of="parse-rule-table">
 
 ```text
-print -1 + 2 * 3;     # 5
-const '1'  neg
-const '2'  const '3'  mul  add
-```
-
-```text
 print 8 - 3 - 2;      # 3
 const '8'  const '3'  sub
 const '2'  sub
-```
-
-```text
 print 1 + ;
-line 1: expected an expression,
-  found ';'
+line 1: expected an expression, found ';'
 ```
 
 </Examples>
 
-The first is the walk-through above, its bytecode (from
-`--disassemble`, operands trimmed) in the order the stack needs it, so
-the answer is `(-1) + 6`, which is 5. In the second, the first `sub` is
-emitted before the `2` is loaded: `8 - 3` first, then `5 - 2`. The third
-is the table saying no: `prefix_rule(Semicolon)` is `None`, so the
-parser reports the token it found (wrapped here); the exit code is 65,
-and the TypeScript VM prints the same line.
+The bytecode (from `drip-rs --disassemble`, operands trimmed) emits the
+first `sub` before the `2` is loaded: `8 - 3` first, then `5 - 2`. The
+last two lines are the table saying no: `prefix_rule(Semicolon)` is
+`None`, so the parser reports the token it found and exits with 65, the
+same line the TypeScript VM prints.
 
-Change the table yourself in this miniature of it, which compiles
-single digits and `+ - *` to postfix text:
+<More title="A miniature table to change">
+
+This miniature compiles single digits and `+ - *` to postfix text;
+change a precedence and watch the grouping change.
 
 <Run id="mini-pratt" />
 
-<Prompts ids={['prt-plus-one', 'prt-can-assign', 'prt-loop']} />
+</More>
 
-<Callout kind="engine" label="Under the hood">
-rustc may compile a `match` on a small enum to a jump table or to a
-short chain of comparisons; no hashing is involved either way. The
-TypeScript `prefixRule` builds a new closure each time it is asked about
-a number, a string, a name or a literal, where drip-rs returns a byte.
-</Callout>
+<Prompts ids={['prt-three', 'prt-none-zero', 'prt-enum-why', 'prt-plus-one']} />
 
-## Your turn
+## Closures that cannot share
 
-<Exercise id="precTable" />
-
-<Exercise id="fnTable" />
-
-## What you learned
-
-- drip-rs's **parse-rule table** is three matches on `TokenKind`:
-  `prefix_rule` (an `Option<Prefix>`), `infix_precedence` (a `u8`, 0
-  meaning "never continues") and the `prefix` and `infix` methods that
-  run the code.
-- A cell holds a one-byte **`Prefix`** that names a parse function, not
-  a closure; the code runs with `&mut self`, and the name can be kept,
-  as `Some(Prefix::Fn)` is.
-- `continue_expression` runs the prefix rule, then infix rules while the
-  next token binds at least as tightly as `precedence`.
-- A binary operator parses its right side at its precedence **+ 1**,
-  which makes `8 - 3 - 2` group from the left.
-
-
-{/* ── merge: from old chapter 140, A Pratt compiler in Rust, part 2 ── */}
-
-## Closures that share
-
-The TypeScript compiler from *One pass from source to bytecode* is one
-function, `compile`, which keeps its state in local variables; every
-helper is a closure written inside it, reading and writing those
-variables freely. From `vm/compiler.ts` (trimmed):
-
-```ts
-let current: VmToken = { type: 'eof', ... };
-let previous: VmToken = current;
-let panicMode = false;
-function advance() {
-  previous = current;
-  // ...scan the next token
-}
-```
-
-Dozens of helpers share those few variables and call each other, even
-in a circle: `expression` calls `parsePrecedence`, which calls `infix`,
-which calls `parsePrecedence` again. Try the smallest piece of that in
+The TypeScript `compile` keeps `current`, `previous`, `panicMode` and
+the rest in local variables, and dozens of helpers, all closures, read
+and write them and call each other in circles (`parsePrecedence` calls
+`infix`, which calls `parsePrecedence`). The smallest piece of that in
 Rust, two closures over one counter:
 
 ```rust
@@ -324,25 +204,45 @@ let peek = || pos;
 advance();
 ```
 
-rustc 1.97 refuses (trimmed):
+rustc 1.97 refuses with `error[E0502]: cannot borrow pos as immutable
+because it is also borrowed as mutable`. A closure that changes a
+variable holds a mutable borrow of it for as long as the closure may
+still be called (*Closures, iterators and associated
+types*<Cite id="klabnik2026" />), and meanwhile nobody else may even read
+it. So drip-rs gathers the state into one struct (trimmed):
 
-```text
-error[E0502]: cannot borrow `pos` as
-  immutable because it is also
-  borrowed as mutable
-3 | let mut advance = || pos += 1;
-  |                   -- mutable borrow
-4 | let peek = || pos;
-  |            ^^ immutable borrow
+```rust
+struct Compiler<'src, 'a> {
+    scanner: Scanner<'src>,
+    current: Token<'src>,
+    previous: Token<'src>,
+    panic_mode: bool,
+    // ... error lists, classes
+    functions: Vec<FunctionState<'src>>,
+    heap: &'a mut Heap,
+    roots: &'a dyn Trace,
+}
 ```
 
-A closure that changes a variable holds a mutable borrow of it for as
-long as the closure may still be called (the chapter *Iterators and
-closures in Rust* showed why<Cite id="klabnik2026" />), and while
-that borrow lasts nobody else may even read the variable. The pattern
-the whole TypeScript compiler is built on is ruled out.
+Every helper is a method on `&mut self`, which lends the same `&mut` to
+the helpers it calls and gets it back when they return, so there is only
+ever one user. `'src` is the source, which tokens and local names slice;
+`'a` is what the caller lends, its `Heap` and its GC roots. Nested
+functions are a `Vec`, innermost last, not an `enclosing` list.
 
-<Analogy title="one workbench, handed along">
+<Figure takeaway="One struct holds everything; it borrows the source and the caller's heap." caption="The Compiler's fields. Tokens and local names point into the source ('src); heap and roots are lent by the caller ('a); functions is a stack, the innermost function last.">
+  <CompilerShape />
+</Figure>
+
+<Callout kind="definition">
+**Threading compiler state through `&mut self`** means putting all of
+a compiler's changeable state in one struct and writing every parse and
+emit helper as a method on `&mut self`. Each call lends the whole state
+to the callee for the length of the call. It replaces closures over
+shared variables, which the borrow checker does not allow.
+</Callout>
+
+<Analogy extra title="one workbench, handed along">
 Picture a workshop with one bench, holding all the tools and the
 half-built piece. Rather than everyone reaching across at once, the
 bench is handed from worker to worker: whoever has it may use anything
@@ -353,117 +253,12 @@ is proved at compile time, so nobody can touch the bench while it is
 lent out, and it always comes back when the helper returns.</span>
 </Analogy>
 
-## The state becomes a struct
-
-So drip-rs gathers the variables into one struct, from
-`src/compiler.rs` (comments trimmed, rewrapped):
-
-```rust
-struct Compiler<'src, 'a> {
-    scanner: Scanner<'src>,
-    current: Token<'src>,
-    previous: Token<'src>,
-    panic_mode: bool,
-    block_depth: usize,
-    syntax_errors: Vec<String>,
-    static_errors: Vec<String>,
-    functions: Vec<FunctionState<'src>>,
-    classes: Vec<ClassState>,
-    heap: &'a mut Heap,
-    roots: &'a dyn Trace,
-}
-```
-
-Every helper is a method taking `&mut self`. A method that calls
-another lends it the same `&mut`, and gets it back when the call
-returns; there is only ever one user at a time, so there is nothing to
-conflict with. The two lifetimes (the chapter *Lifetimes*) say what the
-compiler borrows. `'src` is the source text: a `Token<'src>` holds its
-lexeme as a slice of the source, so tokens are small `Copy` values that
-never copy text, and local variable names are slices too. `'a` is what
-the caller lends: its `Heap`, where functions and strings are allocated,
-and `roots`, the caller's own garbage-collection roots, as a trait
-object (`&dyn Trace`). `compile` builds the `Compiler` on its own
-stack, and when it returns the struct is dropped, which ends both
-borrows.
-
-<Figure takeaway="One struct holds everything; it borrows the source and the caller's heap." caption="The Compiler's fields. Tokens and local names point into the source ('src); heap and roots are lent by the caller ('a); functions is a stack, the innermost function last.">
-  <CompilerShape />
-</Figure>
-
-<Analogy extra title="the one remote control">
-In a family with one TV remote, whoever holds it decides what is on; if
-your sister wants to change the channel, you pass her the remote, and
-until she hands it back you can change nothing.
-<span slot="breaks">A sister may keep the remote all evening; a Rust
-method must give `&mut self` back the moment it returns, and the
-compiler checks before the program ever runs that nobody uses it while
-it is away.</span>
-</Analogy>
-
-<Callout kind="definition">
-**Threading compiler state through `&mut self`** means putting all of
-a compiler's changeable state in one struct and writing every parse and
-emit helper as a method on `&mut self`. Each call lends the whole state
-to the callee for the length of the call. It replaces closures over
-shared variables, which the borrow checker does not allow.
-</Callout>
-
-<Formal title="Lending the compiler">
-
-```text
-caller: &mut c ──call g(c)──▶ g: &mut c
-caller: (frozen)              g works
-caller: &mut c ◀──returns──── g ends
-```
-
-<span slot="read">The caller holds the only mutable borrow of the
-compiler c. Calling g lends that borrow to g, and while g runs the
-caller is frozen: it cannot touch c. When g returns, the borrow comes
-back to the caller.</span>
-</Formal>
-
-Step through `fn f() { print 1; }`, and watch one compiler go down a
+Step through `fn f() { print 1; }` and watch one compiler go down a
 chain of a dozen calls:
 
 <CompilerSteps client:visible />
 
-<Prompts ids={['cs-why-struct', 'cs-closure-borrow', 'cs-lifetimes', 'cs-tokens']} />
-
-## A stack instead of a linked list
-
-When `fn` bodies nest, the TypeScript compiler links one `FnCompiler`
-per function through an `enclosing` field, and resolving a captured
-variable walks that list, changing entries on the way, which in Rust
-would mean holding mutable borrows of several of them at once. drip-rs
-keeps the functions in a `Vec`, innermost last (from `compiler.rs`):
-
-```rust
-fn state(&mut self)
-    -> &mut FunctionState<'src> {
-    self.functions.last_mut()
-        .expect("compiling a function")
-}
-
-fn chunk(&mut self) -> &mut Chunk {
-    &mut self.state().chunk
-}
-```
-
-A function is named by its index, its **level**: `resolve_upvalue(level,
-name)` looks in `self.functions[level - 1]` and recurses with the level
-below, and a level is a plain number that borrows nothing. Classes nest
-the same way, in `classes: Vec<ClassState>`. Notice also that each
-`FunctionState` has its own `chunk`, where TypeScript writes straight
-into the heap object's chunk; `end_function` moves the finished chunk
-into the heap as an `Rc<Chunk>`, frozen from then on.
-
-<Prompts ids={['cs-vec', 'cs-level']} />
-
-## Read first, then borrow
-
-One habit shows up all over `compiler.rs`. Here are two ways to emit a
-byte tagged with the current line:
+One habit shows up all over `compiler.rs`:
 
 <Examples of="compiler-state">
 
@@ -471,94 +266,74 @@ byte tagged with the current line:
 fn emit(&mut self, byte: u8) {
     self.chunk().write(byte,
         self.previous.line);
-}
-// error[E0503]: cannot use
-//   `self.previous.line` because it
-//   was mutably borrowed
-```
+} // error[E0503]
 
-```rust
 fn emit(&mut self, byte: u8) {
     let line = self.previous.line;
     self.emit_at(line, byte);
 }
 ```
 
-```text
-return 1;      # line 1: a static rule
-print ;        # line 2: a syntax error
-line 2: expected an expression,
-  found ';'
-```
-
 </Examples>
 
-The first is a natural attempt, and it fails: `self.chunk()` returns a
-`&mut Chunk` that borrows *all* of `self` (the method's signature says
-so), and that borrow lasts until `write` is done, so reading
-`self.previous.line` for the argument falls inside it. The second is
-drip-rs's real `emit`: it reads the line into a local first, a cheap
-copy of a `usize`, and only then borrows. The third shows two more
-fields at work. `return` at the top level breaks a static rule, which
-goes into `static_errors`; `print ;` is a syntax error, which goes into
-`syntax_errors` and sets `panic_mode` until the next statement (as in
-*Syntax errors and recovery*). At the end, `compile` keeps only one
-list:
+The first is the natural attempt. `self.chunk()` (the innermost
+function's chunk) returns a `&mut Chunk` that borrows *all* of `self`,
+and the borrow lasts until `write` is done, so reading `self.previous.line`
+for the argument falls inside it: `cannot use self.previous.line because
+it was mutably borrowed`. The second is drip-rs's real `emit`: copy the
+`usize` into a local first, and only then borrow.
 
-```rust
-let (function, _) = compiler.end_function();
-if compiler.syntax_errors.is_empty() {
-    errors.append(
-        &mut compiler.static_errors);
-} else {
-    errors.append(
-        &mut compiler.syntax_errors);
-}
-errors.is_empty().then_some(function)
-```
+<More title="Levels instead of links, two error lists, and the roots">
 
-With a syntax error, the static rules are never reported, so the
-program above prints only line 2's error (both VMs agree); delete the
-`print ;` line and you get `line 1: 'return' outside a function`
-instead. `then_some` turns `true` into `Some(function)` and `false` into
-`None`, where TypeScript returned `null`.
+The TypeScript compiler resolves a captured variable by walking the
+`enclosing` list and changing entries on the way, which in Rust would
+mean mutable borrows of several of them at once. drip-rs names a
+function by its index, its *level*: `resolve_upvalue(level, name)` looks
+in `self.functions[level - 1]` and recurses with the level below, and a
+level borrows nothing. Each `FunctionState` has its own `chunk`, and
+`end_function` moves it into the heap as an `Rc<Chunk>`, frozen from
+then on.
 
-Try the struct pattern, and the closure version it replaces, here:
+Static rules (`return` outside a function) go into `static_errors`;
+syntax errors go into `syntax_errors` and set `panic_mode` until the next
+statement (*Syntax errors and panic mode*). With a syntax error, the
+static rules are never reported: `return 1;` then `print ;` prints only
+`line 2: expected an expression, found ';'`, and without the second line
+you get `line 1: 'return' outside a function`. `compile` ends with
+`errors.is_empty().then_some(function)`, where TypeScript returned
+`null`.
+
+At run time a `&mut` is one address, no dearer than the TypeScript
+closures. The struct also keeps unfinished functions alive: before
+allocating, the compiler runs
+`self.heap.collect(&[self.roots, &self.functions])`, and `FunctionState`
+implements `Trace`, marking its function and its chunk's constants.
 
 <Run id="shared-state" />
 
-<Prompts ids={['cs-read-first', 'cs-errors']} />
+</More>
 
-<Callout kind="engine" label="Under the hood">
-At run time a `&mut` is an address, so every method receives one
-pointer to the compiler's state, which is no dearer than the closures
-of the TypeScript version. The struct also does a job for the garbage
-collector, because functions still being compiled must stay alive.
-Before allocating, the compiler runs
-`self.heap.collect(&[self.roots, &self.functions])`, and
-`FunctionState` implements `Trace`, marking its function and the
-constants in its chunk.
-</Callout>
+<Prompts ids={['cs-why-struct', 'cs-closure-borrow', 'cs-lifetimes', 'cs-read-first']} />
 
 ## Your turn
 
 <Exercise id="binaryCompiler" />
 
+<Exercise id="precTable" />
+
+<Exercise id="fnTable" />
+
 <Exercise id="unaryMinus" />
 
 ## What you learned
 
-- Closures that share changeable variables, the TypeScript compiler's
-  style, do not pass the borrow checker: a closure that writes a
-  variable borrows it mutably for as long as it may be called.
-- **Compiler state** lives in one `Compiler` struct, and every helper is
-  a method on `&mut self`; a call lends the whole state, and it comes
-  back on return.
-- `'src` lets tokens and names borrow the source; `'a` covers the
-  caller's heap and roots.
-- Nested functions are a `Vec<FunctionState>`, innermost last, named by
-  level, rather than an `enclosing` list.
-- Read what you need into a local *before* calling a `&mut self` helper
-  such as `chunk()` (E0503).
+- A **parse-rule table** in drip-rs is three matches: an
+  `Option<Prefix>` name, a `u8` precedence (`+ 1` for left grouping) and
+  the methods that run the code.
+- **Compiler state** is one struct lent to every helper as `&mut self`;
+  read what you need into a local before borrowing.
+
+Next: *Heap objects in an arena*, where the compiler's strings and
+functions live.
 
 <Quiz />

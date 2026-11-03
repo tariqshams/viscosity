@@ -3,10 +3,6 @@
 // Merged from old chapters 143, 143.
 
 export const prompts = {
-  'fs-what': {
-    q: 'What four fields does a drip-rs `CallFrame` have?',
-    a: '`closure: Gc<ObjClosure>`, `chunk: Rc<Chunk>`, `ip: usize` and `slots: usize` (the stack index of the frame’s slot 0).',
-  },
   'fs-rc': {
     q: 'Why does each drip-rs frame hold an `Rc<Chunk>` rather than a `&Chunk`?',
     a: 'A `&Chunk` would borrow the heap for as long as the frame lives. An `Rc` clone is the frame’s own pointer to the finished chunk, and costs one count bump.',
@@ -19,53 +15,25 @@ export const prompts = {
     q: 'Why does drip-rs’s `Call` arm need no `reload()`, unlike the TypeScript loop?',
     a: '`call` itself saves the caller’s `ip` and loads the callee’s `ip`, chunk and slots into the registers.',
   },
-  'fs-slots': {
-    q: 'In `call`, why is `slots` equal to `stack.len() - arg_count - 1`?',
-    a: 'The frame’s slot 0 is the callee itself (or `self` in a method), just below its `arg_count` arguments.',
-  },
-  'fs-overflow': {
-    q: 'What does drip-rs do when a call would make a 257th frame?',
-    a: '`call` returns `Err(self.runtime_error("stack overflow"))`, because `frames.len() == FRAMES_MAX` (256).',
-  },
-  'fs-pop-frame': {
-    q: 'What does `pop_frame` return when the script’s own frame returns, and what does the `Return` arm do then?',
-    a: '`None`, because there is no caller to load. The `Return` arm clears the stack and `run` returns `Ok(())`.',
-  },
   'fs-trace': {
-    q: 'In `runtime_error`, why does the top frame use `self.ip` instead of `frame.ip`?',
+    q: 'When drip-rs’s `runtime_error` builds a stack trace, why does the top frame use the `self.ip` register instead of `frame.ip`?',
     a: 'The running frame’s `ip` field is out of date (it is only written when that frame makes a call); only the register has its current position.',
-  },
-  'uh-handle': {
-    q: 'What does a drip-rs closure store for each captured variable?',
-    a: 'A `Gc<ObjUpvalue>`, a handle into the heap’s upvalue arena. Never the value itself.',
   },
   'uh-enum': {
     q: 'What are the two variants of drip-rs’s `ObjUpvalue`, and what does each hold?',
     a: '`Open(usize)`, the stack slot of a variable still on the stack, and `Closed(Value)`, the variable itself once its scope has ended.',
   },
-  'uh-two-lookups': {
-    q: 'How many heap lookups does drip-rs’s `LoadUpvalue` arm make?',
-    a: 'Two: `heap[closure].upvalues[index]` for the handle, then `heap[upvalue]` for the upvalue. Then a stack read if it is `Open`.',
-  },
   'uh-sorted': {
     q: 'How is drip-rs’s `open_upvalues` ordered, and why that way?',
     a: 'By stack slot, lowest first, so its end matches the top of the stack: capture searches from the end and close pops from the end.',
   },
-  'uh-share': {
-    q: 'Why does `capture_upvalue` look for an existing upvalue before making one?',
-    a: 'So that closures capturing the same variable share one upvalue and see each other’s writes.',
-  },
   'uh-close': {
-    q: 'What does closing an upvalue do to the heap in drip-rs?',
+    q: 'In drip-rs, what does closing an upvalue do to the heap, and why do closures holding its handle all see it?',
     a: '`self.heap[upvalue] = ObjUpvalue::Closed(self.stack[slot])`: the object in the same arena slot is overwritten, so the handle stays valid and every closure holding it sees the variable.',
   },
   'uh-order': {
-    q: 'In what order does drip-rs build a closure, and how does TypeScript differ?',
+    q: 'In what order does drip-rs’s VM build a closure (capturing its upvalues and allocating it), and how does the TypeScript Drip VM differ?',
     a: 'drip-rs captures every upvalue into a local `Vec`, then allocates the closure. TypeScript allocates the closure, pushes it, then fills in its upvalues.',
-  },
-  'uh-safe': {
-    q: 'Why can the local `upvalues` Vec in `Vm::closure` go unrooted while `alloc` might collect?',
-    a: 'Each handle in it is also in `open_upvalues` (a root) or in the enclosing closure, which the running frame keeps alive.',
   },
 };
 
@@ -100,6 +68,7 @@ print get();`,
 
 export const exercises = {
   callReturn: {
+    optional: true,
     lang: 'rust',
     title: 'call and return',
     prompt: `This VM is a frame stack shaped like drip-rs's. \`frames\` is a \`Vec<Frame>\`, and the running frame's \`ip\` and \`slots\` are registers, fields of the \`Vm\`. Write:
@@ -1518,50 +1487,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'The script runs `add(1, 2)` with its register `ip` at 17. Right after `call` returns `Ok`, what is true?',
-    options: [
-      {
-        t: 'The script’s frame says `ip: 17`, and the register `ip` is 0',
-        correct: true,
-        why: '`call` saved the register into the caller’s frame, then loaded the callee’s `ip`.',
-      },
-      {
-        t: 'The script’s frame still says `ip: 0`',
-        why: 'That was true while the script ran. `call` writes the field just before pushing.',
-      },
-      {
-        t: 'The register `ip` is still 17 until the loop reloads',
-        why: 'drip-rs has no reload: `call` loads the registers itself.',
-      },
-      {
-        t: '`add`’s frame says `ip: 17`',
-        why: 'The new frame starts at `ip: 0`; 17 is the caller’s position.',
-      },
-    ],
-  },
-  {
-    q: 'What does `pop_frame` returning `None` mean?',
-    options: [
-      {
-        t: 'The frame stack was already empty',
-        why: '`pop_frame` expects a running frame; an empty stack would panic at its `expect`.',
-      },
-      {
-        t: 'A runtime error happened',
-        why: 'Errors travel as `Err(RuntimeError)`, not through `pop_frame`.',
-      },
-      {
-        t: 'The returning frame was the script’s, so there is no caller: the program has finished',
-        correct: true,
-        why: '`self.frames.last()?` returns early. The `Return` arm clears the stack and `run` returns `Ok(())`.',
-      },
-      {
-        t: 'The callee returned `none`',
-        why: 'The return value is popped before `pop_frame`; it has nothing to do with the `Option`.',
-      },
-    ],
-  },
-  {
     q: 'A trace reads `at line 2 in fn f`, then `at line 5 in fn g`, then `at line 7 in script`. Where did the 2 come from?',
     options: [
       {
@@ -1580,28 +1505,6 @@ export const quiz = [
       {
         t: 'From the compiler, which stores each function’s first line',
         why: 'Each byte has its own line in `chunk.lines`; the trace looks up the running byte.',
-      },
-    ],
-  },
-  {
-    q: 'How does a drip-rs native such as `len` get its arguments?',
-    options: [
-      {
-        t: 'They are copied into a new `Vec` with `to_vec`',
-        why: 'Nothing is copied: `call_native` reads them where they are.',
-      },
-      {
-        t: 'It is pushed a `CallFrame` of its own',
-        why: 'Natives run without a frame, straight from `call_value`.',
-      },
-      {
-        t: 'Through a function pointer `fn(&[Value]) -> Value`',
-        why: 'drip-rs uses an enum, `Native`, and matches on it in `call_native`.',
-      },
-      {
-        t: '`call_native` reads them from the top of the stack, where they stay until it finishes',
-        correct: true,
-        why: 'So a collection the native causes cannot free them; one `truncate` drops them with the callee afterwards.',
       },
     ],
   },
@@ -1628,50 +1531,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'After `close_upvalues` closes an upvalue, what has changed for the closures that hold it?',
-    options: [
-      {
-        t: 'Their handles are updated to point at a new object',
-        why: 'The handles never change; that is the point of overwriting in place.',
-      },
-      {
-        t: 'They must be re-created',
-        why: 'Nothing is re-created: the same closures go on working.',
-      },
-      {
-        t: 'Nothing in the closures: the object in the same arena slot is now `Closed(value)`',
-        correct: true,
-        why: '`self.heap[upvalue] = ObjUpvalue::Closed(self.stack[slot])` replaces the object behind the unchanged handle.',
-      },
-      {
-        t: 'They lose access to the variable',
-        why: 'They now read it from the upvalue itself instead of the stack.',
-      },
-    ],
-  },
-  {
-    q: 'The open list holds upvalues for slots `[1, 4, 6]`. Which does `close_upvalues(4)` close?',
-    options: [
-      {
-        t: 'Only 6',
-        why: 'The test is `slot < last` to stop, so slot 4 itself is closed too.',
-      },
-      {
-        t: '1, 4 and 6',
-        why: 'It stops at the first slot below 4.',
-      },
-      {
-        t: 'Only 4',
-        why: 'It starts from the end of the list, at 6.',
-      },
-      {
-        t: '4 and 6, leaving `[1]`',
-        correct: true,
-        why: 'Everything at or above `last` is going away, and the list is sorted, so it pops from the end until a lower slot.',
-      },
-    ],
-  },
-  {
     q: 'Why does `Vm::closure` capture every upvalue before allocating the `ObjClosure`?',
     options: [
       {
@@ -1690,28 +1549,6 @@ export const quiz = [
       {
         t: 'Upvalues must be allocated before closures in the arena',
         why: 'Each kind of object has its own arena, so there is no such rule.',
-      },
-    ],
-  },
-  {
-    q: 'Why is the local `upvalues` `Vec` in `Vm::closure` safe from a collection that `alloc` might run?',
-    options: [
-      {
-        t: 'The collector does not run during `Closure`',
-        why: 'It may: `alloc` asks `should_collect()` first, and stress mode always says yes.',
-      },
-      {
-        t: 'Local variables are always roots in Rust',
-        why: 'The collector only sees what it is given; a local `Vec` is invisible to it.',
-      },
-      {
-        t: 'Every handle in it is also in `open_upvalues` (a root) or in the enclosing closure, which the running frame keeps alive',
-        correct: true,
-        why: 'That is the argument in the comment in `vm.rs`.',
-      },
-      {
-        t: 'Upvalues are never collected',
-        why: 'They are, once no closure and no open list refers to them.',
       },
     ],
   },

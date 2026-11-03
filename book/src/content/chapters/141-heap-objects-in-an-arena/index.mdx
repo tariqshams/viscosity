@@ -3,23 +3,15 @@ n: 141
 day: 24
 part: VIII
 title: 'Heap objects in an arena'
-tagline: 'In the TypeScript VM, printing a closure follows three references. In drip-rs it is three trips to the heap, each through a typed handle, and one generic alloc and one heap[handle] serve all nine kinds of object.'
+tagline: 'Where the TypeScript VM follows references from object to object, drip-rs takes a typed handle to the heap: one generic alloc and one heap[handle] serve all nine kinds of object, a list is a Vec behind a handle, and a string handle carries its own hash.'
 objectives:
-  - Read drip-rs’s Heap and Arena types and compare them with the TypeScript heap’s object list.
-  - Explain how the HeapObject trait lets one generic alloc and one heap[handle] serve every kind of object.
-  - Turn a TypeScript chain such as closure.fn.name.chars into heap lookups.
+  - Read drip-rs’s Heap and Arena types, and explain how the HeapObject trait lets one alloc and one heap[handle] serve every kind of object.
   - Fix the borrow error that comes from reading one object while writing another.
-  - Describe drip-rs’s ObjList and explain why every copy of a list value sees the same elements.
-  - Trace the list instruction, and say why the elements stay on the stack while the list is allocated.
-  - Read check_index and give the exact error for each kind of bad index, in the order they are checked.
-  - Explain how the collector keeps a list’s elements alive, and what the heap’s size estimate leaves out.
-  - Explain why StrRef carries the string’s hash, and which borrow that avoids.
-  - Read drip-rs’s interner and compare it with the TypeScript VM’s copyString.
-  - Map drip-rs’s two-column hash table, with its tombstones, to the TypeScript table.
-  - Write an interner over an open-addressing table, with tests.
+  - Describe drip-rs’s ObjList, and say why the list instruction allocates while the elements are still on the stack.
+  - Explain why StrRef carries the string’s hash, and read drip-rs’s interner.
 introduces: [object-handle, rust-vm-list, string-interner]
-uses: [drip-rs, value-enum, arena, typed-index, heap-object, object-list, garbage-collection, mark-sweep, trait, rust-generics, trait-bound, monomorphization, struct, impl, option, vec, borrow, shared-vs-mutable, borrow-checker, upvalue, interface, typescript, chunk, compiler-state, match-dispatch, opcode-enum, vm-list, drip-list, index-expression, native-function, roots, runtime-error, result, question-mark, enum, match, pattern, size-of, scalar-types, drip, hash-function, hash-table, open-addressing, load-factor, interning, global-table, string-vs-str, box, padding]
-sources: [klabnik2026, rust-std-ops-index, rust-std-type-name, rust-std-vec, rustref-numeric-cast, lcn2-fnv, rust-std-string]
+uses: [drip-rs, value-enum, arena, typed-index, heap-object, object-list, garbage-collection, mark-sweep, trait, rust-generics, trait-bound, monomorphization, struct, impl, option, vec, borrow, shared-vs-mutable, borrow-checker, typescript, compiler-state, match-dispatch, opcode-enum, vm-list, drip-list, index-expression, native-function, roots, runtime-error, result, question-mark, enum, match, pattern, size-of, scalar-types, drip, hash-function, hash-table, open-addressing, interning, global-table, string-vs-str, box, padding]
+sources: [rust-std-ops-index, rust-std-type-name, rust-std-vec, rustref-numeric-cast, lcn2-fnv, rust-std-string]
 ---
 import HandleSteps from '../../../components/diagrams/ch141/HandleSteps';
 import ArenaSlots from '../../../components/diagrams/ch141/ArenaSlots';
@@ -28,37 +20,14 @@ import ListLayout from '../../../components/diagrams/ch141/ListLayout';
 import TableSteps from '../../../components/diagrams/ch141/TableSteps';
 import StrRefShape from '../../../components/diagrams/ch141/StrRefShape';
 
-{/* ── merge: from old chapter 141, Heap objects in an arena ── */}
-
 ## Three hops
 
-When the TypeScript VM prints a closure, it follows references from
-object to object. From `vm/object.ts` (trimmed):
-
-```ts
-case 'closure':
-  return format(v.fn, nested, open);
-// ...and for the function:
-// `fn ${v.name.chars}`
-```
-
-`v.fn` is the function object, `.name` its name string, `.chars` the
-text. drip-rs has no references between objects at all: every object
-lives in an arena (the idea of *Arenas and typed indices*), and where TypeScript holds an object, drip-rs holds a
-`Gc<T>`, a typed slot number (the chapter *Planning drip-rs* showed the
-struct). So each hop becomes a trip to the heap, from `src/value.rs`
-(rewrapped):
-
-```rust
-Value::Closure(c) => {
-    write_function(out, heap,
-        heap[c].function)
-}
-```
-
-and inside `write_function`, `let f = &heap[function];` reads the
-function and `heap.str(name)` reads the text of its name. This chapter
-is about the `Heap` behind those square brackets.
+To print a closure, the TypeScript VM of *Heap objects and lists in the
+VM* follows references, `v.fn.name.chars`. drip-rs has no references
+between objects: every object lives in an arena (*Arenas and typed
+indices*), and where TypeScript holds an object, drip-rs holds a
+`Gc<T>`, a typed slot number, so each hop is a trip to the heap:
+`heap[c].function`, then `heap[function]`, then `heap.str(name)`.
 
 <Analogy title="a cloakroom ticket">
 At a theatre you hand in your coat and get a numbered ticket; you carry
@@ -72,109 +41,42 @@ exactly this risk after a collection, which is why its debug and stress
 modes never reuse a freed slot, so a stale ticket fails loudly.</span>
 </Analogy>
 
-## One arena per kind
+## One arena per kind, one alloc for all
 
-Here is the heap, from `src/gc.rs` (rewrapped, the collector's
-bookkeeping left out):
+The heap, from `gc.rs`, and an arena, from `object.rs` (trimmed):
 
 ```rust
 pub struct Heap {
     pub strings: Arena<ObjString>,
-    pub lists: Arena<ObjList>,
-    pub functions: Arena<ObjFunction>,
-    pub natives: Arena<ObjNative>,
-    pub upvalues: Arena<ObjUpvalue>,
-    pub closures: Arena<ObjClosure>,
-    pub classes: Arena<ObjClass>,
-    pub instances: Arena<ObjInstance>,
-    pub bound_methods:
-        Arena<ObjBoundMethod>,
+    // ... eight more arenas
     interned: Table,
-    // ...
 }
-```
 
-Nine arenas, one per kind of object, and each is a `Vec` of slots plus
-a list of freed slot numbers, from `src/object.rs`:
-
-```rust
 pub struct Arena<T> {
     slots: Vec<Option<T>>,
     free: Vec<u32>,
 }
 ```
 
-`insert` reuses a freed slot if `free` has one and otherwise pushes a
-new slot; either way it returns `Gc::new(index)`. A slot holds
-`Some(object)` while the object lives and `None` once the collector has
-freed it.
+`insert` reuses a freed slot or pushes, and returns `Gc::new(index)`; a
+freed slot is `None`. Objects carry no header: the arena says the type,
+and mark bits live apart (*A garbage collector in Rust*).
 
 <Figure takeaway="An arena is a Vec of optional slots; a handle is a slot number." caption="The closures arena after a collection freed slot 1. A Gc<ObjClosure> is just the number of its slot; insert takes slot 1 from the free list before it grows the Vec.">
   <ArenaSlots />
 </Figure>
 
-<Analogy extra title="a warehouse with one aisle per kind of parcel">
-A warehouse keeps books in one aisle, shoes in another and lamps in a
-third, and a shelf label such as "shoes, shelf 4" tells a picker where
-to walk without opening any box. A handle is that label, its type naming
-the aisle.
-<span slot="breaks">A picker might misread "shoes" as "books"; in
-drip-rs the aisle is part of the handle's type, checked by the compiler
-before the program runs, so a closure handle can never be used to fetch
-a class.</span>
-</Analogy>
-
-Compare a closure in each VM. The TypeScript `ObjClosure` has `fn` and
-`upvalues: (ObjUpvalue | null)[]`; drip-rs's has
-`function: Gc<ObjFunction>` and `upvalues: Vec<Gc<ObjUpvalue>>`. The
-TypeScript object also carries a header: `isMarked` for the collector,
-`next` linking every object into one list so the sweep can find them,
-and a `type` tag. drip-rs's object has none of these: the arena it sits
-in says what it is, the sweep walks the arenas, and the mark bits live
-in a separate bitmap (the chapter *A garbage collector in Rust* builds
-it). Nor is there a `null` in the upvalue list: the TypeScript VM
-allocates the closure first and fills in its upvalues afterwards, while
-drip-rs captures them into a `Vec` first and only then allocates.
-
-<Prompts ids={['oh-arenas', 'oh-no-header', 'oh-no-null']} />
-
-## One alloc for nine kinds
-
-The TypeScript heap has a constructor per kind, `newClosure`, `newClass`
-and so on. drip-rs has one generic `alloc`, which works because every
-object type implements a trait saying which arena is its own (from
-`gc.rs`, rewrapped, two methods for the collector left out):
+Where TypeScript has `newClosure`, `newClass` and so on, drip-rs has one
+generic `alloc`, because every object type implements a trait naming its
+arena (rewrapped, the collector's methods left out):
 
 ```rust
 pub trait HeapObject: Sized {
     fn arena(heap: &Heap) -> &Arena<Self>;
     fn arena_mut(heap: &mut Heap)
         -> &mut Arena<Self>;
-    // ...marks and gray, for the collector
-    fn size(&self) -> usize {
-        size_of::<Self>()
-    }
 }
 
-pub fn alloc<T: HeapObject>(&mut self,
-    object: T) -> Gc<T> {
-    self.bytes_allocated += object.size();
-    T::arena_mut(self).insert(object)
-}
-```
-
-Seven of the nine `impl`s are identical apart from names, so `gc.rs`
-stamps them out with a small `macro_rules!` macro,
-`heap_object!(ObjClosure, closures, Closure)`; the two leaf types,
-strings and natives, are written by hand, and `ObjString` overrides
-`size` to add the length of its text.
-
-Reading goes through the standard `Index` trait, which is what
-`container[index]` calls: `a[b]` is shorthand for `*a.index(b)`
-<Cite id="rust-std-ops-index" />. drip-rs implements it once, for every
-handle type:
-
-```rust
 impl<T: HeapObject> Index<Gc<T>> for Heap {
     type Output = T;
     fn index(&self, handle: Gc<T>) -> &T {
@@ -183,19 +85,20 @@ impl<T: HeapObject> Index<Gc<T>> for Heap {
 }
 ```
 
-`IndexMut` is the same with `&mut`. Step through printing `add`, with
-the real slot numbers from running `fn add(a, b) { return a + b; }
-print add;`:
+`a[b]` is shorthand for `*a.index(b)`<Cite id="rust-std-ops-index" />,
+so one impl (and its `IndexMut` twin) serves every handle type, and
+rustc makes a copy per type (*Generics and monomorphization*) in which
+`T::arena` is just `&self.closures`: no tag is checked at run time. Step
+through printing `add`, with the real slot numbers:
 
 <HandleSteps client:visible />
 
 <Callout kind="definition">
 An **object handle** is a small `Copy` value that stands for a heap
 object: in drip-rs a `Gc<T>`, the object's slot number in the arena for
-`T`. You read the object with `heap[handle]` and change it with
-`heap[handle].field = ...`; the handle's type picks the arena at compile
-time, through the `HeapObject` trait. A handle owns nothing, so values,
-objects and the VM can all hold copies.
+`T`, read with `heap[handle]` and written with `heap[handle].field =
+...`. Its type picks the arena at compile time; it owns nothing, so
+anything can hold copies.
 </Callout>
 
 <Formal title="Typing heap[h]">
@@ -211,31 +114,16 @@ object, then heap of h is a T (borrowed from the heap): the type of the
 handle alone decides which arena is read and what comes out.</span>
 </Formal>
 
-<Prompts ids={['oh-handle', 'oh-trait', 'oh-index-sugar', 'oh-chain']} />
-
-## Read one, write another
-
-All nine arenas live in one `Heap`, and `heap[h]` borrows the whole
-`Heap`, so reading one object while writing another does not compile,
-even when they are different objects of the same kind.
+`heap[h]` borrows the *whole* heap, so reading one object while writing
+another does not compile, even for two objects of the same kind:
 
 <Examples of="object-handle">
 
 ```rust
-let function = self.heap[closure].function;
-let arity = self.heap[function].arity;
-```
-
-```rust
-self.heap[function].arity += 1;
-```
-
-```rust
 let from = &self.heap[superclass].methods;
 self.heap[subclass].methods.add_all(from);
-// error[E0502]: cannot borrow `self.heap`
-//   as mutable because it is also
-//   borrowed as immutable
+// error[E0502]: cannot borrow
+//   `self.heap` as mutable
 let methods = self.heap[superclass]
     .methods.clone();
 self.heap[subclass].methods
@@ -244,121 +132,41 @@ self.heap[subclass].methods
 
 </Examples>
 
-The first is two reads, from `Vm::call`: the closure's function handle
-is copied out (a `Gc` is 4 bytes and `Copy`), the borrow ends at the
-semicolon, and the second line reads a different arena. The second is
-a write, from the compiler's `fn_rest`: `IndexMut` hands out `&mut` to
-the function while its parameters are counted. The third is the
-`Inherit` instruction, which copies the superclass's methods into the
-subclass. The first try holds `from`, a shared borrow of the heap, while
-`heap[subclass]` asks for a mutable one, and rustc 1.97 refuses (the
-message is trimmed); the real code, from `vm.rs`, copies out first:
-cloning a method table is a one-time cost per class.
+This is `Inherit`, copying a superclass's methods into the subclass. The
+first try holds `from`, a shared borrow of the heap, while
+`heap[subclass]` asks for a mutable one, and rustc 1.97 refuses; the
+real code clones first, once per class.
+
+<More title="A heap to experiment with, and what a stale handle does">
+
+A freed slot read through an old handle hits the `None` check, which
+calls `use_after_free`, marked `#[cold]`, and panics with the type's
+name from `std::any::type_name`, whose exact text the standard library
+does not promise<Cite id="rust-std-type-name" />. `ObjString` overrides
+the trait's `size` method to add its text's length, which the collector
+uses to decide when to run.
 
 <Run id="mini-heap" />
 
-<Prompts ids={['oh-two-objects', 'oh-nested']} />
+</More>
 
-<Callout kind="engine" label="Under the hood">
-`heap[c]` costs little. `alloc` and `Index` are generic, so rustc makes
-a copy of each for every object type (as in *Generics and trait
-bounds*), and in the copy for `Gc<ObjClosure>`, `T::arena(self)` is
-simply `&self.closures`: no type tag is checked at run time. What
-remains is the arena's own work, a bounds check on the `Vec` and a check
-that the slot is not `None`. That second check calls `use_after_free`,
-marked `#[cold]`, which panics with the type's name from
-`std::any::type_name`, whose exact text the standard library does not
-promise<Cite id="rust-std-type-name" />; it is for people reading a
-crash, not for code to compare.
-</Callout>
+<Prompts ids={['oh-handle', 'oh-trait', 'oh-two-objects']} />
 
-<Prompts ids={['oh-cost']} />
+## A list is a Vec behind a handle
 
-## Your turn
-
-<Exercise id="heapIndex" />
-
-<Exercise id="inheritCopy" />
-
-## What you learned
-
-- drip-rs's **Heap** holds nine **arenas**, one per kind of object, each
-  a `Vec<Option<T>>` with a free list. Objects carry no header: no
-  `type`, no `next`, no mark bit.
-- An **object handle** `Gc<T>` stands for an object: `heap[handle]`
-  reads it and `heap[handle].field = ...` writes it.
-- The **`HeapObject` trait** tells generic code which arena belongs to
-  each type, so one `alloc` and one `Index` impl serve all nine.
-- A TypeScript chain such as `v.fn.name` becomes a chain of lookups,
-  each handle copied out on the way.
-- `heap[h]` borrows the whole heap: to read one object and write
-  another, **copy or clone what you need first** (E0502 otherwise).
-
-
-{/* ── merge: from old chapter 141, Lists in Rust’s VM ── */}
-
-## One list, many names
-
-Here is a small Drip program, and what both VMs print for it:
-
-```drip
-let xs = [10, 20];
-push(xs, 30);
-xs[0] = 7;
-let ys = xs;
-push(ys, 40);
-print len(xs);    # 4
-print pop(xs);    # 40
-print xs;         # [7, 20, 30]
-```
-
-The fourth line does not copy the list; it gives the same list a second
-name, so pushing through `ys` lengthens `xs` too. In *Lists in the VM*,
-the TypeScript VM got sharing and growing for free from JavaScript's own
-arrays. drip-rs has to say both in Rust, so this chapter follows a list
-through its life: laid out, built, read and written, grown, kept alive.
-
-<Analogy title="a ring binder in a numbered locker">
-Picture a ring binder kept in locker 7. Everyone who needs it is told
-"locker 7", never handed the binder itself, so whoever adds a page adds
-it for all of them; and the binder can grow as thick as it likes while
-its locker number stays the same.
-<span slot="breaks">A binder gains one page at a time; a Rust `Vec`
-that runs out of room moves every element to a bigger block at once.
-Nobody holding "locker 7" ever notices, because the number names the
-locker, not the pages.</span>
-</Analogy>
-
-## The list object
-
-From `src/object.rs`:
-
-```rust
-/// A list: a growable array of values,
-/// shared by reference.
-pub struct ObjList {
-    pub items: Vec<Value>,
-}
-```
-
-An `ObjList` lives in the heap's `lists` arena, and a Drip value that
-is a list is `Value::List(Gc<ObjList>)`, a 4-byte slot number inside the
-16-byte `Value`. `let ys = xs;` copies that handle, and both copies name
-the same slot: that is the sharing. The `Vec` itself is three machine
-words (a pointer, a capacity and a length; 24 bytes, measured with
-`size_of` on rustc 1.97 here), and the elements live in a separate block
-of memory that the `Vec` owns, 16 bytes per `Value`.
+In Drip, after `let ys = xs; push(ys, 30);` the list `xs` is longer too:
+the assignment gives one list a second name. The TypeScript VM got that
+sharing from JavaScript arrays. In drip-rs a list is
+`ObjList { items: Vec<Value> }` in the `lists` arena, and a list value is
+`Value::List(Gc<ObjList>)`, so `let ys = xs;` copies a handle and both
+name one slot, whose 24-byte `Vec` owns a block of 16-byte elements.
 
 <Figure takeaway="Two handles, one slot, one block of elements." caption="xs and ys hold the same Gc<ObjList>. The arena slot holds the Vec’s pointer, capacity and length; the elements are 16-byte Values in a block of their own, and a string element is one more handle.">
   <ListLayout />
 </Figure>
 
-<Prompts ids={['rvl-objlist', 'rvl-same-list']} />
-
-## Building one: the list instruction
-
-For `[10, 20]` the compiler emits each element in order, then `list 2`.
-The VM's half, from `src/vm.rs` (rewrapped):
+For `[10, 20]` the compiler emits the elements, then `list 2`; the VM's
+half (from `vm.rs`, rewrapped):
 
 ```rust
 OpCode::List => {
@@ -366,8 +174,6 @@ OpCode::List => {
     let start = self.stack.len() - n;
     let items =
         self.stack[start..].to_vec();
-    // The elements stay on the stack while
-    // the list is allocated.
     let list =
         self.alloc(ObjList { items });
     self.stack.truncate(start);
@@ -375,278 +181,121 @@ OpCode::List => {
 }
 ```
 
-`self.stack[start..]` is a slice of the top `n` values, and `to_vec`
-copies them, in order, into a new `Vec` (a `Value` is `Copy`, so this
-is a plain copy of 16 bytes each). Only after `alloc` has stored the
-list does `truncate` drop the elements from the stack. The order
-matters: `self.alloc` may run a collection first, and at that moment the
-new `Vec` is a local of this function, which the collector cannot see.
-The elements' objects are still safe, because the same values are still
-on the stack, and the stack is a root.
+The order matters: `alloc` may collect first, while the new `Vec` is a
+local the collector cannot see, so the elements must still be on the
+stack, a root.
 
 <ListBuildSteps client:visible />
 
-<Prompts ids={['rvl-build-order', 'rvl-on-stack']} />
-
-## Reading and writing an element
-
-`index.get` and `index.set` both start with `check_index`, which turns
-two Drip values into a list handle and a Rust index, or fails
-(rewrapped, the messages' `format!` calls shortened):
-
-```rust
-fn check_index(&mut self, list: Value,
-    index: Value)
-    -> Run<(Gc<ObjList>, usize)> {
-    let Value::List(list) = list else {
-        // "cannot index a string"
-    };
-    let Value::Number(i) = index else {
-        // "a list index must be a
-        // number, not a string"
-    };
-    if i.fract() != 0.0 || !i.is_finite() {
-        // "index 1.5 is not a whole number"
-    }
-    let len = self.heap[list].items.len();
-    if i < 0.0 || i >= len as f64 {
-        // "index 3 is out of range for a
-        // list of length 3"
-    }
-    Ok((list, i as usize))
-}
-```
-
-Each comment stands for a `return Err(self.runtime_error(message))`.
-The checks run in this order, so `"abc"[1.5]` says `cannot index a
-string` and never mentions the 1.5. By the last line, `i` is a whole
-number from 0 to `len - 1`, so `i as usize` is exact. (A float-to-integer
-`as` in Rust never fails: it rounds towards zero and saturates, and NaN
-becomes 0<Cite id="rustref-numeric-cast" />, which is why the checks
-must come first.) Then the instruction itself:
-
-```rust
-OpCode::IndexGet => {
-    let index = self.pop();
-    let (list, i) = self
-        .check_index(self.peek(0), index)?;
-    let value = self.heap[list].items[i];
-    self.set_peek(0, value);
-}
-```
-
-The `?` passes a runtime error straight out of the dispatch loop. The
-element is read into `value` before `set_peek` borrows `self` mutably:
-the read-first habit from *A Pratt compiler in Rust, part 2*.
-`index.set` is the same, with `self.heap[list].items[i] = value;`.
-
 <Callout kind="definition">
-A **list in drip-rs's VM** is an `ObjList { items: Vec<Value> }` stored
-in the heap's `lists` arena and reached through a `Gc<ObjList>` handle,
-so every copy of the value shares one list. The VM builds it with
-`list n`, reads and writes elements with `index.get` and `index.set`
-(after `check_index`), grows and shrinks it with the natives `push` and
-`pop`, and the collector marks every element of every list it reaches.
+A **list in drip-rs's VM** is an `ObjList { items: Vec<Value> }` in the
+heap's `lists` arena, reached through a `Gc<ObjList>` handle, so every
+copy of the value shares one list; the collector marks every element of
+every list it reaches.
 </Callout>
-
-<Formal title="When index.get succeeds">
-
-```text
-xs = List(h),  i ∈ ℤ,  0 ≤ i < len(h)
-───────────────────────────────────────
-  … xs i  ⟶  … heap[h].items[i]
-```
-
-<span slot="read">If xs is a list with handle h, and i is a whole
-number at least 0 and less than the list's length, then index.get
-replaces the list and the index on top of the stack with element i of
-the list's items. In any other case it is a runtime error.</span>
-</Formal>
 
 <Examples of="rust-vm-list">
 
 ```text
-print [1, 2]["0"];
-# a list index must be a number,
-#   not a string
-```
-
-```text
 let xs = [1];
 xs[1] = 2;
-# index 1 is out of range for a
-#   list of length 1
-push(xs, 2);   # [1, 2]
+# runtime error: index 1 is out of
+#   range for a list of length 1
 ```
-
-<Run id="lists-rs" />
 
 </Examples>
 
-Each error comes with a trace line and exit code 70, the same bytes
-from both VMs. The first fails the second check: a string is not a
-number, even one that looks like one. The second is the common slip:
-`index.set` only replaces an element that exists; `push` adds one. The
-third runs the program from the top of the chapter.
+Both come from `check_index`, which checks in order that it has a list,
+a number, a whole number and an index in range before turning it into a
+`usize`; both VMs print the same message, trace line and exit code 70.
+This is the common slip: `index.set` only replaces an element that
+exists, and `push` adds one; `[1, 2]["0"]` fails the second check,
+because a string is not a number even when it looks like one.
 
-<Prompts ids={['rvl-check-order', 'rvl-cast']} />
+<More title="check_index, the cast it guards, and tracing a list">
 
-## Growing, shrinking, and staying alive
+The checks must come before `i as usize`, because a float-to-integer
+`as` in Rust never fails: it rounds towards zero and saturates, and NaN
+becomes 0<Cite id="rustref-numeric-cast" />, so `-1.0 as usize` is
+silently 0. `pop` turns the `Option` from `Vec::pop` into `cannot pop
+from an empty list`, and the standard library promises a push is cheap
+on average but no particular growth factor<Cite id="rust-std-vec" />.
 
-`push`, `pop` and `len` are natives, and each is a line or two of `Vec`.
-`push` does `self.heap[list].items.push(value)`, and the `Vec` (from
-*Vec and HashMap*) grows its block when it is full; the standard library promises that a push is
-cheap on average, but no particular growth factor<Cite id="rust-std-vec" />.
-`pop` turns the `Option` from `Vec::pop` into Drip's error (rewrapped,
-two-space indents):
+Tracing a list is one line of `gc.rs`,
+`Gray::List(l) => self.lists[l].items.trace(marks)`, which marks each
+element's object. A list that contains itself cannot trap the collector,
+because a marked object is not pushed again, and printing has its own
+guard: `let xs = []; push(xs, xs); print xs;` prints `[[...]]`. The heap
+counts a list as `size_of::<ObjList>()`, 24 bytes, however long it is,
+so a program with a few huge lists collects less often than its memory
+use suggests.
 
-```rust
-Value::List(list) =>
-  match self.heap[list].items.pop() {
-    Some(value) => Ok(value),
-    None => Err(self.runtime_error(
-      "cannot pop from an empty list")),
-  },
-```
+<Run id="lists-rs" />
 
-<Analogy extra title="a shopping list on the fridge">
-A household keeps one shopping list on the fridge, and everyone says
-"the list"; whoever adds milk adds it for the whole house, and once the
-last item is crossed off there is nothing left to cross off.
-<span slot="breaks">Two people can write on the fridge at the same
-moment; in drip-rs one instruction runs at a time, and Rust's borrow
-rules make the VM finish reading a list before it writes to it.</span>
-</Analogy>
+</More>
 
-A list keeps its elements alive. `ObjList` gets its `HeapObject` impl
-from the macro, `heap_object!(ObjList, lists, List)`, so a marked list
-goes on the grey stack, and tracing it is one line of `gc.rs`:
+<Prompts ids={['rvl-same-list', 'rvl-build-order']} />
 
-```rust
-Gray::List(l) =>
-    self.lists[l].items.trace(marks),
-```
+## A string handle carries its hash
 
-`Vec<T>` implements `Trace` by tracing each element, and a `Value`'s
-trace marks the object its handle names (numbers, booleans and `none`
-mark nothing). A list that contains itself cannot trap the collector,
-because an object already marked is not pushed again; printing has its
-own guard, so `let xs = []; push(xs, xs); print xs;` prints `[[...]]`.
-
-<Prompts ids={['rvl-trace', 'rvl-size']} />
-
-<Callout kind="engine" label="Under the hood">
-The collector decides when to run from `bytes_allocated`, and a list
-counts there as `size_of::<ObjList>()`, 24 bytes, however long it is;
-the elements' block is never counted (the TypeScript heap counts a fixed
-32). So a program with a few huge lists collects less often than its
-memory use suggests; `ObjString` shows the fix, overriding `size` to add
-its text's length, and a list could add its capacity the same way.
-</Callout>
-
-## Your turn
-
-<Exercise id="checkIndex" />
-
-<Exercise id="makeList" />
-
-## What you learned
-
-- A **drip-rs list** is `ObjList { items: Vec<Value> }` in the `lists`
-  arena; a list value is a `Gc<ObjList>` handle, so `let ys = xs;`
-  shares the list.
-- `list n` copies the top `n` values with `to_vec`, **allocates while
-  they are still on the stack**, then truncates.
-- `check_index` checks four things in order (a list, a number, a whole
-  number, in range), each with Drip's exact message, before
-  `i as usize`.
-- `push` and `pop` are `Vec::push` and `Vec::pop`; an empty `pop`
-  becomes `cannot pop from an empty list`.
-- Tracing a list traces each element; the heap counts a list as 24
-  bytes whatever its length.
-
-
-{/* ── merge: from old chapter 141, Strings and interning in Rust ── */}
-
-## The same string twice
-
-In the TypeScript VM, `heap.copyString('hi')` hands back the same object
-every time it is given `hi` (the chapter *String interning*), which is
-why comparing two strings there is one identity test. drip-rs keeps the
-idea and changes the handle. A string value is a `StrRef`, from
-`src/object.rs` (comments left out):
+Interning (*String interning and globals by name*) makes equal strings
+one object, so comparing them is one identity test. drip-rs keeps the
+idea and changes the handle (from `object.rs`):
 
 ```rust
 pub struct StrRef {
     pub handle: Gc<ObjString>,
     pub hash: u32,
 }
-
-pub struct ObjString {
-    pub chars: Box<str>,
-    pub hash: u32,
-}
 ```
 
-The hash is stored twice: in the object, and in every handle to it. The
-handle's extra 4 bytes are free, because a `Value` is 16 bytes whatever
-it holds (the chapter *Values in Rust* measured it), and this chapter is
-about what they buy. `chars` is a `Box<str>` rather than a `String` (the owned string of
-*Slices and strings*): an
-interned string never grows, so it needs no capacity, and on rustc 1.97
-here `Box<str>` is 16 bytes where `String` is 24.
+The extra 4 bytes are free inside a 16-byte `Value`, and they let a
+`Table`'s `get` and `set` take a key and nothing else. That matters
+because tables live *inside* heap objects: if `set` had to read the
+strings arena to hash a key, `self.heap[instance].fields.set(..)`, which
+already borrows the heap mutably, could not compile.
 
 <Figure takeaway="The hash rides in the handle, so a table never visits the heap." caption="A string value holds the handle and the hash. The ObjString keeps its text and the same hash; any table can start probing from the handle’s hash alone.">
   <StrRefShape />
 </Figure>
 
-<Analogy title="a library card with the shelf number printed on it">
-If every library card has the book's shelf number printed on it, the
-librarian can file and find cards by that number without ever walking
-into the stacks; only when two cards share a shelf number does anyone go
-and compare the books themselves.
-<span slot="breaks">Shelf numbers are chosen; a hash is computed, and
-two different strings can share one, which is why interning still
-compares the characters when hashes match.</span>
-</Analogy>
+Interning is the one place that compares characters. `Heap::intern`
+hashes the text (FNV-1a, as in TypeScript<Cite id="lcn2-fnv" />), probes
+`interned`, a `Table` of every live string used as a set, compares text
+only when a hash matches, and allocates only when the string is new. It
+calls `self.interned.find_string(&self.strings, chars, hash)`, borrowing
+two fields at once, which rustc allows inside the heap's own method
+because it can see they are different fields.
 
-## A table that never sees the heap
+<Callout kind="definition">
+A **string interner** maps each distinct string to one id: given some
+characters, it either finds the id it handed out before or stores the
+string and hands out a new one, so equal strings compare by id. In
+drip-rs the interner is the heap's `interned` table, the id is a
+`StrRef` (handle plus hash), and the collector deletes entries for
+strings nothing else reaches.
+</Callout>
 
-The table's methods, in `src/table.rs`, take a key and nothing else:
-
-```rust
-pub fn get(&self, key: StrRef)
-    -> Option<Value>
-pub fn set(&mut self, key: StrRef,
-    value: Value) -> bool
-```
-
-The hash comes from the key, and two keys are equal exactly when their
-handles are, because strings are interned. That matters because tables
-live *inside* heap objects: every instance has `fields: Table`, every
-class `methods: Table`. Suppose, as a design experiment, that `set` had
-to read the strings arena to hash a key:
+<Examples of="string-interner">
 
 ```rust
-let strings = &self.heap.strings;
-self.heap[instance].fields
-    .set(strings, name, value);
-// error[E0502]: cannot borrow `self.heap`
-//   as mutable because it is also
-//   borrowed as immutable
+let a = heap.intern("hello");
+let b = heap.intern_owned(
+    String::from("hel") + "lo");
+assert_eq!(a, b);
+assert_ne!(a, heap.intern("world"));
 ```
 
-`heap[instance]` borrows the whole heap mutably (the chapter *Heap
-objects in an arena*), and the strings arena is part of it. Carrying
-the hash in the handle removes the need, so the real `SetProp` writes
-the field with `object.fields.set(name, value)`.
+</Examples>
 
-<Prompts ids={['si-hash-twice', 'si-no-heap', 'si-box-str']} />
+From `gc.rs`'s tests: text built at run time and text in the program
+intern to the same `StrRef`, so `print "dr" + "ip" == "drip";` prints
+`true` by comparing handles. `intern_owned` keeps the allocation `+`
+just built; `intern`, lent a `&str`, must copy.
 
-## The interner
+<More title="The interner's code, and the table: two columns, with tombstones">
 
-Interning is the one place that compares characters. From `src/gc.rs`
-(rewrapped):
+From `gc.rs` (rewrapped):
 
 ```rust
 pub fn intern(&mut self, chars: &str)
@@ -661,153 +310,43 @@ pub fn intern(&mut self, chars: &str)
 }
 ```
 
-`interned` is a `Table` whose keys are every live string. `find_string`
-probes it by hash, and only when a key's hash matches does it compare
-the text, read from the strings arena it was handed; borrowing
-`self.interned` and `self.strings` together is fine, because inside the
-heap's own method rustc can see they are different fields. `add_string`
-allocates the `ObjString` and records it with
-`self.interned.set(s, Value::None)`: the table is used as a set, and
-the value means nothing. The TypeScript `copyString` pushes the new
-string as a temporary root while it does this; drip-rs need not,
-because the heap never collects on its own.
-
-<Analogy extra title="a phone that will not save a contact twice">
-Type a name into some phones and, before saving a new contact, they
-offer the one you already have with exactly that name; so the whole
-phone has one entry per name, and anything that refers to "Ada" means
-the same entry.
-<span slot="breaks">A phone may keep "Ada" and "ada" as two people, as
-the interner does; but a phone never deletes a contact by itself, while
-drip-rs's collector drops interned strings that nothing else uses.</span>
-</Analogy>
-
-The VM has a second door, `intern_owned(String)`, for a string it has
-just built, such as the result of `+` in `Vm::add`, which joins with
-`[self.heap.str(a), self.heap.str(b)].concat()`. Handing over the
-`String` lets the heap keep that very allocation: `into_boxed_str` only
-reallocates to drop spare capacity<Cite id="rust-std-string" />, and
-`concat` reserves exactly the joined length. `intern` has to copy,
-because it was only lent a `&str`.
-
-<Examples of="string-interner">
-
-```rust
-let a = heap.intern("hello");
-let b = heap.intern_owned(
-    String::from("hel") + "lo");
-assert_eq!(a, b);
-assert_ne!(a, heap.intern("world"));
-```
-
-```drip
-print "dr" + "ip" == "drip";   # true
-print str(42) == "42";         # true
-```
-
-```rust
-let lost = heap.intern("lost");
-heap.collect(&[&class]);
-assert_ne!(heap.intern("lost"), lost);
-```
-
-</Examples>
-
-The first is from `gc.rs`'s own tests: text built at run time and text
-written in the program intern to the same `StrRef`, and different text
-to a different one. The second shows it from Drip: `+` builds `drip`
-and interns it, so `==` compares two handles and prints `true`, and
-`str(42)` interns its result too. The third is also from the tests
-(trimmed): the interned table holds strings *weakly*, so after a
-collection whose roots never reach `"lost"`, the table has forgotten it,
-and interning `"lost"` again makes a new string.
-
-<Callout kind="definition">
-A **string interner** maps each distinct string to one id: given some
-characters, it either finds the id it handed out before or stores the
-string and hands out a new one, so equal strings compare by id. In
-drip-rs the interner is the heap's `interned` table, the id is a
-`StrRef` (handle plus hash), and the collector deletes entries for
-strings nothing else reaches.
-</Callout>
-
-<Formal title="What interning promises">
-
-```text
-intern(s) = intern(t)  ⇔  s = t
-```
-
-<span slot="read">Interning two strings gives the same handle exactly
-when the two strings have the same characters, so comparing handles is
-the same as comparing text.</span>
-</Formal>
-
-The hash is FNV-1a<Cite id="lcn2-fnv" />, as in TypeScript
-(rewrapped):
-
-```rust
-pub fn hash_string(s: &str) -> u32 {
-    let mut hash: u32 = 2_166_136_261;
-    for byte in s.bytes() {
-        hash ^= u32::from(byte);
-        hash = hash
-            .wrapping_mul(16_777_619);
-    }
-    hash
-}
-```
-
-`wrapping_mul` is TypeScript's `Math.imul`, a multiply that keeps the low
-32 bits. One difference: drip-rs hashes UTF-8 bytes and TypeScript
-UTF-16 code units, so the two agree only on ASCII; nothing a program can
-print depends on a hash.
-
-<Run id="interning-drip" />
-
-<Prompts ids={['si-interner', 'si-disjoint', 'si-owned', 'si-fnv']} />
-
-## Two columns, with tombstones
-
-The table itself is the TypeScript one, struct of arrays and all:
-
-```rust
-pub struct Table {
-    count: usize,
-    keys: Vec<Option<StrRef>>,
-    values: Vec<Value>,
-}
-const TOMBSTONE: Value = Value::Bool(true);
-```
-
-An empty slot is `(None, Value::None)` and a deleted one
-`(None, Value::Bool(true))`, a **tombstone**, exactly the TypeScript
-encoding with `None` for `null`; `count` includes tombstones, because
-they lengthen probes too. `find` walks from `key.hash & mask`, remembering
-the first tombstone it passes with `tombstone.get_or_insert(index)`, so
-that `set` reuses it. The keys below really collide: by FNV-1a, `y`,
-`a`, `len` and `key` all have `hash & 7 == 4`.
+drip-rs's `Table` is the TypeScript one, struct of arrays and all:
+`keys: Vec<Option<StrRef>>` and `values: Vec<Value>`. An empty slot is
+`(None, Value::None)` and a deleted one `(None, Value::Bool(true))`, a
+tombstone; `find` walks from `key.hash & mask`, remembering the first
+tombstone it passes with `tombstone.get_or_insert(index)` so that `set`
+can reuse it. The keys below really collide: by FNV-1a, `y`, `a`, `len`
+and `key` all have `hash & 7 == 4`.
 
 <TableSteps client:visible />
 
-Why two columns in Rust? A `Vec` of pairs would not allocate per entry
-either, but a pair pads: measured here, `Option<StrRef>` is 12 bytes and
-`Value` 16, while `(Option<StrRef>, Value)` is 32. Two columns use 28
-bytes a slot, and probing mostly reads only the denser `keys`.
+Why two columns in Rust? Measured here, `Option<StrRef>` is 12 bytes and
+`Value` 16, while the pair `(Option<StrRef>, Value)` pads to 32; two
+columns use 28 bytes a slot, and probing mostly reads only `keys`. The
+interned table holds strings *weakly*: after a collection whose roots
+never reach `"lost"`, interning `"lost"` again makes a new string.
+`ObjString::chars` is a `Box<str>`, 16 bytes against `String`'s 24,
+because an interned string never grows<Cite id="rust-std-string" />.
+And interning moves work from comparing to creating: the `strings`
+benchmark, whose loop builds and interns over a million strings, is
+where drip-rs beat the TypeScript VM by only 1.26 times in the
+2026-11-02 run, against 3.69 to 4.94 times on every other program.
 
-<Prompts ids={['si-tombstone', 'si-first-tomb', 'si-columns']} />
+<Run id="interning-drip" />
 
-<Callout kind="engine" label="Under the hood">
-Interning moves work from comparing to creating. Every string the VM
-makes, every `+` and every `str()`, is hashed and looked up once; after
-that, `==` between strings, global lookups and field lookups compare
-handles, never characters. The `strings` benchmark, whose loop builds
-and interns over a million strings with `+` and `str`, is where that
-creation cost lives: in the 2026-11-02 run drip-rs beat the TypeScript
-VM by only 1.26 times there, against 3.7 to 4.9 times on every other
-program (*Profiling the Rust VM* looks at where the time goes).
-</Callout>
+</More>
+
+<Prompts ids={['si-no-heap', 'si-interner', 'si-disjoint']} />
 
 ## Your turn
+
+<Exercise id="heapIndex" />
+
+<Exercise id="inheritCopy" />
+
+<Exercise id="checkIndex" />
+
+<Exercise id="makeList" />
 
 <Exercise id="interner" />
 
@@ -815,15 +354,12 @@ program (*Profiling the Rust VM* looks at where the time goes).
 
 ## What you learned
 
-- A **`StrRef`** is a string handle plus the string's hash, and costs
-  nothing extra inside a 16-byte `Value`.
-- Keys carry their hash and are interned, so a **table never needs the
-  heap**, which lets tables live inside heap objects without borrow
-  conflicts.
-- The **string interner** is the heap's `interned` table: `intern`
-  hashes, probes, compares characters only on a hash match, and
-  allocates only for a new string; the table holds strings weakly.
-- drip-rs's table is the TypeScript one: two columns, `(None,
-  Value::None)` empty, `(None, Value::Bool(true))` a **tombstone**.
+- **Object handle**: a typed slot number; `heap[h]` borrows the whole
+  heap, so copy out first.
+- **drip-rs list**: a `Vec<Value>` behind a handle.
+- **String interner**: `StrRef`s carry their hash, so tables never need
+  the heap.
+
+Next: *Variables, branches and loops in Rust*.
 
 <Quiz />

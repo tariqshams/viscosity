@@ -3,18 +3,14 @@ n: 142
 day: 24
 part: VIII
 title: 'Variables, branches and loops in Rust'
-tagline: 'Globals in drip-rs are a hash table and three short match arms. Locals are the interesting half: the compiler tracks them in a Vec, and the TypeScript habit of holding on to the current function while emitting code is exactly what the borrow checker refuses.'
+tagline: 'Globals in drip-rs are a hash table and three short match arms. Locals and jumps are the interesting half: the compiler remembers places as plain numbers, and the TypeScript habit of holding on to a piece of the compiler while emitting code is exactly what the borrow checker refuses.'
 objectives:
-  - Follow a global from identifier_constant to the VM’s define.global, load.global and store.global arms.
   - Read drip-rs’s Local struct and explain each change from the TypeScript one.
-  - Explain why end_scope and declare_variable read what they need before they emit or report.
-  - Write end_scope for a small compiler, with tests.
-  - Map drip-rs’s emit_jump, patch_jump and emit_loop onto the TypeScript versions, and explain each difference.
-  - Work out a jump’s two operand bytes by hand, forwards and backwards.
-  - Explain why patch_jump reports its error before it borrows the chunk’s code.
-  - Write emit_jump and patch_jump for a small compiler, with tests.
+  - Explain why end_scope and patch_jump finish what needs all of self before they borrow a piece of it.
+  - Map drip-rs’s emit_jump and patch_jump onto the TypeScript versions, and work out a jump’s two operand bytes by hand.
+  - Write patch_jump for a small compiler, with tests.
 introduces: [rust-locals, patch-jump]
-uses: [drip-rs, compiler-state, string-interner, object-handle, value-enum, match-dispatch, global-table, stack-slot, compile-time-scope, scope-depth, constant-pool, upvalue, disassembler, lifetime, option, question-mark, rust-iterator, rust-closure, borrow, shared-vs-mutable, borrow-checker, self-receiver, struct, vec, match, pattern, runtime-error, roots, shadowing, drip, opcode-enum, jump, backpatching, instruction-pointer, short-circuit, control-flow, scalar-types, bit-ops, byte, impl, release-build]
+uses: [drip-rs, compiler-state, string-interner, object-handle, value-enum, match-dispatch, global-table, stack-slot, compile-time-scope, scope-depth, constant-pool, upvalue, disassembler, lifetime, option, question-mark, rust-iterator, rust-closure, borrow, shared-vs-mutable, borrow-checker, self-receiver, struct, vec, match, pattern, runtime-error, roots, shadowing, drip, opcode-enum, jump, backpatching, instruction-pointer, short-circuit, control-flow, scalar-types, bit-ops, byte, impl]
 sources: [rust-std-option, rustref-numeric-cast, rustref-int-overflow]
 ---
 import LocalsSteps from '../../../components/diagrams/ch142/LocalsSteps';
@@ -22,27 +18,11 @@ import TwoLookups from '../../../components/diagrams/ch142/TwoLookups';
 import JumpSteps from '../../../components/diagrams/ch142/JumpSteps';
 import JumpMath from '../../../components/diagrams/ch142/JumpMath';
 
-{/* ── merge: from old chapter 142, Globals by name and locals by slot, in Rust ── */}
-
 ## Two kinds of variable
 
-Here is what drip-rs's disassembler prints for a global, the program
-`let n = 1; n = n + 1; print n;` written on three lines:
-
-```text
-0000    1 const               0 '1'
-0003    | define.global       1 'n'
-0006    2 load.global         3 'n'
-0009    | const               4 '1'
-0012    | add
-0013    | store.global        2 'n'
-0016    | pop
-0017    3 load.global         5 'n'
-0020    | print
-```
-
-and for two locals in a block, `{ let a = 1; let b = 2; print a + b; }`
-on five lines:
+Here is what `drip-rs --disassemble` prints for two locals in a block,
+`{ let a = 1; let b = 2; print a + b; }` on five lines (the closing
+`none`, `return` left off):
 
 ```text
 0000    2 const               0 '1'
@@ -55,11 +35,13 @@ on five lines:
 0013    | pop
 ```
 
-(Each listing's closing `none`, `return` is left off.) The TypeScript
-VM prints both byte for byte the same, as *Globals by name* and *Locals
-as stack slots* built them. The global is looked up by its name every
-time; the locals are bare slot numbers, 1 and 2, and their names appear
-nowhere.
+The TypeScript VM prints the same bytes, as *Locals as stack slots*
+built them: the locals are bare slot numbers, 1 and 2, and their names
+appear nowhere, while a global is an interned name looked up in a table
+every time (*String interning and globals by name*). Nothing about the
+design changes in Rust. What changes is how the compiler holds on to
+things while it works: a local's name, a scope's depth, and the place
+in the code where a jump's distance must be written later.
 
 <Analogy title="a hotel register and a theatre ticket">
 At a hotel, reception finds you by looking your name up in the
@@ -75,16 +57,12 @@ same slot is handed to a different local once a block has ended.</span>
   <TwoLookups />
 </Figure>
 
-## Globals: names in a table
+<More title="Globals: three match arms">
 
-A global's name goes into the constant pool as an interned string; in
-`src/compiler.rs`, `identifier_constant(name)` is two lines,
-`let s = self.intern(name);` and
-`self.make_constant(Value::String(s))`. It does not look for an earlier
-copy, which is why the first listing has four constants that are all
-`'n'` (the same `StrRef` four times). The VM keeps the globals in
-`globals: Table`, a field of the `Vm`, and three arms of the dispatch
-loop use it (rewrapped, comments left out):
+The VM keeps globals in `globals: Table`, a field of the `Vm` and a
+garbage-collection root beside the stack. `identifier_constant(name)`
+interns the name and adds it to the constant pool, without looking for
+an earlier copy. Two of the three arms (rewrapped):
 
 ```rust
 OpCode::DefineGlobal => {
@@ -103,22 +81,18 @@ OpCode::StoreGlobal => {
 }
 ```
 
-`define.global` overwrites happily, which is why a second `let` of the
-same global is allowed. `store.global` uses `set`'s return value: `true`
-means the name was new, a mistake for an assignment, so it deletes the
-entry again and reports `undefined variable 'm'`. `load.global` gets an
-`Option` from `self.globals.get(name)` where TypeScript got `undefined`.
-The globals table is also a garbage-collection root, beside the stack.
+`set` returns `true` when the name was new, a mistake for an
+assignment, so `store.global` deletes it again: `m = 1;` prints
+`runtime error: undefined variable 'm'`. `load.global` gets an `Option`
+from `globals.get(name)` where TypeScript got `undefined`.
 
-<Prompts ids={['rl-ident-const', 'rl-set-new', 'rl-globals-root']} />
+</More>
 
 ## Locals: a Vec the compiler keeps
 
-Locals never reach a table: the compiler works out each one's stack
-slot while it compiles, so at run time a local is an index. The
-TypeScript compiler records a `name: string`, a `depth: number` (with
-`-1` while the initialiser is compiled) and `isCaptured` for each local;
-drip-rs records:
+The TypeScript compiler records a `name: string`, a `depth: number`
+(`-1` while the initialiser is compiled) and `isCaptured` for each
+local. drip-rs records:
 
 ```rust
 struct Local<'src> {
@@ -128,48 +102,29 @@ struct Local<'src> {
 }
 ```
 
-`name` is a slice of the source, borrowed for `'src` (*A Pratt
-compiler in Rust, part 2*), so no name is copied; and `depth` is `None`
-where TypeScript used `-1`, so the compiler cannot forget to check,
-because there is no number to compare until the `Option` is
-opened<Cite id="rust-std-option" />.
-
-<Analogy extra title="a seating plan drawn before the lesson">
-A teacher draws a seating plan before class, one name per desk; during
-the lesson she just says "desk two, please", and the plan goes in the
-bin when term ends.
-<span slot="breaks">Pupils move desks when they like; a local's slot
-never changes while its block runs, and the compiler's plan is thrown
-away when the function is finished, not at the end of term.</span>
-</Analogy>
-
-Resolving a name searches the locals from the end, so the innermost
-variable with that name, the one that shadows the others, wins (from
-`compiler.rs`, rewrapped, the message's `format!` shortened):
+`name` is a slice of the source, borrowed for `'src`, so no name is
+copied; `depth` is `None` where TypeScript used `-1`, so the compiler
+cannot forget to check, because there is no number to compare until the
+`Option` is opened<Cite id="rust-std-option" />. A local's index in the
+`Vec` is its stack slot, and resolving a name searches from the end, so
+the innermost variable with that name wins (rewrapped, the error
+shortened):
 
 ```rust
-fn resolve_local(&mut self, level: usize,
-    name: Token<'src>) -> Option<usize> {
-    let locals =
-        &self.functions[level].locals;
-    let (slot, local) = locals.iter()
-        .enumerate().rev()
-        .find(|(_, l)|
-            l.name == name.lexeme)?;
-    if local.depth.is_none() {
-        // static error: "cannot read 'a'
-        // in its own initialiser"
-    }
-    Some(slot)
+let (slot, local) = locals.iter()
+    .enumerate().rev()
+    .find(|(_, l)|
+        l.name == name.lexeme)?;
+if local.depth.is_none() {
+    // "cannot read 'a' in its own
+    // initialiser"
 }
+Some(slot)
 ```
 
-The `?` (from *Option and Result*) returns `None` when no local has
-the name, and `named_variable`
-then tries a captured variable, and finally a global. Reporting the
-error needs `&mut self`, which is allowed because `local` is not used
-after `is_none()`: the borrow of `self.functions` has already ended.
-Step through two nested blocks being compiled:
+The `?` returns `None` when no local has the name, and the compiler then
+tries a captured variable, and finally a global. Step through two nested
+blocks being compiled:
 
 <LocalsSteps client:visible />
 
@@ -195,18 +150,37 @@ local is called x, there is no slot, and x is looked for further
 out.</span>
 </Formal>
 
-<Prompts ids={['rl-local', 'rl-option-depth', 'rl-rev', 'rl-no-emit']} />
+<Examples of="rust-locals">
 
-## Hold the function, lose the compiler
+```drip
+let a = 1;
+{
+  let a = a + 1;
+}
+# line 3: cannot read 'a' in its own
+#   initialiser
+```
 
-The TypeScript `endScope` keeps the current function in a local and
-emits while it loops. Written that way in Rust, keeping
-`let state = self.state();` across a call to `self.emit_op(...)`, rustc
-1.97 refuses with E0499, "cannot borrow `*self` as mutable more than
-once at a time": `state` is a `&mut` into `self.functions`, used
-again after the call, and `emit_op` needs all of `self`. drip-rs reads
-the one fact it needs, pops, and lets `state` go before it emits (from
-`compiler.rs`, rewrapped, comments left out):
+</Examples>
+
+This surprises people. The inner `a` is declared, with depth `None`,
+before its initialiser is compiled, so the search from the end finds
+the unfinished inner `a` first, not the global, and drip-rs reports a
+compile error (exit 65) just as the TypeScript VM does; `let b = a + 1;`
+would work.
+
+Ending a scope pops the locals deeper than the scope, emitting `pop` or
+`close.upvalue` for each. The TypeScript `endScope` keeps the current
+function in a local and emits while it loops. In Rust, keeping
+`let state = self.state();` across `self.emit_op(...)` fails with
+E0499, `cannot borrow *self as mutable more than once at a time`:
+`state` is a `&mut` into `self.functions`, and `emit_op` needs all of
+`self`. So drip-rs reads the one fact it needs (`is_captured` of the
+last local), pops, lets `state` go, and only then emits.
+
+<More title="end_scope in full, and a duplicate declaration">
+
+From `compiler.rs` (rewrapped, comments left out):
 
 ```rust
 loop {
@@ -227,87 +201,24 @@ loop {
 }
 ```
 
-`declare_variable` has the same habit: it first computes
-`let duplicate = state.locals.iter().rev().take_while(..).any(..);`, a
-plain `bool`, and only then reports `'a' is already declared in this
-scope`.
-
-<Examples of="rust-locals">
-
-```drip
-{
-  let a = 1;
-  let a = 2;
-}
-# line 3: 'a' is already declared in
-#   this scope
-```
-
-```drip
-let a = 1;
-{
-  let a = a + 1;
-}
-# line 3: cannot read 'a' in its own
-#   initialiser
-```
+`declare_variable` has the same habit: it first computes a plain `bool`
+with `state.locals.iter().rev().take_while(..).any(..)`, and only then
+reports `line 3: 'a' is already declared in this scope` for two `let a`
+in one block. At run time none of this is left: `load.local` adds
+`self.slots` to its operand and reads the stack.
 
 <Run id="locals-run" />
 
-</Examples>
+</More>
 
-The first breaks a static rule: `declare_variable` finds an `a` at the
-same depth, and nothing runs (exit code 65); at the top level it would
-be fine, as a second `let` of a global replaces it. The second surprises
-people: the inner `a` is declared (depth `None`) before its initialiser
-is compiled, so `a + 1` finds the unfinished inner `a`, not the global;
-`let b = a + 1;` works. The third mixes globals and locals.
+<Prompts ids={['rl-local', 'rl-option-depth', 'rl-rev', 'rl-end-scope']} />
 
-<Prompts ids={['rl-end-scope', 'rl-declare']} />
+## A hole in the code, remembered as a number
 
-<Callout kind="engine" label="Under the hood">
-At run time none of this is left. `load.local` adds the frame's base,
-`self.slots`, to its operand and reads `self.stack` there: one addition
-and one indexed read. `load.global` hashes nothing (the `StrRef` brings
-its hash), but it still probes a table. The `Vec<Local>` is dropped with
-its `FunctionState` when the function is finished, so local names never
-reach the heap at all.
-</Callout>
-
-## Your turn
-
-<Exercise id="endScope" />
-
-<Exercise id="resolveLocal" />
-
-## What you learned
-
-- A **global** is an interned name in the constant pool and an entry in
-  the VM's `globals` table; `store.global` on a new name deletes it
-  again and reports `undefined variable`.
-- **Compile-time locals** are a `Vec<Local<'src>>`: the index is the
-  stack slot, the name borrows the source, and `depth: Option<usize>`
-  replaces TypeScript's `-1`.
-- `resolve_local` searches from the end and uses `?` to fall through to
-  captured variables and globals.
-- Don't hold `self.state()` across a call that needs `&mut self`: read
-  what you need into a local, finish with the borrow, then **emit or
-  report** (E0499 otherwise).
-
-
-{/* ── merge: from old chapter 142, Branches and loops in Rust ── */}
-
-## A blank in the middle of the code
-
-Here is the bytecode drip-rs makes for the loop
-`let i = 0; while i < 3 { print i; i += 1; }`, from `drip-rs
---disassemble` with the columns narrowed to fit (the TypeScript VM
-prints the same bytes):
+For `let i = 0; while i < 3 { print i; i += 1; }`, drip-rs emits (columns
+narrowed):
 
 ```text
-0006    2 load.global     2 'i'
-0009    | const           3 '3'
-0012    | lt
 0013    | jump.unless    13 -> 34
 0016    3 load.global     4 'i'
   ... the body ...
@@ -315,40 +226,12 @@ prints the same bytes):
 0034    | none
 ```
 
-The `jump.unless` at 13 says "if the condition is false, skip to 34";
-however, when the compiler writes that instruction, the body has not
-been compiled yet, so nobody knows that the loop ends at 34. The
-chapter *Backpatching: if, for, break and continue* solved this in
-TypeScript: write a placeholder, remember where it is, and fill it in
-later. drip-rs does the same; Rust changes two details, which are what
-the "remember where" note may be, and the order the patch works in.
-
-<Analogy title="a coat-check ticket">
-You hand your coat over and get a numbered ticket, so your hands are
-free all evening, and the number finds the coat when you come back.
-Holding the coat yourself would also "remember" it, but you could carry
-nothing else. A `usize` offset is the ticket; a `&mut` reference into
-the code would be holding the coat, and the borrow checker would not let
-the compiler touch the chunk again until it let go.
-<span slot="breaks">A cloakroom never moves your coat to a different
-hook; an offset into a `Vec` only stays right because the compiler
-always appends to the code and never removes bytes from the middle.</span>
-</Analogy>
-
-<Analogy extra title="“see page __” in a report">
-Writing a report, you type "the results are on page __" before the
-results exist, and fill in the number once you know it. The blank is as
-wide as the number will be, so filling it in never moves the rest of
-the page.
-<span slot="breaks">A page number can grow to three digits if it needs
-to; the blank in a jump is always two bytes, so a jump of more than
-65,535 bytes cannot be written at all, and drip-rs reports it as an
-error instead.</span>
-</Analogy>
-
-## Leaving the hole
-
-From `compiler.rs` (the signature rewrapped to fit):
+When the compiler writes the `jump.unless`, the body is not compiled
+yet, so nobody knows the loop ends at 34; *Jumps: branches, loops and
+backpatching* wrote a placeholder, remembered where, and filled it in
+later. drip-rs does the same, and Rust decides two details: what the
+"remember where" may be, and the order the patch works in (from
+`compiler.rs`, signatures rewrapped):
 
 ```rust
 fn emit_jump(&mut self, op: OpCode)
@@ -358,22 +241,7 @@ fn emit_jump(&mut self, op: OpCode)
     self.emit(0xff);
     self.chunk().code.len() - 2
 }
-```
 
-The first three lines write the opcode and two placeholder bytes. The
-last line is the function's value (no `return` needed, as *Functions
-and expressions* showed): the length minus two, which is the position
-of the first placeholder. TypeScript's `emitJump` returned a `number`;
-this returns a `usize`, Rust's type for positions in a `Vec`. The caller
-keeps it in a local (`let exit_jump = self.emit_jump(...)`), and a plain
-number borrows nothing, so the whole body can be compiled before the
-compiler comes back.
-
-<Prompts ids={['pj-returns', 'pj-number']} />
-
-## Filling it in
-
-```rust
 fn patch_jump(&mut self, offset: usize) {
     let jump = self.chunk().code.len()
         - offset - 2;
@@ -387,41 +255,22 @@ fn patch_jump(&mut self, offset: usize) {
 }
 ```
 
-Line by line: `jump` is the distance from the end of the operand
-(`offset + 2`, where the VM's `ip` will be) to the end of the code,
-where the next instruction will go. If it does not fit in a `u16`, it
-is a **static error** (one drip-rs prints only when there are no syntax
-errors; it is pushed onto a `Vec` and compiling carries on). Then `code` borrows the bytes
-once, for both writes: `(jump >> 8) as u8` is the high byte, and
-`jump as u8` keeps only the low 8 bits, which is what TypeScript's
-`& 0xff` did<Cite id="rustref-numeric-cast" />. The high byte goes first
-because the VM's `read_short`, from the chapter *The VM loop in Rust*,
-rebuilds the number as `(high << 8) | low`.
+`emit_jump` returns where its first placeholder byte is, as a `usize`.
+The caller keeps it in a local, and a number borrows nothing; a
+`&mut u8` into the code would lock the chunk until the patch, and the
+body could not be compiled. `patch_jump` measures from the end of the
+operand (`offset + 2`, where the VM's `ip` will stand) to the end of the
+code, reports a distance that does not fit in a `u16` as a static
+error, and writes it high byte first, since the VM's `read_short`
+rebuilds `(high << 8) | low`; `jump as u8` keeps the low 8 bits, as
+TypeScript's `& 0xff` did<Cite id="rustref-numeric-cast" />.
 
-The order of the middle lines matters. Here is the spot the difference:
-in a small copy of `patch_jump`, take `code` first and report
-afterwards, and rustc 1.97 refuses (trimmed):
-
-```text
-error[E0499]: cannot borrow `*self` as
-  mutable more than once at a time
-7  | let code = &mut self.chunk().code;
-   |                 ---- first borrow
-10 |     self.static_error("too much...");
-   |     ^^^^ second mutable borrow
-12 | code[offset] = (jump >> 8) as u8;
-   | ---- first borrow later used here
-```
-
-`code` reaches into `self` through `chunk()`, and `static_error` takes
-`&mut self` to push its message. Rust's rule from the chapter
-*Borrowing* (one `&mut` at a time) forbids both being alive at once, so
-drip-rs reports first, while nothing is borrowed, and only then takes
-hold of the code. It is the read-first habit from *A Pratt compiler in
-Rust, part 2*: finish everything that needs all of `self` before
-borrowing a piece of it.
-
-Step through the loop above being compiled:
+The order of the middle lines matters. Take `code` first and report
+afterwards, and rustc 1.97 refuses with E0499 again: `code` reaches into
+`self` through `chunk()`, and `static_error` needs `&mut self` to push
+its message. So drip-rs reports first, while nothing is borrowed, and
+only then takes hold of the code, the read-first habit of *A Pratt
+compiler in Rust*. Step through the loop being compiled:
 
 <JumpSteps client:visible />
 
@@ -433,6 +282,10 @@ works out the distance from the end of the operand to the end of the
 code, reports a static error if it does not fit in 16 bits, and only
 then borrows the code to write the two bytes, high byte first.
 </Callout>
+
+<Figure caption="Both jumps are measured from the byte after their operand, where the VM stands when it adds or subtracts." takeaway="Forward: len minus (at + 2). Backward: (len + 2) minus the start.">
+  <JumpMath />
+</Figure>
 
 <Formal title="Where a jump lands">
 
@@ -451,48 +304,7 @@ after the loop opcode; the VM stands two bytes further on, and
 subtracting the offset takes it back to the start.</span>
 </Formal>
 
-<Figure caption="Both jumps are measured from the byte after their operand, where the VM stands when it adds or subtracts." takeaway="Forward: len minus (at + 2). Backward: (len + 2) minus the start.">
-  <JumpMath />
-</Figure>
-
-<Prompts ids={['pj-minus-two', 'pj-as-u8', 'pj-order', 'pj-big-endian']} />
-
-## Loops, and the jumps that go back
-
-A loop's last jump goes backwards, to a place already compiled, so it
-needs no hole (rewrapped):
-
-```rust
-fn emit_loop(&mut self, loop_start: usize) {
-    self.emit_op(OpCode::Loop);
-    let offset = self.chunk().code.len()
-        - loop_start + 2;
-    if offset > u16::MAX as usize {
-        self.static_error(self.previous,
-            "loop body too large");
-    }
-    let line = self.previous.line;
-    self.emit_short_at(line, offset);
-}
-```
-
-The `+ 2` counts the two operand bytes not yet written: in the listing, `loop` is at 31, so after the opcode the length is 32, the
-offset is 32 − 6 + 2 = 28, and the VM, with `ip` at 34 after the operand,
-lands on 34 − 28 = 6. On the VM side each jump is a three-line arm of
-the `match` in `vm.rs`: `Jump` reads the offset with `read_short` and
-does `self.ip += offset`, `JumpUnless` does the same only if the value
-it pops is falsey (so neither path needs a `pop` afterwards), and
-`Loop` does `self.ip -= offset`. The variants that `&&` and `||` use,
-`jump.unless.keep` and `jump.if.keep`, only peek, because the value they
-jump with is the expression's answer.
-
 <Examples of="patch-jump">
-
-```rust
-// a jump over nothing at all
-let at = c.emit_jump(OpCode::Jump);
-c.patch_jump(at); // operand 00 00
-```
 
 ```text
 if x > 3 { ... } else { ... }
@@ -502,61 +314,55 @@ if x > 3 { ... } else { ... }
 0023    5 const           5 'small'
 ```
 
-```rust
-// break, in while_statement
-let lp = self.state().loops.pop()
-    .expect("a loop");
-for b in lp.breaks {
-    self.patch_jump(b);
-}
-```
-
 </Examples>
 
-The first is the smallest case: patched at once, the distance is
-`len − (at + 2) = 0`, so it lands on the very next instruction. The
-second, an `if` with an `else`, has two holes open at once: the
-`jump.unless` at 13 is patched (to 23) when the `else` is reached, and
-the `jump` at 20, which skips the else-branch, after it (to 27). The
-third is `break`: each one emits a `jump` and pushes its `usize` onto
-the loop's `breaks`, and `while_statement` patches them all once the
-loop is finished. A `continue`
-in a `while` needs no hole, since it jumps back with `emit_loop`; the
-loop records that as `continue_target: Some(loop_start)`. In a `for`,
-`continue` must skip forwards past the body, so the target is `None`
-there and its jumps go on a `continues` list instead, an `Option` doing
-the job TypeScript gave to `-1`.
+An `if` with an `else` has two holes open at once. The `jump.unless`
+whose operand is at 14 is patched when the `else` is reached, with the
+code 23 bytes long: 23 − 14 − 2 = 7, stored as `00 07`, and the VM,
+standing at 16, lands on 23. The `jump` at 20, which skips the
+else-branch, is patched after it, to 27.
 
-Try it: here is a `for`, a `while`, a `break` and a `continue` in one
-program.
+<More title="Loops, break and continue">
+
+A loop's last jump goes back to code already compiled, so it needs no
+hole: `emit_loop(loop_start)` emits `loop`, then the offset
+`code.len() - loop_start + 2`, where the `+ 2` counts its own operand,
+not yet written. In the listing, after the `loop` opcode at 31 the
+length is 32, so the offset is 32 − 6 + 2 = 28, and the VM, at 34 after
+the operand, lands on 34 − 28 = 6. Each `break` emits a `jump` and pushes
+its `usize` onto the loop's `breaks`, patched once the loop is done. A
+`continue` in a `while` jumps back with `emit_loop`
+(`continue_target: Some(loop_start)`); in a `for` it must skip forwards
+past the body, so the target is `None` and its jumps wait on a list, an
+`Option` doing the job TypeScript gave to `-1`. In the VM, `Loop` does
+`self.ip -= offset`, `usize` arithmetic: a bad offset would panic in a
+debug build and wrap in a release build<Cite id="rustref-int-overflow" />,
+and the next read, `self.chunk.code[self.ip]`, is bounds-checked either
+way, so a compiler bug is a clean panic, not nonsense output.
 
 <Run id="primes" />
 
-<Prompts ids={['pj-loop-plus', 'pj-continue-target']} />
+</More>
 
-<Callout kind="engine" label="Under the hood">
-`self.ip -= offset` is `usize` arithmetic: if a bad offset took `ip`
-below zero, a debug build would panic on the overflow and a release
-build would wrap around to a huge number<Cite id="rustref-int-overflow" />.
-Neither reads the wrong memory, because the next byte is read with
-`self.chunk.code[self.ip]`, and indexing a `Vec` out of bounds panics;
-a compiler bug shows up as a clean panic, not as nonsense output.
-</Callout>
+<Prompts ids={['pj-number', 'pj-minus-two', 'pj-order', 'pj-big-endian']} />
 
 ## Your turn
 
 <Exercise id="patchJump" />
 
+<Exercise id="endScope" />
+
+<Exercise id="resolveLocal" />
+
 <Exercise id="emitLoop" />
 
 ## What you learned
 
-- **`emit_jump`** writes the opcode and `0xff 0xff` and returns the
-  operand's position as a `usize`, a number that borrows nothing.
-- **`patch_jump`** works out `len − offset − 2`, checks it fits in a
-  `u16`, and writes it high byte first with `as u8`.
-- **Report before you borrow**: `static_error` needs all of `self`.
-- **`emit_loop`** adds 2 for its own operand; `break` jumps wait in a
-  `Vec<usize>` until the loop ends.
+- **Compile-time locals** are a `Vec<Local<'src>>`: index as slot, name
+  borrowed from the source, `depth: Option<usize>` for TypeScript's `-1`.
+- **Backpatching** keeps a hole's position as a `usize`, and
+  `patch_jump` reports before it borrows the code.
+
+Next: *Call frames and upvalues in Rust*.
 
 <Quiz />

@@ -7,32 +7,12 @@ export const prompts = {
     q: 'What three fields does drip-rs’s `ObjInstance` have?',
     a: '`class: Gc<ObjClass>`, a handle to its class; `fields: Table`, its field table; and `field_order: Vec<StrRef>`, the field names in the order they were first set.',
   },
-  'ri-class-word': {
-    q: 'Why is the TypeScript field `klass` but the drip-rs field `class`?',
-    a: '`class` is a reserved word in JavaScript but not a keyword in Rust.',
-  },
   'ri-table': {
-    q: 'Why does looking up a field never visit the string arena?',
+    q: 'In drip-rs, why does looking up an instance’s field never visit the string arena?',
     a: 'Field names are `StrRef`s, interned handles that carry their hash, so the table can hash and compare keys without the characters.',
   },
-  'ri-alloc-safe': {
-    q: 'In `new_instance`, why can drip-rs allocate the instance before putting it anywhere?',
-    a: 'The instance’s only reference is its class, which is still on the stack (under the arguments), so a collection during `alloc` keeps the class alive.',
-  },
-  'ri-slot': {
-    q: 'Where does a new instance go once it is allocated?',
-    a: 'Into the class’s stack slot, with `set_peek(arg_count, Value::Instance(instance))`. An `init` finds it there as `self`, in slot 0.',
-  },
-  'ri-copy': {
-    q: 'Why can `get.prop` call `self.set_peek(0, value)` right after `self.heap[instance].fields.get(name)`?',
-    a: '`get` returns `Option<Value>`, a copy, so the shared borrow of the heap has already ended.',
-  },
-  'ri-shadow': {
-    q: 'An instance has a field and its class a method, both named `go`. What does `obj.go` give?',
-    a: 'The field: `get.prop` (and `invoke`) check the fields first and only fall back to the class’s methods.',
-  },
   'ri-e0499': {
-    q: 'Why is a one-liner like `self.heap[i].fields.set(self.read_string(), v)` rejected?',
+    q: 'In a Rust VM where `read_string` takes `&mut self`, why is a one-liner like `self.heap[i].fields.set(self.read_string(), v)` rejected?',
     a: 'The table is borrowed mutably as the receiver, then the argument needs `&mut self` to move `ip` on: E0499. Read the name into a local first.',
   },
   'bm-fields': {
@@ -40,64 +20,20 @@ export const prompts = {
     a: '`receiver: Value` and `method: Gc<ObjClosure>`.',
   },
   'bm-receiver-root': {
-    q: 'Why does the `get.prop` arm overwrite the receiver with the bound method only after allocating it?',
+    q: 'Why does drip-rs’s `get.prop` arm overwrite the receiver on the stack with the bound method only after allocating it?',
     a: '`alloc` may start a collection. While the receiver is on the stack it is a root, so it cannot be freed before the bound method holds it.',
   },
-  'bm-as-closure': {
-    q: 'What does `as_closure(method)` do in the `get.prop` arm, and what did TypeScript write instead?',
-    a: 'It opens the `Value::Closure` from the methods table with a `match`, and calls `unreachable!` for anything else. TypeScript wrote the unchecked cast `method as ObjClosure`.',
-  },
   'bm-destructure': {
-    q: 'Why does `let ObjBoundMethod { receiver, method } = self.heap[bound];` compile when `let b = self.heap[bound];` does not?',
+    q: 'In drip-rs, why does `let ObjBoundMethod { receiver, method } = self.heap[bound];` compile when `let b = self.heap[bound];` does not?',
     a: 'Indexing gives a place. The pattern copies each field, which is fine because `Value` and `Gc` are `Copy`. Binding the whole struct would move it out of the arena: E0507.',
-  },
-  'bm-slot0': {
-    q: 'What does calling a bound method do with its receiver?',
-    a: 'Writes it over the callee’s stack slot with `set_peek(arg_count, receiver)`. That slot becomes the method’s slot 0, which is where `self` lives.',
-  },
-  'init-string': {
-    q: 'Where does the VM’s `init_string` come from, and why must the collector know about it?',
-    a: 'It is `"init"`, interned once in `Vm::new`. It is in `VmRoots`, because a string nothing marks would be freed, and the lookups of `init` would break.',
-  },
-  'init-match': {
-    q: '`new C(args)`: what are the three arms of the `match` on `methods.get(self.init_string)`?',
-    a: '`Some(init)`: call it. `None if arg_count != 0`: “C has no init, so it takes no arguments, but got N”. `None`: done, the instance is the result.',
-  },
-  'init-kind': {
-    q: 'How does drip-rs make every return from `init` produce the instance?',
-    a: '`method()` gives `init` the kind `FunctionKind::Initializer`, and `emit_return` then emits `load.local 0` instead of `none` before `return`.',
   },
   'cd-what': {
     q: 'What does drip-rs’s `inherit` instruction do to the subclass?',
     a: 'Copies every entry of the superclass’s methods table into the subclass’s methods table, then pops the subclass.',
   },
   'cd-order': {
-    q: 'Why does an overriding method win over the copied one?',
+    q: 'In copy-down inheritance as drip-rs compiles it, why does a subclass’s overriding method win over the copied one?',
     a: '`inherit` runs before the subclass’s own `method` instructions, so the subclass’s method overwrites the copied entry.',
-  },
-  'cd-e0502': {
-    q: 'Why can’t drip-rs write `self.heap[sub].methods.add_all(&self.heap[sup].methods)`?',
-    a: 'Both index expressions borrow the whole heap. A mutable borrow while a shared one is alive is E0502; the compiler cannot know the two handles differ.',
-  },
-  'cd-clone': {
-    q: 'How does drip-rs’s `Inherit` arm get around that borrow conflict?',
-    a: 'It clones the superclass’s `Table` into a local first, so the shared borrow ends at the semicolon, then calls `add_all(&methods)` on the subclass.',
-  },
-  'cd-check': {
-    q: 'What does `Inherit` check at run time, and how does it treat the subclass?',
-    a: 'That `peek(1)` is a `Value::Class`, else the runtime error “a class can only extend a class, not …”. The subclass is opened with `as_class`, which is `unreachable!` for anything else, because the compiler put it there.',
-  },
-  'cd-no-gc': {
-    q: 'Why can’t the `clone()` in `Inherit` start a garbage collection?',
-    a: 'It allocates ordinary Rust memory (a count and two `Vec`s), not a Drip object, so it never goes through `Heap::alloc`.',
-  },
-  'sup-classes': {
-    q: 'How does drip-rs’s compiler track the class it is inside, and what did the TypeScript compiler use?',
-    a: 'A `Vec<ClassState>` used as a stack, each with `has_superclass`. TypeScript linked `{ enclosing, hasSuperclass }` records and held the current one in `cc`.',
-  },
-  'sup-static': {
-    q: 'Why can `add_local("super", ...)` pass a string literal where a `&\'src str` is expected?',
-    a: 'A literal is a `&\'static str`, and `\'static` lives at least as long as `\'src`, so it is accepted.',
   },
 };
 
@@ -158,6 +94,7 @@ print r;`,
 
 export const exercises = {
   properties: {
+    optional: true,
     lang: 'rust',
     title: 'get.prop and set.prop',
     prompt: `This VM has drip-rs's shape in small: values hold handles, \`heap\` is the instance arena, and each \`Instance\` owns a field table (a \`HashMap\` here, drip-rs's \`Table\` there) and \`order\`, the names in the order they were first set. Write the two property instructions:
@@ -1654,6 +1591,7 @@ impl Vm {
     ],
   },
   inherit: {
+    optional: true,
     lang: 'rust',
     title: 'The inherit instruction',
     prompt: `Write \`inherit\`, this small VM's version of drip-rs's \`inherit\` instruction. The classes live in one \`Vec\`, as drip-rs's live in one arena, and a \`Value::Class\` holds an index into it.
@@ -2077,50 +2015,6 @@ impl Vm {
 
 export const quiz = [
   {
-    q: 'What does `print p;` show after `p.x = 3; p.y = 4; p.x = 5;` on a new `Point`?',
-    options: [
-      {
-        t: '`Point { x: 5, y: 4 }`',
-        correct: true,
-        why: 'Overwriting `x` does not add it to `field_order` again, so it keeps its first place.',
-      },
-      {
-        t: '`Point { y: 4, x: 5 }`',
-        why: 'That would mean the last write decides the order; `field_order` records the first.',
-      },
-      {
-        t: '`Point instance`',
-        why: 'Drip prints an instance with its fields.',
-      },
-      {
-        t: 'The fields in hash-table order',
-        why: 'That is what `field_order` exists to avoid.',
-      },
-    ],
-  },
-  {
-    q: 'In `new_instance`, why is it safe to call `self.alloc(ObjInstance { class, .. })` before the instance is on the stack?',
-    options: [
-      {
-        t: 'Allocating never collects',
-        why: '`Vm::alloc` may collect first.',
-      },
-      {
-        t: 'Instances are never collected',
-        why: 'They are, once nothing reaches them.',
-      },
-      {
-        t: 'The instance’s only reference, the class, is still on the stack, so a collection keeps it; the new instance itself refers to nothing else yet',
-        correct: true,
-        why: 'That is the rule from the collector chapter: what a new object refers to must already be reachable.',
-      },
-      {
-        t: 'The class is a global',
-        why: 'It may well be a local class; the reason is that it is on the stack.',
-      },
-    ],
-  },
-  {
     q: 'An instance has a field `go` and its class a method `go`. What does `obj.go` give?',
     options: [
       {
@@ -2139,72 +2033,6 @@ export const quiz = [
         t: 'The field’s value',
         correct: true,
         why: '`get.prop` looks in the fields first; fields shadow methods.',
-      },
-    ],
-  },
-  {
-    q: 'Why does drip-rs’s `set.prop` arm read the name and the value into locals before `let object = &mut self.heap[instance];`?',
-    options: [
-      {
-        t: 'To make the arm faster',
-        why: 'The reason is borrowing, not speed.',
-      },
-      {
-        t: 'Reading the name needs `&mut self` (it moves `ip` on), which cannot happen while the instance is mutably borrowed',
-        correct: true,
-        why: 'Done the other way round, as one expression, it is error E0499.',
-      },
-      {
-        t: 'Because `Table::set` takes ownership of its arguments',
-        why: '`StrRef` and `Value` are `Copy`; ownership is not the issue.',
-      },
-      {
-        t: 'The TypeScript VM does it the same way, so the port copies it',
-        why: 'The TypeScript arm can read operands in the middle of the call; Rust forbids that here.',
-      },
-    ],
-  },
-  {
-    q: 'What does `n.x = 2;` report when `n` is the number 1?',
-    options: [
-      {
-        t: '`undefined variable \'x\'`',
-        why: 'That is for globals, not properties.',
-      },
-      {
-        t: '`cannot set \'x\' on a number`',
-        correct: true,
-        why: '`set.prop` checks `peek(1)` first, and only instances have properties.',
-      },
-      {
-        t: '`Number has no property \'x\'`',
-        why: 'That form names a class, which a number does not have.',
-      },
-      {
-        t: 'Nothing: the assignment is ignored',
-        why: 'Drip never ignores a failed assignment; it is a runtime error, exit code 70.',
-      },
-    ],
-  },
-  {
-    q: 'What does `let t = c.taste;` compile to, and what does it allocate?',
-    options: [
-      {
-        t: '`invoke`, and nothing',
-        why: '`invoke` is for `c.taste()`, a call straight away.',
-      },
-      {
-        t: '`get.prop`, which allocates an `ObjBoundMethod` holding `c` and the `taste` closure',
-        correct: true,
-        why: '`c` has no field `taste`, so the arm finds the method and binds it.',
-      },
-      {
-        t: '`get.prop`, which copies the closure into `t`',
-        why: 'The closure alone would lose `c`; a bound method carries both.',
-      },
-      {
-        t: '`load.global`, and a new closure',
-        why: 'Reading a property is `get.prop`; closures are only made by `closure`.',
       },
     ],
   },
@@ -2253,108 +2081,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `new Mug(1)` report when `Mug` has no `init`?',
-    options: [
-      {
-        t: '`Mug() takes 0 arguments but got 1`',
-        why: 'That form is for functions; a class without `init` has its own message.',
-      },
-      {
-        t: '`cannot call a class: use \'new Mug(...)\'`',
-        why: 'That is for calling a class without `new`.',
-      },
-      {
-        t: 'Nothing: the argument is ignored',
-        why: 'Drip reports it; arguments are never silently dropped.',
-      },
-      {
-        t: '`Mug has no init, so it takes no arguments, but got 1`',
-        correct: true,
-        why: 'The `None if arg_count != 0` arm of `new_instance`.',
-      },
-    ],
-  },
-  {
-    q: 'How does drip-rs make `new` always produce the instance, even when `init` ends with a bare `return;`?',
-    options: [
-      {
-        t: 'The VM throws away whatever `init` returns',
-        why: 'The VM does no such thing; the compiler makes `init` return the right value.',
-      },
-      {
-        t: '`FunctionKind::Initializer` makes `emit_return` emit `load.local 0` before `return`, and slot 0 holds the instance',
-        correct: true,
-        why: 'And `return value;` in `init` is the static error `\'init\' cannot return a value`.',
-      },
-      {
-        t: '`init` is a native function',
-        why: 'It is an ordinary method compiled from Drip.',
-      },
-      {
-        t: 'The instance is pushed again after the call',
-        why: 'The call’s result replaces the callee’s slot; it is the instance because `init` returns slot 0.',
-      },
-    ],
-  },
-  {
-    q: 'When does drip-rs copy a superclass’s methods into a subclass?',
-    options: [
-      {
-        t: 'On every method lookup that misses in the subclass',
-        why: 'That is walking the chain, which copy-down avoids.',
-      },
-      {
-        t: 'Lazily, the first time a method is called',
-        why: 'There is no cache to fill. The copy is complete before the class body runs.',
-      },
-      {
-        t: 'Once, in `inherit`, when the class is declared',
-        correct: true,
-        why: 'Before the subclass’s own `method` instructions.',
-      },
-      {
-        t: 'During garbage collection',
-        why: 'The collector only marks and frees.',
-      },
-    ],
-  },
-  {
-    q: 'What does rustc 1.97 report for `h[sub].methods.extend(from)` while `let from = &h[sup].methods;` is still in use?',
-    options: [
-      {
-        t: 'E0502: a mutable borrow of `*h` while it is also borrowed as immutable',
-        correct: true,
-        why: 'Both index expressions borrow the whole heap.',
-      },
-      {
-        t: 'Nothing: different handles are different borrows',
-        why: 'The borrow checker does not know handle values; it sees two borrows of `h`.',
-      },
-      {
-        t: 'A runtime panic when `sub == sup`',
-        why: 'It never gets to run. The error is at compile time.',
-      },
-    ],
-  },
-  {
-    q: 'Why is the `clone()` in the `Inherit` arm safe with respect to the garbage collector?',
-    options: [
-      {
-        t: 'The collector is paused during inheritance',
-        why: 'There is no pause flag. Nothing here could start a collection.',
-      },
-      {
-        t: 'The copied table is registered as a root',
-        why: 'It is never registered, and it does not need to be.',
-      },
-      {
-        t: 'It allocates Rust memory, not a Drip object, so `Heap::alloc` never runs',
-        correct: true,
-        why: 'Collections only start inside the VM’s own allocation calls.',
-      },
-    ],
-  },
-  {
     q: '`class B extends A` overrides `hi`. Why does `new B().hi()` call B’s version?',
     options: [
       {
@@ -2369,24 +2095,6 @@ export const quiz = [
         t: 'B’s `method` instruction for `hi` runs after `inherit` and overwrites the copied entry',
         correct: true,
         why: 'Order is the whole mechanism.',
-      },
-    ],
-  },
-  {
-    q: 'drip-rs’s compiler sets the flag with `self.classes.last_mut().expect("a class").has_superclass = true;`. Why not keep a `&mut ClassState` from the start, as TypeScript keeps `cc`?',
-    options: [
-      {
-        t: '`Vec` has no `last_mut`',
-        why: 'It does; that is what the line uses.',
-      },
-      {
-        t: 'A `&mut` into `self.classes` could not live across the calls in between, which need `&mut self`',
-        correct: true,
-        why: 'Holding it would make every `self.emit…` call a second mutable borrow of `self`.',
-      },
-      {
-        t: '`ClassState` is `Copy`',
-        why: 'It is not, and copying it would not update the stack.',
       },
     ],
   },

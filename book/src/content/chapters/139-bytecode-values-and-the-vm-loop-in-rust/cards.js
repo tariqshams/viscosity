@@ -7,109 +7,33 @@ export const prompts = {
     q: 'What does `#[repr(u8)]` on an enum without data guarantee?',
     a: 'The enum has the size and alignment of a `u8`, and its discriminants are `u8`s: each value is stored as its byte.',
   },
-  'implicit-numbers': {
-    q: 'Nothing in `enum OpCode { Const, None, ... }` says `None = 1`. Where does the 1 come from?',
-    a: 'Implicit discriminants: the first variant is 0 and each next one is one more, in the order written.',
-  },
-  'encode-free': {
-    q: 'How does drip-rs’s compiler turn an `OpCode` into a byte?',
-    a: '`op as u8`, a numeric cast of the discriminant. With `#[repr(u8)]` it is the stored byte itself.',
-  },
   'no-cast': {
     q: 'Why doesn’t `byte as OpCode` compile?',
     a: '`as` only converts between primitive types (E0605). And most bytes, 53 to 255, are not opcodes at all.',
   },
-  'all-table': {
-    q: 'How does `OpCode::from_byte` decode a byte without `unsafe`?',
-    a: 'It indexes a table of every opcode in encoding order: `OpCode::ALL.get(byte as usize).copied()`, which is `None` for bytes past the end.',
-  },
-  'option-one-byte': {
-    q: 'Why is `Option<OpCode>` still 1 byte?',
-    a: 'Byte values 53 to 255 are never a valid `OpCode`, so rustc uses one of those spare values for `None`.',
-  },
-  'name-debug': {
-    q: 'Where do disassembler names like `jump.unless.keep` come from in drip-rs?',
-    a: 'From the derived `Debug` name, `JumpUnlessKeep`: `name()` puts a dot before each capital after the first and lowercases every letter.',
-  },
-  'disasm-heap': {
-    q: 'Why does drip-rs’s `disassemble_instruction` take a `&Heap` when the TypeScript one doesn’t?',
-    a: 'String and function constants are handles into the heap, so printing them needs the heap to look them up.',
-  },
-  'jump-usize': {
-    q: 'How does drip-rs’s disassembler work out where a `loop` instruction at `offset` lands, and why that way?',
-    a: '`offset + 3 - jump`: it subtracts, because offsets are `usize` and can’t hold a negative distance.',
-  },
-  've-what': {
-    q: 'In drip-rs, what Rust type stands for “any Drip value”?',
-    a: 'An enum, `Value`, with one variant per kind: `None`, `Bool(bool)`, `Number(f64)`, `String(StrRef)`, and one handle variant per object type (eleven variants in all).',
-  },
   've-copy': {
-    q: 'Why can `Value` derive `Copy`?',
+    q: 'Why can drip-rs’s `Value` enum, whose heap objects are `Gc` handles, derive `Copy`?',
     a: 'Every payload is `Copy`: bool, f64, and handles (small indexes). No variant owns heap memory.',
   },
   've-handles': {
-    q: 'What would go wrong if `Value` had a `String(String)` variant?',
+    q: 'What would go wrong if drip-rs’s `Copy` enum `Value` had a `String(String)` variant?',
     a: 'The value would own its text, so it couldn’t be `Copy`. Copying a value onto the stack would mean cloning the text, or sharing it through `Rc`.',
   },
   've-size': {
-    q: 'Where does rustc put the `f64` of `Value::Number`, and why there?',
+    q: 'In drip-rs’s 16-byte `Value` enum as laid out by rustc 1.97 on x86-64, where does the `f64` of `Value::Number` sit, and why there?',
     a: 'At bytes 8 to 15, after the 1-byte tag and 7 bytes of padding: an `f64` must start at a multiple of 8.',
   },
-  've-option': {
-    q: 'In rustc’s layout report, why does `Option<Value>` have no discriminant of its own?',
-    a: '`None` is stored as one of the tag values `Value`’s eleven variants don’t use, so `Some(v)` is just `v`.',
-  },
-  've-hash-free': {
-    q: 'Which bytes of a `Value::String` hold the string’s hash, and why is that free?',
-    a: 'Bytes 8 to 11 (the handle is at 4 to 7). `Number` already needs bytes 8 to 15, so every `Value` has them anyway.',
-  },
-  've-nan-eq': {
-    q: 'With `#[derive(PartialEq)]` on `Value`, is `Number(NaN) == Number(NaN)`?',
-    a: 'No. f64 equality follows IEEE 754, so NaN is unequal to itself, as with JavaScript’s `===`.',
-  },
-  've-format-heap': {
-    q: 'Why does printing a `Value` need a `&Heap`?',
-    a: 'A string or object value holds only a handle (an index). The text and names it prints live in the heap.',
-  },
-  've-digits': {
-    q: 'Rust prints 1e21 as `1000000000000000000000`, JavaScript as `1e+21`. What do the two agree on?',
-    a: 'The digits: both use the shortest digits that read back as the same double. Only the layout differs.',
-  },
-  've-layout': {
-    q: 'For which magnitudes does JavaScript print plain decimals instead of exponent notation?',
-    a: 'From 1e-6 up to (but not including) 1e21. Outside that range it writes `d.ddde±x`.',
-  },
-  'md-what': {
-    q: 'What are the two steps of each turn of drip-rs’s dispatch loop, after reading a byte?',
-    a: 'Decode the byte into an `OpCode` with `from_byte`, then `match` on the opcode and run its arm.',
-  },
   'md-exhaustive': {
-    q: 'You add a variant to `OpCode` but forget its arm in `run`. What happens?',
+    q: 'In a Rust VM whose dispatch loop matches on an opcode enum with no wildcard arm, you add a variant to the enum but forget its arm. What happens?',
     a: 'The VM doesn’t compile: E0004, non-exhaustive patterns. A match over an enum must cover every variant.',
   },
-  'md-decode': {
-    q: 'With an exhaustive match, where can an unknown opcode still slip in?',
-    a: 'Only when decoding: `OpCode::from_byte` returns `None` for a byte no opcode has. drip-rs `expect`s it, trusting its compiler.',
-  },
   'md-result': {
-    q: 'The TypeScript VM throws on a runtime error. What does drip-rs’s `run` do instead?',
+    q: 'The TypeScript Drip VM throws on a runtime error. What does drip-rs’s `run` do instead?',
     a: 'It returns `Err(RuntimeError)`. Arms that can fail use `?`, so the error leaves `run` at once.',
   },
   'md-borrow': {
-    q: 'Why can’t `run` start with `let code = &self.code;` and keep using it?',
+    q: 'In a Rust VM, why can `run(&mut self)` not keep `let code = &self.code;` alive across a loop that calls `self.push(..)`?',
     a: '`self.push` needs `&mut self`, which would overlap the shared borrow of `self.code` (E0502).',
-  },
-  'md-rc': {
-    q: 'Why is the running chunk an `Rc<Chunk>`, not a `&Chunk`?',
-    a: 'Its function in the heap owns it too. A reference would keep the heap borrowed, and the arena could move; an `Rc` clone is one more owner, and the frozen chunk needs no `RefCell`.',
-  },
-  'md-sync': {
-    q: 'drip-rs keeps `ip`, `chunk` and `slots` in the `Vm` as registers. When must they be synced with the frame?',
-    a: 'On a call (save the caller’s `ip`, load the callee’s state) and on a return (load the caller’s state back).',
-  },
-  'md-measure': {
-    q: 'Why does the cost of reaching the next byte matter so much in a bytecode VM?',
-    a: 'Every instruction starts by reading a byte, so that cost is paid on every turn of the loop.',
   },
 };
 
@@ -316,6 +240,7 @@ fn main() {
 
 export const exercises = {
   opcodeRoundTrip: {
+    optional: true,
     lang: 'rust',
     title: 'Encode, decode, name',
     prompt: 'Here are five opcodes, numbered by `#[repr(u8)]` in the order written. Add a constant `ALL` holding every opcode in encoding order, then write `encode` (the opcode’s byte), `decode` (the opcode for a byte, or `None`), and `name`, which turns `LoadLocal` into `load.local` and `JumpUnlessKeep` into `jump.unless.keep`, like both disassemblers.',
@@ -711,6 +636,7 @@ fn target(
     ],
   },
   value: {
+    optional: true,
     lang: 'rust',
     title: 'Your own Value',
     prompt: 'Write a cut-down drip-rs `Value`: an enum with the variants `None`, `Bool(bool)`, `Number(f64)` and `Str(StrRef)`, where `StrRef` (given) is a string\'s handle and hash. It must be **Copy**, comparable with `==`, and printable with `{:?}` (the tests use all three). Then write `is_falsey`: Drip\'s rule is that only `none` and `false` are falsey. One test checks that your `Value` is 16 bytes.',
@@ -1699,28 +1625,6 @@ fn run(code: &[Op])
 
 export const quiz = [
   {
-    q: 'In `#[repr(u8)] enum OpCode { Const, None, True, ... }`, what is `OpCode::True as u8`?',
-    options: [
-      {
-        t: '1',
-        why: 'That is `None`. Counting starts at 0.',
-      },
-      {
-        t: '2',
-        correct: true,
-        why: 'Implicit discriminants count from 0 in declaration order.',
-      },
-      {
-        t: 'It depends on the compiler',
-        why: 'The numbering of implicit discriminants is defined by the language.',
-      },
-      {
-        t: 'It doesn’t compile',
-        why: 'Casting a fieldless enum to an integer is allowed.',
-      },
-    ],
-  },
-  {
     q: 'Why does drip-rs decode bytes with `OpCode::ALL.get(b as usize).copied()` instead of `b as OpCode`?',
     options: [
       {
@@ -1735,64 +1639,6 @@ export const quiz = [
         t: 'Integers can’t be cast to enums, and most bytes are not opcodes; the table gives `None` for those without `unsafe`',
         correct: true,
         why: 'Reinterpreting the byte would need `unsafe`, which `#![forbid(unsafe_code)]` rules out.',
-      },
-    ],
-  },
-  {
-    q: 'What is `size_of::<Option<OpCode>>()`?',
-    options: [
-      {
-        t: '1',
-        correct: true,
-        why: 'Measured with rustc 1.97: a spare byte value (53 to 255) stands for `None`.',
-      },
-      {
-        t: '2: one byte for the tag, one for the opcode',
-        why: 'That would be needed if every byte were a valid `OpCode`.',
-      },
-      {
-        t: '8',
-        why: 'Nothing here is a pointer.',
-      },
-    ],
-  },
-  {
-    q: 'Someone adds a new opcode in the middle of the enum but forgets `ALL`. What catches it?',
-    options: [
-      {
-        t: 'Nothing; the VM silently runs the wrong instruction',
-        why: 'Something does catch it, before any program runs.',
-      },
-      {
-        t: 'The compiler: `ALL` now has the wrong length',
-        why: '`ALL` is declared `[OpCode; 53]` and still holds 53 entries, so it compiles.',
-      },
-      {
-        t: 'The borrow checker',
-        why: 'No borrowing is involved.',
-      },
-      {
-        t: '`cargo test`: the unit test checks `*op as usize == i` for every entry of `ALL`',
-        correct: true,
-        why: 'Every opcode after the new one now has a discriminant one higher than its place in the table.',
-      },
-    ],
-  },
-  {
-    q: 'Why does drip-rs’s disassembler need the heap?',
-    options: [
-      {
-        t: 'To allocate the strings it returns',
-        why: 'Its output is ordinary `String`s, not heap objects.',
-      },
-      {
-        t: 'To run the garbage collector first',
-        why: 'Disassembling never collects.',
-      },
-      {
-        t: 'Because a string constant is a handle, and only the heap can turn it into text',
-        correct: true,
-        why: 'Constants are `Value`s; a `Value::String` holds a handle, not the characters.',
       },
     ],
   },
@@ -1815,116 +1661,6 @@ export const quiz = [
       {
         t: 'To make `Value` smaller than 8 bytes',
         why: '`Value` is 16 bytes either way, because of the `f64`.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these explains the 16 bytes of a drip-rs `Value` on x86-64?',
-    options: [
-      {
-        t: 'Eleven variants need 16 bytes of tag',
-        why: 'Eleven variants fit in a one-byte tag.',
-      },
-      {
-        t: 'Every Rust enum is 16 bytes',
-        why: 'Sizes depend on the payloads. A copy of `Value` without `Number` measures 12 bytes.',
-      },
-      {
-        t: 'The `StrRef` hash makes it 16',
-        why: 'Without the hash, `Number` still needs 16. The hash fits in space that was already there.',
-      },
-      {
-        t: 'An 8-byte `f64` plus a tag, rounded up to the `f64`’s 8-byte alignment',
-        correct: true,
-        why: '1 + 8 = 9 bytes, and a size must be a multiple of the alignment, so 16.',
-      },
-    ],
-  },
-  {
-    q: 'What does `format!("{}", 1e21)` produce in Rust?',
-    options: [
-      {
-        t: '`1e+21`',
-        why: 'That’s JavaScript. Rust’s `{}` never uses an exponent.',
-      },
-      {
-        t: '`1e21`',
-        why: 'That’s what `{:e}` or `{:?}` print.',
-      },
-      {
-        t: '`1000000000000000000000`',
-        correct: true,
-        why: 'Rust’s `Display` for floats writes plain digits. That’s why drip-rs needs its own `format_number`.',
-      },
-      {
-        t: '`inf`',
-        why: '1e21 is well within the range of an f64.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `value.format(&heap)` take the heap?',
-    options: [
-      {
-        t: 'Printing allocates a new string in the heap',
-        why: 'Printing only reads. It never allocates Drip objects.',
-      },
-      {
-        t: 'A string value holds only an index, and the text is in the heap',
-        correct: true,
-        why: 'The handle says which slot to read; the heap is where the slot is.',
-      },
-      {
-        t: 'The heap holds the number formatting rules',
-        why: 'Number formatting is a plain function, `format_number`.',
-      },
-      {
-        t: 'To run the garbage collector before printing',
-        why: 'Formatting a value never collects.',
-      },
-    ],
-  },
-  {
-    q: 'In drip-rs, `Value` derives `PartialEq`. Which of these is `true`?',
-    options: [
-      {
-        t: '`Number(NaN) == Number(NaN)`',
-        why: 'f64 equality follows IEEE 754: NaN is unequal to everything, itself included.',
-      },
-      {
-        t: '`None == Bool(false)`',
-        why: 'Different variants are never equal, even though both are falsey.',
-      },
-      {
-        t: 'Two string values with the same text',
-        correct: true,
-        why: 'Handles compare by index, and interning gives equal text one handle, so equal strings are equal values.',
-      },
-      {
-        t: '`Number(0.0) == Number(-0.0)` is false',
-        why: 'IEEE 754 says 0 and -0 are equal, as JavaScript’s `===` does.',
-      },
-    ],
-  },
-  {
-    q: 'What replaces the TypeScript switch’s `default: throw` case in drip-rs?',
-    options: [
-      {
-        t: 'A `_ =>` arm that panics',
-        why: 'drip-rs has no `_` arm in `run`: it would turn off the exhaustiveness check.',
-      },
-      {
-        t: 'Nothing: the match covers all 53 variants, and only `from_byte` can meet an unknown byte',
-        correct: true,
-        why: 'The compiler checks every opcode has an arm. Decoding returns `None` for a bad byte, and drip-rs `expect`s a valid one.',
-      },
-      {
-        t: 'A runtime check before every instruction',
-        why: 'There’s no extra check: decoding is the only place a bad byte shows up.',
-      },
-      {
-        t: 'The disassembler',
-        why: 'The disassembler prints bytecode; it doesn’t run it.',
       },
     ],
   },
@@ -1953,50 +1689,6 @@ for &b in code {
       {
         t: '`for` can’t loop over a reference',
         why: 'Looping over `&Vec<u8>` is normal; it yields `&u8`.',
-      },
-    ],
-  },
-  {
-    q: 'Why does drip-rs keep the running chunk as an `Rc<Chunk>` field of the `Vm`?',
-    options: [
-      {
-        t: 'So the VM can change the bytecode while it runs',
-        why: 'Chunks are frozen once compiled. That’s why no `RefCell` is needed.',
-      },
-      {
-        t: 'Because `Rc` makes reading bytes faster than a `Vec`',
-        why: 'The bytes are still in a `Vec<u8>` inside the chunk. The `Rc` is about ownership.',
-      },
-      {
-        t: 'To let the garbage collector free chunks',
-        why: 'The `Rc` frees a chunk when its last owner goes, without the collector.',
-      },
-      {
-        t: 'The VM needs its own owner of the chunk, so it doesn’t keep the heap borrowed',
-        correct: true,
-        why: 'The function in the heap owns the chunk too. A second owner leaves the heap free to change.',
-      },
-    ],
-  },
-  {
-    q: 'In drip-rs, what does `call` do with the registers?',
-    options: [
-      {
-        t: 'Saves the caller’s `ip` into its frame, then loads the callee’s `ip`, chunk and slots',
-        correct: true,
-        why: 'The registers always describe the running frame. `pop_frame` loads the caller’s back on return.',
-      },
-      {
-        t: 'Nothing: the registers are recomputed on every byte',
-        why: 'Then they wouldn’t save anything. They’re updated only on calls and returns.',
-      },
-      {
-        t: 'Clears the stack',
-        why: 'The arguments stay on the stack as the callee’s first slots.',
-      },
-      {
-        t: 'Copies the callee’s bytecode into the `Vm`',
-        why: 'It clones the `Rc`, which copies a pointer, not the bytecode.',
       },
     ],
   },

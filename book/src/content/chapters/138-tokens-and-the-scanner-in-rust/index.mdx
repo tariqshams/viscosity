@@ -3,18 +3,15 @@ n: 138
 day: 23
 part: VIII
 title: 'Tokens and the scanner in Rust'
-tagline: 'In TypeScript a token’s type was a string that the type checker watched over. In drip-rs it is a one-byte enum, and the token itself is a 32-byte value that points into the source instead of copying it.'
+tagline: 'In TypeScript a token’s type was a string that the type checker watched over. In drip-rs it is a one-byte enum, the token is a 32-byte value that points into the source, and the scanner reads bytes because Rust will not index a string by character.'
 objectives:
   - Translate the TypeScript TokenType union into a Rust enum, and say what each derive buys.
   - Explain why the error variant carries a ScanError, and how the message is made later.
-  - Read Token<'src>, and account for each of its 32 bytes.
-  - Write the keyword lookup as a match that returns Option.
-  - Explain why drip-rs scans a &[u8] alongside the &str, and write peek and advance over bytes.
-  - Use UTF-8’s byte patterns to explain why comparing bytes with ASCII is safe.
-  - Explain the continuation-byte skip in the scanner, and what goes wrong without it.
-  - Port the number scanner, including the rule that 1. is not a fraction.
+  - Read Token<'src>, and account for its 32 bytes.
+  - Explain why drip-rs scans a &[u8] alongside the &str, and read peek and advance over bytes.
+  - Use UTF-8’s byte patterns to explain why comparing bytes with ASCII is safe, and why the scanner skips continuation bytes.
 introduces: [token-enum, byte-scanning]
-uses: [drip-rs, enum, match, pattern, struct, impl, option, borrow, slice, string-vs-str, lifetime, lifetime-annotation, size-of, padding, trait, token, token-type, lexeme, keyword, reserved-word-table, identifier, literal, scanner, union-type, discriminated-union, typescript, map, compiler, lookahead, maximal-munch, panic-mode, string-index, char-code, byte, binary, bit-ops, scalar-types, self-receiver]
+uses: [drip-rs, enum, match, pattern, struct, impl, option, borrow, slice, string-vs-str, lifetime, lifetime-annotation, size-of, padding, trait, token, token-type, lexeme, keyword, reserved-word-table, identifier, literal, scanner, union-type, discriminated-union, typescript, map, compiler, lookahead, maximal-munch, string-index, char-code, byte, binary, bit-ops, scalar-types, self-receiver]
 sources: [klabnik2026, rustref-enum, rust-std-str]
 ---
 import TokenSteps from '../../../components/diagrams/ch138/TokenSteps';
@@ -22,31 +19,13 @@ import ErrorTokens from '../../../components/diagrams/ch138/ErrorTokens';
 import ByteSteps from '../../../components/diagrams/ch138/ByteSteps';
 import Utf8Shapes from '../../../components/diagrams/ch138/Utf8Shapes';
 
-{/* ── merge: from old chapter 138, Tokens as enums ── */}
-
 ## Fifty-two names
 
-Open `companion/ts/src/token.ts` and the token types of *Tokens and
-lexemes* are strings, one per kind of word (trimmed and rewrapped):
-
-```ts
-export type TokenType =
-  | '(' | ')' | '{' | '}' | '[' | ']'
-  // ... the rest, then literals:
-  | 'identifier' | 'string' | 'number'
-  | 'break' | 'class' | 'continue'
-  // ... 17 more keywords, then:
-  | 'error'
-  | 'eof';
-```
-
-There are fifty-two of them: ten pieces of punctuation, seventeen
-operators, three literals, twenty keywords, `'error'` and `'eof'`. At run
-time each is an ordinary JavaScript string, and the compiler tests them
-with `current.type === 'identifier'`; the union type is what turns a typo
-like `'identifer'` into a compile error. Rust has no string literal
-types, however it has something better suited to the job, which you met
-in the chapter *Enums and match*.
+In `companion/ts/src/token.ts` the token types of *Tokens and a scanner*
+are fifty-two string literals, `'('`, `'>='`, `'while'`, `'eof'` and the
+rest, and it is the union type that turns a typo like `'identifer'` into
+a compile error. Rust has no string literal types; it has something
+better suited to the job, the enum of *Enums, match and patterns*.
 
 <Analogy title="coat-check tickets">
 A TypeScript token type is a name tag with a word written on it, and the
@@ -75,18 +54,8 @@ Here is drip-rs's version, from `scanner.rs` (trimmed):
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
-    // Punctuation.
     LeftParen,
-    RightParen,
-    // ... 25 more
-    // Literals.
-    Identifier,
-    String,
-    Number,
-    // Keywords.
-    Break,
-    // ... 19 more
-    // Bookkeeping.
+    // ... 49 more plain kinds
     Error(ScanError),
     Eof,
 }
@@ -95,17 +64,14 @@ pub enum TokenKind {
 The same fifty-two kinds, in the same order as the TypeScript union, with
 two changes forced on the port. A variant must be an identifier, so `'('`
 becomes `LeftParen` and `'>='` becomes `GreaterEqual` (and the keyword
-`self`, whose name in that style, `Self`, Rust reserves, becomes `SelfKw`). And `Error` is not a bare
-name: it carries a **`ScanError`**, a second enum with three variants,
-`UnexpectedCharacter`, `UnknownEscape` and `UnterminatedString`, which
-says what went wrong.
+`self` becomes `SelfKw`, because Rust reserves `Self`). And `Error` is
+not a bare name: it carries a `ScanError`, a second enum whose three
+variants, `UnexpectedCharacter`, `UnknownEscape` and
+`UnterminatedString`, say what went wrong.
 
-The `derive` line asks the compiler to write four traits for us (the
-chapter *Traits* explains what that means). `Clone` and `Copy` let a kind
-be passed around like an integer; `PartialEq` and `Eq` give `==`, which
-the compiler's `check` is built on (its whole body, in `compiler.rs`, is
-`self.current.kind == kind`). `Debug` prints a variant's name, `Let` or `Error(UnknownEscape)`, for
-free.
+The `derive` line (*Traits, trait objects and derive*) makes a kind
+copyable like an integer, comparable with `==` (the compiler's `check`
+is `self.current.kind == kind`) and printable by name.
 
 <Callout kind="definition">
 A **token enum** is an enum with one variant per kind of token. In
@@ -136,18 +102,29 @@ size_of::&lt;TokenKind&gt;() as 1 with rustc 1.97).</span>
 let k = TokenKind::Semicolon;
 k == TokenKind::Semicolon // true
 k == TokenKind::Comma     // false
-```
 
-```rust
 // does not compile:
 kind == TokenKind::Error
 // error[E0308]: mismatched types
-// expected `TokenKind`,
-//   found enum constructor
-
 // compiles:
 matches!(kind, TokenKind::Error(_))
 ```
+
+</Examples>
+
+The first three lines compare kinds the way `check` does: the derived
+`==` asks whether two values are the same variant. The rest is the slip
+everyone makes once. On its own, `TokenKind::Error` is not a kind but a
+*constructor*, a function waiting for its `ScanError`, so rustc 1.97
+refuses with `expected TokenKind, found enum constructor`; `matches!` is
+true when the value fits the pattern, and `_` fits any `ScanError`, so it
+asks the question you meant.
+
+<More title="Reading the error out, and keywords as a match">
+
+The compiler's `advance` (rewrapped) pulls the `ScanError` out of an
+error token with `let ... else`, which leaves the loop when the token is
+not one:
 
 ```rust
 let TokenKind::Error(error) =
@@ -156,39 +133,52 @@ let message = error
     .message(self.current.lexeme);
 ```
 
-</Examples>
+Where the TypeScript scanner looks words up in a `Map`, `KEYWORDS`,
+drip-rs uses a `match` on the text (trimmed):
 
-The first compares kinds the way `check` does: the derived `==` asks
-whether two values are the same variant. The second is the slip everyone
-makes once: on its own, `TokenKind::Error` is not a kind but a
-*constructor*, a function waiting for its `ScanError`, so rustc refuses
-to compare it with a kind; `matches!` (true if the value fits the
-pattern, and `_` fits any `ScanError`) asks the question you meant. The
-third is real, from the compiler's `advance` (rewrapped): `let ... else`
-pulls the `ScanError` out of an error token, or leaves the loop if the
-token is not one, and then asks it for its message.
+```rust
+fn keyword(text: &str)
+    -> Option<TokenKind> {
+    use TokenKind as T;
+    Some(match text {
+        "break" => T::Break,
+        // ... 18 more
+        "while" => T::While,
+        _ => return None,
+    })
+}
+```
 
-<Prompts ids={['kind-count', 'kind-names', 'kind-derive', 'kind-size']} />
+The `_` arm leaves the function, so every arm that finishes yields a
+`TokenKind` for the one `Some` to wrap, and the scanner turns "not a
+keyword" into a name with `keyword(text).unwrap_or(TokenKind::Identifier)`.
+There is no table to build at start-up, and the patterns are exact, so
+`classy` and `Class` both fall through to `_`.
 
-## Error tokens
+Could each token carry its value, `Number(f64)` or a decoded string, as
+the tree-walker's `literal` field did? It could; drip-rs chooses not to,
+so that every kind stays one byte and compares with `==`. The compiler
+parses a number when it emits it, with `token.lexeme.parse()`, and
+decodes a string's escapes then too, where the TypeScript VM's scanner
+decodes them as it scans. Try the kinds, the keyword lookup and the
+sizes, and change the source string:
 
-When the TypeScript scanner meets `@`, it does not stop; it returns a
-token of type `'error'` whose lexeme is the finished message. drip-rs
-keeps the lexeme honest instead: it is always text from the source (the
-`@` itself, the letter after a bad backslash, or the opening quote of a
-string that never closes), and the `ScanError` beside it says which
-message to build. The compiler builds it when it reports the error, with
-`error.message(lexeme)`, so both VMs print the same words:
+<Run id="tokens" />
+
+</More>
+
+## Tokens that point into the source
+
+When the TypeScript scanner meets `@`, its error token's lexeme is the
+finished message. In drip-rs the lexeme is always source text (here the
+`@`), and the compiler builds the message from it and the `ScanError`
+when it reports the error, so both VMs print the same words.
 
 <Figure takeaway="Same message, made at a different moment." caption="Scanning `@` on line 2. The TypeScript token carries the finished message; the Rust token carries the offending text and a ScanError, and the compiler turns the pair into the same message.">
   <ErrorTokens />
 </Figure>
 
-<Prompts ids={['error-data']} />
-
-## Token&lt;'src&gt;
-
-A token is a kind, the text it came from, and a line (from `scanner.rs`):
+The token itself (from `scanner.rs`):
 
 ```rust
 #[derive(Clone, Copy, Debug)]
@@ -199,187 +189,50 @@ pub struct Token<'src> {
 }
 ```
 
-The TypeScript `VmToken` has the same three fields (plus `value`, the
-decoded text of a string literal), but its `lexeme` is a new string made
-by `source.slice(start, current)`. Here it is a `&str`: a pointer into
-the source and a length, which copies nothing. Step through the tokens
-of one line:
+The TypeScript lexeme is a new string from `source.slice`; here it is a
+`&str`, a pointer and a length into the source, and *Lifetimes* showed
+how `'src` stops a token outliving it. The token is 32 bytes:
+a 1-byte kind, a 16-byte slice and an 8-byte line, padded to a multiple
+of 8 (*Memory layout in Rust*). Because it is `Copy`, the compiler's
+`previous` and `current` are plain copies, not borrows of the scanner.
 
 <TokenSteps client:visible />
 
-The chapter *Lifetimes* took this struct apart: `'src` ties every token
-to the text it slices, so a token can never outlive its source. What this
-chapter adds is the size, 32 bytes: a 1-byte kind, a 16-byte slice and an
-8-byte line, padded to a multiple of 8 (the chapter *Memory layout in
-Rust* explains the padding). Because a `Token` is `Copy`, the compiler's
-`previous` and `current` are plain copies, not borrows of the scanner.
+<Prompts ids={['kind-names', 'kind-size', 'error-data', 'lexeme-slice']} />
 
-When an error message has to name a token, its `describe` method
-decides how: an `Eof` token is `end of file`, a `String` token is
-`a string`, and any other is its lexeme in quotes, such as `'}'`; that is
-how `expected '}' to close the block, found end of file` gets its last
-three words. And when the compiler needs a token that is not in the
-source at all, such as `self` inside a method, it makes one with
-`Token::synthetic("self", line)`: an `Identifier` whose lexeme is a
-string literal, which lives as long as the program and so fits any
-`'src`.
+## One byte at a time
 
-<Prompts ids={['lexeme-slice', 'describe-token']} />
-
-## Keywords
-
-The TypeScript scanner looks words up in a `Map` from text to type,
-`KEYWORDS`; drip-rs uses a `match` on the text (from `scanner.rs`,
-trimmed):
-
-```rust
-fn keyword(text: &str)
-    -> Option<TokenKind> {
-    use TokenKind as T;
-    Some(match text {
-        "break" => T::Break,
-        "class" => T::Class,
-        // ... 17 more
-        "while" => T::While,
-        _ => return None,
-    })
-}
-```
-
-`use TokenKind as T` gives the enum a short local name. The `_` arm says
-`return None`, which leaves the function, so every arm that finishes
-yields a `TokenKind` and the one `Some(...)` wraps it. The scanner turns
-"not a keyword" into a name with
-`keyword(text).unwrap_or(TokenKind::Identifier)`. There is no table to
-build at startup, and the patterns are exact, so `classy` and `Class`
-both fall through to `_`. Try it, and change the source string:
-
-<Run id="tokens" />
-
-<Prompts ids={['kw-match', 'kw-return-none']} />
-
-<Callout kind="engine" label="Under the hood">
-Could each token carry its value, `Number(f64)` or a decoded string, as
-the tree-walker's `literal` field did? It could; drip-rs chooses not to,
-so that every kind stays one byte and compares with `==`. The compiler
-parses a number when it emits it, with `token.lexeme.parse()`, and decodes
-a string's escapes with `unescape(token.lexeme)`, where the TypeScript VM
-scanner decodes them as it scans.
-</Callout>
-
-## Your turn
-
-<Exercise id="keywordMatch" />
-
-<Exercise id="tsName" />
-
-## What you learned
-
-- drip-rs's **`TokenKind`** is a **token enum**: the fifty-two TypeScript
-  token types as variants, with names like `LeftParen` for punctuation.
-- `Error` carries a **`ScanError`**; the lexeme is the offending text,
-  and the compiler builds the message from the two.
-- `#[derive(Clone, Copy, Debug, PartialEq, Eq)]` makes kinds cheap to
-  copy, comparable with `==` and printable by name. A kind is 1 byte.
-- **`Token<'src>`** holds a kind, a line and a `&'src str` lexeme that
-  points into the source: 32 bytes, and it cannot outlive its source.
-- Keywords are a `match` on the text that returns `Option<TokenKind>`.
-
-
-{/* ── merge: from old chapter 138, The scanner in Rust ── */}
-
-## One character, please
-
-The on-demand scanner of *One pass from source to bytecode* reads its
-source one character at a time: `advance()` returns
-`this.source[this.current++]`, and `peek()` returns
-`this.source[this.current]`, or `'\0'` at the end. Each gives a
-one-character string, which the scanner compares with `'('` or tests with
-`isDigit`. Write `source[i]` in Rust, however, and rustc 1.97 refuses:
-`error[E0277]: the type str cannot be indexed by {integer}`, with the
-note `string indices are ranges of usize`.
-
-A Rust `str` is UTF-8, where a character takes one to four bytes, so "the
-character at index 5" would mean walking from the start and counting, and
-Rust refuses to dress that walk up as a cheap lookup<Cite id="klabnik2026" />.
-You may slice a `str` with a range of byte positions, or you may look at
-its bytes; drip-rs does both.
-
-<Analogy title="looking for punctuation in a book you cannot read">
-Hand someone a novel in a script they have never seen and ask them to
-circle every full stop and quotation mark: they can do it without reading
-a word, because the punctuation looks nothing like the letters around it.
-Byte scanning is that: drip-rs only needs to recognise Drip's ASCII
-punctuation, digits and letters, and it never has to understand what an
-`é` means.
-<span slot="breaks">In real scripts some marks do look alike (the Greek
-question mark is drawn like a semicolon); UTF-8 makes a promise no
-printed page can, that no byte of a non-ASCII character is ever equal to
-an ASCII byte.</span>
-</Analogy>
-
-## Two views of one text
-
-The scanner keeps both views (from `scanner.rs`, comments trimmed):
+The TypeScript scanner's `advance()` returns
+`this.source[this.current++]`, a one-character string. Write `source[i]`
+in Rust and rustc 1.97 refuses: `error[E0277]: the type str cannot be
+indexed by {integer}`. A `str` is UTF-8, where a character takes one to
+four bytes, so "the character at index 5" would mean counting from the
+start, and Rust will not dress that up as a cheap
+lookup<Cite id="klabnik2026" />. You may slice a `str` by byte ranges,
+or look at its bytes, and the scanner does both (from `scanner.rs`,
+trimmed and rewrapped):
 
 ```rust
 pub struct Scanner<'src> {
     source: &'src str,
     bytes: &'src [u8],
-    start: usize,
-    current: usize,
-    line: usize,
-    last_line: usize,
-}
-```
-
-`Scanner::new` fills `bytes` with `source.as_bytes()`, which copies
-nothing; it is the same memory, typed as a slice of `u8`<Cite id="rust-std-str" />.
-The scanner reads `bytes` to decide what each token is, and slices
-`source` to make its lexeme, `&self.source[self.start..self.current]`
-(`last_line` remembers where `end of file` should be reported). The
-helpers become (rewrapped):
-
-```rust
-fn advance(&mut self) -> u8 {
-    self.current += 1;
-    self.bytes[self.current - 1]
+    // ... start, current, line
 }
 
-/// The next byte, or NUL at the end of
-/// the source.
 fn peek(&self) -> u8 {
     self.bytes.get(self.current)
         .copied().unwrap_or(b'\0')
 }
 ```
 
-`get` returns `None` past the end, so `peek` needs no separate end test:
-`copied` turns the `Option<&u8>` into an `Option<u8>`, and `unwrap_or`
-turns `None` into the NUL byte, as the TypeScript version did with
-`'\0'`. A **byte literal** such as `b'('` is the `u8` 40, so the big
-`match` in `scan_token` reads almost like the TypeScript `switch`:
-
-```rust
-match c {
-    b'(' => self.make(T::LeftParen),
-    b'+' => self.make_if(
-        b'=', T::PlusEqual, T::Plus),
-    b'&' if self.peek() == b'&' => {
-        self.current += 1;
-        self.make(T::AndAnd)
-    }
-    b'"' => self.string(),
-    // ...
-}
-```
-
-`make_if` makes the long token if the next byte is the one named
-(`+=`), or the short one otherwise (`+`). The `&` arm has a **guard**,
-`if self.peek() == b'&'`: it only applies when a second `&` follows, so a
-lone `&` falls through to the catch-all arm and is reported as
-`unexpected character '&'`, exactly the message the specification asks
-for.
+`bytes` is `source.as_bytes()`, the same memory typed as a slice of
+`u8`<Cite id="rust-std-str" />, so it costs nothing. The scanner reads
+`bytes` to decide what each token is, and slices `source` for the
+lexeme, `&self.source[self.start..self.current]`. `get` is `None` past
+the end, so `peek` needs no end test: `unwrap_or` turns `None` into the
+NUL byte, as the TypeScript version did with `'\0'`. The big `match` in
+`scan_token` then reads like the TypeScript `switch`, on **byte
+literals** such as `b'('`, which is just the `u8` 40.
 
 <Callout kind="definition">
 **Byte scanning** means reading source text as a `&[u8]` and comparing
@@ -391,34 +244,19 @@ slicing the `&str` with byte ranges, `&source[start..current]`.
 <Examples of="byte-scanning">
 
 ```rust
-assert_eq!(b'(', 40);
-assert_eq!(b'\n', 10);
-```
-
-```rust
 let s = "é!";
 s.len()           // 3 bytes
 s.chars().count() // 2 characters
 s.as_bytes()      // [195, 169, 33]
-```
-
-```rust
-// does not compile (E0277):
-let c = source[i];
-// compiles: one byte, a u8
-let c = source.as_bytes()[i];
+s.as_bytes()[2] == b'!' // true
 ```
 
 </Examples>
 
-The first shows that a byte literal is only a number (the ASCII codes of
-`(` and of a newline). The second is why Rust will not index a `str` by
-character: `é!` is two characters but three bytes, and `len` counts
-bytes. The third is the spot-the-difference every newcomer meets:
-indexing the `str` is the error above, while indexing its bytes gives a
-`u8`.
-
-<Prompts ids={['no-index', 'byte-literal', 'peek-nul']} />
+`é!` is two characters but three bytes, and `len` counts bytes; that is
+why Rust will not index a `str` by character. `as_bytes` shows them,
+195 and 169 for `é` and 33 for `!`, and the last line is the scanner's
+kind of question: is the byte at this position a `!`?
 
 ## Why bytes are safe
 
@@ -428,16 +266,6 @@ quote, and UTF-8 was designed so that it cannot:
 <Figure takeaway="Every byte of a non-ASCII character is 128 or more." caption="An ASCII byte starts with 0. A longer character starts with a lead byte (110, 1110 or 11110, saying how many bytes follow), and every byte after it starts with 10.">
   <Utf8Shapes />
 </Figure>
-
-<Analogy extra title="a train with labelled carriages">
-A one-carriage train is plain ASCII. A longer train has an engine whose
-sign says how many carriages follow, and every carriage is stamped
-"carriage". Nobody on the platform can mistake a carriage for an engine,
-or for a train of its own.
-<span slot="breaks">A real train can lose a carriage and still run;
-a UTF-8 string with a missing continuation byte is simply invalid, and a
-Rust `&str` is never allowed to hold one.</span>
-</Analogy>
 
 <Formal title="UTF-8 byte classes">
 
@@ -456,28 +284,13 @@ byte that belongs to a non-ASCII character is at least 128, and can never
 equal an ASCII byte such as a quote or a newline.</span>
 </Formal>
 
-That is why a comparison like `c == b'"'` can only match a real quote,
-and why `&self.source[self.start..self.current]` never panics: a token
-starts and ends only just after an ASCII byte, after a whole character
-the scanner skipped (next section), or at the very end, and all three are
-character boundaries. Inside a string, `current` does pass through the
-middle of `é`, however nothing is sliced until the closing quote. Step
-through the scanner on `s="é";é`:
-
-<ByteSteps client:visible />
-
-<Prompts ids={['utf8-ascii', 'utf8-cont']} />
-
-## The one non-ASCII case
-
-Outside a string, Drip has no use for `é`, so the catch-all arm of the
-match reports it (from `scanner.rs`, rewrapped):
+So `c == b'"'` can only match a real quote. Inside a string, `current`
+passes through the middle of `é`, but nothing is sliced until the
+closing quote. Outside a string Drip has no use for `é`, and the
+catch-all arm of the match reports it (rewrapped):
 
 ```rust
 _ => {
-    // Take the whole UTF-8 character, so
-    // the error names it and the next
-    // token starts on a character boundary.
     while is_continuation(self.peek()) {
         self.current += 1;
     }
@@ -486,29 +299,50 @@ _ => {
 }
 ```
 
-and the test is a single mask, `c & 0b1100_0000 == 0b1000_0000`: keep the
-top two bits and ask whether they are `10`. The loop is not decoration. I
-removed it from a copy of drip-rs and ran it on `let c = é;`: rather than
-an error, the scanner panicked with `end byte index 9 is not a char
+`is_continuation` is one mask, `c & 0b1100_0000 == 0b1000_0000`: keep
+the top two bits and ask whether they are `10`. The loop is not
+decoration. I removed it from a copy of drip-rs and ran it on
+`let c = é;`: the scanner panicked with `end byte index 9 is not a char
 boundary; it is inside 'é'`, because `make` sliced the source after only
-the first byte of `é`. With the loop, the lexeme is the whole `é` and the
-error reads `unexpected character 'é'`, exactly as the TypeScript VM
-prints it (that scanner asks JavaScript for the whole code point, so even
-an emoji is named in one piece by both). The string scanner uses the same
-skip after a backslash, so `"a\é"` reports `unknown escape '\é' in a
-string`.
+the first byte of `é`. With the loop, the lexeme is the whole character,
+the next token starts on a boundary, and drip-rs reports
+`unexpected character 'é'`, as the TypeScript VM does. Step through the scanner on `s="é";é`:
 
-<Prompts ids={['skip-why', 'lone-amp']} />
+<ByteSteps client:visible />
 
-## The rest of the scanner
+<Analogy extra title="looking for punctuation in a book you cannot read">
+Hand someone a novel in a script they have never seen and ask them to
+circle every full stop and quotation mark: they can do it without reading
+a word, because the punctuation looks nothing like the letters around it.
+Byte scanning is that: drip-rs only needs to recognise Drip's ASCII
+punctuation, digits and letters, and it never has to understand what an
+`é` means.
+<span slot="breaks">In real scripts some marks do look alike (the Greek
+question mark is drawn like a semicolon); UTF-8 makes a promise no
+printed page can, that no byte of a non-ASCII character is ever equal to
+an ASCII byte.</span>
+</Analogy>
 
-Everything else is the TypeScript logic with `u8`s. Numbers, for
-example: `number` steps over digits, then takes a fraction only when a
-digit follows the dot (from `scanner.rs`, rewrapped):
+<Analogy extra title="a train with labelled carriages">
+A one-carriage train is plain ASCII. A longer train has an engine whose
+sign says how many carriages follow, and every carriage is stamped
+"carriage". Nobody on the platform can mistake a carriage for an engine,
+or for a train of its own.
+<span slot="breaks">A real train can lose a carriage and still run;
+a UTF-8 string with a missing continuation byte is simply invalid, and a
+Rust `&str` is never allowed to hold one.</span>
+</Analogy>
+
+<More title="The rest of the scanner, and the standard library's rule">
+
+Everything else is the TypeScript logic with `u8`s. `make_if` makes the
+long token if the next byte is the one named (`+=`), or the short one
+(`+`); the `b'&'` arm has a guard, `if self.peek() == b'&'`, so a lone
+`&` falls through to the catch-all arm and is reported as `unexpected
+character '&'`. Numbers take a fraction only when a digit follows the
+dot (rewrapped):
 
 ```rust
-// A fractional part needs a digit
-// after the dot: `1.` is `1` `.`.
 if self.peek() == b'.'
     && self.peek_next().is_ascii_digit()
 {
@@ -519,45 +353,46 @@ if self.peek() == b'.'
 }
 ```
 
-Running the real scanner on `1.5 1. 12.x` gives `Number "1.5"`, then
-`Number "1"` and `Dot`, then `Number "12"`, `Dot` and `Identifier "x"`.
-Strings loop to the closing `b'"'`, counting `b'\n'`s as they go;
-comments run from `#` to the next newline; identifiers continue while
-bytes are ASCII letters, digits or `_`, and then go through the keyword
-`match` of the chapter *Tokens as enums*. Here is a cut-down scanner you
-can run, with the skip in it:
+so `1.5 1. 12.x` scans as `Number "1.5"`, then `Number "1"` and `Dot`,
+then `Number "12"`, `Dot` and `Identifier "x"`. Strings loop to the
+closing `b'"'`, counting `b'\n'`s; the string scanner uses the same
+continuation skip after a backslash, so `"a\é"` reports `unknown escape
+'\é' in a string`. Here is a cut-down scanner you can run, with the
+skip in it:
 
 <Run id="mini-scanner" />
 
-<Callout kind="engine" label="Under the hood">
-The standard library uses the same rule. `str::is_char_boundary(i)` is
+The standard library uses the same rule: `str::is_char_boundary(i)` is
 true when byte `i` starts a character or is the end of the string, and
 the helper behind it is commented "equivalent to: b &lt; 128 || b &gt;=
-192"<Cite id="rust-std-str" />: not a continuation byte. The TypeScript
-scanner counts UTF-16 code units while drip-rs counts bytes, and the two
-agree because everything Drip's grammar cares about is ASCII.
-</Callout>
+192"<Cite id="rust-std-str" />, that is, not a continuation byte. The
+TypeScript scanner counts UTF-16 code units while drip-rs counts bytes,
+and the two agree because everything Drip's grammar cares about is
+ASCII.
 
-<Prompts ids={['std-boundary']} />
+</More>
+
+<Prompts ids={['no-index', 'peek-nul', 'utf8-cont', 'skip-why']} />
 
 ## Your turn
 
 <Exercise id="scanNumber" />
 
+<Exercise id="keywordMatch" />
+
+<Exercise id="tsName" />
+
 <Exercise id="charEnd" />
 
 ## What you learned
 
-- Rust will not index a `str` by integer, so drip-rs **scans bytes**: it
-  keeps `bytes: &[u8]` (from `as_bytes()`, free) beside `source: &str`.
-- `peek` is `get(..).copied().unwrap_or(b'\0')`, and the match is on
-  **byte literals** like `b'('`, with a guard for `&&` and `||`.
-- In UTF-8 every byte of a non-ASCII character is at least 128, and
-  **continuation bytes** look like `10xxxxxx`; so ASCII comparisons are
-  safe, and lexeme slices land on character boundaries.
-- For a stray non-ASCII character the scanner skips its continuation
-  bytes, which names the whole character and avoids a panic.
-- Numbers, strings, comments and identifiers are the TypeScript logic on
-  `u8`s.
+- A **token enum**: one-byte, `Copy` kinds; `Error` carries a
+  `ScanError`, and a 32-byte `Token<'src>` points into the source.
+- **Byte scanning**: compare `u8`s, slice the `&str`; UTF-8 keeps
+  ASCII bytes unambiguous, and the continuation skip keeps slices on
+  character boundaries.
+
+Next: *Bytecode, values and the VM loop in Rust*, where those tokens
+become bytes for a machine to run.
 
 <Quiz />

@@ -3,152 +3,36 @@
 // Merged from old chapters 147, 147, 147, 147.
 
 export const prompts = {
-  'prof-what': {
-    q: 'What is **profiling**?',
-    a: 'Measuring where a program’s time (or instructions, or memory) goes, function by function or line by line, instead of timing it as a whole.',
-  },
   'prof-sample': {
     q: 'How does a sampling profiler find where time goes, and how is callgrind different?',
     a: 'A sampling profiler records the call stack many times a second; callgrind runs the program on a simulated CPU and counts every instruction.',
-  },
-  'cg-not-time': {
-    q: 'Why is a callgrind instruction count not a time?',
-    a: 'It treats every instruction the same, ignoring cache misses, mispredicted branches and how much the CPU overlaps; two loops with very different counts can take the same time.',
   },
   'self-incl': {
     q: 'What is the difference between a function’s **self** cost and its **inclusive** cost?',
     a: 'Self counts only its own instructions. Inclusive adds everything it called, directly or indirectly.',
   },
-  'call-check': {
-    q: 'callgrind said `call_value` ran 7,049,155 times during fib(32). Why is that a good sign?',
-    a: 'fib(32) makes exactly 2 × fib(33) − 1 = 7,049,155 calls, so the profile counted what we can work out by hand.',
-  },
-  inlined: {
-    q: 'Why does `Vm::run` have 65.2% self cost in fib, with no rows of their own for `push` or `read_byte`?',
-    a: 'The release build (with `lto`) inlined those small functions into `run`, so their instructions count as `run`’s. Debug info lets callgrind split them out again by source line.',
-  },
   'flame-what': {
-    q: 'In a **flame graph**, what do a box’s width and its height above the bottom mean?',
+    q: 'In a **flame graph**, what do a box’s width and its height (its depth in the stack of boxes) mean?',
     a: 'Width: the share of the cost spent in that function on that call path (inclusive). Height: how deep in the call stack it is.',
-  },
-  'flame-x': {
-    q: 'Does left-to-right order mean anything in a flame graph?',
-    a: 'No. It is not time order; boxes are only arranged so that identical call paths merge.',
-  },
-  'flame-flat': {
-    q: 'fib recurses about thirty levels deep in Drip. Why is drip-rs’s flame graph for it only a few boxes tall?',
-    a: 'A Drip call is a frame on the VM’s own stack, not a Rust call; the Rust stack is just run → call_value → call.',
-  },
-  'opt-measure-first': {
-    q: 'What should you have in hand before changing code to make it faster?',
-    a: 'A profile that says where the work is, the corpus to prove the change is still correct, and a timing method to check the change afterwards.',
-  },
-  'uc-what': {
-    q: 'What does a bounds check do on `code[ip]`?',
-    a: 'Compares `ip` with `code.len()` before reading, and panics if `ip` is too big.',
-  },
-  'uc-forbid': {
-    q: 'What happens if you put `get_unchecked` into drip-rs as it is?',
-    a: 'It does not compile: `#![forbid(unsafe_code)]` in `lib.rs` makes any `unsafe` block an error.',
   },
   'uc-promise': {
     q: 'An unchecked `read_byte` in drip-rs is safe only if what is true?',
     a: 'That the compiler never lets `ip` run past the end of a chunk: every function ends with `return` and every jump lands inside it. A promise about the compiler, which a compiler bug would break.',
-  },
-  'uc-worth': {
-    q: 'On fib, what did an unchecked `read_byte` save, in instructions and in time?',
-    a: 'About 8% of instructions (5.11 vs 5.55 billion), but no measurable time: best 406 ms against the committed 398 ms, medians 439 and 427.',
-  },
-  'reg-win': {
-    q: 'What happened to fib when a copy of drip-rs reached the chunk through the heap on every read, instead of using the chunk register?',
-    a: 'Almost twice the instructions (11.01 billion) and about 2.1 times the time (best 842 ms against 398).',
-  },
-  'fewer-not-faster': {
-    q: 'Why can removing 8% of instructions save no time?',
-    a: 'The removed instructions were a comparison and a branch that the CPU predicted correctly every time and ran alongside other work, so they were not what each byte was waiting on.',
-  },
-  'fast-int': {
-    q: 'Why is `(n as i64).to_string()` a correct way to print a whole number below 2^53?',
-    a: 'Every whole number below 2^53 is exact in an `f64` and converts exactly to `i64`, and JavaScript prints such numbers as plain digits, so the text is the same.',
-  },
-  'bm-how': {
-    q: 'How was each time in the 2026-11-02 benchmark tables measured?',
-    a: 'Best of three runs, each in a fresh process, on the same shared cloud VM, for all three implementations.',
-  },
-  'bm-compile': {
-    q: 'Do the benchmark times include compiling the Drip program?',
-    a: 'Yes: each time is the whole run of a fresh process, start-up and compiling included.',
   },
   'bm-geo': {
     q: 'Why summarise speed-ups with a geometric mean rather than an ordinary average?',
     a: 'It treats 2× and 0.5× as equal and opposite (their geometric mean is 1); the ordinary average of 2 and 0.5 is 1.25, which would call a wash a win.',
   },
   'bm-vm-loses': {
-    q: 'On which four benchmark programs is the TypeScript VM slower than the tree-walker?',
+    q: 'In drip-rs’s committed benchmark run of 2026-11-02, on which four of the ten benchmark programs was the TypeScript Drip VM slower than the TypeScript tree-walker?',
     a: '`fields`, `instantiation`, `strings` and `trees`.',
   },
-  'bm-spread': {
-    q: 'Why does drip-rs’s speed-up over the TypeScript VM vary so little from program to program?',
-    a: 'The two VMs run the same bytecode with the same instructions, so they do the same work per step; only the cost of a step differs.',
-  },
-  'bm-map': {
-    q: 'Where does the tree-walker keep an instance’s fields, and why does that help it?',
-    a: 'In a JavaScript `Map`, so the hash table is V8’s own code, written in C++, rather than a table written in TypeScript.',
-  },
-  'bm-two-gcs': {
-    q: 'Why does the TypeScript VM pay for garbage collection twice?',
-    a: 'It runs its own mark-and-sweep collector over its heap, and V8’s collector still has to free the JavaScript objects underneath.',
-  },
-  'bm-design': {
-    q: 'In one sentence: why does the same VM design win in Rust but not in TypeScript?',
-    a: 'Its hand-built hash table, collector and dispatch only pay off once compiled to machine code; in TypeScript they compete with V8’s built-in versions.',
-  },
-  'rt-goal': {
-    q: 'What goal did Part XII set for drip-rs, and does it meet it?',
-    a: 'To behave exactly like the TypeScript VM: same output, errors, lines and exit codes. It does: 334 corpus tests, 165 stress-GC programs, and no differences from the TypeScript VM on 343 corpus and 2,000 mangled programs.',
-  },
-  'rt-ledger': {
-    q: 'Name one gain and one cost of the port to Rust.',
-    a: 'Gains: about 3.94× the TypeScript VM’s speed, compile-time checks, no unsafe code, one small binary. Costs: 1.94× the lines, designs forced by ownership, a build step, bugs it cannot see.',
-  },
-  'forced-arena': {
-    q: 'What did ownership force on drip-rs’s heap, compared with the TypeScript VM?',
-    a: 'Objects live in nine arenas owned by the heap, and everything else holds `Gc<T>` handles, typed indices, instead of references.',
-  },
-  'forced-roots': {
-    q: 'Why does drip-rs pass its roots into `collect()` instead of letting the heap ask the VM?',
-    a: 'The VM owns the heap; the heap cannot borrow the VM that owns it while it is itself borrowed mutably.',
-  },
-  'caught-compile': {
-    q: 'Name two kinds of mistake the Rust compiler caught while drip-rs was written.',
-    a: 'Any two of: a missing opcode arm (E0004), a handle of the wrong type (E0308), a reference into the heap kept across a change (E0502), two `&mut self` borrows at once (E0499).',
-  },
-  'missed-root': {
-    q: 'What happens in drip-rs if the VM forgets to pass a root to the collector?',
-    a: 'It compiles. The object is freed while still in use; in stress mode the next use panics, but in normal mode a reused slot may hand back a different object.',
-  },
   'safe-not-correct': {
-    q: 'A stale `Gc<T>` reads a slot that a new object now occupies. Is that undefined behaviour?',
+    q: 'In drip-rs’s safe Rust, a stale `Gc<T>` reads an arena slot that a new object now occupies. Is that undefined behaviour?',
     a: 'No: the read is in bounds and well typed, so it is safe. It is still wrong: a logic bug, not a memory-safety bug.',
   },
-  'cost-lines': {
-    q: 'How many code lines are drip-rs and the TypeScript VM, by this chapter’s count?',
-    a: '3,328 in Rust against 1,714 in TypeScript: 1.94 times as many.',
-  },
-  'cost-where': {
-    q: 'Give one reason drip-rs has more lines than the TypeScript VM that is not about ownership.',
-    a: 'JavaScript’s number printing had to be rewritten by hand, the scanner spells out each byte case, and there is a 50-line command line with no twin in `ts/src/vm`.',
-  },
-  'speed-scope': {
-    q: 'What is the honest one-line summary of drip-rs’s speed?',
-    a: 'On the committed run of 2026-11-02, 1.26× to 4.94× the TypeScript VM on ten programs, geometric mean 3.94×; best of three fresh runs on a shared machine.',
-  },
-  'biggest-win': {
-    q: 'Which measured change in this Part mattered more: removing a bounds check, or the chunk register?',
-    a: 'The chunk register: without it fib was about 2.1 times slower. The unchecked read saved 8% of instructions and no measurable time.',
-  },
   'rust-tradeoffs': {
-    q: 'In one sentence, what did Rust give drip-rs and what did it cost?',
+    q: 'In one sentence, what did porting the Drip VM from TypeScript to Rust (drip-rs) give, and what did it cost?',
     a: 'Memory safety without a runtime, compile-time checks and about four times the TypeScript VM’s speed, for nearly twice the lines and a design built around ownership.',
   },
 };
@@ -263,6 +147,7 @@ fn main() {
 
 export const exercises = {
   annotate: {
+    optional: true,
     lang: 'rust',
     title: 'Read callgrind_annotate’s output',
     prompt: 'Write `parse_row(line)`, which turns one line of `callgrind_annotate` output into a `Row`, or returns `None` for anything else (headers, rules of dashes, blank lines). A row is: the instruction count with commas, then the percentage in parentheses (there may be a space after `(`), then the name. Clean the name: drop a trailing ` [binary path]` if there is one, and a leading `???:`. Then write `sum_named(rows, needle)`, which adds up the `ir` of every row whose name contains `needle`. With debug info, one inlined function is split across many files (`vm.rs`, `vec/mod.rs`, `slice/index.rs`...), and this puts it back together, as this chapter did for `Vm::run`.',
@@ -618,6 +503,7 @@ fn inclusive(folded: &[(&str, u64)])
     ],
   },
   verdict: {
+    optional: true,
     lang: 'rust',
     title: 'A speed-up calculator that respects noise',
     prompt: 'You have wall times from fresh runs, before and after a change. Write `min` and `max` of a slice, then `speedup(before, after)`: best before divided by best after. Then write `verdict(before, after)`, which only claims a result when the samples don’t overlap: `Faster` if every `after` time is below every `before` time, `Slower` if every `after` time is above every `before` time, and `Noise` otherwise. The tests use this chapter’s real fib timings.',
@@ -1054,6 +940,7 @@ fn slower(rows: &[Row]) -> Vec<&str> {
     ],
   },
   counts: {
+    optional: true,
     lang: 'rust',
     title: 'Count the lines the way this chapter did',
     prompt: 'Write `counts(src)`, which returns `(code, test)` for a Rust source file: the number of code lines before the module’s `#[cfg(test)]`, and the number from that line on. Blank lines (only whitespace) and comment lines (starting with `//` after any indentation, which covers `///` and `//!`) count as neither. The `#[cfg(test)]` line itself counts as a test line.',
@@ -1188,25 +1075,7 @@ fn counts(src: &str) -> (usize, usize) {
 
 export const quiz = [
   {
-    q: 'callgrind reports `Table::get` at 6.0% of fib’s instructions. What can you conclude about time?',
-    options: [
-      {
-        t: 'It took exactly 6.0% of the running time',
-        why: 'Instruction counts ignore cache misses, mispredicted branches and overlap, so time shares can differ.',
-      },
-      {
-        t: 'It is a good first guess at its share of time, to be checked with a timing',
-        correct: true,
-        why: 'Counts point you at code worth a look; only a before-and-after timing says whether changing it helps.',
-      },
-      {
-        t: 'Nothing, because callgrind runs about seventy times slower',
-        why: 'The slowdown does not change the counts: they are the instructions the program runs natively.',
-      },
-    ],
-  },
-  {
-    q: '`call_value` has inclusive cost 13.9% and self cost 3.7% in fib. Where did the other 10.2% go?',
+    q: 'Profiling drip-rs on fib with callgrind, `call_value` has inclusive cost 13.9% and self cost 3.7%. Where did the other 10.2% go?',
     options: [
       {
         t: 'Into the functions that called it',
@@ -1224,61 +1093,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is drip-rs’s lead over the TypeScript VM so much smaller on `strings.drip` than on fib?',
-    options: [
-      {
-        t: 'Its dispatch loop is slower on strings',
-        why: 'The loop’s own share is only 17.9% there; most of the cost is elsewhere.',
-      },
-      {
-        t: 'Its garbage collector runs constantly',
-        why: 'Collection does not appear near the top of the profile.',
-      },
-      {
-        t: 'Most of the program is spent formatting numbers into text and allocating strings, in library code',
-        correct: true,
-        why: '`format_number` alone is 48.2% of the instructions, and malloc and free are near the top.',
-      },
-    ],
-  },
-  {
-    q: 'In a flame graph, one box sits on top of `run` and is 10% of the width. What is it?',
-    options: [
-      {
-        t: 'A function that ran for 10% of the time, starting at that point of the timeline',
-        why: 'The x axis is not time.',
-      },
-      {
-        t: 'A function 10% of whose instructions were inlined into `run`',
-        why: 'Inlined code has no box: it is part of `run`’s own bare top.',
-      },
-      {
-        t: 'A function called by `run`, which, with its callees, took 10% of the cost',
-        correct: true,
-        why: 'Width is the inclusive cost on that call path.',
-      },
-    ],
-  },
-  {
-    q: 'Why is a callgrind count more useful than a timing for comparing two builds on this book’s machine?',
-    options: [
-      {
-        t: 'It is deterministic: other users of the shared machine cannot change how many instructions your program runs',
-        correct: true,
-        why: 'Timings here vary by tens of percent; counts vary by a few dozen instructions in billions.',
-      },
-      {
-        t: 'It is always the same as the time',
-        why: 'It is not; a change can save instructions and no time, as the next chapter shows.',
-      },
-      {
-        t: 'It runs faster than the program',
-        why: 'It runs about seventy times slower.',
-      },
-    ],
-  },
-  {
-    q: 'An unchecked `read_byte` removed 8% of fib’s instructions. What happened to its time?',
+    q: 'In a 2026-11-02 experiment on drip-rs, an unchecked `read_byte` removed 8% of fib’s instructions. What happened to its time?',
     options: [
       {
         t: 'It fell by 8%',
@@ -1292,24 +1107,6 @@ export const quiz = [
       {
         t: 'It doubled',
         why: 'That was the copy without the chunk register, a different experiment.',
-      },
-    ],
-  },
-  {
-    q: 'What does `#![forbid(unsafe_code)]` in drip-rs’s `lib.rs` do?',
-    options: [
-      {
-        t: 'Makes every `unsafe` block in the crate a compile error, which no inner attribute can switch back on',
-        correct: true,
-        why: '`forbid` is stronger than `deny`: it cannot be overridden lower down.',
-      },
-      {
-        t: 'Makes `unsafe` blocks panic at run time',
-        why: 'It is a compile-time lint; the code never builds.',
-      },
-      {
-        t: 'Turns off bounds checks',
-        why: 'It does the opposite: it keeps you from turning them off.',
       },
     ],
   },
@@ -1332,132 +1129,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which change made strings.drip about 1.75 times faster in this chapter’s measurements?',
-    options: [
-      {
-        t: 'Reading bytes with `get_unchecked`',
-        why: 'That was tried on fib and saved no time.',
-      },
-      {
-        t: 'A fast path in `format_number` that prints whole numbers below 2^53 with `(n as i64).to_string()`',
-        correct: true,
-        why: 'The profile put 48.2% of strings.drip in `format_number`; the fast path cut its instructions by 44%.',
-      },
-      {
-        t: 'Removing the garbage collector',
-        why: 'Nobody removed it, and the corpus would fail without it.',
-      },
-    ],
-  },
-  {
-    q: 'Why is the whole-number fast path in this chapter not in the benchmark tables of the next chapter?',
-    options: [
-      {
-        t: 'It made the output different',
-        why: 'It passed the corpus and every benchmark’s output byte for byte.',
-      },
-      {
-        t: 'It was measured in a scratch copy; the committed drip-rs, which the tables measure, does not have it yet',
-        correct: true,
-        why: 'The chapter says what it measured and changes no companion code.',
-      },
-      {
-        t: 'It only helps the TypeScript VM',
-        why: 'It is a change to drip-rs’s `format_number`.',
-      },
-    ],
-  },
-  {
-    q: 'What is the geometric mean of the TypeScript VM’s speed-ups over the tree-walker on the ten programs of 2026-11-02?',
-    options: [
-      {
-        t: 'About 1.24',
-        why: 'That is fib’s and closures’ speed-up, not the mean over all ten.',
-      },
-      {
-        t: 'About 1.01',
-        correct: true,
-        why: 'Six wins of at most 1.30× and four losses down to 0.69× cancel out almost exactly.',
-      },
-      {
-        t: 'About 3.94',
-        why: 'That is drip-rs against the TypeScript VM.',
-      },
-    ],
-  },
-  {
-    q: 'On `fields`, the TypeScript VM is 0.74 times the tree-walker but drip-rs is 3.69 times the TypeScript VM. What does that suggest?',
-    options: [
-      {
-        t: 'The bytecode for `fields` is badly compiled',
-        why: 'drip-rs runs exactly the same bytecode and is fast.',
-      },
-      {
-        t: 'The cost is in how each instruction is carried out in TypeScript, not in the instructions themselves',
-        correct: true,
-        why: 'Same bytecode, very different cost per instruction.',
-      },
-      {
-        t: 'The tree-walker cheats by skipping work',
-        why: 'All three pass the same corpus and print the same output.',
-      },
-    ],
-  },
-  {
-    q: 'According to the profiles in this chapter, which work does the TypeScript VM do itself that the tree-walker leaves to V8?',
-    options: [
-      {
-        t: 'Parsing the program',
-        why: 'Both parse in TypeScript; compiling was under 1% of samples.',
-      },
-      {
-        t: 'Printing the output',
-        why: 'Both print the same way.',
-      },
-      {
-        t: 'Hash-table lookups for fields and globals, and garbage collection',
-        correct: true,
-        why: 'Its own `table.ts` and `heap.ts`, against the tree-walker’s `Map` and V8’s collector.',
-      },
-    ],
-  },
-  {
-    q: 'Why is a single run never used as a benchmark result in this book?',
-    options: [
-      {
-        t: 'On a shared cloud machine one run can vary from the next by tens of percent',
-        correct: true,
-        why: 'So the tables report the best of three fresh runs, and close results are read as “about the same”.',
-      },
-      {
-        t: 'The first run is always slower because of the disk',
-        why: 'Each run is a fresh process anyway; the variation is mostly other work on the machine.',
-      },
-      {
-        t: 'Rust programs need warming up',
-        why: 'drip-rs is compiled ahead of time; there is nothing to warm up.',
-      },
-    ],
-  },
-  {
-    q: 'What makes a comparison between implementations meaningful at all?',
-    options: [
-      {
-        t: 'That they are written in different languages',
-        why: 'Two implementations in the same language can be compared too.',
-      },
-      {
-        t: 'That they pass the same tests, so they are doing the same work, measured the same way on the same machine',
-        correct: true,
-        why: 'A faster implementation that prints a different answer has not won anything.',
-      },
-      {
-        t: 'That the newest one is fastest',
-        why: 'The TypeScript VM is newer than the tree-walker, and not faster on average.',
-      },
-    ],
-  },
-  {
     q: 'Which of these designs in drip-rs exists because of Rust’s ownership rules rather than because a VM needs it?',
     options: [
       {
@@ -1472,78 +1143,6 @@ export const quiz = [
       {
         t: 'Bytecode with one-byte opcodes',
         why: 'The TypeScript VM uses the same instruction set.',
-      },
-    ],
-  },
-  {
-    q: 'What does `#![forbid(unsafe_code)]` guarantee about drip-rs?',
-    options: [
-      {
-        t: 'That it has no bugs',
-        why: 'A forgotten root is still a bug in safe code.',
-      },
-      {
-        t: 'That no line of the crate can use `unsafe`, so every index stays checked and there is no undefined behaviour from drip-rs’s own code',
-        correct: true,
-        why: 'Safe Rust has no undefined behaviour; forbid keeps all of drip-rs in safe Rust.',
-      },
-      {
-        t: 'That it runs as fast as C',
-        why: 'It says nothing about speed.',
-      },
-    ],
-  },
-  {
-    q: 'The stale-handle example prints `zoo` where it meant `fib`. What kind of bug is that?',
-    options: [
-      {
-        t: 'Undefined behaviour',
-        why: 'Every access is in bounds and well typed; the language’s rules are all kept.',
-      },
-      {
-        t: 'A compile error that was ignored',
-        why: 'It compiles with no errors or warnings.',
-      },
-      {
-        t: 'A logic bug in safe code: a handle kept after its object was freed',
-        correct: true,
-        why: 'Only tests, such as the stress-GC suite, can find it.',
-      },
-    ],
-  },
-  {
-    q: 'By this chapter’s count, how much longer is drip-rs than the TypeScript VM?',
-    options: [
-      {
-        t: 'About the same length',
-        why: '3,328 lines against 1,714 is nearly double.',
-      },
-      {
-        t: 'About 1.94 times as long',
-        correct: true,
-        why: 'Code lines only: no blanks, no comments, no unit tests.',
-      },
-      {
-        t: 'About four times as long',
-        why: 'Four is roughly its speed-up, not its length.',
-      },
-    ],
-  },
-  {
-    q: 'Where did most of drip-rs’s speed over the TypeScript VM come from, by this Part’s measurements?',
-    options: [
-      {
-        t: 'From removing bounds checks',
-        why: 'drip-rs keeps them all, and removing one saved no measurable time.',
-      },
-      {
-        t: 'From a different instruction set',
-        why: 'It runs the same bytecode as the TypeScript VM.',
-      },
-      {
-        t: 'From running the same design as compiled machine code, with the hot state in fields of the `Vm`',
-        correct: true,
-        why: 'Same bytecode, cheaper steps; and removing the chunk register alone made fib about 2.1 times slower.',
       },
     ],
   },

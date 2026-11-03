@@ -7,65 +7,33 @@ export const prompts = {
     q: 'Where do drip-rs’s compile errors and runtime errors go, and with which exit codes?',
     a: 'Compile errors are pushed as `String`s into two `Vec`s and compiling carries on: exit 65. A runtime error writes its message and trace into the VM’s stderr lines and stops the program: exit 70.',
   },
-  'de-innermost': {
-    q: 'In a drip-rs stack trace, which call comes first?',
-    a: 'The innermost one, where the error happened; the script comes last.',
-  },
   'de-stale': {
-    q: 'Why does `runtime_error` use `self.ip` for the innermost frame instead of that frame’s `ip` field?',
+    q: 'Why does drip-rs’s `runtime_error` use `self.ip` for the innermost frame instead of that frame’s `ip` field?',
     a: 'The running frame’s ip lives in the `self.ip` register and is written back only when the frame makes a call, so the innermost frame’s own copy is stale.',
-  },
-  'de-fields': {
-    q: 'Why may `runtime_error` push to `self.stderr` inside `for ... in self.frames.iter()`?',
-    a: 'They are different fields of `self`, and Rust lets one function borrow different fields separately: `self.frames` shared, `self.stderr` mutable.',
   },
   'de-unit': {
     q: 'Why does drip-rs’s `RuntimeError` carry no data?',
     a: 'By the time one exists, the message and stack trace are already in `self.stderr`, so there is nothing left to carry.',
   },
-  'de-question': {
-    q: 'What does the `?` in `let (a, b) = self.pop_numbers("*")?;` do on an error?',
-    a: 'It returns the `Err(RuntimeError)` from the current function at once, so it travels up out of `run` to `interpret`.',
-  },
-  'de-reset': {
-    q: 'What does `interpret` clear after a runtime error, and what does it keep?',
-    a: 'It clears the stack, the frames, the chunk register and the open upvalues. The globals stay, so the same VM can run another program.',
-  },
   'de-static': {
     q: 'A program has a syntax error on line 5 and a `break` outside a loop on line 3. What does drip-rs report?',
     a: 'Only the syntax error: static errors are reported only when there are no syntax errors.',
   },
-  'sc-what': {
-    q: 'What is in `book/companion/corpus`?',
-    a: '344 Drip programs in 25 folders (334 tests and 10 benchmarks), each saying in its comments what it should do.',
-  },
   'sc-why': {
-    q: 'Why check three implementations against one corpus instead of against each other’s code?',
+    q: 'Why check several implementations of one language against a shared corpus of programs, instead of against each other’s code?',
     a: 'They share almost no code, but they must share behaviour; writing the behaviour down once lets each one be checked on its own.',
   },
   'sc-markers': {
-    q: 'Name the four expectation markers.',
+    q: 'Name the four expectation markers a Drip corpus program can use in its comments.',
     a: '`# expect:`, `# expect compile error:`, `# expect runtime error:` and `# expect trace:`.',
   },
-  'sc-trace-line': {
-    q: 'Without any `# expect trace:` lines, which part of a runtime error’s trace is checked?',
-    a: 'Only the innermost `at` line, which must name the line the runtime-error comment is on.',
-  },
-  'sc-harness': {
-    q: 'Why do drip-rs’s two corpus suites set `harness = false`?',
-    a: 'So they can bring their own `main` and print one line per program, like the TypeScript runner, instead of being one big test.',
-  },
   'sc-stress': {
-    q: 'What does `stress_gc: true` do, and what bug does it catch?',
+    q: 'What does drip-rs’s `stress_gc: true` option do, and what bug does it catch?',
     a: 'It collects before every allocation and never reuses a freed slot, so a value that is not reachable from a root is freed at once and the next use of it panics.',
   },
   'sc-mangle': {
-    q: 'What does `compare_with_ts.mjs` do to a corpus program to “mangle” it?',
+    q: 'What does drip-rs’s `compare_with_ts.mjs` do to a corpus program to “mangle” it, and what does it then compare?',
     a: 'Drops a token, replaces one with a random piece of Drip, or inserts one; then it compares drip-rs and the TypeScript VM on the result.',
-  },
-  'sc-clock': {
-    q: 'Why did the comparison cover 343 programs and not all 344?',
-    a: 'One program prints a value from `clock()`, which differs on every run, so it is skipped.',
   },
 };
 
@@ -98,6 +66,7 @@ print b[0]; # expect: changed`,
 
 export const exercises = {
   trace: {
+    optional: true,
     lang: 'rust',
     title: 'A stack trace',
     prompt: `Write \`runtime_error\` for this small VM, which keeps the running frame's ip in a register as drip-rs does.
@@ -718,7 +687,7 @@ fn parse(source: &str) -> Expect {
 
 export const quiz = [
   {
-    q: 'In the oven program, why is the second trace line `at line 2 in fn bake`?',
+    q: 'In drip-rs, method `bake` (defined on line 2) calls `self.heat(n)` on line 2, and `heat` fails. Why does the trace line for `bake` say `at line 2 in fn bake`?',
     options: [
       {
         t: 'Line 2 is where `bake` is defined',
@@ -732,42 +701,6 @@ export const quiz = [
       {
         t: 'The VM records the line of every call in a separate list',
         why: 'There is no such list; the line comes from the saved ip and the chunk’s `lines` array.',
-      },
-    ],
-  },
-  {
-    q: 'What does drip-rs’s `runtime_error` return?',
-    options: [
-      {
-        t: 'A `String` with the message',
-        why: 'The message has already been pushed to `self.stderr`.',
-      },
-      {
-        t: 'Nothing: it panics',
-        why: 'A Drip runtime error is the program’s mistake, never a panic.',
-      },
-      {
-        t: '`RuntimeError`, a unit struct, which the caller wraps in `Err` and `?` carries up',
-        correct: true,
-        why: 'Every fallible function returns `Run<T> = Result<T, RuntimeError>`.',
-      },
-    ],
-  },
-  {
-    q: 'How does the TypeScript VM get a runtime error out of its loop?',
-    options: [
-      {
-        t: 'It throws an exception, and `interpret` catches it',
-        correct: true,
-        why: 'Its `runtimeError` has return type `never` and ends with `throw`.',
-      },
-      {
-        t: 'It returns a `Result` like drip-rs',
-        why: 'TypeScript has no built-in `Result`; the VM throws.',
-      },
-      {
-        t: 'It sets a flag that the loop checks after every instruction',
-        why: 'That would cost a check per instruction; it throws instead.',
       },
     ],
   },
@@ -790,24 +723,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which difference between the two command lines does the shared corpus not catch?',
-    options: [
-      {
-        t: 'The wording of the message for a file that cannot be read',
-        correct: true,
-        why: 'drip-rs prints Rust’s “No such file or directory (os error 2)”, the TypeScript CLI Node’s “ENOENT”; the corpus only runs programs that exist.',
-      },
-      {
-        t: 'The exit code of a runtime error',
-        why: 'Both exit with 70, and the corpus checks it.',
-      },
-      {
-        t: 'The order of the stack trace',
-        why: 'The corpus pins traces with `# expect trace:` lines.',
-      },
-    ],
-  },
-  {
     q: 'A corpus program ends with `# expect compile error: line 2: ...`. What must an implementation do to pass it?',
     options: [
       {
@@ -826,61 +741,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `tests/corpus.rs` run programs with `debug_gc: true`?',
-    options: [
-      {
-        t: 'To make the tests faster',
-        why: 'It makes nothing faster; it only stops freed slots being reused.',
-      },
-      {
-        t: 'So that a collector bug panics instead of quietly reading another object',
-        correct: true,
-        why: 'With slots never reused, a stale handle points at a freed slot and the read panics.',
-      },
-      {
-        t: 'To print the bytecode of each program',
-        why: 'That is `--disassemble`, a different thing.',
-      },
-    ],
-  },
-  {
-    q: 'What does the stress-GC suite add over the plain corpus suite?',
-    options: [
-      {
-        t: 'It runs the benchmarks',
-        why: 'Neither suite runs the benchmarks; `scripts/bench.sh` does.',
-      },
-      {
-        t: 'It compares drip-rs with the TypeScript VM',
-        why: 'That is `compare_with_ts.mjs`.',
-      },
-      {
-        t: 'A collection before every allocation, on the 165 programs that allocate most',
-        correct: true,
-        why: 'So a value missing from the roots is freed at the first chance.',
-      },
-    ],
-  },
-  {
-    q: 'Both VMs passed the corpus. What extra does `compare_with_ts.mjs` check?',
-    options: [
-      {
-        t: 'That their stdout, stderr and exit codes are identical byte for byte, including on 2,000 mangled programs',
-        correct: true,
-        why: 'It compares the two with each other, including on things no comment pins.',
-      },
-      {
-        t: 'That they are equally fast',
-        why: 'It compares output, not time.',
-      },
-      {
-        t: 'That the corpus comments are correct',
-        why: 'No program can check that; if both were wrong the same way, it would still say 0 differ.',
-      },
-    ],
-  },
-  {
-    q: 'What can neither the corpus nor the comparison catch?',
+    q: 'Several implementations of a language all pass one shared corpus, and a differential comparison finds no differences between them on many mangled programs. What can neither check catch?',
     options: [
       {
         t: 'A wrong runtime-error message in drip-rs',

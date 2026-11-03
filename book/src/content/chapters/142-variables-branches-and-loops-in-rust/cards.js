@@ -3,18 +3,6 @@
 // Merged from old chapters 142, 142.
 
 export const prompts = {
-  'rl-ident-const': {
-    q: 'What does drip-rs’s `identifier_constant(name)` do?',
-    a: 'Interns the name and adds it to the chunk’s constant pool as a `Value::String`, returning the constant’s index. It does not reuse an earlier copy.',
-  },
-  'rl-set-new': {
-    q: 'How does `store.global` notice an assignment to a global that was never defined?',
-    a: '`globals.set` returns `true` when the key was new. The VM then deletes the entry again and reports `undefined variable \'m\'`.',
-  },
-  'rl-globals-root': {
-    q: 'Why must the VM’s `globals` table be a garbage-collection root?',
-    a: 'Its keys and values are handles to heap objects that may be reachable from nowhere else.',
-  },
   'rl-local': {
     q: 'What three things does drip-rs’s compiler record for each local?',
     a: 'Its name (a `&\'src str` into the source), its scope depth (`Option<usize>`), and whether a closure captures it.',
@@ -24,52 +12,28 @@ export const prompts = {
     a: 'Declared, but its initialiser is still being compiled, so it cannot be read yet. TypeScript used `depth: -1`.',
   },
   'rl-rev': {
-    q: 'Why does `resolve_local` search the locals from the end?',
+    q: 'Why does a single-pass compiler that keeps its locals in a `Vec`, such as drip-rs’s, resolve a name by searching the locals from the end?',
     a: 'Later locals are more deeply nested, so the innermost variable with that name, the one that shadows the others, is found first.',
-  },
-  'rl-no-emit': {
-    q: 'Which instruction defines a local variable?',
-    a: 'None. The initialiser leaves its value on the stack, which is already the local’s slot; the compiler only marks it initialised.',
   },
   'rl-end-scope': {
     q: 'Why can’t drip-rs’s `end_scope` keep `let state = self.state();` and call `self.emit_op` in the loop?',
     a: '`state` is a mutable borrow into `self.functions`, still used after the call, and `emit_op` needs all of `self`: E0499. Read `is_captured`, pop, then emit.',
   },
-  'rl-declare': {
-    q: 'How does `declare_variable` report a duplicate without a borrow conflict?',
-    a: 'It first computes a plain `bool` with `iter().rev().take_while(..).any(..)`, ending the borrow of the locals, then reports the error.',
-  },
-  'pj-returns': {
-    q: 'What does drip-rs’s `emit_jump` return, and of what type?',
-    a: 'The position of the jump’s first placeholder byte, `code.len() - 2`, as a `usize`.',
-  },
   'pj-number': {
-    q: 'Why does the caller keep the jump’s position as a number rather than a `&mut u8` into the code?',
+    q: 'In a Rust compiler that backpatches jumps, why does the caller keep the jump’s position as a `usize` rather than a `&mut u8` into the code?',
     a: 'A number borrows nothing, so the compiler can keep emitting the body. A `&mut` reference would lock the chunk until the patch.',
   },
   'pj-minus-two': {
-    q: 'In `patch_jump`, why is the distance `len - offset - 2`?',
+    q: 'In drip-rs’s `patch_jump(offset)`, where `offset` is the jump’s first operand byte, why is the distance `len - offset - 2`?',
     a: 'A jump is measured from the end of its operand, and the operand is the two bytes starting at `offset`; the VM’s `ip` is at `offset + 2` when it adds.',
   },
-  'pj-as-u8': {
-    q: 'What does `jump as u8` do, and what was its TypeScript twin?',
-    a: 'It keeps the low 8 bits (a numeric cast to a smaller integer truncates). TypeScript wrote `jump & 0xff`.',
-  },
   'pj-order': {
-    q: 'Why does `patch_jump` call `self.static_error(...)` before `let code = &mut self.chunk().code;`?',
+    q: 'Why does drip-rs’s `patch_jump` call `self.static_error(...)` before `let code = &mut self.chunk().code;`?',
     a: '`code` borrows `self` mutably through `chunk()`, and `static_error` needs `&mut self` too. Borrowing `code` first and reporting after is error E0499.',
   },
   'pj-big-endian': {
-    q: 'In which order are a jump’s two offset bytes stored, and why?',
+    q: 'In drip-rs, in which order are a jump’s two offset bytes stored, and why?',
     a: 'High byte first, because the VM’s `read_short` rebuilds the number as `(high << 8) | low`.',
-  },
-  'pj-loop-plus': {
-    q: 'Why does `emit_loop` compute `len - loop_start + 2`?',
-    a: 'When it works out the offset, the two operand bytes are not written yet, and the VM steps back from the end of the operand, two bytes further on.',
-  },
-  'pj-continue-target': {
-    q: 'A `while` loop records `continue_target: Some(loop_start)`; a `for` loop records `None`. Why the difference?',
-    a: 'In a `while`, `continue` jumps back to the condition, which is already compiled (`emit_loop`). In a `for`, it must jump forwards past the body to the step, so it needs a hole patched later.',
   },
 };
 
@@ -110,6 +74,7 @@ for n in 2..20 {
 
 export const exercises = {
   endScope: {
+    optional: true,
     lang: 'rust',
     title: 'end_scope',
     prompt: `This compiler is shaped like drip-rs's: functions in a \`Vec\`, \`state()\` for the innermost one, and \`emit_op\` taking \`&mut self\`. Write \`end_scope\`:
@@ -1486,42 +1451,6 @@ impl Compiler {
 
 export const quiz = [
   {
-    q: 'In the listing for `let n = 1; n = n + 1; print n;`, why are constants 1, 2, 3 and 5 all `\'n\'`?',
-    options: [
-      {
-        t: '`identifier_constant` adds a constant every time a name is used, without looking for an earlier copy',
-        correct: true,
-        why: 'Each is the same interned `StrRef`, stored again in the pool.',
-      },
-      {
-        t: 'The names are different strings that happen to print the same',
-        why: 'They are interned, so they are the same string object.',
-      },
-      {
-        t: 'The VM copies the name each time it runs',
-        why: 'The constants are made by the compiler, before anything runs.',
-      },
-    ],
-  },
-  {
-    q: 'What does drip-rs print for the one-line program `m = 1;`?',
-    options: [
-      {
-        t: 'Nothing: it creates a global `m`',
-        why: 'Only `let` creates a global; assignment never does.',
-      },
-      {
-        t: '`line 1: \'m\' is not declared`',
-        why: 'Globals are checked at run time, not by the compiler.',
-      },
-      {
-        t: '`runtime error: undefined variable \'m\'`, then `  at line 1 in script`',
-        correct: true,
-        why: '`store.global` sees `set` return `true` (a new key), deletes it again and reports the error.',
-      },
-    ],
-  },
-  {
     q: 'What does `depth: None` on a drip-rs `Local` mean?',
     options: [
       {
@@ -1558,50 +1487,6 @@ export const quiz = [
       {
         t: '`a + 1` is not allowed in a `let`',
         why: 'Any expression is; `let b = a + 1;` works.',
-      },
-    ],
-  },
-  {
-    q: 'What does `load.local 2` do at run time?',
-    options: [
-      {
-        t: 'Looks up the name of local 2 in a table',
-        why: 'Locals have no names at run time.',
-      },
-      {
-        t: 'Reads constant 2 and searches the stack for it',
-        why: 'The operand is a slot number, not a constant index.',
-      },
-      {
-        t: 'Calls `resolve_local`',
-        why: 'That runs in the compiler, never in the VM.',
-      },
-      {
-        t: 'Pushes `self.stack[self.slots + 2]`: one addition and one indexed read',
-        correct: true,
-        why: '`self.slots` is the running frame’s base.',
-      },
-    ],
-  },
-  {
-    q: '`emit_jump` returns 14. What is at offsets 14 and 15 right after it returns?',
-    options: [
-      {
-        t: 'The jump’s opcode and the first byte of the next instruction',
-        why: 'The opcode is at 13. Offsets 14 and 15 are its operand.',
-      },
-      {
-        t: '`0xff 0xff`, the placeholder',
-        correct: true,
-        why: '`patch_jump(14)` will overwrite them with the real distance once it is known.',
-      },
-      {
-        t: 'The final jump distance',
-        why: 'It is not known yet: the code being jumped over has not been compiled.',
-      },
-      {
-        t: 'Nothing: the operand is added by `patch_jump`',
-        why: 'The two bytes are reserved now, so that later code lands after them and the patch never has to insert anything.',
       },
     ],
   },
@@ -1655,50 +1540,6 @@ code[offset] = (jump >> 8) as u8;
       {
         t: 'A `Vec<u8>` cannot be indexed with a `usize`',
         why: '`usize` is exactly the type a `Vec` is indexed with.',
-      },
-    ],
-  },
-  {
-    q: 'What does `(jump >> 8) as u8` give for `jump = 300`?',
-    options: [
-      {
-        t: '44',
-        why: 'That is `300 as u8`, the low byte.',
-      },
-      {
-        t: '1',
-        correct: true,
-        why: '300 = 1 × 256 + 44, so shifting right by 8 leaves 1.',
-      },
-      {
-        t: '300',
-        why: 'A `u8` holds 0 to 255, so it cannot be 300.',
-      },
-      {
-        t: 'A panic, because 300 does not fit in a `u8`',
-        why: '`as` never panics; it truncates. Here nothing is lost anyway: 300 >> 8 is 1.',
-      },
-    ],
-  },
-  {
-    q: 'In drip-rs, why does a `continue` inside a `for` loop need a patched jump, when one inside a `while` does not?',
-    options: [
-      {
-        t: 'In a `for`, `continue` must skip forwards to the step that moves the counter on, which is not compiled yet',
-        correct: true,
-        why: 'So the loop records `continue_target: None` and keeps the jumps on its `continues` list, patched after the body.',
-      },
-      {
-        t: 'A `for` loop has no condition to jump back to',
-        why: 'It has one (counter < end), but `continue` must first run the step, which comes after the body.',
-      },
-      {
-        t: '`emit_loop` cannot be used inside a `for`',
-        why: 'It can, and the `for` loop uses it at the end of each pass.',
-      },
-      {
-        t: 'It does not: both use `emit_loop`',
-        why: 'Only the `while` loop has `Some(loop_start)` as its continue target.',
       },
     ],
   },

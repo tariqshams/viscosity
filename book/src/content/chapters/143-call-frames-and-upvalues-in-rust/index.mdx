@@ -3,44 +3,27 @@ n: 143
 day: 24
 part: VIII
 title: 'Call frames and upvalues in Rust'
-tagline: 'The TypeScript VM keeps a live reference to the running frame and re-points it after every call. drip-rs is not allowed to hold that reference, so a call copies the frame’s state into the VM’s own fields and back again. Here is that bookkeeping, and the one out-of-date field it leaves behind.'
+tagline: 'The TypeScript VM keeps a live reference to the running frame; drip-rs is not allowed to, so a call copies the frame’s state into the VM’s registers and back. Upvalues become a two-variant enum behind a handle, and the open ones a sorted Vec.'
 objectives:
-  - Map drip-rs’s CallFrame, call and pop_frame onto the TypeScript VM’s frames.
-  - Explain why the Call arm needs no reload, and why the running frame’s ip field is out of date.
+  - Map drip-rs’s CallFrame, call and pop_frame onto the TypeScript VM’s frames, and explain why the running frame’s ip field is out of date.
   - Read a drip-rs stack trace and say which ip each line came from.
-  - Write call and return for a small frame-stack VM, with tests.
   - Map drip-rs’s ObjUpvalue enum and open-upvalue Vec onto the TypeScript upvalue object and its linked list.
-  - Trace capture_upvalue and close_upvalues through a closure that outlives its frame.
   - Explain why drip-rs captures every upvalue before it allocates the closure, and why that is safe.
-  - Write capture and close for a small VM, with tests.
 introduces: [frame-stack, upvalue-handle]
-uses: [drip-rs, match-dispatch, value-enum, object-handle, opcode-enum, call-frame, frame-pointer, instruction-pointer, stack-slot, arity, native-function, stack-overflow, runtime-error, call-stack, rc, vec, slice, struct, impl, option, result, question-mark, borrow, shared-vs-mutable, borrow-checker, self-receiver, roots, chunk, drip, typescript, upvalue, open-upvalue, closed-upvalue, closure, enum, match, pattern, garbage-collection]
-sources: [klabnik2026, rust-std-vec, rust-std-rc, rustref-fn-pointer, rust-std-vec-insert]
+uses: [drip-rs, match-dispatch, value-enum, object-handle, opcode-enum, call-frame, frame-pointer, instruction-pointer, stack-slot, arity, native-function, stack-overflow, runtime-error, call-stack, rc, vec, struct, impl, option, result, question-mark, borrow, shared-vs-mutable, borrow-checker, self-receiver, roots, chunk, drip, typescript, upvalue, open-upvalue, closed-upvalue, closure, enum, match, pattern, garbage-collection]
+sources: [rust-std-vec, rust-std-rc, rustref-fn-pointer, rust-std-vec-insert]
 ---
 import FrameSteps from '../../../components/diagrams/ch143/FrameSteps';
 import HoldOrCopy from '../../../components/diagrams/ch143/HoldOrCopy';
 import UpvalueSteps from '../../../components/diagrams/ch143/UpvalueSteps';
 import OpenList from '../../../components/diagrams/ch143/OpenList';
 
-{/* ── merge: from old chapter 143, Functions and call frames in Rust ── */}
-
 ## A frame you are not allowed to hold
 
-The chapter *Frames: calling and returning in the VM* gave the
-TypeScript VM one small object per call in progress, and its loop keeps
-the running one in a local variable (trimmed):
-
-```ts
-let frame =
-  this.frames[this.frames.length - 1];
-// ... case Op.Call:
-this.callValue(...);
-reload(); // frame = the new top
-```
-
-`frame` refers to the object inside the array, so `frame.ip++` moves
-the frame itself on, and `reload()` re-points it after a call. Here is
-the same shape in a toy Rust VM, and what rustc 1.97 says (trimmed):
+In *Frames: calling and returning* the TypeScript VM's loop keeps the
+running frame in a local, `let frame = this.frames[this.frames.length -
+1]`, so `frame.ip++` moves the frame itself on, and `reload()` re-points
+it after a call. Here is that shape in a toy Rust VM:
 
 ```rust
 let frame = self.frames.last_mut().unwrap();
@@ -49,23 +32,13 @@ self.call(0); // pushes onto self.frames
 frame.ip += 1;
 ```
 
-```text
-error[E0499]: cannot borrow `*self` as
-  mutable more than once at a time
-6 | let frame = self.frames.last_mut()...
-  |             ----------- first borrow
-8 | self.call(0);
-  | ^^^^ second mutable borrow occurs here
-```
-
-`call` pushes onto `self.frames`, the very `Vec` that `frame` points
-into, and a push may move every element to a bigger
-buffer<Cite id="rust-std-vec" />; the borrow checker is right to refuse
-(the rule is the one from the chapter *Borrowing*: one `&mut` at a
-time<Cite id="klabnik2026" />). The chapter *The VM loop in Rust* showed
-drip-rs's way out: the running frame's `ip`, chunk and stack base live
-in fields of the `Vm` itself, its **registers**. This chapter is about
-the frames behind them.
+rustc 1.97 refuses with `error[E0499]: cannot borrow *self as mutable
+more than once at a time`. `call` pushes onto the very `Vec` that `frame`
+points into, and a push may move every element to a bigger
+buffer<Cite id="rust-std-vec" />, so the borrow checker is right. *Bytecode,
+values and the VM loop in Rust* gave drip-rs's way out: the running
+frame's `ip`, chunk and stack base live in fields of the `Vm`, its
+registers; here are the frames behind them.
 
 <Analogy title="a cupboard of paused board games">
 The game you are playing is open on the table, and your eyes keep your
@@ -76,8 +49,7 @@ note. The open game's box has a note too, but it is out of date until
 you pause again.
 <span slot="breaks">A paused board game cannot change while it waits;
 a paused frame's variables can, because a closure the callee holds may
-write to them (the next chapter, *Capturing variables in Rust*, shows
-how).</span>
+write to them through an upvalue.</span>
 </Analogy>
 
 <Analogy extra title="a phone call on hold">
@@ -102,31 +74,20 @@ struct CallFrame {
 }
 ```
 
-Compared with TypeScript's `{ closure, ip, slots }` there are three
-differences. The closure is a handle (the chapter *Heap objects in an
-arena*), not a reference. The frame carries its function's chunk as an
-**`Rc` clone**, so when `fib` has called itself 20 deep, 20 frames share
-one chunk and each clone only adds one to a count<Cite id="rust-std-rc" />.
-And `ip` in a frame means something only while the frame is paused
-under a call. `Vm::new` reserves room with
-`Vec::with_capacity(FRAMES_MAX)`, and `self.stack.len()` plays the part
-of TypeScript's `sp`.
+Unlike TypeScript's `{ closure, ip, slots }`, the closure is a handle,
+and the chunk is an `Rc` clone, so 20 recursive frames share one chunk
+for the price of a count<Cite id="rust-std-rc" />. A frame's `ip` means
+something only while the frame is paused under a call.
 
 <Figure caption="TypeScript keeps a live reference to the running frame; drip-rs copies its ip, chunk and base into the VM and writes ip back only when it makes a call." takeaway="The running frame’s own ip field is out of date by design.">
   <HoldOrCopy />
 </Figure>
 
-<Prompts ids={['fs-what', 'fs-rc', 'fs-stale']} />
-
-## Call: save, push, load
-
-From `call`, after its two checks (the argument count, then
-`self.frames.len() == FRAMES_MAX`, which is 256 and gives the runtime
-error `stack overflow`), rewrapped:
+After its two checks (the argument count, then 256 frames at most,
+which gives `stack overflow`), `call` saves, pushes and loads
+(rewrapped):
 
 ```rust
-// Save the caller's ip, then load
-// the callee into the registers.
 if let Some(caller) =
     self.frames.last_mut()
 {
@@ -136,26 +97,24 @@ let chunk =
     Rc::clone(&self.heap[function].chunk);
 let slots =
     self.stack.len() - arg_count - 1;
-self.frames.push(CallFrame {
-    closure, chunk: Rc::clone(&chunk),
+self.frames.push(CallFrame { closure,
+    chunk: Rc::clone(&chunk),
     ip: 0, slots });
 self.ip = 0;
 self.chunk = chunk;
 self.slots = slots;
-Ok(())
 ```
 
-The first block writes the register `ip` into the caller's frame, which
-is the moment that field becomes correct; `caller` borrows
-`self.frames` while `self.ip` is read, which is fine because they are
-different fields. (The script's own call has no caller, so `last_mut()`
-gives `None` and nothing is saved.) `chunk` is a new `Rc` handle to the
-callee's bytecode. `slots` points at the callee itself, one below its
-arguments, because slot 0 of every frame holds the function being
-called (or `self`, in a method). Then the frame is pushed and the three
-registers are loaded. Because `call` does the loading, the `Call` arm of
-the loop is one line, `self.call_value(self.peek(arg_count), arg_count)?;`,
-with no `reload`.
+Writing the register `ip` into the caller's frame is the moment that
+field becomes correct (`caller` borrows `self.frames` while `self.ip` is
+read, two different fields, so rustc allows it). `slots` points at the
+callee itself, one below its arguments, as in TypeScript. Because `call`
+loads the registers, the `Call` arm of the loop is one line with no
+`reload`. Returning is the mirror: `pop_frame` pops the finished frame,
+uses `self.frames.last()?` to return `None` when there is no caller (the
+script has finished), and loads the caller's three saved values back;
+the `Return` arm then does `self.stack.truncate(frame.slots)` and pushes
+the result.
 
 <FrameSteps client:visible />
 
@@ -168,60 +127,7 @@ and base are in the VM's registers: `call` saves the caller's `ip` and
 loads the callee, and `pop_frame` loads the caller back.
 </Callout>
 
-<Formal title="A call and a return, on the stack">
-
-```text
-call:   slots = len − argc − 1
-        frames ← frames + [frame]
-return: stack ← stack[0 .. slots] + [r]
-        frames ← frames − last
-```
-
-<span slot="read">A call's base is the length of the stack minus its
-arguments minus one, the slot of the callee itself, and a new frame goes
-on the end of the list. A return keeps the stack up to (not including)
-that base, puts the result r after it, and takes the last frame off the
-list.</span>
-</Formal>
-
-<Prompts ids={['fs-no-reload', 'fs-slots', 'fs-overflow']} />
-
-## Return: pop, load, truncate
-
-```rust
-fn pop_frame(&mut self)
-    -> Option<CallFrame> {
-    let frame = self.frames.pop()
-        .expect("a frame is running");
-    let caller = self.frames.last()?;
-    self.ip = caller.ip;
-    self.chunk = Rc::clone(&caller.chunk);
-    self.slots = caller.slots;
-    Some(frame)
-}
-```
-
-`pop` takes the finished frame out of the `Vec` by value. `?` on the
-`Option` (the chapter *Option and Result*) returns `None` at once when
-there is no caller left, which is how the loop learns that the script
-has finished, where TypeScript checks `frames.length === 0`. Otherwise
-the caller's three saved values go back into the registers. The
-`Return` arm then does `self.stack.truncate(frame.slots)`, dropping the
-callee and all its arguments and locals in one step, and pushes the
-result; when `frame` goes out of scope, its `Rc` clone goes with it.
-
 <Examples of="frame-stack">
-
-```text
-fn hi() { print "hi"; }   hi();
-stack: [script, hi]    slots = 2 − 0 − 1 = 1
-```
-
-```text
-runtime error: area() takes 2 arguments
-  but got 1
-  at line 4 in script
-```
 
 ```text
 runtime error: cannot negate a string
@@ -232,70 +138,35 @@ runtime error: cannot negate a string
 
 </Examples>
 
-The first is the smallest call: no arguments, so the new frame's slot 0
-is `hi` itself, at stack index 1. The second (one line, wrapped here) is
-`call`'s first check, from `print area(3);` with `fn area(w, h)`: the
-error comes before any frame is pushed, so the trace has only the
-script. The third is a realistic trace, from `g` calling `f("hi")` and
-`f` doing `return -x;`. `runtime_error` walks the frames innermost
-first, and for each it needs the line of the instruction that was
-running, `chunk.lines[ip - 1]`. For `g` and the script, the frame's own
-`ip` is right, saved when they made their calls; for `f`, the top frame,
-that field still says 0, so the code reads the register instead:
+This is drip-rs running `g`, which calls `f("hi")`, where `f` does
+`return -x;`. `runtime_error` walks the frames innermost first, and each
+line needs the line of the instruction that was running,
+`chunk.lines[ip - 1]`. For `g` and the script, the frame's own `ip` is
+right, saved when they made their calls; for `f`, the top frame, that
+field still says 0, so the code reads the register instead,
+`let ip = if depth == top { self.ip } else { frame.ip };`.
 
-```rust
-let ip = if depth == top { self.ip }
-    else { frame.ip };
-```
+<More title="Natives, roots, and a recursive run">
 
-A native, such as `len`, is called without a frame at all. A natural
-design would store a function pointer, a value of type
-`fn(&[Value]) -> Value`<Cite id="rustref-fn-pointer" />; drip-rs keeps
-an enum, `Native::{Clock, Len, Push, Pop, Str}`, and matches on it in
-`call_native`, which can then use the whole VM (to describe a value in
-an error, or to intern the string `str` makes). The arguments stay on
-the stack while it runs, so a collection it causes cannot free them,
-and afterwards one `truncate` drops them with the callee.
-
-Try a recursive function; each call is one more `CallFrame`:
+A native such as `len` is called without a frame. A natural design would
+store a function pointer, `fn(&[Value]) -> Value`<Cite id="rustref-fn-pointer" />;
+drip-rs keeps an enum, `Native::{Clock, Len, Push, Pop, Str}`, and
+matches on it in `call_native`, which can then use the whole VM (to
+describe a value in an error, or to intern the string `str` makes). The
+arguments stay on the stack while it runs, so a collection cannot free
+them. The frames are also roots: `VmRoots` traces each frame's
+`closure`, while the `Rc<Chunk>` needs no tracing, because Rust frees
+the bytes when the last clone goes. In the committed benchmark run,
+`fib`, almost nothing but calls and returns, took 406 ms on drip-rs and
+1,906 ms on the TypeScript VM.
 
 <Run id="fact" />
 
-<Prompts ids={['fs-pop-frame', 'fs-trace']} />
+</More>
 
-<Callout kind="engine" label="Under the hood">
-The frames are also garbage collection roots: `VmRoots` traces each
-frame's `closure` handle, which keeps the function and its constants
-alive. The `Rc<Chunk>` needs no tracing, since Rust frees the chunk's
-bytes when its last clone goes. In this book's benchmark run
-(`results/drip-rs-bench-2026-11-02.md`), `fib`, which is almost nothing
-but calls and returns, took 406 ms on drip-rs and 1906 ms on the
-TypeScript VM; the chapter *Benchmarks: three implementations* asks
-where the difference comes from.
-</Callout>
+<Prompts ids={['fs-rc', 'fs-stale', 'fs-no-reload', 'fs-trace']} />
 
-## Your turn
-
-<Exercise id="callReturn" />
-
-<Exercise id="stackTrace" />
-
-## What you learned
-
-- drip-rs keeps **a `Vec` of call frames**; each `CallFrame` has a
-  closure handle, an `Rc<Chunk>` clone, a saved `ip` and `slots`.
-- The loop cannot hold `&mut CallFrame` across a call, so the running
-  frame's state lives in **registers**: `call` saves and loads,
-  `pop_frame` loads the caller back.
-- The running frame's own `ip` field is **out of date**; the stack
-  trace reads the register for the top frame.
-- `pop_frame` returns **`Option<CallFrame>`**: `None` means the script
-  has finished.
-
-
-{/* ── merge: from old chapter 143, Capturing variables in Rust ── */}
-
-## A counter that outlives its frame
+## An upvalue is an enum behind a handle
 
 ```drip
 fn make_counter() {
@@ -308,47 +179,12 @@ print c(); # 1
 print c(); # 2
 ```
 
-`n` is a local of `make_counter`, in a stack slot, and by the time
-`c()` runs that frame and its slots are gone; yet `count` still reads
-and writes `n`. The chapter *Capturing variables:
-upvalues* answered this for the TypeScript VM with an **upvalue**: an
-object that points at the variable's stack slot while the slot exists,
-and holds the variable itself afterwards. drip-rs prints `1` and `2`,
-as the TypeScript VM does; what changes is how an upvalue is written
-down, and how the VM tracks the ones still pointing into the stack.
-
-<Analogy title="a parcel-locker code">
-A delivery company texts you a code. While your parcel is still on the
-van, the code means "van 7"; once the van is unloaded it means "locker
-12"; you, your flatmate and your neighbour can all hold the same code,
-and whoever uses it finds the parcel wherever it is now.
-<span slot="breaks">A parcel is collected once and then it is gone; an
-upvalue can be read and written as often as you like, by every closure
-holding its handle, for as long as any of them is alive.</span>
-</Analogy>
-
-<Analogy extra title="a shared document link">
-You and two colleagues have the same link to a document. When the file
-moves from your laptop to the office server, the link is updated in one
-place, and all three copies of it still open the same file.
-<span slot="breaks">A moved file can leave a broken link behind; an
-upvalue handle cannot dangle, because the garbage collector keeps the
-upvalue alive while any closure refers to it (the chapter *A garbage
-collector in Rust* shows how).</span>
-</Analogy>
-
-## Two states, one enum
-
-The TypeScript upvalue, from `object.ts`, and drip-rs's, from
-`object.rs` (both trimmed, comments shortened):
-
-```ts
-interface ObjUpvalue extends ObjHeader {
-  slot: number; // -1 once closed
-  closed: Value;
-  nextOpen: ObjUpvalue | null;
-}
-```
+By the time `c()` runs, `make_counter`'s frame and slots are gone, yet
+`count` still reads and writes `n`. *Upvalues: capturing and closing*
+answered this with an upvalue that points at the slot while it exists
+and holds the variable afterwards; the TypeScript object has `slot`
+(`-1` once closed), `closed` and `nextOpen`, three fields for two states.
+drip-rs (from `object.rs`, comments shortened):
 
 ```rust
 pub enum ObjUpvalue {
@@ -357,26 +193,10 @@ pub enum ObjUpvalue {
 }
 ```
 
-The TypeScript object has three fields for two states, and the rule
-"`closed` means something only when `slot` is -1" lives in your head.
-The enum (the chapter *Enums and match*) makes the states exclusive: an
-open upvalue has no stale `closed` value, and a closed one has no slot.
-Reading one is a `match`, from the `LoadUpvalue` arm:
-
-```rust
-let value = match self.heap[upvalue] {
-    ObjUpvalue::Open(slot) =>
-        self.stack[slot],
-    ObjUpvalue::Closed(value) => value,
-};
-```
-
-Here `upvalue` came from
-`self.heap[self.closure_register()].upvalues[index]`: the running
-closure first, then its upvalue, two lookups where a
-TypeScript closure holds the object directly. `StoreUpvalue` matches on
-`&mut self.heap[upvalue]` instead and writes either into
-`self.stack[*slot]` or into the `Closed` value itself.
+The enum makes the states exclusive: an open upvalue has no stale
+`closed` value, and a closed one no slot. `LoadUpvalue` is a `match`,
+`Open(slot) => self.stack[slot]` or `Closed(value) => value`, after two
+lookups, the running closure and then its upvalue's handle.
 
 <Callout kind="definition">
 In drip-rs, an **upvalue handle** is a `Gc<ObjUpvalue>`: a slot number in
@@ -388,21 +208,69 @@ handle, and closing it, which overwrites the object in its arena slot,
 is seen by all of them.
 </Callout>
 
-<Prompts ids={['uh-handle', 'uh-enum', 'uh-two-lookups']} />
-
-## The open list is a Vec
-
 The VM must find an existing upvalue for a slot, so that two closures
-over `n` share it, and it must close the right ones when a scope ends.
-TypeScript links the open upvalues through `nextOpen`, highest slot
-first; drip-rs keeps their handles in a `Vec`, sorted lowest first, so
-the end of the `Vec` matches the top of the stack:
+over `n` share it, and close the right ones when a scope ends.
+TypeScript links the open upvalues highest slot first; drip-rs keeps
+their handles in a `Vec`, lowest first, so its end matches the top of
+the stack:
 
 <Figure caption="Two orders for the same list: TypeScript links highest slot first, drip-rs keeps a Vec lowest first, so both reach the top of the stack at once." takeaway="The end of the Vec is the top of the stack.">
   <OpenList />
 </Figure>
 
-From `vm.rs`, rewrapped to fit:
+`capture_upvalue(slot)` walks back from the end: an upvalue for this
+very slot is returned as it is (that is the sharing), one for a lower
+slot means the new one belongs just after it, and a fresh `Open(slot)`
+is inserted there. `close_upvalues(last)` pops while the last open
+upvalue's slot is at or above `last`, doing
+`self.heap[upvalue] = ObjUpvalue::Closed(self.stack[slot]);`, at
+`Return` with the frame's base and at `close.upvalue` as a captured
+local's block ends. The assignment replaces the object in its arena slot
+but keeps the handle, so every closure holding it now reads `Closed`.
+
+<UpvalueSteps client:visible />
+
+<Analogy extra title="a parcel-locker code">
+A delivery company texts you a code. While your parcel is still on the
+van, the code means "van 7"; once the van is unloaded it means "locker
+12"; you, your flatmate and your neighbour can all hold the same code,
+and whoever uses it finds the parcel wherever it is now.
+<span slot="breaks">A parcel is collected once and then it is gone; an
+upvalue can be read and written as often as you like, by every closure
+holding its handle, for as long as any of them is alive.</span>
+</Analogy>
+
+The TypeScript `Closure` case allocates the closure first, with `null`s,
+and then fills each entry with `captureUpvalue`. In Rust that order is
+E0499 again: capturing needs all of `self`, because it may allocate,
+while the half-built closure is still borrowed. So `Vm::closure`
+captures every upvalue into a local `Vec` first and allocates
+`ObjClosure { function, upvalues }` only when the list is complete, which
+also leaves `Vec<Gc<ObjUpvalue>>` with no `null`s. It is safe although
+`alloc` may collect and the local is invisible to the collector: every
+handle in it is either in `open_upvalues`, a root, or in the enclosing
+closure, which the running frame keeps alive.
+
+<Examples of="upvalue-handle">
+
+```drip
+let fs = [];
+for i in 0..3 {
+  push(fs, fn () { return i; });
+}
+for f in fs { print f(); } # 0 1 2
+```
+
+</Examples>
+
+`i` is a fresh local each time round, so each pass's closure captures
+its own `Open` upvalue, and the `close.upvalue` at the end of the pass
+makes it `Closed(0)`, `Closed(1)`, `Closed(2)`; drip-rs prints 0, 1 and
+2, as the TypeScript VM does.
+
+<More title="capture_upvalue in full, sharing, and how long the list gets">
+
+From `vm.rs`, rewrapped:
 
 ```rust
 fn capture_upvalue(&mut self, slot: usize)
@@ -428,134 +296,38 @@ fn capture_upvalue(&mut self, slot: usize)
 }
 ```
 
-It walks back from the end: an upvalue for this very slot is returned
-as it is (that is the sharing), and one for a lower slot means the new
-one belongs just after it, so the loop stops. Otherwise a fresh
-`Open(slot)` is allocated and inserted at `i`, which keeps the order.
-(`open_slot` reads an open upvalue's slot; a `Closed` one in this list
-would be a VM bug, so it panics with `unreachable!`.)
-
-`close_upvalues(last)` is the other half. While the last open upvalue's
-slot is at or above `last`, it does
-`self.heap[upvalue] = ObjUpvalue::Closed(self.stack[slot]);` and pops
-it from the list. It runs at `Return`, with the frame's base, and at
-`close.upvalue`, which the compiler emits for a captured local as its
-block ends. The assignment replaces the whole object in its arena slot
-but keeps the handle, so every closure holding it now reads `Closed`.
-Step through the counter:
-
-<UpvalueSteps client:visible />
-
-<Prompts ids={['uh-sorted', 'uh-share', 'uh-close']} />
-
-## Capture first, then allocate
-
-The TypeScript `Closure` case allocates the closure first, with an array
-of `null`s, pushes it so the collector can see it, and then fills each
-entry with `captureUpvalue`. In a toy Rust VM, that order is refused
-(rustc 1.97, trimmed):
-
-```text
-error[E0499]: cannot borrow `*self` as
-  mutable more than once at a time
-8  | let c = self.closures.last_mut()...
-   |         ------------- first borrow
-10 | c.upvalues.push(self.capture(s));
-   | ----------      ^^^^ second borrow
-```
-
-`capture` needs all of `self`, because it may allocate, while `c` still
-borrows the closure. So drip-rs reverses the order, from `Vm::closure`
-(rewrapped):
-
-```rust
-let mut upvalues =
-    Vec::with_capacity(count);
-for _ in 0..count {
-    let is_local = self.read_byte() == 1;
-    let index = self.read_byte() as usize;
-    upvalues.push(if is_local {
-        self.capture_upvalue(
-            self.slots + index)
-    } else {
-        self.heap[self.closure_register()]
-            .upvalues[index]
-    });
-}
-let closure = self.alloc(
-    ObjClosure { function, upvalues });
-```
-
-Each pair of operand bytes says where the variable is: a local of the
-running frame (capture it) or one of the running closure's own upvalues
-(share its handle). Only when the list is complete is the closure
-allocated, which also makes the type simpler: `Vec<Gc<ObjUpvalue>>`,
-with no `null`s. Is it safe, given that `alloc` may collect and the
-local `upvalues` is invisible to the collector? The comment in `vm.rs`
-gives the argument: every handle in it is either in `open_upvalues`,
-which is a root, or in the enclosing closure, which the running frame
-keeps alive.
-
-<Examples of="upvalue-handle">
-
-```drip
-fn outer() {
-  let x = 1;
-  fn get() { return x; }
-  x = 2;
-  print get(); # 2
-}
-```
+`Vec::insert` shifts every later element, so it costs time in
+proportion to the length<Cite id="rust-std-vec-insert" />; but the list
+holds only captured variables of scopes still running, and with a
+counter added to a scratch copy of drip-rs, all 344 corpus files never
+made it longer than 3, apart from a test that captures 100 variables at
+once. In this program two closures made in one frame capture the same
+variable and share its handle:
 
 <Run id="shared" />
 
-```drip
-let fs = [];
-for i in 0..3 {
-  push(fs, fn () { return i; });
-}
-for f in fs { print f(); } # 0 1 2
-```
+</More>
 
-</Examples>
-
-In the first (called as `outer();`), the upvalue is still `Open` when
-`get` runs, so it reads the slot, which already holds 2: a closure
-captures the variable, not a copy. In the second, `inc` and `get` are
-made in the same frame and both capture `n`, so `capture_upvalue` finds
-the existing handle the second time and they share it; two calls to
-`inc` and `get` sees 2. The third is the realistic case from the
-chapter *Closing upvalues: a fresh variable every pass*: `i` is a fresh
-local each time round, and the `close.upvalue` at the end of each pass
-closes that pass's upvalue, so the three closures print 0, 1 and 2.
-
-<Prompts ids={['uh-order', 'uh-safe']} />
-
-<Callout kind="engine" label="Under the hood">
-`Vec::insert` shifts every element after the insertion point, so it
-costs time in proportion to the `Vec`'s length<Cite id="rust-std-vec-insert" />.
-It would hurt for a long list, but this one holds only captured
-variables of scopes still running: with a counter added to a scratch
-copy of drip-rs, all 344 corpus files (benchmarks included) never made
-it longer than 3, apart from a test that captures 100 variables at once.
-</Callout>
+<Prompts ids={['uh-enum', 'uh-sorted', 'uh-close', 'uh-order']} />
 
 ## Your turn
 
 <Exercise id="captureClose" />
 
+<Exercise id="callReturn" />
+
+<Exercise id="stackTrace" />
+
 <Exercise id="readWrite" />
 
 ## What you learned
 
-- drip-rs's **`ObjUpvalue`** is an enum: `Open(slot)` while the variable
-  is on the stack, `Closed(value)` once its scope ends.
-- Closures hold **upvalue handles**; closing overwrites the object in
-  its arena slot, so every closure sharing the handle sees the change.
-- The **open upvalues** are a `Vec` of handles sorted by slot: capture
-  searches from the end, close pops from the end.
-- drip-rs **captures every upvalue before allocating the closure**: the
-  borrow checker forbids the other order, and every handle is already
-  reachable from a root.
+- The **frame stack** is a `Vec<CallFrame>`; the running frame's state
+  is in registers, so its own `ip` is out of date.
+- An **upvalue handle** names an `Open` or `Closed` enum in the arena;
+  the open ones are a sorted `Vec`, and capturing comes before
+  allocating.
+
+Next: *A garbage collector in Rust*.
 
 <Quiz />

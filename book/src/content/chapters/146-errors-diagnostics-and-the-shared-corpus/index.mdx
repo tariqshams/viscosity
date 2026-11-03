@@ -3,26 +3,20 @@ n: 146
 day: 25
 part: VIII
 title: 'Errors, diagnostics and the shared corpus'
-tagline: 'A Drip program can fail in two ways, and drip-rs reports each on its own path: compile errors pile up in two Vecs, and a runtime error stops the VM with a stack trace. Both end as an exit code, and every byte on stderr matches the TypeScript VM.'
+tagline: 'A Drip program can fail in two ways, and drip-rs reports each on its own path, ending in an exit code and a stack trace that match the TypeScript VM byte for byte. What proves they match is one folder of programs, each saying in its own comments what it must do.'
 objectives:
-  - Follow a runtime error from the failing instruction through runtime_error and the ? operator to exit code 70.
-  - Explain why the innermost frame’s line comes from the ip register and the others from their saved ip, and what goes wrong otherwise.
+  - Follow a runtime error from the failing instruction to a stack trace and exit code 70, and say which ip each trace line comes from.
   - Say where compile errors go, why static errors are hidden by syntax errors, and how drip-rs’s exit codes match the TypeScript CLI’s.
-  - Write the stack-trace part of runtime_error for a small VM, with tests.
   - Read the corpus’s four kinds of expectation comment, and say what each one checks.
-  - Explain what tests/corpus.rs and tests/stress_gc.rs check, and what harness = false gains.
-  - Say what compare_with_ts.mjs and the two fuzzers compare, and what they can and cannot catch.
-  - Write the expectation parser in Rust, with tests.
+  - Explain what tests/corpus.rs, tests/stress_gc.rs and compare_with_ts.mjs check, and what none of them can catch.
 introduces: [runtime-stack-trace, shared-corpus]
-uses: [drip-rs, frame-stack, rust-bound-method, method-copy-down, compiler-state, match-dispatch, value-enum, runtime-error, syntax-error, panic-mode, error-recovery, call-stack, call-frame, instruction-pointer, result, question-mark, option, from-trait, error-enum, struct, enum, match, pattern, borrow, shared-vs-mutable, borrow-checker, self-receiver, vec, slice, string-vs-str, test-corpus, differential-testing, drip, typescript, arena-gc, cargo-test, assert-macros, cargo, crate, rust-module, garbage-collection, roots, rust-iterator]
+uses: [drip-rs, frame-stack, rust-bound-method, method-copy-down, compiler-state, match-dispatch, value-enum, runtime-error, syntax-error, panic-mode, error-recovery, call-stack, call-frame, instruction-pointer, result, question-mark, option, struct, enum, match, pattern, borrow, self-receiver, vec, test-corpus, differential-testing, drip, typescript, arena-gc, cargo-test, cargo, crate, garbage-collection, roots]
 sources: [rust-std-exitcode, rustref-numeric-cast, cargo-targets]
 ---
 import ErrorSteps from '../../../components/diagrams/ch146/ErrorSteps';
 import TwoPaths from '../../../components/diagrams/ch146/TwoPaths';
 import CheckSteps from '../../../components/diagrams/ch146/CheckSteps';
 import CorpusFan from '../../../components/diagrams/ch146/CorpusFan';
-
-{/* ── merge: from old chapter 146, Errors and diagnostics in Rust ── */}
 
 ## Five lines on stderr
 
@@ -37,9 +31,8 @@ fn go() {
 go();
 ```
 
-The script calls `go`, which calls `bake`, which calls `heat`, which
-multiplies a number by `none`. drip-rs prints nothing on stdout, exits
-with 70, and prints this on stderr:
+drip-rs prints nothing on stdout, exits with 70, and prints on stderr
+(the first line wrapped here):
 
 ```text
 runtime error: cannot use '*' on a number
@@ -50,16 +43,25 @@ runtime error: cannot use '*' on a number
   at line 8 in script
 ```
 
-(The first line is wrapped for the page.) The message says what went
-wrong, in Drip's own words; the `at` lines say where,
-innermost call first: the multiply on line 3 inside `heat`, which was
-called from line 2 inside `bake`, called from line 6 inside `go`,
-called from line 8 of the script. That list is a **stack trace**, and
-the TypeScript VM prints exactly the same bytes (so does the
-tree-walker, from Part III). The question for a VM is how it still knows
-lines 6 and 2, long after it ran those calls.
+The message says what went wrong; the `at` lines say where, innermost
+call first. The TypeScript VM prints exactly the same bytes, and so does
+the tree-walker. Two questions follow: how a VM still knows lines 6 and
+2 long after it ran those calls, and how anyone knows three
+implementations that share no code agree on every byte.
 
-<Analogy title="sticky notes on a desk">
+<Analogy title="one answer key for three exam papers">
+Three students sit the same exam, and one answer key marks all three
+papers. Nobody has to compare the students' working with each other;
+each is checked against the key, and if all three match the key, they
+match each other.
+<span slot="breaks">An answer key is written by someone who knows the
+answers. The corpus was written by people, too, and if a comment is
+wrong, all three implementations are forced to be wrong the same way;
+DRIP.md makes the corpus the source of truth for wording because
+someone had to decide.</span>
+</Analogy>
+
+<Analogy extra title="sticky notes on a desk">
 Writing a report, you need a number, so you stick a note on the desk,
 "report, page 6", and open a spreadsheet; there you need a date, so a
 second note goes on top, "spreadsheet, row 2", and you open the
@@ -67,68 +69,26 @@ calendar, where things go wrong. To explain how you got there, read the
 notes from the top down.
 <span slot="breaks">Your notes say where you *left*; for the task you
 are doing right now there is no note yet, so you have to remember it
-yourself. A VM has exactly that problem, as we will see.</span>
+yourself. A VM has exactly that problem.</span>
 </Analogy>
-
-<Analogy extra title="a parcel's tracking history">
-A parcel's tracking page lists every depot it passed through, latest
-first, so when it is lost you can see the last place anyone saw it and
-the route that led there.
-<span slot="breaks">A parcel's history is kept forever; a VM's call
-frames disappear as each call returns, so the trace is only a picture
-of the calls that are still running at the moment of the error.</span>
-</Analogy>
-
-<Prompts ids={['de-two-paths', 'de-innermost']} />
 
 ## The trace, frame by frame
 
-Every running call has a `CallFrame` (from *Functions and call frames in
-Rust*) holding its closure, its chunk, its `ip` and its stack base, and
-each chunk has a `lines` array with the source line of every byte. The
-part of `Vm::runtime_error` that builds the trace, from `vm.rs`
-(rewrapped):
-
-```rust
-let top = self.frames.len()
-    .saturating_sub(1);
-for (depth, frame) in
-    self.frames.iter().enumerate().rev()
-{
-    let ip = if depth == top {
-        self.ip
-    } else {
-        frame.ip
-    };
-    // `ip` is already past the failing
-    // instruction.
-    let line = frame.chunk.lines[ip - 1];
-    // ...work out `place`: "fn heat",
-    // "anonymous fn" or "script"...
-    self.stderr.push(format!(
-        "  at line {line} in {place}"));
-}
-```
-
-`.rev()` walks the frames from the innermost out. For each one, `ip` is
-the index of the *next* byte to run, so the byte that failed (or the
-call that is still waiting) is at `ip - 1`, and `lines[ip - 1]` is its
-source line. The one subtle line is the `if`: drip-rs keeps the running
-frame's `ip` in a field of the `Vm` itself, `self.ip`, like a CPU
-register (from *The VM loop in Rust*), and writes it back into the
-frame only when that frame makes a call. So every outer frame's saved
-`ip` is right, pointing just past its call, while the innermost frame's
-copy is stale; the register is the truth for that one. `place` comes
-from a `match` on the function's name: `Some(name)` gives `fn heat`, and
-`None` gives `script` or `anonymous fn`, using a guard,
-`None if function.is_script`.
+*Call frames and upvalues in Rust* showed the one subtle line of
+`Vm::runtime_error`: it walks `self.frames` innermost first, and for each
+frame takes `ip` from the register `self.ip` if it is the top frame and
+from the frame's saved `ip` otherwise, then reads
+`frame.chunk.lines[ip - 1]`, because `ip` is already past the failing
+instruction (or the waiting call). The place is a `match` on the
+function's name: `Some(name)` gives `fn heat`, `None` gives `script` or
+`anonymous fn`.
 
 <ErrorSteps client:visible />
 
 Here is the spot the difference. In a scratch copy of drip-rs I changed
-that `if` to plain `let ip = frame.ip;`, built it in debug mode, and ran
-the oven program; it crashed instead of reporting (exit code 101, and
-the path trimmed):
+that choice to plain `let ip = frame.ip;`, built it in debug mode, and
+ran the oven program; it crashed with exit code 101 instead of
+reporting:
 
 ```text
 thread 'main' panicked at
@@ -137,10 +97,9 @@ attempt to subtract with overflow
 ```
 
 `heat` has made no calls, so its saved `ip` is still the 0 it started
-with, and `0 - 1` on a `usize` overflows: a debug build checks that and
-panics. (A release build would wrap round instead, and then the
-indexing would panic.) With a stale but non-zero `ip`, it would quietly
-print the wrong line, which is worse.
+with, and `0 - 1` on a `usize` overflows, which a debug build checks.
+With a stale but non-zero `ip` it would quietly print the wrong line,
+which is worse.
 
 <Callout kind="definition">
 A **stack trace** lists the calls that are running when an error
@@ -152,28 +111,7 @@ call, and each is `chunk.lines[ip - 1]`, because `ip` is already past
 the instruction.
 </Callout>
 
-<Formal title="Which ip each frame uses">
-
-```text
-ipᵢ = self.ip     if i = top
-ipᵢ = frameᵢ.ip   otherwise
-lineᵢ = frameᵢ.chunk.lines[ipᵢ − 1]
-```
-
-<span slot="read">For frame number i, the ip to use is the register if
-i is the top frame and the frame's own saved ip otherwise; its line is
-the entry just before that ip in the frame's lines array.</span>
-</Formal>
-
 <Examples of="runtime-stack-trace">
-
-```drip
-let xs = [1, 2, 3];
-print xs[3];
-# runtime error: index 3 is out of
-#   range for a list of length 3
-#   at line 2 in script
-```
 
 ```drip
 fn f(n) {
@@ -185,205 +123,90 @@ f(0);
 #   at line 4 in script
 ```
 
-<Run id="anon" />
-
 </Examples>
 
-The first has no calls at all, so the trace is one line, the script's,
-taken from the register. The second recurses until the 256-frame limit
-(DRIP.md's rule, `FRAMES_MAX` in `vm.rs`): `call` refuses the next frame
-with `stack overflow`, and the trace has 256 `at` lines, 255 for `f`,
-all on line 2, and one for the script. The third, which you can run,
-passes a named function into an anonymous one and prints `4`; remove
-the `#` on its last line and it fails inside `half` with `cannot use
-'/' on a string and a number`, and the trace reads `fn half`, then
-`anonymous fn`, then `script`.
-
-<Prompts ids={['de-stale', 'de-fields']} />
-
-## Carrying the error out
-
-A runtime error has to stop the program from deep inside the loop. The
-TypeScript VM throws an exception: its `runtimeError` has the return
-type `never` and ends with `throw`, and `interpret` catches it. drip-rs
-has no exceptions; instead the error is a value, and from *Option and
-Result* you know the shape:
-
-```rust
-pub struct RuntimeError;
-
-type Run<T = ()> = Result<T, RuntimeError>;
-```
-
-`RuntimeError` is a **unit struct** (it carries nothing, because the
-message and trace are already in `self.stderr` by the time one exists),
-and every function that can fail returns `Run`, so an arm such as
-`OpCode::Mul` writes `let (a, b) = self.pop_numbers("*")?;` and the `?`
-returns the `Err` from `run` at once, up to `interpret`. There, a
-`match` turns `Err(RuntimeError)` into exit code 70 after clearing the
-stack, the frames, the chunk register and the open upvalues; the globals
-stay, so the same `Vm` can run another program, as a REPL would.
+`call` refuses the 257th frame with `stack overflow` (the limit is
+DRIP.md's, `FRAMES_MAX` in `vm.rs`), so the trace has 256 `at` lines:
+255 for `f`, every one on line 2 where its recursive call waits, then the
+script. The error itself is a value, the unit struct `RuntimeError`
+carried out of `run` by `?` (*Bytecode, values and the VM loop in
+Rust*); it holds nothing because the message and trace are already in
+`self.stderr`, and `interpret` turns it into exit code 70, clearing the
+stack and frames but keeping the globals, so the same `Vm` could run
+another program, as a REPL would.
 
 <TwoPaths />
 
-Compile errors take the other path in the diagram. The compiler pushes
-each one as a `String` and carries on: syntax errors go into
-`syntax_errors` through `error_at`, which in **panic mode** drops any
-more until the parser reaches the next statement (from *A Pratt compiler
-in Rust, part 2*); broken static rules go into `static_errors`. At the
-end, `compile` reports the syntax errors if there are any and the static
-ones only otherwise, as the TypeScript compiler does, so
+Compile errors take the other path. The compiler pushes each one as a
+`String` and carries on, syntax errors into `syntax_errors` (with panic
+mode dropping echoes until the next statement) and broken static rules
+into `static_errors`, and reports the static ones only when there are no
+syntax errors, as the TypeScript compiler does: a `break` outside a loop
+on line 3 and `let z = ;` on line 5 report only `line 5: expected an
+expression, found ';'`, exit 65. `main.rs` returns
+`ExitCode::from(outcome.exit_code as u8)`<Cite id="rust-std-exitcode" />,
+where `as u8` keeps the low byte<Cite id="rustref-numeric-cast" />, the
+whole value for 0, 65 and 70.
 
-```drip
-let x = 1;
-fn f() {
-  break;
-}
-let z = ;
-```
+<More title="An anonymous function in a trace, and what the CLIs disagree on">
 
-reports only `line 5: expected an expression, found ';'`, and exits
-with 65; fix line 5 and the next run reports `line 3: 'break' outside a
-loop`. Finally `main.rs` prints the lines and returns
-`ExitCode::from(outcome.exit_code as u8)`<Cite id="rust-std-exitcode" />;
-the `as u8` keeps the low byte of the `i32`<Cite id="rustref-numeric-cast" />,
-which is the whole value for 0, 65 and 70.
+This program passes a named function into an anonymous one and prints
+`4`; remove the `#` on its last line and it fails inside `half`, and the
+trace reads `fn half`, then `anonymous fn`, then `script`.
 
-<Prompts ids={['de-unit', 'de-question', 'de-reset', 'de-static']} />
+<Run id="anon" />
 
-<Callout kind="engine" label="Under the hood">
-The two command lines agree on the codes (64 for bad usage, 65, 66 for
-a file that cannot be read, 70) but not on every word: for a missing
-file drip-rs prints Rust's own `No such file or directory (os error 2)`
-where the TypeScript CLI prints Node's `ENOENT`. The corpus never tests
-that line, so nothing caught it; it is a fair example of what a shared
-test suite cannot see. On everything the corpus does test,
-`scripts/compare_with_ts.mjs` found drip-rs's stdout, stderr and exit
-code identical to the TypeScript VM's for all 343 programs it compared
-on 2026-11-02.
-</Callout>
+The two command lines agree on the codes (64 for bad usage, 65, 66 for a
+file that cannot be read, 70) but not on every word: for a missing file
+drip-rs prints Rust's own `No such file or directory (os error 2)` where
+the TypeScript CLI prints Node's `ENOENT`. The corpus never tests that
+line, so nothing caught it: a fair example of what a shared test suite
+cannot see.
 
-## Your turn
+</More>
 
-<Exercise id="trace" />
-
-## What you learned
-
-- A **stack trace** is the message, then one `at` line per running
-  call, innermost first.
-- The innermost frame's line comes from the **`ip` register**; the
-  others from the `ip` they **saved** when they called. Each line is
-  `lines[ip - 1]`.
-- A runtime error is a **value**: the unit struct `RuntimeError`,
-  carried out of `run` by **`?`**, where the TypeScript VM throws.
-- Compile errors collect in two `Vec`s; **static errors are reported
-  only when there are no syntax errors**. Exit codes are 65 and 70.
-
-
-{/* ── merge: from old chapter 146, Testing against the shared corpus ── */}
+<Prompts ids={['de-two-paths', 'de-stale', 'de-unit', 'de-static']} />
 
 ## One folder, three interpreters
 
-The book has built Drip three times: the tree-walker of Part III, the
-TypeScript VM of Part IV, and now drip-rs. How do you know the three
-agree? Not by reading them side by side; they share hardly a line. You
-agree on the *behaviour* instead, write it down once, and make every
-implementation prove it. In this book that agreement is a folder,
-`book/companion/corpus`: 344 small Drip programs in 25 folders (334
-tests and 10 benchmarks), each of which says in its own comments what it
-should print. Here is `lists/by_reference.drip`, whole:
+The tree-walker, the TypeScript VM and drip-rs share hardly a line, so
+nobody checks them against each other's code. Instead the behaviour is
+written down once, as a folder, `book/companion/corpus`: 344 small Drip
+programs in 25 folders (334 tests and 10 benchmarks), each saying in its
+comments what it must do, and every implementation must prove it.
+
+<CorpusFan />
+
+<Examples of="shared-corpus">
 
 ```drip
 let a = [1, 2];
 let b = a;
 push(b, 3);
 print a; # expect: [1, 2, 3]
-fn fill(xs) {
-  xs[0] = "changed";
-}
-fill(a);
-print b[0]; # expect: changed
-```
-
-It checks that lists are shared, not copied: `b` is the same list as
-`a`, so pushing through `b` shows up in `a`, and `fill` writing through
-its parameter shows up in `b`. The two `# expect:` comments are the
-whole test: the program must print exactly those two lines, in that
-order, with nothing on stderr and exit code 0. Any implementation that
-prints `[1, 2]` has copied a list somewhere it should not have.
-
-<Analogy title="one answer key for three exam papers">
-Three students sit the same exam, and one answer key marks all three
-papers. Nobody has to compare the students' working with each other;
-each is checked against the key, and if all three match the key, they
-match each other.
-<span slot="breaks">An answer key is written by someone who knows the
-answers. The corpus was written by people, too, and if a comment is
-wrong, all three implementations are forced to be wrong the same way.
-DRIP.md says the corpus is the source of truth for wording for exactly
-this reason: someone had to decide.</span>
-</Analogy>
-
-<Analogy extra title="a reference weight at a market">
-A market keeps one certified kilogram, and every stallholder's scale is
-checked against it; the scales can be of any make, as long as they
-agree with the weight.
-<span slot="breaks">A weight checks one number; the corpus checks 344
-behaviours, and a scale that passes them all could still be wrong on a
-program nobody wrote. That gap is what the fuzzers at the end of this
-chapter go looking for.</span>
-</Analogy>
-
-<CorpusFan />
-
-<Prompts ids={['sc-what', 'sc-why']} />
-
-## Four kinds of comment
-
-A program says what it should do with four markers, all documented in
-the corpus's `README.md`:
-
-<Examples of="shared-corpus">
-
-```drip
-print 1 + 2; # expect: 3
 ```
 
 ```drip
 print 1 print 2;
-# expect compile error: line 1: expected
-#   ';' after the value, found 'print'
+# expect compile error: line 1:
+#   expected ';' after the value,
+#   found 'print'
 ```
-
-```drip
-fn f(a, b) { return a + b; }
-f(
-  1,
-  "x"
-);
-# expect runtime error: cannot add a
-#   number and a string  (on line 1)
-# expect trace: at line 1 in fn f
-# expect trace: at line 2 in script
-```
-
-<Run id="shared" />
 
 </Examples>
 
-The first is the commonest: `# expect:` is one line of output. The
-second is `compile/missing_semicolon.drip` (its comment, which really
-sits at the end of line 1, is wrapped here): `# expect compile error:`
-lists the compile errors, exactly and in order, and means the program
-must exit with 65 without running anything. The third is
-`errors/call_spanning_lines.drip`, shortened: `# expect runtime error:`
-gives the message and means exit 70, and the two `# expect trace:`
-lines pin the whole stack trace, innermost first. Notice the second
-trace line says line 2, where the call's `(` is, although the arguments
-run on to line 5; that is DRIP.md's rule, and three implementations had
-to agree on it. Without `trace` lines, only the innermost `at` line is
-checked, against the line the runtime-error comment is on. The fourth is
-`by_reference.drip` again, for you to run and change.
+The first four lines are from `lists/by_reference.drip`: `# expect:` is
+one line of output, and here it checks that lists are shared, not
+copied, because an implementation printing `[1, 2]` has copied a list
+somewhere. The second is `compile/missing_semicolon.drip`, its comment
+wrapped here (it really sits at the end of line 1): `# expect compile
+error:` lists the compile errors exactly and in order, and means exit 65
+with nothing run. The other two markers are `# expect runtime error:`,
+the message (and exit 70), and `# expect trace:`, one per `at` line,
+innermost first; without trace lines only the innermost `at` line is
+checked, against the line the runtime-error comment is on. A multi-line
+call reports the line of its `(`, DRIP.md's rule, which three
+implementations had to agree on.
 
 <Callout kind="definition">
 A **shared corpus** is one set of test programs that every
@@ -407,114 +230,65 @@ and J both pass, they behave the same on every program in C (and the
 corpus says nothing about programs outside it).</span>
 </Formal>
 
-<Prompts ids={['sc-markers', 'sc-trace-line']} />
-
-## The Rust side: cargo test
-
-`tests/corpus.rs` runs every program except the benchmarks; it is short,
-because the work is in `tests/common/mod.rs`, a port of `check()` from
-the TypeScript runner `test/corpus.ts`:
-
-```rust
-fn main() {
-    let options = Options {
-        debug_gc: true,
-        ..Options::default()
-    };
-    common::run_suite("corpus",
-        |t| !common::is_benchmark(t),
-        options);
-}
-```
-
-(rewrapped). It has its own `main` because `Cargo.toml` sets
-`harness = false` for it<Cite id="cargo-targets" />: Rust's built-in
-test runner would make one test of the whole folder, whereas this prints
-one line per program, as the TypeScript runner does, and a failure says
-which file. `run_suite` reads each program, runs it with `drip::run`
-(in the same process, so no files or pipes are involved), wraps the run
-in `catch_unwind` so that a panic fails only that program, and calls
-`check`, which compares the exit code, then the compile errors or the
-runtime error and its trace, then stdout line by line. `debug_gc` makes
-the heap never reuse a freed slot, so a collector bug panics instead of
-quietly reading another object. The expectations are found by hand,
-with `str::find` and `strip_prefix`, because the crate has no
-dependencies at all, not even a regex crate.
+On the Rust side, `tests/corpus.rs` is a port of the TypeScript runner's
+`check()`, with its own `main` because `Cargo.toml` sets
+`harness = false`<Cite id="cargo-targets" />, so it prints one line per
+program rather than being one big test. It runs each program in-process
+with `debug_gc` (freed slots are never reused, so a collector bug
+panics), catches a panic so that it fails only that program, and compares
+the exit code, the errors and trace, then stdout line by line.
+`tests/stress_gc.rs` reruns the 165 programs of the ten folders that
+allocate most with a collection before every allocation. On 2026-11-02
+`cargo test` (cargo 1.97) printed `corpus result: ok. 334 passed; 0
+failed` and `stress GC result: ok. 165 passed; 0 failed`.
 
 <CheckSteps client:visible />
 
-`tests/stress_gc.rs` is the same runner with `stress_gc: true`: the
-heap collects before **every** allocation and never reuses a slot, so a
-value that is only on a Rust local, and not on any root, is freed at the
-first chance, and the next read of it panics. It runs the 165 programs
-in the ten folders that allocate most (`closures`, `classes`,
-`inheritance`, `strings`, `functions`, `lists`, `methods`, `fields`,
-`for` and `programs`). On 2026-11-02, `cargo test` printed
-`corpus result: ok. 334 passed; 0 failed` and
-`stress GC result: ok. 165 passed; 0 failed`, beside the 13 unit tests
-in the modules and the 6 in `tests/vm.rs`.
+Passing the corpus says each implementation matches the comments, not
+that they match each other on what the comments leave out, such as a
+second error after the first. `scripts/compare_with_ts.mjs` checks that
+directly: it runs drip-rs and the TypeScript VM on every program and
+compares stdout, stderr and exit code byte for byte, then **mangles**
+2,000 programs (dropping, replacing or inserting a token) and compares
+again, which tests error recovery hardest. Run on 2026-11-02, it printed
+`corpus: 343 programs compared, 0 differ` (the one program that prints
+`clock()` is skipped) and `mangled: 2000 programs, 0 skipped (slow), 0
+differ`.
 
-<Prompts ids={['sc-harness', 'sc-stress']} />
+<More title="Differential testing, and its blind spot">
 
-## Byte for byte, and mangled programs
-
-Passing the corpus says each implementation matches the comments; it
-does not say they match each other on things the comments leave out,
-such as a second error after the first. `scripts/compare_with_ts.mjs`
-checks that directly: it runs drip-rs (as a process) and the TypeScript
-VM (in Node) on every corpus program, benchmarks included, and compares
-stdout, stderr and the exit code byte for byte. Then it **mangles**
-2,000 programs, dropping a token, replacing one with a random piece of
-Drip such as `fn` or `}`, or inserting one, and compares again. Mangled
-programs are mostly broken, so this tests compile errors and error
-recovery hardest; for instance, turning line 3 of `by_reference.drip`
-into `push(b, 3) fn` makes both print the same two errors:
-
-```text
-line 3: expected ';' after the
-  expression, found 'fn'
-line 4: expected a function name
-  after 'fn', found 'print'
-```
-
-When I ran `node scripts/compare_with_ts.mjs 2000` on 2026-11-02 it took
-27 seconds and printed `corpus: 343 programs compared, 0 differ` (one
-program reads the clock, so its output differs on every run and it is
-skipped) and `mangled: 2000 programs, 0 skipped (slow), 0 differ`. The
-TypeScript side has a fuzzer of its own, `test/fuzz.mjs`, which mangles
-programs the same way and checks that the tree-walker's parser and
-resolver report exactly the compile errors the VM's one-pass compiler
-does; `node test/fuzz.mjs 2000` printed
-`2000 mangled programs, 0 disagreements`.
-
-<Prompts ids={['sc-mangle', 'sc-clock']} />
-
-<Callout kind="engine" label="Under the hood">
 Comparing two implementations with each other, rather than with a
-written answer, is differential testing: generate many programs, run
-them through two implementations, and investigate every difference. It
-needs no answers written in advance, which is why it can test thousands
-of programs nobody wrote. Its blind spot is the
-same as the corpus's, a shared mistake: if both VMs were wrong the same
-way, every comparison here would still say `0 differ`. That is why the
-corpus is checked against DRIP.md by people, and the implementations
-against the corpus by programs.
-</Callout>
+written answer, is the differential testing of *Testing compilers:
+differential, round-trip, fuzzing and shrinking*: it needs no answers
+written in advance, so it can test thousands of programs nobody wrote.
+Its blind spot is the corpus's, a shared mistake: if both VMs were wrong
+the same way, every comparison would still say `0 differ`. That is why
+the corpus is checked against DRIP.md by people, and the implementations
+against the corpus by programs. The TypeScript side has its own fuzzer,
+`test/fuzz.mjs`, which checks that the tree-walker's parser and resolver
+report exactly the compile errors the VM's one-pass compiler does. Run
+`by_reference.drip` and change it:
+
+<Run id="shared" />
+
+</More>
+
+<Prompts ids={['sc-why', 'sc-markers', 'sc-stress', 'sc-mangle']} />
 
 ## Your turn
 
 <Exercise id="parseExpect" />
 
+<Exercise id="trace" />
+
 ## What you learned
 
-- The **shared corpus** is 344 programs whose comments say what they
-  must do; all three implementations run it.
-- Four markers: **`# expect:`**, **`# expect compile error:`**,
-  **`# expect runtime error:`** and **`# expect trace:`**.
-- drip-rs's suites bring their own `main` (**`harness = false`**) to
-  print a line per program; **`stress_gc`** collects before every
-  allocation, so a missing root fails at once.
-- **`compare_with_ts.mjs`** compares drip-rs and the TypeScript VM byte
-  for byte, on the corpus and on 2,000 mangled programs.
+- A **stack trace** reads the `ip` register for the innermost frame and
+  saved `ip`s for the rest; runtime errors exit 70, compile errors 65.
+- A **shared corpus** of 344 programs, four markers, two Rust suites and
+  a byte-for-byte comparison keep three implementations in step.
+
+Next: *Profiling and optimising drip-rs, and three implementations
+compared*.
 
 <Quiz />

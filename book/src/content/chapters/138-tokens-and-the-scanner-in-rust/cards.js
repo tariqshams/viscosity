@@ -1,22 +1,14 @@
-// Chapter 73 cards: recall prompts, examples, exercises and quiz.
+// Chapter 138 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 138, 138.
 
 export const prompts = {
-  'kind-count': {
-    q: 'How many variants does drip-rs’s `TokenKind` have, and how does that compare with the TypeScript `TokenType`?',
-    a: 'Fifty-two, the same fifty-two kinds as the TypeScript union, in the same order.',
-  },
   'kind-names': {
-    q: 'Why is the TypeScript token type `\'(\'` called `LeftParen` in Rust?',
+    q: 'Why is the TypeScript token type `\'(\'` called `LeftParen` in drip-rs’s `TokenKind` enum?',
     a: 'An enum variant must be an identifier, and `(` isn’t one.',
   },
-  'kind-derive': {
-    q: 'Which derive gives `TokenKind` its `==`?',
-    a: '`PartialEq` (with `Eq`). `Clone` and `Copy` let it be copied like an integer, and `Debug` prints its name.',
-  },
   'kind-size': {
-    q: 'How big is a `TokenKind`, and why?',
+    q: 'How big is drip-rs’s `TokenKind` (51 plain variants plus `Error(ScanError)` with 3 `ScanError`s), and why?',
     a: '1 byte. It has 54 possible values (51 plain kinds plus `Error` with 3 `ScanError`s), and one byte can tell 256 apart.',
   },
   'error-data': {
@@ -27,33 +19,13 @@ export const prompts = {
     q: 'What is a drip-rs token’s `lexeme`, compared with the TypeScript VM’s?',
     a: 'A `&str` slice pointing into the source (pointer and length). The TypeScript lexeme is a new string made by `source.slice`.',
   },
-  'describe-token': {
-    q: 'How does `Token::describe` name an end-of-file token and a string token in an error message?',
-    a: 'As `end of file` and `a string`; every other token as its lexeme in quotes, such as `\'}\'`.',
-  },
-  'kw-match': {
-    q: 'How does drip-rs look up keywords, where the TypeScript scanner uses a `Map`?',
-    a: 'With a `match` on the text, one string pattern per keyword, returning `Option<TokenKind>`.',
-  },
-  'kw-return-none': {
-    q: 'In `Some(match text { ... _ => return None })`, why does the `_` arm type-check?',
-    a: '`return None` leaves the function, so that arm never produces a value; every other arm yields a `TokenKind` for the `Some`.',
-  },
   'no-index': {
     q: 'Why doesn’t `let c = source[0];` compile when `source` is a `&str`?',
     a: 'A `str` is UTF-8, where characters take 1 to 4 bytes, so Rust doesn’t offer integer indexing (E0277). You slice with byte ranges or read the bytes.',
   },
-  'byte-literal': {
-    q: 'What is `b\'(\'`?',
-    a: 'A byte literal: the `u8` with the ASCII code of `(`, which is 40.',
-  },
   'peek-nul': {
     q: 'How does drip-rs’s `peek` handle the end of the source without an `at_end` check?',
     a: '`self.bytes.get(self.current)` is `None` past the end, and `.copied().unwrap_or(b\'\\0\')` turns that into the NUL byte.',
-  },
-  'utf8-ascii': {
-    q: 'Why can comparing a byte of the source with `b\'"\'` never match part of `é`?',
-    a: 'In UTF-8 every byte of a non-ASCII character is 128 or more, and every ASCII byte is below 128.',
   },
   'utf8-cont': {
     q: 'What bit pattern does a UTF-8 continuation byte have, and how does drip-rs test for it?',
@@ -62,14 +34,6 @@ export const prompts = {
   'skip-why': {
     q: 'What happens in drip-rs if the scanner reports `é` outside a string without first skipping its continuation bytes?',
     a: 'It panics: the lexeme slice would end after the first byte of `é`, which is not a character boundary.',
-  },
-  'lone-amp': {
-    q: 'How does drip-rs’s scanner report a lone `&`?',
-    a: 'The `b\'&\'` arm has a guard, `if self.peek() == b\'&\'`, so a lone `&` falls through to the catch-all arm: `unexpected character \'&\'`.',
-  },
-  'std-boundary': {
-    q: 'When does `str::is_char_boundary(i)` return true?',
-    a: 'When byte `i` starts a character (it is not a continuation byte) or `i` is the length of the string.',
   },
 };
 
@@ -238,6 +202,7 @@ fn main() {
 
 export const exercises = {
   keywordMatch: {
+    optional: true,
     lang: 'rust',
     title: 'All twenty keywords',
     prompt: 'Drip has twenty reserved words: `break class continue else extends false fn for if in init let new none print return self super true while`. Finish `keyword` so it returns the right `Kind` for each (the word `self` is `Kind::SelfKw`) and `None` for anything else; keywords are case-sensitive. Then write `word_kind`, which the scanner calls after reading a word: a keyword’s kind, or `Kind::Identifier`.',
@@ -554,7 +519,7 @@ fn keywords_and_bookkeeping() {
 - \`K::Error(_) => "error",\` matches an error token whatever its \`ScanError\`; the \`_\` ignores the payload.
 - \`K::Eof => "eof",\` ends the table.
 
-Listing every variant, with no catch-all \`_\` arm, is the habit from the chapter *Enums and match*: if someone adds a kind, this \`match\` stops compiling until it gets a name.
+Listing every variant, with no catch-all \`_\` arm, is the habit from *Enums, match and patterns*: if someone adds a kind, this \`match\` stops compiling until it gets a name.
 
 **Common wrong attempts.**
 
@@ -1050,24 +1015,6 @@ fn char_end(b: &[u8], i: usize)
 
 export const quiz = [
   {
-    q: 'How does drip-rs represent the TypeScript token type `\'>=\'`?',
-    options: [
-      {
-        t: 'As the string `">="`',
-        why: 'Rust has no string literal types; drip-rs uses an enum.',
-      },
-      {
-        t: 'As the variant `TokenKind::GreaterEqual`',
-        correct: true,
-        why: 'Each TypeScript token type becomes a variant with an identifier for a name.',
-      },
-      {
-        t: 'As the byte `b\'>\'` followed by `b\'=\'`',
-        why: 'Those are the source bytes. The token records its kind as an enum value and points at the bytes.',
-      },
-    ],
-  },
-  {
     q: 'Why does `kind == TokenKind::Error` fail to compile in drip-rs?',
     options: [
       {
@@ -1104,42 +1051,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'drip-rs’s `Token` is 32 bytes. Where do they go?',
-    options: [
-      {
-        t: 'A copy of the lexeme’s text, up to 32 characters',
-        why: 'The lexeme is a slice into the source; no text is copied.',
-      },
-      {
-        t: 'An 8-byte `TokenKind` plus three 8-byte fields',
-        why: 'A `TokenKind` is 1 byte; the rest of its 8-byte slot is padding.',
-      },
-      {
-        t: '1 byte of kind, a 16-byte `&str` (pointer and length), an 8-byte line, and padding up to a multiple of 8',
-        correct: true,
-        why: '1 + 16 + 8 = 25, rounded up to 32 by the 8-byte alignment. Measured with rustc 1.97.',
-      },
-    ],
-  },
-  {
-    q: 'What does `keyword("Class")` return in drip-rs?',
-    options: [
-      {
-        t: '`Some(TokenKind::Class)`',
-        why: 'Matching is case-sensitive.',
-      },
-      {
-        t: 'It panics',
-        why: 'The `_` arm returns `None` for every other text.',
-      },
-      {
-        t: '`None`, so the scanner makes an `Identifier`',
-        correct: true,
-        why: 'String patterns match exactly, and keywords are lowercase.',
-      },
-    ],
-  },
-  {
     q: 'Why does drip-rs keep both `source: &str` and `bytes: &[u8]`?',
     options: [
       {
@@ -1154,24 +1065,6 @@ export const quiz = [
       {
         t: 'The `&str` is for Windows and the bytes for Linux',
         why: 'Both are the same UTF-8 text on every platform.',
-      },
-    ],
-  },
-  {
-    q: 'What is `"é".len()` in Rust?',
-    options: [
-      {
-        t: '1',
-        why: 'That is its length in TypeScript, in UTF-16 code units.',
-      },
-      {
-        t: '4',
-        why: 'é needs two bytes, not four. Some emoji need four.',
-      },
-      {
-        t: '2',
-        correct: true,
-        why: '`len` counts UTF-8 bytes: 195 and 169.',
       },
     ],
   },
@@ -1216,24 +1109,6 @@ export const quiz = [
       {
         t: 'Treats it as part of an identifier',
         why: 'Identifiers are ASCII letters, digits and `_` only.',
-      },
-    ],
-  },
-  {
-    q: 'How does drip-rs scan `1.`?',
-    options: [
-      {
-        t: 'As the number `1.`',
-        why: 'A fraction needs a digit after the dot.',
-      },
-      {
-        t: 'As a `Number` token `1`, then a `Dot`',
-        correct: true,
-        why: 'Exactly as the TypeScript scanner does, thanks to `peek_next`.',
-      },
-      {
-        t: 'As an error',
-        why: 'Both tokens are valid; whether the grammar accepts them is the compiler’s business.',
       },
     ],
   },
