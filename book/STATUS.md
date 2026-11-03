@@ -6,27 +6,34 @@ team "Tariq Shams' projects", root `book/`, built with Astro
 `website/` project, served at https://viscosity.dev/ with the book
 combined under `/book/` (previously https://viscosity-website-chi.vercel.app).
 
-The curriculum is 458 chapters in 14 parts, 115 days at four chapters a
-day, and every chapter is written and passes `scripts/check_chapters.mjs`.
-The 2026-11 rewrite split chapters that ran past 18 minutes in two, so the
-200 original chapters and the 86 added in the expansion became 458.
+The book is 326 chapters in 18 parts and three sections, read in order: the
+Prelude (47 chapters, about 12 days) for readers new to programming; the
+Core (120 chapters, 30 days at four a day, about an hour a day), the path for
+experienced engineers that builds Drip, its VM, Viscosity, Rust and both Rust
+ports; and the Deep dives (159 chapters) for afterwards. Days count within
+a section (scripts/sync_days.mjs). The 2026-11 restructure merged the old
+458 chapters into this shape (scripts/restructure/map.js).
 
-| Part | Chapters | Days | Subject |
-|---|---|---|---|
-| I | 1–47 | 1–12 | JavaScript for engine builders |
-| II | 48–62 | 12–16 | How machines run code |
-| III | 63–135 | 16–34 | Front ends: building Drip, and the theory behind it |
-| IV | 136–163 | 34–41 | Drip, compiled: a virtual machine of our own |
-| V | 164–184 | 41–46 | Inside real JavaScript engines |
-| VI | 185–229 | 47–58 | The compiler middle-end |
-| VII | 230–258 | 58–65 | A native back end |
-| VIII | 259–284 | 65–71 | Building Viscosity |
-| IX | 285–294 | 72–74 | Beyond JavaScript |
-| X | 295–328 | 74–82 | Implementing language features |
-| XI | 329–390 | 83–98 | Rust for TypeScript developers |
-| XII | 391–415 | 98–104 | Drip in Rust |
-| XIII | 416–453 | 104–114 | Viscosity in Rust |
-| XIV | 454–458 | 114–115 | Shipping |
+| Part | Section | Chapters | Days | Subject |
+|---|---|---|---|---|
+| I | Prelude | 1–47 | 1–12 | Prelude: programming from scratch, in JavaScript and TypeScript |
+| II | Core | 48–56 | 1–3 | Core 1: the machine under JavaScript |
+| III | Core | 57–71 | 3–6 | Core 2: building Drip |
+| IV | Core | 72–86 | 7–10 | Core 3: a bytecode virtual machine |
+| V | Core | 87–97 | 10–13 | Core 4: compiler essentials for Viscosity |
+| VI | Core | 98–115 | 13–17 | Core 5: building Viscosity |
+| VII | Core | 116–136 | 18–23 | Core 6: Rust for TypeScript engineers |
+| VIII | Core | 137–147 | 23–25 | Core 7: Drip in Rust |
+| IX | Core | 148–167 | 26–30 | Core 8: Viscosity in Rust, and shipping it |
+| X | Deep dive | 168–185 | 1–5 | Deep dive: parsing and automata theory |
+| XI | Deep dive | 186–203 | 5–9 | Deep dive: semantics and type theory |
+| XII | Deep dive | 204–224 | 10–15 | Deep dive: the middle end in depth |
+| XIII | Deep dive | 225–253 | 15–22 | Deep dive: a native back end on RISC-V |
+| XIV | Deep dive | 254–264 | 22–25 | Deep dive: inside real JavaScript engines |
+| XV | Deep dive | 265–292 | 25–32 | Deep dive: implementing language features |
+| XVI | Deep dive | 293–301 | 32–34 | Deep dive: garbage collection in depth |
+| XVII | Deep dive | 302–316 | 34–38 | Deep dive: Rust beyond the core |
+| XVIII | Deep dive | 317–326 | 38–40 | Deep dive: Viscosity and Drip extras |
 
 
 ## The 2026-11 rewrite
@@ -40,7 +47,7 @@ id is in `STRICT_PARTS` in `src/data/pedagogy.js` (now every part).
 [COVERAGE.md](COVERAGE.md) maps every chapter of eight standard compiler
 texts to the chapters that teach it.
 
-Every part is strict: the teaching rules are errors in all 14 parts.
+Every part is strict: the teaching rules are errors in all 18 parts. Core chapters have an open reading time of 9–15 minutes; extra analogies, examples, comparisons and formal notation sit in closed dropdowns.
 
 ## How the book is checked
 

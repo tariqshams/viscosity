@@ -16,7 +16,7 @@ The TypeScript compiler (JavaScript, TypeScript and Python front-ends) and its R
 byte-for-byte identical output on 190 fixture pairs, kept honest by a
 differential fuzzer, also built to WebAssembly) are built and tested, as
 are three Drip implementations (tree-walker, TS VM, drip-rs). The book has
-458 chapters, all written to its teaching standard (each with analogies,
+326 chapters in three sections (a Prelude for beginners, a 30-day core path that builds everything, and deep dives), all written to its teaching standard (each with analogies,
 diagrams, worked examples and proven exercises). Published: the npm packages at 0.0.2
 (`npm install -g @viscosity/cli`, `npm install @viscosity/wasm`) and the
 six Rust crates on crates.io at 0.0.1 (`cargo install viscosity-cli`).
