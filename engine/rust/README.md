@@ -166,8 +166,8 @@ corpus program with the TS CLI, and `--book` copies the web build into the
 book's Playground.
 
 The crates are published on crates.io at 0.0.1 (`cargo install viscosity-cli`
-for the CLI), as are the npm packages `@viscosity/cli` and
-`@viscosity/wasm`. Internal dependencies carry
+for the CLI); the npm packages `@viscosity/cli` and `@viscosity/wasm` are at
+0.0.2. The workspace itself is at 0.0.2, ready for the crates' next release. Internal dependencies carry
 a `version` as well as a `path`, each crate directory holds a copy of the
 repository's `LICENSE` (MIT), and the manifests carry the crates.io
 metadata (description, licence, repository, homepage, documentation,
@@ -273,8 +273,8 @@ then run `cargo test`.
 
 ## Releasing
 
-`scripts/release.sh` (at the repository root) publishes version 0.0.1 of
-everything: the six crates to crates.io, then `@viscosity/cli` and
+`scripts/release.sh` (at the repository root) publishes the workspace's
+version of everything (one version for the crates and the npm packages): the six crates to crates.io, then `@viscosity/cli` and
 `@viscosity/wasm` to npm. Before the first run, Tariq creates the npm
 organization `viscosity` and adds `NPM_TOKEN` (an npm access token with publish rights) and
 `CARGO_REGISTRY_TOKEN` (a crates.io token) as environment secrets. Then:
@@ -293,7 +293,11 @@ Status: on 2026-11-02 `scripts/release.sh --npm-only` published
 were verified by installing from the public registries. `viscosity-wasm`
 needed a second run: crates.io limits how many new crates one account can
 create in a short time, answered the sixth upload with HTTP 429, and the
-re-run about ten minutes later skipped the five already there.
+re-run about ten minutes later skipped the five already there. The same
+evening `scripts/release.sh --npm-only` published `@viscosity/cli@0.0.2` (the
+first with a README) and `@viscosity/wasm@0.0.2`, both with the corrected
+dataclass message; the crates stay at 0.0.1 until the next
+`scripts/release.sh --crates-only`.
 
 The script checks the tokens (without printing them) and the git tree, runs
 the TypeScript and Rust test suites, then runs `cargo publish -p` for

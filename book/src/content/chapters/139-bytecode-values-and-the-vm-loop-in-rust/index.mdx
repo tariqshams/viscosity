@@ -232,8 +232,8 @@ stored as a tag value no variant uses; the hash inside `StrRef` rides in
 bytes that `Number` needs anyway. NaN-boxing would halve a value to 8
 bytes, and safe Rust could do it with `f64::to_bits`, but every read
 would then need masks and shifts rather than a `match`; drip-rs keeps the
-plain enum by choice (the deep dive *NaN-boxing and generational
-collection* goes further).
+plain enum by choice (the deep dive *NaN-boxing and write
+barriers in practice* goes further).
 
 Printing is where handles cost something: the text of a string is in the
 heap, so `value.format(&heap)` takes the heap. And Drip prints numbers
