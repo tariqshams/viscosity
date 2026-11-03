@@ -46,7 +46,12 @@ cleared weak reference reads as empty, never as some other object,
 because the collector clears it before the memory can be reused.</span>
 </Analogy>
 
-For the collector the rule is short. Marking does not follow weak
+You have met weakness twice already: the Drip VM's string table in
+*Reclaiming memory: mark and sweep*, whose entries are dropped when
+their strings are unmarked, and Rust's `Weak<T>` in *Box, Rc and
+RefCell*, which does not keep a reference count up. A weak reference
+offers the same thing to the program, in a tracing collector, and for
+the collector the rule is short. Marking does not follow weak
 references, so they keep nothing alive. After marking, before memory is
 reused, the collector visits each weak reference and **clears** any
 whose target was not marked. JavaScript's `WeakRef` exposes exactly
@@ -265,7 +270,7 @@ Go 1.24: about 0.08 ms of stopped time around 9.9 ms of concurrent
 marking, with the goal at about twice the 9 MB still live; Go never
 moves a heap object, so it needs no read barrier. The third is Node
 v22.23.4: a 4.5 ms scavenge, a copying young collection in the style
-of the chapter "Copying collection".
+of *Copying collection*.
 
 <Prompts ids={['ds-what', 'ds-go']} />
 

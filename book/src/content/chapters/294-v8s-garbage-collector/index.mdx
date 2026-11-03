@@ -58,7 +58,9 @@ second.
 ## Two generations
 
 Your Drip collector from *Reclaiming memory: mark and sweep* treats
-every object alike. V8 does not, because objects are not alike.
+every object alike. *Measuring and speeding up the VM* sketched the
+alternative, a heap split by age with a write barrier; this chapter
+watches V8's real one, and takes its young-generation collector apart.
 
 <Analogy title="paper cups and mugs in a café">
 A busy café goes through hundreds of paper cups a day, each used for a
@@ -76,10 +78,9 @@ V8's heap has a **young generation**, split into a nursery and an
 intermediate part, and an **old generation**. Objects start in the
 nursery; one that survives a collection becomes intermediate, and one
 that survives another moves to the old
-generation<Cite id="v8-trash-talk" />. Most objects never get that far:
-the *generational hypothesis* says that most objects die
-young<Cite id="v8-trash-talk" />, and in the loop above nine `p`s in ten
-are garbage by the next iteration.
+generation<Cite id="v8-trash-talk" />. Most objects never get that far, as
+the generational hypothesis predicts<Cite id="v8-trash-talk" />: in the
+loop above nine `p`s in ten are garbage by the next iteration.
 
 <Figure takeaway="Most objects die young, so the young space is emptied often and cheaply." caption="V8’s generations. An object moves right each time it survives a scavenge; after two, it is old.">
   <Generations />
@@ -110,8 +111,8 @@ for.</span>
 The scavenge starts from its **roots**, the places that are known to be
 in use without asking anyone else: the stack, the globals, and a list
 of old objects that point into the young generation (kept up to date by
-a small piece of code called the *write barrier*, which the next
-chapter builds). Step through one:
+the write barrier, which *Mark-compact and the write barrier* looks at
+in V8). Step through one:
 
 <ScavengeSteps client:visible />
 
@@ -188,7 +189,7 @@ keep all:    21 scavenges, about 16 ms
 The first keeps nothing, so each scavenge finds almost nothing to copy
 and takes under a tenth of a millisecond, however many objects were
 made. (That run also passes `--no-turbo-escape`; without it, the
-previous chapter's escape analysis removes the objects entirely and
+escape analysis of *Escape analysis in V8* removes the objects entirely and
 only 2 scavenges happen.) The second is the loop at the top of the
 chapter: a tenth of the objects survive, and each scavenge takes about
 twenty times longer. The third keeps every object, so every scavenge
@@ -205,9 +206,11 @@ promoted out of the young generation, as the stepper's last step shows.
 <Prompts ids={['scav-cost', 'scav-trace']} />
 
 <Callout kind="engine" label="Under the hood">
-The previous chapter's numbers make more sense now. With escape
-analysis, the `len2` loop needed 3 scavenges; without it, about 1700,
-and each one paused the program, however briefly. A scavenge is cheap
+This is also why *Escape analysis in V8* could count scavenges to
+prove an allocation was gone. A loop that calls `len2({ x: xs[i], y:
+ys[i] })` fifty million times needed 5 scavenges on Node v22.23.4; with
+`--no-turbo-escape`, it needed 3,494, and each one paused the program,
+however briefly. A scavenge is cheap
 because short-lived objects are cheap to the
 collector<Cite id="v8-trash-talk" />, but an object that is never
 allocated is cheaper still. Viscosity's struct-of-arrays columns help

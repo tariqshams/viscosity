@@ -1,4 +1,4 @@
-// Chapter 162 cards: recall prompts, examples, exercises and quiz.
+// Chapter 292 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -273,7 +273,7 @@ export const quiz = [
       {
         t: 'x86 never reorders a store with earlier accesses, so release is free; seq_cst must also stop a later load passing the store, which needs a locked instruction',
         correct: true,
-        why: 'That is exactly the store-buffering reordering from the last chapter.',
+        why: 'That is exactly the store-buffering reordering, the one reordering x86-TSO allows.',
       },
       {
         t: '`xchg` is faster than `mov`',
@@ -322,20 +322,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the weak model checker, why does the `rel` store remove MP\'s `r1=1 r2=0`?',
+    q: 'What does clang 18 -O2 emit on AArch64 for a C11 release store and an acquire load of an `atomic_int`?',
     options: [
       {
-        t: 'It writes memory twice',
-        why: 'It is one store.',
+        t: 'Plain `str` and `ldr`',
+        why: 'Those are what relaxed accesses compile to; Arm may reorder plain accesses, so they cannot give release or acquire ordering.',
       },
       {
-        t: 'It makes the reader wait',
-        why: 'It changes only the writer\'s side.',
-      },
-      {
-        t: 'It may not enter its buffer until every earlier store of its thread has reached memory, so data arrives before flag',
+        t: '`stlr` (store-release) and `ldar` (load-acquire)',
         correct: true,
-        why: 'That is the release half; on Arm the reader also needs acquire (`ldar`) so its loads are not reordered.',
+        why: 'AArch64 has dedicated instructions that carry exactly those orderings, so no separate barrier is needed.',
+      },
+      {
+        t: '`xchg` and `mov`, as on x86',
+        why: '`xchg` is an x86 instruction; AArch64 has its own load and store instructions with ordering built in.',
       },
     ],
   },

@@ -1,4 +1,4 @@
-// Chapter 265 cards: recall prompts, examples, exercises and quiz.
+// Chapter 295 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,11 +11,11 @@ export const prompts = {
     a: 'Onto free-lists, sorted by size, so later allocations can reuse them.',
   },
   'mc-concurrent': {
-    q: 'Who does most of V8’s old-generation marking, and when?',
+    q: 'In V8 (as in Node 22), who does most of the old-generation marking, and when?',
     a: 'Helper threads, concurrently, while JavaScript keeps running; the main thread only pauses for a short finishing step.',
   },
   'mc-some': {
-    q: 'Why does Mark-Compact compact only some pages?',
+    q: 'Why does V8’s Mark-Compact compact only some pages?',
     a: 'Copying long-lived objects is expensive, so only highly fragmented pages are evacuated; the rest are swept.',
   },
   'wb-what': {
@@ -27,11 +27,11 @@ export const prompts = {
     a: 'JavaScript keeps changing pointers while the marker works, and could hide a live object behind one already scanned.',
   },
   'wb-old-new': {
-    q: 'Which pointer stores does the Scavenger need recorded: old-to-new or new-to-old?',
+    q: 'Which pointer stores does a generational collector’s minor collection (such as V8’s Scavenger) need recorded: old-to-new or new-to-old?',
     a: 'Old-to-new. A scavenge never looks at the old generation, so an old object pointing at a young one must be written down; young objects are scanned anyway when they are copied.',
   },
   'wb-skip': {
-    q: 'When can Maglev skip a write barrier entirely?',
+    q: 'When can V8’s Maglev compiler skip a write barrier entirely?',
     a: 'When storing into an object it has just allocated, as long as no other allocation could have happened since.',
   },
 };
@@ -143,7 +143,7 @@ export const quiz = [
     q: 'Concurrent marking runs while JavaScript executes. What could go wrong without a write barrier?',
     options: [
       {
-        t: 'The program stores a pointer to an unmarked object into one already scanned, and the live object is freed',
+        t: 'The program stores a pointer to an unmarked object into one already scanned and removes its other paths, and the live object is freed',
         correct: true,
         why: 'The barrier marks the stored value grey, so no black object ends up pointing at a white one.',
       },
@@ -184,7 +184,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In this chapter’s runs, a forced Mark-Compact took 38 ms while a million objects were in use, and 4 ms after they had become garbage. Why the difference?',
+    q: 'On Node 22, a forced Mark-Compact took about 38 ms while a million small objects were in use, and about 4 ms after they had all become garbage. Why the difference?',
     options: [
       {
         t: 'The second collection had less garbage to free',

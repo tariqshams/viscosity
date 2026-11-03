@@ -18,15 +18,16 @@ import Semispaces from '../../../components/diagrams/ch296/Semispaces';
 
 ## Paying for the dead
 
-Your Drip VM's collector (Part IV) does two walks: marking walks the
+Your Drip VM's collector (from *Reclaiming memory: mark and sweep*) does two walks: marking walks the
 live objects, and sweeping walks *every* object, live or dead, to
 unlink the dead ones. A program that makes a million short-lived lists
 and keeps ten pays for a million in the sweep, which feels backwards:
 the dead are exactly the objects nobody needs to look at again.
 
-V8's Scavenger, in the chapter "V8's garbage collector", escapes that
-cost by copying the survivors out, and you wrote a small version over
-objects in a JavaScript array. This chapter goes down to the level a
+You met the way out in *V8’s garbage collector*: the Scavenger copies
+the survivors between two semispaces, leaving forwarding addresses, and
+you wrote a small version over objects in a JavaScript array. This
+chapter turns that into the general technique and goes down to the level a
 real runtime works at: memory as a row of numbered **words** (the
 fixed-size slots a machine reads in one go), objects as runs of words
 and pointers as plain addresses. There, three questions become real:
@@ -53,19 +54,16 @@ so you must keep a spare one, the same size, blank and waiting; the
 collector pays the same price in memory.</span>
 </Analogy>
 
-The heap is split into two halves of equal size, called
-**semispaces**. The program allocates in one of them, *from-space*,
-while the other, *to-space*, sits empty. When from-space fills, the
-collector copies every object reachable from the roots into to-space,
-packed one after another, and then the two swap names: the full,
-abandoned half becomes the empty spare for next time.
+The layout is the Scavenger's: two equal **semispaces**, the program
+allocating in *from-space* while *to-space* waits empty, every
+reachable object copied across, packed one after another, and then the
+two swapping names.
 
 <Figure takeaway="A copying collector touches only the live objects, and they end up packed together with no gaps." caption="Before and after one collection. Only the three reachable objects are copied; the garbage is never visited, and the whole of from-space becomes free at once.">
   <Semispaces />
 </Figure>
 
-Two good things fall out of that picture. Only live objects are
-copied, so a collection costs what survives. And to-space ends up
+Besides costing only what survives, the copy leaves to-space
 **compacted**, the survivors side by side, so free memory is one
 unbroken run and allocating means handing out the next address (V8:
 after a scavenge, "new allocations happen at the next free
@@ -123,7 +121,7 @@ The first is the whole argument in three lines: both collectors trace
 the 10 live objects, but only mark-sweep goes on to visit the 990 dead
 ones. The second is a pair of Drip lists that point at each other and
 then lose their last outside reference; a reference-counting collector
-(the chapter "Reference counting") needs extra machinery for such a
+(*Reference counting*) needs extra machinery for such a
 cycle, whereas a copying collector never reaches it, so it is never
 copied, and its memory comes back with the rest of from-space. The
 third is a real line from `node --trace-gc` on this book's machine
@@ -170,7 +168,7 @@ them.</span>
 </Analogy>
 
 If those three regions sound familiar, they should: they are the three
-colours of the chapter "Tracing and sweeping: white, grey and black".
+colours of *Reclaiming memory: mark and sweep*.
 Objects before `scan` are **black**, objects between `scan` and `free`
 are **grey**, and objects still only in from-space are **white**. The
 grey set is not a separate array; it is a stretch of to-space.
@@ -245,7 +243,7 @@ a real runtime picks its own place for the note). The third shows
 breadth-first order on a tree: node 3 lands between node 2 and its
 children 4 and 5, where depth-first would have kept 2, 4 and 5
 together. Objects used together run faster when they share a cache
-line (the chapter "Cache lines and locality"), so Cheney trades a little
+line (*Caches, lines and locality*), so Cheney trades a little
 locality for needing no stack.
 
 <Prompts ids={['ch-two', 'ch-done', 'ch-grey', 'fw-what', 'fw-two-jobs', 'ch-bfs']} />
@@ -255,8 +253,9 @@ V8 used Cheney's algorithm for its young generation until version 6.2,
 then moved to a parallel Scavenger whose threads copy at once and steal
 work from each other, keeping Cheney's steps: scan the roots, copy,
 promote, update pointers<Cite id="v8-orinoco-scavenger" />. The next
-chapter is about those roots: how a young collection finds the
-pointers old objects hold without looking at the old objects.
+chapter, *Generational collection in depth*, is about those roots: how
+a young collection finds the pointers old objects hold without looking
+at the old objects.
 </Callout>
 
 ## Your turn

@@ -1,308 +1,294 @@
-// Chapter 162 cards: recall prompts, examples, exercises and quiz.
+// Chapter 293 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
-  'nan-room': {
-    q: 'Why is there room inside the NaNs of a double to store other values?',
-    a: 'Any double with an all-ones exponent and a non-zero fraction is a NaN, which is a vast number of bit patterns, and arithmetic only produces one or two of them.',
+  'nb-47': {
+    q: 'Why can a 64-bit NaN-boxing engine such as SpiderMonkey keep an object pointer in only 47 bits on x86-64?',
+    a: 'With 4-level paging, user-space virtual addresses fit in 47 bits (the top bits are zero), and the engine allocates its memory there, so the bits above are free for a tag.',
   },
-  'nan-canonical': {
-    q: 'Why must a NaN-boxing VM store every real NaN in one canonical form?',
-    a: 'A NaN that happened to carry the “boxed” bits would be misread as none, a boolean or an object.',
+  'nb-57': {
+    q: 'What would 5-level paging (56-bit user addresses) break in a NaN-boxing scheme with a 47-bit payload, and how does Linux avoid it?',
+    a: 'A pointer above 2⁴⁷ would overlap the tag bits. Linux only hands out addresses above 47 bits when a program asks with a high hint to mmap, so large addresses are opt-in.',
   },
-  'nan-js-payload': {
-    q: 'A NaN-boxing VM written in JavaScript cannot put a pointer in a double. What would its object payload be instead?',
-    a: 'An index into an array that holds the objects.',
+  'nb-isdouble': {
+    q: 'In SpiderMonkey\'s 64-bit Value layout, how is "is this Value a double?" tested?',
+    a: 'With one unsigned compare: the bits are at most `0xfff80000ffffffff`, because every non-double tag sits above every double pattern, NaNs included.',
   },
-  'nan-test': {
-    q: 'In this chapter’s scheme, how do you tell whether a slot holds a number?',
-    a: 'Mask the high word with `BOX`: if the result is not `BOX`, it is a number.',
+  'nb-trace': {
+    q: 'How do self-describing values such as NaN-boxed ones help a tracing garbage collector?',
+    a: 'Each slot\'s tag says whether it holds a pointer, so the marker can scan any stack slot or field and know whether to follow it, without a separate map of pointer locations.',
   },
-  'gen-hypothesis': {
-    q: 'What is the generational hypothesis?',
-    a: 'Most objects die young: they become unreachable soon after they are allocated.',
+  'gb-roots': {
+    q: 'In a VM whose locals live on its own stack and whose globals are in a table the VM owns, why do stores to locals and globals need no generational write barrier?',
+    a: 'The stack and the globals table are roots, which every minor collection scans anyway, so a young object they point at is found without any record.',
   },
-  'write-barrier': {
-    q: 'Why does a generational collector need a write barrier?',
-    a: 'A minor collection does not trace old objects, so it must be told which old objects point at young ones; the barrier records them, as extra roots.',
+  'gb-close': {
+    q: 'Why does closing an upvalue (copying a captured variable from the stack into its heap upvalue object) need a generational write barrier?',
+    a: 'The upvalue object may have been allocated long before and promoted, while the value copied in may be young: an old-to-young pointer created with no assignment in the source program.',
   },
-  'trees-exception': {
-    q: 'In the companion’s `trees` benchmark, about half the objects survive each collection. What does that mean for a generational collector?',
-    a: 'Less benefit: many objects live long, get promoted, and the young generation is not mostly garbage. The hypothesis is about most programs, not all.',
+  'gb-bit': {
+    q: 'What is a **remembered bit** in a generational write barrier for?',
+    a: 'It marks an object already in the remembered set, so later old-to-young stores into the same object stop at the bit instead of adding a duplicate entry.',
   },
-  'number-store': {
-    q: 'Why does a write barrier ignore a store like `o.f = 3`?',
-    a: 'A number is not a reference to an object, so it cannot create an old-to-young pointer.',
+  'gb-cost': {
+    q: 'Where does a generational write barrier usually spend its time: checking stores, or recording entries?',
+    a: 'Checking: it runs on every reference store, while only a small fraction of stores are old-to-young, and a remembered bit makes most of those a no-op too.',
+  },
+  'gb-clear': {
+    q: 'In a collector that promotes every survivor of a minor collection, why may the remembered set be emptied after each one?',
+    a: 'After it, no young objects remain, so no old object can point at a young one until a new store makes such a pointer, which the barrier will record again.',
+  },
+  'gb-young': {
+    q: 'Why may a compiler skip the generational barrier on a store into an object it has just allocated?',
+    a: 'A fresh object is young, so a minor collection traces it anyway; it is only safe while nothing can allocate (and so trigger a collection that promotes it) between the allocation and the store.',
   },
 };
 
 export const examples = {
-  'nan-box': {
-    title: 'NaN-boxing with two views',
-    code: `const f64 = new Float64Array(4);
-const u32 = new Uint32Array(f64.buffer);
-// quiet NaN + the "box" bit
-const BOX = 0x7ffc0000;
-const NONE = 1, TRUE = 3, OBJ = 4;
+  remembered: {
+    title: 'A barrier with a remembered bit',
+    code: `// Survive one minor collection: old.
+let young = [];
+const rem = [];
+let checks = 0, o2y = 0;
 
-function box(i, tag, payload) {
-  u32[2 * i] = payload; // low word
-  u32[2 * i + 1] = BOX | tag; // high
+function alloc(o) {
+  o.old = false;
+  o.bit = false;
+  young.push(o);
+  return o;
 }
-function isNum(i) {
-  return (u32[2 * i + 1] & BOX) !== BOX;
+// The write barrier.
+function store(owner, i, v) {
+  owner.items[i] = v;
+  checks++;
+  if (typeof v !== 'object' || !v)
+    return;            // not a pointer
+  if (!owner.old || v.old) return;
+  o2y++;
+  if (owner.bit) return; // remembered
+  owner.bit = true;
+  rem.push(owner);
 }
-function show(i) {
-  if (isNum(i)) return f64[i];
-  const tag = u32[2 * i + 1] & 0xffff;
-  const p = u32[2 * i];
-  if (tag === NONE) return 'none';
-  if (tag === TRUE) return 'true';
-  return 'object #' + p;
+// Everything young survives here.
+function minor() {
+  for (const o of young) o.old = true;
+  young = [];
+  for (const o of rem) o.bit = false;
+  rem.length = 0;
 }
 
-f64[0] = 1.5;
-box(1, NONE, 0);
-box(2, OBJ, 7);
-f64[3] = NaN;
-for (let i = 0; i < 4; i++) {
-  const hi = u32[2 * i + 1];
-  console.log(hi.toString(16), show(i));
+const list = alloc({ items: [] });
+minor();               // list is old
+let entries = 0;
+for (let i = 0; i < 5000; i++) {
+  store(list, i, alloc({ items: [i] }));
+  if (i % 1000 === 999) {
+    entries += rem.length;
+    minor();
+  }
 }
-// a boxed value *is* a NaN:
-console.log(Number.isNaN(f64[2]));`,
+for (let i = 0; i < 5000; i++)
+  store(list, i, i * 2); // numbers
+console.log('checks', checks);
+console.log('old-to-young', o2y);
+console.log('entries', entries);`,
   },
 };
 
 export const exercises = {
-  nanBox: {
-    title: 'Box and unbox',
-    prompt: 'Slot `i` of `f64` is one value; its high 32-bit word is `u32[2 * i + 1]` and its low word `u32[2 * i]`. Write `setValue(i, v)` for a number, `null`, `true` or `false`: store numbers as doubles, but store **every** NaN as the canonical bits (high `0x7ff80000`, low 0); store the others with low word 0 and high word `BOX | tag`. Write `getValue(i)` to turn the bits back into the same JavaScript value.',
-    starter: `const f64 = new Float64Array(8);
-const u32 = new Uint32Array(f64.buffer);
-const BOX = 0x7ffc0000;
-const NONE = 1, FALSE = 2, TRUE = 3;
-
-function setValue(i, v) {
-  f64[i] = v;
+  punbox: {
+    title: 'SpiderMonkey’s 64-bit Values',
+    prompt: 'Values are 64-bit BigInts laid out as in SpiderMonkey\'s PUNBOX64: any pattern up to `MAX_DOUBLE` is a double; above it, bits 63 to 47 hold a tag (`TAG_INT32` or `TAG_OBJECT`; anything else is `\'other\'`) and the 47 bits below hold the payload. Write `boxInt32(i)` (the tag shifted by `SHIFT`, OR the 32 bits of `i` read as unsigned), `boxObject(addr)` (throw a `RangeError` if the BigInt `addr` does not fit in 47 bits, or is negative), `kindOf(bits)` (`\'double\'`, `\'int32\'`, `\'object\'` or `\'other\'`), `unboxInt32(bits)` (a Number, sign included) and `unboxObject(bits)`, which XORs with the shifted object tag, as SpiderMonkey does. `doubleBits(d)` is given.',
+    starter: `const SHIFT = 47n;
+const TAG_INT32 = 0x1fff2n;
+const TAG_OBJECT = 0x1fffcn;
+const MAX_DOUBLE = 0xfff80000ffffffffn;
+function doubleBits(d) {
+  const v = new DataView(
+    new ArrayBuffer(8));
+  v.setFloat64(0, d);
+  return v.getBigUint64(0);
 }
-
-function getValue(i) {
-  return f64[i];
-}`,
-    solution: `const f64 = new Float64Array(8);
-const u32 = new Uint32Array(f64.buffer);
-const BOX = 0x7ffc0000;
-const NONE = 1, FALSE = 2, TRUE = 3;
-
-function setValue(i, v) {
-  if (typeof v === 'number') {
-    if (v !== v) { // NaN
-      u32[2 * i] = 0;
-      u32[2 * i + 1] = 0x7ff80000;
-    } else {
-      f64[i] = v;
-    }
-    return;
-  }
-  const tag = v === null ? NONE
-    : v ? TRUE : FALSE;
-  u32[2 * i] = 0;
-  u32[2 * i + 1] = BOX | tag;
+function boxInt32(i) { return 0n; }
+function boxObject(addr) { return 0n; }
+function kindOf(bits) {
+  return 'other';
 }
-
-function getValue(i) {
-  const hi = u32[2 * i + 1];
-  if ((hi & BOX) !== BOX) return f64[i];
-  const tag = hi & 0xffff;
-  if (tag === NONE) return null;
-  return tag === TRUE;
+function unboxInt32(bits) { return 0; }
+function unboxObject(bits) {
+  return 0n;
 }`,
-    tests: `test('numbers round-trip', () => {
-  for (const x of [1.5, -2, 0, 1e300]) {
-    setValue(0, x);
-    expect(getValue(0)).toBe(x);
-  }
-  setValue(1, -0);
-  expect(Object.is(getValue(1), -0))
-    .toBe(true);
-  setValue(1, -Infinity);
-  expect(getValue(1)).toBe(-Infinity);
+    solution: `const SHIFT = 47n;
+const TAG_INT32 = 0x1fff2n;
+const TAG_OBJECT = 0x1fffcn;
+const MAX_DOUBLE = 0xfff80000ffffffffn;
+function doubleBits(d) {
+  const v = new DataView(
+    new ArrayBuffer(8));
+  v.setFloat64(0, d);
+  return v.getBigUint64(0);
+}
+function boxInt32(i) {
+  return (TAG_INT32 << SHIFT) |
+    BigInt(i >>> 0);
+}
+function boxObject(addr) {
+  if (addr < 0n || addr >> SHIFT)
+    throw new RangeError('too wide');
+  return (TAG_OBJECT << SHIFT) | addr;
+}
+function kindOf(bits) {
+  if (bits <= MAX_DOUBLE)
+    return 'double';
+  const tag = bits >> SHIFT;
+  if (tag === TAG_INT32) return 'int32';
+  if (tag === TAG_OBJECT)
+    return 'object';
+  return 'other';
+}
+function unboxInt32(bits) {
+  return Number(
+    BigInt.asIntN(32, bits));
+}
+function unboxObject(bits) {
+  return bits ^ (TAG_OBJECT << SHIFT);
+}`,
+    tests: `const A = 0x7f1234567890n;
+test('int32s get the tag fff9', () => {
+  expect(boxInt32(5))
+    .toBe(0xfff9000000000005n);
+  expect(boxInt32(-1))
+    .toBe(0xfff90000ffffffffn);
 });
-test('none and booleans round-trip', () => {
-  setValue(2, null);
-  setValue(3, true);
-  setValue(4, false);
-  expect(getValue(2)).toBe(null);
-  expect(getValue(3)).toBe(true);
-  expect(getValue(4)).toBe(false);
+test('objects get the tag fffe', () => {
+  expect(boxObject(A))
+    .toBe(0xfffe7f1234567890n);
 });
-test('boxed bits are as specified', () => {
-  setValue(5, true);
-  expect(u32[11]).toBe(BOX | TRUE);
-  expect(u32[10]).toBe(0);
+test('a 48-bit address does not fit', () => {
+  expect(() => boxObject(1n << 47n))
+    .toThrow();
+  expect(() => boxObject(-1n)).toThrow();
 });
-test('every NaN stays a number', () => {
-  // a NaN whose bits look like none
-  const t = new Float64Array(1);
-  new Uint32Array(t.buffer)[1] = BOX | NONE;
-  setValue(6, t[0]);
-  expect(Number.isNaN(getValue(6)))
-    .toBe(true);
-  expect(u32[13]).toBe(0x7ff80000);
+test('doubles, NaNs included', () => {
+  expect(kindOf(doubleBits(1.5)))
+    .toBe('double');
+  expect(kindOf(doubleBits(-Infinity)))
+    .toBe('double');
+  expect(kindOf(doubleBits(NaN)))
+    .toBe('double');
+  expect(kindOf(0xfff8000000000000n))
+    .toBe('double');
+});
+test('tags are told apart', () => {
+  expect(kindOf(boxInt32(7))).toBe('int32');
+  expect(kindOf(boxObject(A))).toBe('object');
+  expect(kindOf(0xfffa000000000000n))
+    .toBe('other');
+});
+test('round trips', () => {
+  expect(unboxInt32(boxInt32(-7))).toBe(-7);
+  expect(unboxInt32(boxInt32(42))).toBe(42);
+  expect(unboxObject(boxObject(A))).toBe(A);
 });`,
     hints: [
-      'In `getValue`, a slot is a number unless all the `BOX` bits are set in its high word: `(hi & BOX) !== BOX`.',
-      'In `setValue`, handle numbers first. `v !== v` is true only for NaN: write the canonical bits through `u32` instead of `f64[i] = v`.',
-      'For the rest, pick the tag (`null` → `NONE`, `true` → `TRUE`, `false` → `FALSE`), write 0 to the low word and `BOX | tag` to the high word.',
+      'A tag goes on top with `tag << SHIFT`, and the payload is ORed in below it. For an int32, `i >>> 0` gives its 32 bits as an unsigned Number, and `BigInt(...)` turns that into a BigInt you can OR in.',
+      'An address fits in 47 bits exactly when shifting it right by 47 leaves zero: `addr >> SHIFT` is `0n`, which is falsy. Test that, and that it is not negative, before boxing.',
+      '`kindOf` asks the double question first (`bits <= MAX_DOUBLE`), and only then looks at the tag, `bits >> SHIFT`. To unbox an int32, `BigInt.asIntN(32, bits)` keeps the low 32 bits as a signed number; `Number(...)` turns it back into an ordinary number.',
     ],
-    walkthrough: `**How to think about it.** Do \`getValue\` first, because it fixes the encoding: a slot is a number unless all the \`BOX\` bits are set in its high word, and if they are, the low 16 bits of the high word are the tag. \`setValue\` then has to produce exactly what \`getValue\` expects. Numbers can go straight in through \`f64\`, with one exception: a NaN, which might arrive with bits that look boxed (the last test builds one on purpose). So NaN gets the canonical bits written by hand, and everything else gets a tag.
+    walkthrough: `**How to think about it.** A boxed Value is two fields packed into one 64-bit integer: a tag on top, a payload below, with the boundary at bit 47. Packing is a shift and an OR; unpacking is a shift (for the tag) and either a mask, a sign-extension or an XOR (for the payload). The one twist is that doubles are not tagged at all: they are stored as their own bits, and the tags were chosen so that every boxed pattern is numerically larger than every double, NaNs included. So the first question about any Value is a single comparison.
 
 **The solution, line by line.**
 
-- \`if (typeof v === 'number') {\` handles every number, NaN included.
-- \`if (v !== v) {\` is true only for NaN, the one value not equal to itself.
-- \`u32[2 * i] = 0; u32[2 * i + 1] = 0x7ff80000;\` writes the canonical NaN through the integer view, so the engine cannot choose the bits: exponent all ones and the quiet bit, but not the box bit.
-- \`f64[i] = v;\` stores any other number as itself; \`-0\` and the infinities survive unchanged (the first test).
-- \`const tag = v === null ? NONE : v ? TRUE : FALSE;\` picks the tag for \`none\` and the booleans.
-- \`u32[2 * i] = 0; u32[2 * i + 1] = BOX | tag;\` writes the boxed value: no payload, and the box pattern plus the tag on top (the third test checks the exact bits).
-- In \`getValue\`, \`const hi = u32[2 * i + 1];\` reads the high word, and \`if ((hi & BOX) !== BOX) return f64[i];\` returns numbers: every finite double, both infinities and the canonical NaN lack at least one \`BOX\` bit.
-- \`const tag = hi & 0xffff;\` reads the tag; \`if (tag === NONE) return null;\` and \`return tag === TRUE;\` turn it back into a value.
+- The four constants are SpiderMonkey's: \`SHIFT\` is \`JSVAL_TAG_SHIFT\`, the two tags are \`JSVAL_TAG_INT32\` and \`JSVAL_TAG_OBJECT\`, and \`MAX_DOUBLE\` is the largest pattern still read as a double.
+- \`return (TAG_INT32 << SHIFT) | BigInt(i >>> 0);\` puts \`0x1fff2\` in bits 63 to 47 (which reads as \`fff9\` at the top) and the integer's 32 bits at the bottom. \`>>> 0\` matters for negative numbers: \`-1 >>> 0\` is \`4294967295\`, so \`-1\` becomes \`ffffffff\` in the low word rather than a negative BigInt, which would set every bit.
+- \`if (addr < 0n || addr >> SHIFT) throw new RangeError('too wide');\` refuses any address that needs bit 47 or above, the 5-level-paging case; \`addr >> SHIFT\` is \`0n\` (falsy) exactly when the address fits.
+- \`return (TAG_OBJECT << SHIFT) | addr;\` puts \`fffe\` on top and the pointer below.
+- \`if (bits <= MAX_DOUBLE) return 'double';\` is the one-compare test: \`1.5\`, \`-Infinity\` and both kinds of NaN are all at or below the line.
+- \`const tag = bits >> SHIFT;\` shifts the payload away, leaving the 17-bit tag, which the two \`if\`s compare.
+- \`return Number(BigInt.asIntN(32, bits));\` keeps the low 32 bits and reads them as signed, so \`ffffffff\` comes back as \`-1\`.
+- \`return bits ^ (TAG_OBJECT << SHIFT);\` cancels the tag bits, since \`x ^ x\` is 0, leaving the address. On a Value with a different tag the XOR would leave some high bits set, which is why SpiderMonkey prefers it to a mask.
 
 **Common wrong attempts.**
 
-- Storing NaN with \`f64[i] = v\` like any other number usually works, which is what makes it dangerous: a NaN whose bits happen to look boxed is read back as \`none\`.
-- Testing \`Number.isNaN(f64[i])\` to tell boxed values from numbers fails because every boxed value *is* a NaN, and so is the number NaN: a stored NaN comes back as \`false\`.
-- On a big-endian machine the two words are the other way round; a careful VM checks the byte order once at start-up.`,
+- Leaving out the double check and testing only the tags: a double such as \`-Infinity\` (\`fff0...\`) shifted right by 47 gives \`0x1ffe0\`, which is not a tag, so it comes back as \`'other'\`.
+- Writing \`BigInt(i)\` instead of \`BigInt(i >>> 0)\`: a negative \`i\` becomes a negative BigInt, and ORing it in sets all 64 bits.
+- Checking \`addr > 1n << SHIFT\` instead of \`>=\`: the address \`2⁴⁷\` itself needs 48 bits and slips through.`,
     wrong: [
       {
-        code: `const f64 = new Float64Array(8);
-const u32 = new Uint32Array(f64.buffer);
-const BOX = 0x7ffc0000;
-const NONE = 1, FALSE = 2, TRUE = 3;
-
-function setValue(i, v) {
-  if (typeof v === 'number') {
-    f64[i] = v;
-    return;
-  }
-  const tag = v === null ? NONE
-    : v ? TRUE : FALSE;
-  u32[2 * i] = 0;
-  u32[2 * i + 1] = BOX | tag;
+        code: `const SHIFT = 47n;
+const TAG_INT32 = 0x1fff2n;
+const TAG_OBJECT = 0x1fffcn;
+const MAX_DOUBLE = 0xfff80000ffffffffn;
+function doubleBits(d) {
+  const v = new DataView(
+    new ArrayBuffer(8));
+  v.setFloat64(0, d);
+  return v.getBigUint64(0);
 }
-
-function getValue(i) {
-  const hi = u32[2 * i + 1];
-  if ((hi & BOX) !== BOX) return f64[i];
-  const tag = hi & 0xffff;
-  if (tag === NONE) return null;
-  return tag === TRUE;
+function boxInt32(i) {
+  return (TAG_INT32 << SHIFT) |
+    BigInt(i);
+}
+function boxObject(addr) {
+  if (addr < 0n || addr >> SHIFT)
+    throw new RangeError('too wide');
+  return (TAG_OBJECT << SHIFT) | addr;
+}
+function kindOf(bits) {
+  if (bits <= MAX_DOUBLE)
+    return 'double';
+  const tag = bits >> SHIFT;
+  if (tag === TAG_INT32) return 'int32';
+  if (tag === TAG_OBJECT)
+    return 'object';
+  return 'other';
+}
+function unboxInt32(bits) {
+  return Number(
+    BigInt.asIntN(32, bits));
+}
+function unboxObject(bits) {
+  return bits ^ (TAG_OBJECT << SHIFT);
 }`,
-        why: 'NaNs are not made canonical. A NaN whose bits happen to look boxed is stored as it is and read back as `none`. Write the canonical NaN bits yourself.',
+        why: '`BigInt(-1)` is negative, and ORing a negative BigInt sets every bit, so `boxInt32(-1)` is `-1n` rather than `0xfff90000ffffffff`.',
       },
       {
-        code: `const f64 = new Float64Array(8);
-const u32 = new Uint32Array(f64.buffer);
-const BOX = 0x7ffc0000;
-const NONE = 1, FALSE = 2, TRUE = 3;
-
-function setValue(i, v) {
-  if (typeof v === 'number') {
-    if (v !== v) {
-      u32[2 * i] = 0;
-      u32[2 * i + 1] = 0x7ff80000;
-    } else {
-      f64[i] = v;
-    }
-    return;
-  }
-  const tag = v === null ? NONE
-    : v ? TRUE : FALSE;
-  u32[2 * i] = 0;
-  u32[2 * i + 1] = BOX | tag;
+        code: `const SHIFT = 47n;
+const TAG_INT32 = 0x1fff2n;
+const TAG_OBJECT = 0x1fffcn;
+const MAX_DOUBLE = 0xfff80000ffffffffn;
+function doubleBits(d) {
+  const v = new DataView(
+    new ArrayBuffer(8));
+  v.setFloat64(0, d);
+  return v.getBigUint64(0);
 }
-
-function getValue(i) {
-  if (!Number.isNaN(f64[i])) {
-    return f64[i];
-  }
-  const tag = u32[2 * i + 1] & 0xffff;
-  if (tag === NONE) return null;
-  return tag === TRUE;
+function boxInt32(i) {
+  return (TAG_INT32 << SHIFT) |
+    BigInt(i >>> 0);
+}
+function boxObject(addr) {
+  if (addr < 0n || addr >> SHIFT)
+    throw new RangeError('too wide');
+  return (TAG_OBJECT << SHIFT) | addr;
+}
+function kindOf(bits) {
+  const tag = bits >> SHIFT;
+  if (tag === TAG_INT32) return 'int32';
+  if (tag === TAG_OBJECT)
+    return 'object';
+  if (bits <= MAX_DOUBLE)
+    return 'double';
+  return 'other';
+}
+function unboxInt32(bits) {
+  return Number(bits & 0xffffffffn);
+}
+function unboxObject(bits) {
+  return bits ^ (TAG_OBJECT << SHIFT);
 }`,
-        why: 'Every boxed value is a NaN, but so is the number NaN. Testing `Number.isNaN` turns a stored NaN into `false` (tag 0). Test the `BOX` bits instead.',
-      },
-    ],
-  },
-  barrier: {
-    optional: true,
-    title: 'A write barrier',
-    prompt: 'Objects are `{ old, refs }`, where `old` says which generation the object is in and `refs` is an array of references. Write `store(owner, i, v, rem)`, where `rem` is the remembered set: set `owner.refs[i] = v`, and if `owner` is old and `v` is a young object (an object with `old` false; numbers and `null` are not objects), add `owner` to `rem`.',
-    starter: `function store(owner, i, v, rem) {
-  owner.refs[i] = v;
-}`,
-    solution: `function store(owner, i, v, rem) {
-  owner.refs[i] = v;
-  const young = typeof v === 'object' &&
-    v !== null && !v.old;
-  if (owner.old && young) {
-    rem.add(owner);
-  }
-}`,
-    tests: `const obj = (old) => ({ old, refs: [] });
-test('old to young is remembered', () => {
-  const r = new Set();
-  const o = obj(true);
-  store(o, 0, obj(false), r);
-  expect(r.has(o)).toBe(true);
-  expect(o.refs.length).toBe(1);
-});
-test('young to young is not', () => {
-  const r = new Set();
-  store(obj(false), 0, obj(false), r);
-  expect(r.size).toBe(0);
-});
-test('old to old is not', () => {
-  const r = new Set();
-  store(obj(true), 0, obj(true), r);
-  expect(r.size).toBe(0);
-});
-test('numbers and null are not', () => {
-  const r = new Set();
-  const o = obj(true);
-  store(o, 0, 3, r);
-  store(o, 1, null, r);
-  expect(r.size).toBe(0);
-  expect(o.refs).toEqual([3, null]);
-});`,
-    hints: [
-      'The store itself always happens. The barrier only decides whether to *also* remember the owner.',
-      'Remember the owner only when it is old and the value is a young object. Check “is an object” first: `typeof v === \'object\' && v !== null`.',
-      'Then `!v.old` makes it young, and `rem.add(owner)` records it (a `Set` ignores duplicates).',
-    ],
-    walkthrough: `**How to think about it.** A minor collection traces only the young generation, starting from the roots. A young object reachable only through an old one would be missed, so every store that could create such a reference must leave a note. Of the four combinations of old and young, only one creates the problem: an old owner gaining a reference to a young value. Everything else (and every store of a non-object) needs nothing.
-
-**The solution, line by line.**
-
-- \`owner.refs[i] = v;\` is the store the program asked for; the barrier never changes it.
-- \`const young = typeof v === 'object' && v !== null && !v.old;\` decides whether the value is a young object. Numbers and \`null\` are not references at all (the last test); \`typeof null\` is \`'object'\` in JavaScript, hence the second check.
-- \`if (owner.old && young) { rem.add(owner); }\` records the old owner. At the next minor collection, every object in \`rem\` is treated as a root, so whatever young objects it points at are kept.
-
-**Common wrong attempts.**
-
-- Remembering on every store makes the remembered set as big as the heap, and the minor collection is no longer cheap.
-- Checking \`!v.old\` without first checking that \`v\` is an object treats the number 3 as a young object (since \`(3).old\` is \`undefined\`), and remembers the owner for nothing.
-- Remembering the *value* instead of the owner keeps the young object alive once, but misses later changes: it is the old object's references that the minor collection must read.`,
-    wrong: [
-      {
-        code: `function store(owner, i, v, rem) {
-  owner.refs[i] = v;
-  if (owner.old && !v?.old) {
-    rem.add(owner);
-  }
-}`,
-        why: 'Without the object check, storing the number 3 or `null` into an old object counts as old-to-young, and the owner is remembered for nothing.',
+        why: 'Testing the tags before the double check is harmless here, but masking the low 32 bits reads them as unsigned, so `-7` comes back as `4294967289`.',
       },
     ],
   },
@@ -310,112 +296,92 @@ test('numbers and null are not', () => {
 
 export const quiz = [
   {
-    q: 'In this chapter’s scheme, how do you tell whether a 64-bit slot holds a number?',
+    q: 'How many bits of SpiderMonkey\'s 64-bit Value (PUNBOX64) hold an object pointer?',
     options: [
       {
-        t: 'Call `Number.isNaN` on it',
-        why: 'Every boxed value is a NaN, but so is the number NaN, so that test cannot tell them apart.',
+        t: '32, the low word',
+        why: 'That is the 32-bit layout (NUNBOX32); on 64-bit machines a pointer needs more.',
       },
       {
-        t: 'Check whether all the `BOX` bits are set in the high word; if not, it is a number',
+        t: '47, with a 17-bit tag above them',
         correct: true,
-        why: 'Only boxed values have the all-ones exponent, the quiet bit and the box bit together.',
+        why: '`JSVAL_TAG_SHIFT` is 47: user-space addresses under 4-level paging fit below it.',
       },
       {
-        t: 'Check whether the low word is zero',
-        why: 'Plenty of numbers have a zero low word, 1.5 for one.',
-      },
-      {
-        t: 'Look up its type in a side table',
-        why: 'The point of NaN-boxing is that the value carries its own type.',
+        t: 'All 64; the tag is kept in a separate byte',
+        why: 'The whole point is one 8-byte word with no separate tag.',
       },
     ],
   },
   {
-    q: 'Why does NaN-boxing require canonical NaNs?',
+    q: 'On x86-64 Linux with 5-level paging, why do engines that keep tags in high pointer bits keep working?',
     options: [
       {
-        t: 'Because NaN is not equal to NaN',
-        why: 'That is true of every NaN, canonical or not; the issue is bit patterns.',
-      },
-      {
-        t: 'To save memory',
-        why: 'Every value is 8 bytes either way.',
-      },
-      {
-        t: 'A real NaN with the “boxed” bits set would be read as a value that is not a number',
+        t: 'The kernel only allocates above 47 bits when a program asks with a high mmap hint',
         correct: true,
-        why: 'Storing every NaN as one known pattern means numbers never collide with boxed values.',
+        why: 'The kernel documentation names JIT compilers that use high pointer bits as the reason; large addresses are opt-in.',
       },
       {
-        t: 'Because the CPU rejects other NaNs',
-        why: 'CPUs handle many NaN patterns; it is the VM that gives some of them meaning.',
+        t: 'The processor ignores the top 16 bits of every address',
+        why: 'Under 5-level paging bits up to 56 are significant; that is the problem.',
+      },
+      {
+        t: 'They do not: 5-level paging requires NaN-boxing engines to be rebuilt',
+        why: 'No rebuild is needed while the default keeps addresses below 47 bits.',
       },
     ],
   },
   {
-    q: 'In counts made for this chapter, `instantiation` kept 0.1% of the objects at each collection and `trees` kept 54%. What does that say?',
+    q: 'In a generational VM, which of these stores needs a write barrier?',
     options: [
       {
-        t: 'The collector is broken on `trees`',
-        why: '`trees` really does keep its trees alive; the collector is right to keep them.',
+        t: 'Storing an object into a local variable\'s stack slot',
+        why: 'The stack is a root, scanned at every minor collection.',
       },
       {
-        t: 'Generational collection would help `trees` most',
-        why: 'It helps most where objects die young; `trees` keeps half of them.',
-      },
-      {
-        t: 'All programs keep about the same share',
-        why: 'The two differ by a factor of hundreds.',
-      },
-      {
-        t: 'Most objects die young in `instantiation`, as the generational hypothesis says, while `trees` is an exception',
+        t: 'Closing an upvalue: copying a stack value into an existing heap upvalue object',
         correct: true,
-        why: 'The hypothesis describes most programs, not every one.',
+        why: 'The upvalue object may be old and the value young, so this can create an old-to-young pointer.',
+      },
+      {
+        t: 'Storing the number 3 into an old object\'s field',
+        why: 'A number is not a pointer, so it cannot create an old-to-young reference.',
       },
     ],
   },
   {
-    q: 'Which store needs a write barrier to record something?',
+    q: 'Between two minor collections, an old list receives 180,000 stores of young objects. With a remembered bit, how many remembered-set entries does it get?',
     options: [
       {
-        t: 'Storing a young list into a field of an old instance',
+        t: '180,000',
+        why: 'That would be a barrier with no bit (or a set that keeps duplicates).',
+      },
+      {
+        t: 'None: lists are scanned anyway',
+        why: 'An old list is not scanned by a minor collection unless it is remembered.',
+      },
+      {
+        t: 'One',
         correct: true,
-        why: 'That creates an old-to-young reference, which a minor collection would otherwise miss.',
-      },
-      {
-        t: 'Storing a number into a field of an old instance',
-        why: 'A number is not a reference, so there is nothing to miss.',
-      },
-      {
-        t: 'Storing a young list into a field of a young instance',
-        why: 'A minor collection traces the young instance, so it finds the list anyway.',
-      },
-      {
-        t: 'Storing an old object into a global',
-        why: 'Globals are roots, and an old object is not collected by a minor collection anyway.',
+        why: 'The first store sets the bit and adds the list; the rest stop at the bit.',
       },
     ],
   },
   {
-    q: 'What does a minor collection treat as its roots?',
+    q: 'A program stores a young object into another young object. What does a generational write barrier record?',
     options: [
       {
-        t: 'Only the stack',
-        why: 'It also needs the other roots, and the remembered old objects.',
+        t: 'The owner, in the remembered set',
+        why: 'Only old owners are remembered.',
       },
       {
-        t: 'Every old object',
-        why: 'That would make it as costly as a full collection.',
-      },
-      {
-        t: 'The usual roots, plus the old objects in the remembered set',
+        t: 'Nothing: a minor collection traces every live young object anyway',
         correct: true,
-        why: 'Those are exactly the old objects that might keep a young one alive.',
+        why: 'Young-to-young and young-to-old pointers are found by tracing the young generation itself.',
       },
       {
-        t: 'Nothing: it frees every young object',
-        why: 'Young objects that are still reachable must survive, and be promoted later.',
+        t: 'The value, so that it is promoted early',
+        why: 'The barrier does not decide promotion.',
       },
     ],
   },

@@ -87,7 +87,7 @@ happen at the next free address"
 
 The first is the whole algorithm: one add and one compare, and the
 failing case is where a collection starts (the `allocation failure`
-reason in V8's trace lines from the chapter "Copying collection"). The second is V8's own
+reason in V8's trace lines from *Copying collection*). The second is V8's own
 description of its young generation<Cite id="v8-trash-talk" />. The
 third is how .NET makes bump allocation safe with many threads: the
 collector hands each thread an **allocation context**, a small region
@@ -242,12 +242,12 @@ fragmented pages into other pages
 The first works the formula: A stays at 0; B's new address is A's
 size, 2; C's is A plus B, 6; and the 4 dead words come free in one piece.
 Order is kept, so objects allocated together stay together, which is
-good for the cache (the chapter "Cache lines and locality"). The second is
+good for the cache (*Caches, lines and locality*). The second is
 .NET, whose collection after marking has a plan phase that "simulates
 a compaction", a relocate phase that updates references and a compact
 phase that copies objects to the addresses the plan
 computed<Cite id="dotnet-gc-botr" />: the same three steps. The third
-is V8's choice from the chapter "Mark-compact and the write barrier":
+is V8's choice from *Mark-compact and the write barrier*:
 it does not slide the whole old generation, but copies the survivors
 of a few badly fragmented pages into free space elsewhere, and only
 sweeps the rest<Cite id="v8-trash-talk" />.
@@ -271,7 +271,8 @@ sweeps the rest<Cite id="v8-trash-talk" />.
   pointers, then moves objects down in order: no spare space, but three
   passes over the whole heap.
 
-Next: references the collector is allowed to clear, code that runs
-when an object dies, and how real collectors put all of this together.
+Next, *Weak references, finalisation and real collectors*: references
+the collector is allowed to clear, code that runs when an object dies,
+and how real collectors put all of this together.
 
 <Quiz />

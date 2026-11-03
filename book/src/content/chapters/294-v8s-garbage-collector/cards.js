@@ -1,21 +1,21 @@
-// Chapter 167 cards: recall prompts, examples, exercises and quiz.
+// Chapter 294 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'gc68-gens': {
-    q: 'Which generations does V8’s heap have?',
+    q: 'Into which generations does V8 (as in Node 22) divide its heap of ordinary objects?',
     a: 'A young generation (a nursery and an intermediate part) and an old generation.',
   },
   'scav-what': {
-    q: 'What does V8’s Scavenger collect, and how?',
+    q: 'What does V8’s Scavenger (its default young-generation collector in Node 22) collect, and how?',
     a: 'The young generation only, by copying the objects that survive into the empty semispace.',
   },
   'scav-half': {
-    q: 'Why is half of the young generation always empty?',
+    q: 'Why is half of V8’s young generation always empty while the Scavenger is in use?',
     a: 'A scavenge needs somewhere to copy the survivors to: the empty half is the next to-space.',
   },
   'scav-cost': {
-    q: 'What does the cost of a scavenge depend on: the objects allocated, or the objects that survive?',
+    q: 'What does the cost of a copying young-generation collection (a scavenge) depend on: the objects allocated, or the objects that survive?',
     a: 'The survivors. Dead objects are never visited; their space is just reused.',
   },
   'scav-trace': {
@@ -23,16 +23,16 @@ export const prompts = {
     a: 'The size of the objects in the heap before and after that scavenge, in megabytes (the numbers in brackets are the heap’s total memory).',
   },
   'scav-roots': {
-    q: 'What are the roots of a scavenge?',
-    a: 'The stack, the globals, and the recorded old-to-new references.',
+    q: 'What are the roots of a scavenge in V8?',
+    a: 'The VM’s usual roots (the stack, the globals and similar) plus the old-to-new references recorded by the write barrier.',
   },
   'scav-forward': {
-    q: 'What is a forwarding address for?',
+    q: 'In a copying collector, what is a forwarding address for?',
     a: 'It is left in a moved object’s old copy, so every other pointer to that object can be updated, and the object is copied only once.',
   },
   'scav-promote': {
-    q: 'When is a young object moved to the old generation?',
-    a: 'When it survives a second scavenge.',
+    q: 'In V8’s Scavenger, after how many survived scavenges is an ordinary young object normally promoted to the old generation?',
+    a: 'Two: the first moves it from the nursery to the intermediate generation, the second to the old generation.',
   },
 };
 
@@ -224,7 +224,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the `--trace-gc` output for a loop that keeps every tenth object, which line marks a major collection?',
+    q: 'In Node’s `--trace-gc` output, which line reports a major (whole-heap) collection?',
     options: [
       {
         t: '`Scavenge 4.4 (5.1) -> 3.5 (6.1) MB`',
@@ -236,17 +236,17 @@ export const quiz = [
       },
       {
         t: 'None: V8 only runs major collections when the program ends',
-        why: 'The trace shows one in the middle of the run.',
+        why: 'Major collections run whenever the old generation grows past its limit, in the middle of a run.',
       },
       {
         t: '`Mark-Compact 13.4 (28.7) -> 10.2 (27.2) MB`',
         correct: true,
-        why: 'It collects the whole heap; that run had 25 scavenges and one Mark-Compact.',
+        why: 'Mark-Compact is V8’s old-generation collector, and it collects the whole heap.',
       },
     ],
   },
   {
-    q: 'The `len2` loop from *Escape analysis in V8* needed about 1700 scavenges without escape analysis and a handful with it. What does that tell you about the GC?',
+    q: 'A loop allocates one short-lived object per iteration. With V8’s escape analysis on it needs a handful of scavenges; with `--no-turbo-escape`, thousands. What does that tell you?',
     options: [
       {
         t: 'Escape analysis makes each scavenge faster',
@@ -268,7 +268,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In this chapter’s runs, a scavenge took about 0.09 ms when nothing was kept and about 16 ms when every object was kept. What explains the difference?',
+    q: 'On Node 22, a loop making three million small objects saw scavenges of about 0.09 ms each when it kept none of them and about 16 ms each when it kept all of them. What explains the difference?',
     options: [
       {
         t: 'More objects were allocated in the second run',

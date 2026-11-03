@@ -1,4 +1,4 @@
-// Chapter 320 cards: recall prompts, examples, exercises and quiz.
+// Chapter 288 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,8 +7,8 @@ export const prompts = {
     a: 'An allocation for each thunk (and a later force), and space leaks: chains of thunks kept alive until something forces them.',
   },
   'sa-leak': {
-    q: 'Why does forcing a lazy accumulator built over a million passes overflow the stack?',
-    a: 'Each thunk forces the one before it before adding, so forcing the last runs a million nested calls.',
+    q: 'A lazy accumulator is built as a chain of a million thunks, each computing `prev + i`. Why can forcing the last one overflow the stack?',
+    a: 'Each thunk must force the one before it before it can add, so forcing the last one runs a million nested forces, each holding a stack frame.',
   },
   'sa-bottom': {
     q: 'What does ⊥ ("bottom") stand for?',
@@ -16,23 +16,23 @@ export const prompts = {
   },
   'sa-strict': {
     q: 'When is a function **strict** in an argument?',
-    a: 'When giving it ⊥ for that argument always makes the result ⊥: f(⊥) = ⊥. In practice, when every path evaluates the argument.',
+    a: 'When giving it ⊥ for that argument always makes the result ⊥: f(…, ⊥, …) = ⊥. (A sufficient test: every path through the body evaluates the argument.)',
   },
   'sa-safe': {
-    q: 'Why may a compiler evaluate a strict argument before the call?',
+    q: 'In a pure lazy language, why may a compiler evaluate a strict argument before the call?',
     a: 'If the argument has a value, it was going to be computed anyway; if it is ⊥, the call would have been ⊥ too. Either way the answer is unchanged.',
   },
   'sa-domain': {
-    q: 'In the two-point domain, what do 0 and 1 mean?',
+    q: 'In the two-point domain of classic strictness analysis, what do 0 and 1 mean?',
     a: '0: surely no value (⊥). 1: may have a value. 1 is the safe, "don\'t know" answer.',
   },
   'sa-if': {
-    q: 'What is the abstract version of `if c then t else e`?',
+    q: 'In two-point strictness analysis, what is the abstract value of `if c then t else e`?',
     a: '`c ∧ (t ∨ e)`: the test is always evaluated, and then one branch.',
   },
   'sa-rec': {
-    q: 'How is the abstract version of a recursive function found?',
-    a: 'By iteration from the guess "always 0": substitute the current guess into the body, and repeat until the table stops changing (a fixpoint).',
+    q: 'In strictness analysis, how is the abstract version f# of a recursive function f found?',
+    a: 'By iteration from the guess "f# is always 0": substitute the current guess into the body, and repeat until the table stops changing (a fixpoint).',
   },
   'sa-ghc': {
     q: 'What does GHC do with an argument its demand analysis finds strict?',
@@ -279,12 +279,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'The fixpoint for `sum#` starts from the guess "always 0". Why that guess?',
+    q: 'Strictness analysis finds the abstract f# of a recursive function by iterating from the guess "f# is always 0". Why that guess?',
     options: [
       {
         t: 'It is the least element; iterating upwards from it gives the least fixpoint, the most precise safe answer',
         correct: true,
-        why: 'As in chapter 92: start at the bottom and grow until nothing changes.',
+        why: 'As in any monotone dataflow problem: start at the bottom and grow until nothing changes.',
       },
       {
         t: 'Because recursive functions never return',
@@ -305,7 +305,7 @@ export const quiz = [
       },
       {
         t: 'Nothing; it only runs with -O0',
-        why: 'It is off by default and enabled by -O.',
+        why: 'It does more than strictness, and it is off at -O0: -O turns it on.',
       },
       {
         t: 'Usage analysis: finding arguments used at most once (call-by-name is then enough) or not at all (absent)',

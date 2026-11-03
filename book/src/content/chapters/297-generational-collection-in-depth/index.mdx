@@ -18,10 +18,13 @@ import CardSteps from '../../../components/diagrams/ch297/CardSteps';
 
 ## Two promises that pull apart
 
-The chapter "NaN-boxing and generational collection" showed that most
-objects die young, and split the heap in two; the chapter
-"Mark-compact and the write barrier" showed V8's barrier recording
-old-to-new pointers. This chapter makes that design exact. A young
+You met the generational heap in *Measuring and speeding up the VM*,
+which split the heap by age and sketched the write barrier and the
+remembered set; *Mark-compact and the write barrier* showed V8's
+barrier, and *NaN-boxing and write barriers in practice* measured how
+rarely a store needs recording. This chapter makes that design exact:
+how long objects stay young, what the remembered set must contain, and
+how coarse it may be. A young
 collection makes two promises at once:
 
 1. **It is fast**: it never looks at the old generation, which may be
@@ -61,7 +64,7 @@ generation, wasting space, until the next full collection.</span>
 
 The **nursery** is where new objects are born. It is small, it is
 filled by handing out the next free address, and it is emptied by
-copying, as in the previous chapter. Many collectors keep an object in
+copying, as in *Copying collection*. Many collectors keep an object in
 the young generation for a few collections before promoting it, so
 that objects that were merely *recently* made, not long-lived, get a
 chance to die. HotSpot, the JVM in OpenJDK, splits its young
@@ -118,11 +121,10 @@ the help text adds), tiny beside a heap of gigabytes.
 
 ## Remembered sets
 
-A minor collection starts from the ordinary roots (stack, globals) and
-from every old-to-young pointer. The collector cannot search the old
-generation for those, so the program must record them as it makes
-them, and the write barrier is where that happens. The record is the
-**remembered set**.
+The core's remembered set was a set of old objects, filled by the
+write barrier and used as extra roots. Two questions decide how a real
+one is built: exactly what must be in it, and how precisely each entry
+must say where the young pointer is.
 
 <Analogy extra title="a guest list at the door">
 A party in a small back room only lets in people on the list; the
@@ -243,7 +245,7 @@ card(a) = ⌊a / 512⌋ = a >> 9
 
 <span slot="read">The card for address a is a divided by 512, rounded
 down, which, because 512 is two to the ninth, is a shifted right by
-nine bits (the chapter "Bits and bytes").</span>
+nine bits (*Bits and bytes*).</span>
 </Formal>
 
 <Examples of="card-table">

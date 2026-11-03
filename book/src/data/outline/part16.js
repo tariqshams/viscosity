@@ -2,7 +2,7 @@ export default {
   id: 'XVI', section: 'deep', days: '32–34', title: 'Deep dive: garbage collection in depth',
   blurb: 'Generational collection, V8’s Orinoco, copying and compacting collectors, incremental and concurrent marking with barriers, weak references and finalisation, and real collectors compared.',
   chapters: [
-    { n: 293, title: 'NaN-boxing and generational collection', introduces: {} },
+    { n: 293, title: 'NaN-boxing and write barriers in practice', introduces: {} },
     { n: 294, title: 'V8’s garbage collector', introduces: {
       scavenger: 'the young-generation copying collector',
     } },

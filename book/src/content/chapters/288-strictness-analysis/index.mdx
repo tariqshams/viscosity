@@ -99,7 +99,7 @@ never call a non-strict one strict.
 ## Running the program on 0 and 1
 
 The analysis Mycroft introduced in 1980<Cite id="mycroft1980" /> is an
-abstract interpretation (chapter 208, after Cousot and
+abstract interpretation (the idea of *Abstract interpretation and widening*, after Cousot and
 Cousot<Cite id="cousot1977" />) on the smallest useful domain: **0**
 means "surely ⊥" and **1** means "may have a value". Every construct
 gets an abstract rule. A literal is 1; `a + b` (or any operator) needs
@@ -148,13 +148,13 @@ g#(1, 0) = 1 ∧ (0 ∨ (0 ∧ 1)) = 0
 
 `add` uses both arguments, so a ⊥ in `x` gives ⊥. `pick` may take the
 `b` branch, so a ⊥ in `a` can still give a value: not strict, and the
-compiler must keep `a` as a thunk (last chapter's `pick(true, 1, slow())`
+compiler must keep `a` as a thunk (the `pick(true, 1, slow())` of *Lazy evaluation*
 must not run `slow`). `g` uses `a` on both branches, so the
 analysis proves it strict even though no single line uses it
 unconditionally.
 
 A recursive function is defined in terms of itself, so f# is too, and
-we solve it the way chapter 92 solved dataflow equations: guess "f# is
+we solve it the way *Dataflow, fixpoints and constant propagation* solved dataflow equations: guess "f# is
 always 0", substitute the guess into the body, and repeat until the
 table of f# stops changing. Step through it for the running total:
 

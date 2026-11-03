@@ -1,9 +1,9 @@
-// Chapter 326 cards: recall prompts, examples, exercises and quiz.
+// Chapter 291 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'th-shared': {
-    q: 'What makes threads harder to reason about than the event loop of chapter 40?',
+    q: 'What makes shared-memory threads harder to reason about than callbacks on a single event loop?',
     a: 'Threads run at the same time on different cores and share memory, so their steps can interleave anywhere, not only between callbacks.',
   },
   'dr-what': {
@@ -12,7 +12,7 @@ export const prompts = {
   },
   'dr-ub': {
     q: 'What does a data race mean in C++, and what does it mean in Go, Java or JavaScript?',
-    a: 'In C++ (and C, and Rust\'s unsafe code) it is undefined behaviour. In Go, Java and JavaScript the outcomes are limited: a read sees some value that was actually written.',
+    a: 'In C++ (and C, and Rust\'s unsafe code) it is undefined behaviour. In Go, Java and JavaScript it is not: the language limits what a racy read may return (roughly, some value a write stored, though values wider than a machine word may tear).',
   },
   'sc-what': {
     q: 'What is **sequential consistency**?',
@@ -23,7 +23,7 @@ export const prompts = {
     a: 'Which values each read in a multithreaded program may return: which reorderings of memory operations other threads are allowed to observe.',
   },
   'mm-sb': {
-    q: 'In the store-buffering test, why is `r1 = r2 = 0` impossible under sequential consistency?',
+    q: 'In the store-buffering litmus test (thread 1: `x = 1; r1 = y`, thread 2: `y = 1; r2 = x`, all starting at 0), why is `r1 = r2 = 0` impossible under sequential consistency?',
     a: 'Whichever store comes first in the single order happens before the other thread\'s load, so at least one load sees a 1.',
   },
   'mm-tso': {
@@ -35,7 +35,7 @@ export const prompts = {
     a: 'It waits until the core\'s store buffer has drained, so the load cannot overtake the store; SB\'s `0, 0` disappears.',
   },
   'mm-hoist': {
-    q: 'Why did gcc -O2 compile `while (!flag) {}` into a load followed by `jmp .L3` to itself?',
+    q: 'With `flag` a plain (non-atomic) `int`, why may gcc -O2 compile `while (!flag) {}` into one load of `flag` followed by an infinite loop?',
     a: 'With a plain variable, the compiler may assume no other thread changes it, so it reads `flag` once and loops forever if it was 0.',
   },
   'mm-mp': {
@@ -248,10 +248,10 @@ export const quiz = [
     ],
   },
   {
-    q: 'The store-buffering test ran a million times on this book\'s x86 machine. What did it find?',
+    q: 'Run many times on an x86 machine, what does the store-buffering litmus test (plain stores and loads) show?',
     options: [
       {
-        t: 'r1 = r2 = 0 about 63 thousand times; never with a fence between store and load',
+        t: 'r1 = r2 = 0 in a small fraction of runs, and never once a full fence separates each store from the following load',
         correct: true,
         why: 'Stores waited in store buffers while the loads read memory; `lock or` (the fence) drains the buffer first.',
       },
@@ -291,7 +291,7 @@ export const quiz = [
         why: 'They are, but each core\'s buffer is FIFO, so data reaches memory before flag.',
       },
       {
-        t: 'No: stores leave in order and loads are not reordered with each other, as the model checker confirms',
+        t: 'No: each store buffer drains in order and loads are not reordered with each other',
         correct: true,
         why: 'Weakly ordered hardware such as Arm does allow it, which is why portable code needs release and acquire.',
       },

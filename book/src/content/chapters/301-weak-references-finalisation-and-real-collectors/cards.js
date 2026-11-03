@@ -1,4 +1,4 @@
-// Chapter 271 cards: recall prompts, examples, exercises and quiz.
+// Chapter 301 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,11 +7,11 @@ export const prompts = {
     a: 'A reference that does not keep its target alive: the collector does not trace through it.',
   },
   'wr-clear': {
-    q: 'When does a collector clear a weak reference?',
+    q: 'When does a tracing collector clear a weak reference?',
     a: 'After marking, before the memory is reused, if its target was not marked.',
   },
   'wr-job': {
-    q: 'You create a `WeakRef`, drop the only strong reference, and call `deref()` in the same job. What do you get?',
+    q: 'In JavaScript, you create a `WeakRef`, drop the only strong reference, and call `deref()` in the same job. What do you get?',
     a: 'The target: it is kept alive until the current job (and its promise reactions) ends.',
   },
   'fin-what': {
@@ -35,7 +35,7 @@ export const prompts = {
     a: 'Generational or not; moving (copying or sliding) or not; stopped, incremental or concurrent; and which barriers on stores and loads.',
   },
   'ds-go': {
-    q: 'Which of these does Go\'s collector do: generations, moving objects, concurrent marking?',
+    q: 'As of Go 1.24, which of these does Go\'s collector do: generations, moving objects, concurrent marking?',
     a: 'Only concurrent marking: it is non-generational and non-compacting, with a hybrid write barrier.',
   },
 };
@@ -200,7 +200,7 @@ In the test heap, object 2 is held strongly only by object 3, which is garbage, 
 
 export const quiz = [
   {
-    q: 'During marking, how does the collector treat a weak reference?',
+    q: 'During marking, how does a tracing collector treat a weak reference?',
     options: [
       {
         t: 'It does not follow it',
@@ -218,11 +218,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'In this chapter\'s Node run, the `FinalizationRegistry` callback never printed, although the target was collected. What fixed it?',
+    q: 'In Node 22, a `FinalizationRegistry` held only by a `const` that nothing uses after the main script never runs its callback, although the registered object is collected. What makes the callback run?',
     options: [
       {
         t: 'Calling `gc()` twice',
-        why: 'The fix was about the registry, not the number of collections.',
+        why: 'The registry itself is the problem, not the number of collections.',
       },
       {
         t: 'Registering the object twice',
@@ -254,7 +254,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which collector in this chapter is non-generational and never moves heap objects?',
+    q: 'Which of these collectors (as of Go 1.24 and Java 21) is non-generational and never moves heap objects?',
     options: [
       {
         t: 'Go\'s',
@@ -280,12 +280,12 @@ export const quiz = [
       },
       {
         t: 'It needs twice as many collections',
-        why: 'That is not the trade the chapter describes.',
+        why: 'The number of collections is not the trade; ZGC trades work on every load for short pauses.',
       },
       {
         t: 'A load barrier on every pointer read from the heap',
         correct: true,
-        why: 'Concurrent relocation needs the read barrier of the previous chapter.',
+        why: 'Concurrent relocation needs a read barrier, so that the program never uses an old copy of a moved object.',
       },
     ],
   },

@@ -1,4 +1,4 @@
-// Chapter 161 cards: recall prompts, examples, exercises and quiz.
+// Chapter 290 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,15 +11,15 @@ export const prompts = {
     a: 'Only `eval(s)`: a plain call through the name `eval` that finds the real `%eval%`. The others are indirect and run in the global scope.',
   },
   'ev-resolver': {
-    q: 'Why does a direct `eval` defeat the resolver of chapter 70?',
+    q: 'Why does a direct `eval` in a function stop a compiler resolving that function\'s names ahead of time?',
     a: 'The resolver must know at compile time which declaration every name refers to; the string passed to eval is only known at run time and may read, change or (outside strict mode) declare any name.',
   },
   'ev-v8': {
-    q: 'Where does V8 keep a local variable in a function that contains a direct `eval`?',
+    q: 'In V8 (Node 22), where is a local variable kept in a function that contains a direct `eval`?',
     a: 'In a heap-allocated context slot (`StaCurrentContextSlot`) rather than a register, so the eval\'d code can find it by name.',
   },
   'ev-with': {
-    q: 'What does `with (o) { x + 1 }` force the engine to do for `x`?',
+    q: 'What does `with (o) { x + 1 }` force a JavaScript engine to do for `x`?',
     a: 'Look `x` up by name at run time (`LdaLookupSlot`), because `x` may be a property of `o` or the variable outside, and that can change on every run.',
   },
   'ev-strict': {
@@ -249,7 +249,7 @@ export const quiz = [
     options: [
       {
         t: 'Returning the last element when an array is read with the key `"-1"`',
-        why: 'The array has no own property `"-1"`, so no invariant applies: this is the `wrap` example.',
+        why: 'The array has no own property `"-1"`, so no invariant applies and the trap may answer as it likes.',
       },
       {
         t: 'Returning 2 for a property the target defined as non-writable and non-configurable with value 1',

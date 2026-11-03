@@ -107,7 +107,7 @@ for a class it was never told about.
 
 A JavaScript engine can answer these questions at no extra cost, because
 every object already points to a description of its properties (V8's
-hidden class, or map, from chapter 87). `%DebugPrint` in Node 22 shows
+hidden class, or map, from *Shapes, inline caches and elements kinds*). `%DebugPrint` in Node 22 shows
 it (trimmed):
 
 ```text
@@ -119,8 +119,7 @@ DebugPrint: [JS_OBJECT_TYPE]
 ```
 
 A compiled, statically typed language is different: its compiler uses
-types to check the program and then, by default, drops them (chapter
-28's erasure), so a machine-code program has no idea that a word in
+types to check the program and then, by default, drops them (the erasure of *Interfaces, erasure and typeof*), so a machine-code program has no idea that a word in
 memory is a `Point`. To answer questions about types at run time, the
 compiler must write some of what it knew into the program.
 
@@ -151,7 +150,7 @@ _ZTV6Circle:
   .quad  _ZN5ShapeD2Ev
 ```
 
-`_ZTS6Circle` is the type's name, mangled (chapter 277). `_ZTI6Circle`
+`_ZTS6Circle` is the type's name, mangled (as in *Modules and separate compilation*). `_ZTI6Circle`
 is its **typeinfo**: what kind of record it is (a class with one base),
 a pointer to the name, and a pointer to `Shape`'s typeinfo. And the
 vtable for `Circle` keeps a pointer to that typeinfo in the slot just
@@ -210,7 +209,7 @@ test "implements this trait"<Cite id="rust-std-any" />.
 
 <Prompts ids={['rtti-what', 'rtti-erasure', 'rtti-cpp', 'rtti-norrti', 'rtti-java', 'rtti-rust', 'rtti-v8']} />
 
-So far reflection has only *looked*. The next chapter covers the
+So far reflection has only *looked*. The next chapter, *Eval, with and proxies*, covers the
 two features that let a program change how its own code behaves while
 it runs, `eval` and proxies, and what they cost an optimiser.
 

@@ -1,17 +1,17 @@
-// Chapter 267 cards: recall prompts, examples, exercises and quiz.
+// Chapter 297 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'nu-what': {
     q: 'What is the **nursery**?',
-    a: 'The part of the young generation where new objects are allocated; it is small and emptied by copying.',
+    a: 'The part of the young generation where new objects are allocated; it is small, and usually emptied by copying its survivors out.',
   },
   'nu-age': {
     q: 'In a generational collector with survivor spaces, what is an object\'s **age**?',
     a: 'The number of young collections it has survived; at the tenuring threshold it is promoted.',
   },
   'nu-why-wait': {
-    q: 'Why not promote every object the first time it survives?',
+    q: 'Why do many generational collectors not promote an object the first time it survives a young collection?',
     a: 'Some objects were only made just before the collection and die soon after; waiting a few collections lets them die young instead of filling the old generation.',
   },
   'rs-what': {
@@ -27,7 +27,7 @@ export const prompts = {
     a: 'No: the set may hold too much (wasted scanning), never too little.',
   },
   'ct-what': {
-    q: 'What does a card-table write barrier do on a pointer store?',
+    q: 'What does HotSpot\'s plain card-table write barrier (as in the Serial and Parallel collectors) do on a reference store?',
     a: 'It marks the byte for the card holding the written field as dirty, with no further checks.',
   },
   'ct-shift': {

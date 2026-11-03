@@ -1,4 +1,4 @@
-// Chapter 270 cards: recall prompts, examples, exercises and quiz.
+// Chapter 300 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -35,7 +35,7 @@ export const prompts = {
     a: 'Compute each live object\'s new address; update every pointer to the new addresses; move each object to its new address.',
   },
   'sl-order': {
-    q: 'Why is it safe for sliding compaction to move objects in address order?',
+    q: 'Why is it safe for sliding compaction, which packs live objects towards the start of the heap, to move them in address order?',
     a: 'Objects only move down, into space already passed, so nothing is overwritten before it has been moved.',
   },
   'sl-cost': {

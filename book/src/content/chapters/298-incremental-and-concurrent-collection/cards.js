@@ -1,4 +1,4 @@
-// Chapter 268 cards: recall prompts, examples, exercises and quiz.
+// Chapter 298 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,7 +19,7 @@ export const prompts = {
     a: 'The middle one, 6.7 ms of concurrent marking; the other two are short stop-the-world phases.',
   },
   'lost-two': {
-    q: 'What two things must the program do, during marking, to hide a live object from the marker?',
+    q: 'In tri-colour marking that runs alongside the program, what two things must the program do to hide a live object from the marker?',
     a: 'Store a pointer to the white object into a black object, and destroy every path to it from a grey object.',
   },
   'dij-what': {
@@ -35,8 +35,8 @@ export const prompts = {
     a: 'Objects that die during marking but are marked anyway, because they were reachable at the start; they are freed next cycle.',
   },
   'satb-alloc': {
-    q: 'What colour are objects allocated during SATB marking, and why?',
-    a: 'Black: they were not in the snapshot, and they cannot be garbage yet, so the marker need not scan them.',
+    q: 'How does a snapshot-at-the-beginning collector usually treat objects allocated during marking, and why?',
+    a: 'As already marked (black): they were not in the snapshot, so nothing needs to trace them, and keeping them is always safe; any that die are freed next cycle.',
   },
 };
 

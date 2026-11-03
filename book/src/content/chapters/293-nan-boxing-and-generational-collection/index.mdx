@@ -2,276 +2,234 @@
 n: 293
 day: 32
 part: XVI
-title: 'NaN-boxing and generational collection'
-tagline: 'Two ideas real engines use that the companion VM does not: fitting every value into one 8-byte number by hiding the others inside NaN, and collecting young objects often because most of them die young.'
+title: 'NaN-boxing and write barriers in practice'
+tagline: 'Two ideas from the core, taken further: the address-width bet every NaN-boxing engine makes, and what it would take to give the companion VM a generational write barrier, measured on its own benchmarks.'
 objectives:
-  - Explain why NaN leaves room to store other values inside a double, and encode and decode values with typed-array views.
-  - Explain why a NaN-boxing VM must store every real NaN in one canonical form.
-  - State the generational hypothesis, and check it against the companion VM’s own collections.
-  - Explain why a generational collector needs a write barrier, and name the companion instructions that would need one.
+  - Explain why a 64-bit NaN-boxing engine can keep a pointer in 47 bits, and what 5-level paging does to that bet.
+  - Decode SpiderMonkey's 64-bit Value layout, including its one-compare test for a double.
+  - Find every store in a bytecode VM that needs a generational write barrier, including the ones that do not look like stores.
+  - Explain, from measurements, why a barrier's cost is in its checks and how a remembered bit keeps the remembered set small.
 introduces: []
-uses: [garbage-collection, roots, mark-sweep, tricolor, heap-object, object-list, value-representation, tagged-value, bytecode, virtual-machine, ieee754, float64, typed-array, arraybuffer, bit-ops, bit, byte, smi, heap-number, pointer, memory, drip, object, property, array, superinstruction, nan-boxing, generational-gc]
-sources: [spidermonkey-value, ecma262, v8-trash-talk, v8-orinoco-scavenger]
+uses: [garbage-collection, roots, mark-sweep, heap-object, value-representation, tagged-value, bytecode, virtual-machine, ieee754, float64, typed-array, arraybuffer, bit-ops, pointer, address, memory, upvalue, closed-upvalue, nan-boxing, generational-gc, object, array, function, test]
+sources: [spidermonkey-value, jsc-jsvalue, v8-pointer-compression, v8-orinoco-scavenger]
 ---
-import NanBoxSteps from '../../../components/diagrams/ch293/NanBoxSteps';
-import GenerationsFigure from '../../../components/diagrams/ch293/GenerationsFigure';
+import AddressBits from '../../../components/diagrams/ch293/AddressBits';
+import BarrierSteps from '../../../components/diagrams/ch293/BarrierSteps';
 
-{/* ── remnant of old chapter 86: keep only what goes beyond the core ── */}
+You met both ideas in *Measuring and speeding up the VM*: NaN-boxing,
+which fits every value into one 8-byte double by hiding the non-numbers
+inside NaN bit patterns, and the generational heap, which collects young
+objects often and needs a write barrier to remember old objects that
+point at young ones. *JavaScriptCore and SpiderMonkey* then showed two
+real engines choosing opposite NaN encodings. This chapter goes further
+on both: first the bet about pointer sizes that every 64-bit NaN-boxing
+engine makes, and then what a write barrier would really cost the
+companion VM, instruction by instruction, measured on its own
+benchmarks. The chapters after it build the collectors themselves.
 
-## Every value in eight bytes
+## A pointer has to fit
 
-The companion's `Value` is `null | boolean | number | Obj`, and V8
-decides how each of those is laid out in memory (the chapter "How
-JavaScript stores numbers and objects"). A VM written in C has to
-decide for itself. The obvious layout is the tagged value of the
-chapter "Tagging values at run time": a tag saying what kind of value
-it is, plus an 8-byte payload, which a C compiler usually pads to 16
-bytes. Every stack slot, every field and every list element then costs
-16 bytes, of which most of the tag's 8 are wasted.
+The teaching scheme of *Measuring and speeding up the VM* kept a 32-bit index in the low word; a
+real engine written in C keeps a real pointer, and a pointer on a 64-bit
+machine is, in principle, 64 bits. The trick only works because, in
+practice, it is far smaller. On x86-64 with the usual 4-level page
+tables, a virtual address has 48 significant bits, the top 16 must copy
+bit 47, and user programs only ever get the lower half, so every
+user-space pointer fits in **47 bits**. SpiderMonkey's 64-bit layout
+(called PUNBOX64) relies on exactly that: it puts a 17-bit tag in bits
+63 to 47 and the pointer in the 47 bits below, and its own allocator
+makes sure every pointer it stores fits<Cite id="spidermonkey-value" />.
 
-**NaN-boxing** fits every value into one 8-byte double instead. In IEEE
-754 (the chapter "Floats and typed arrays: numbers as bytes"), a double
-whose eleven exponent bits are all ones and whose fraction is not zero
-is a NaN, "not a number". That is a huge family of bit patterns
-(about 2⁵³ of them, counting both signs), and ordinary arithmetic only ever produces one or
-two. So a VM can pick a NaN pattern that arithmetic never makes (here,
-the quiet-NaN bits plus one extra "box" bit), and decide that any
-double with those bits set is not a number at all, but a boxed value
-whose other bits carry a tag and a payload.
-
-<Analogy title="a stamp on an envelope">
-Every value travels in the same 8-byte envelope. Nearly every envelope
-holds a number; however, one stamp, "not a number", is almost never
-needed for arithmetic, so once a VM sees that stamp it reads the rest of
-the envelope as "what kind of thing, and which one".
-<span slot="breaks">A real envelope keeps its contents separate from
-the stamp; in a double, the stamp *is* some of the bits, so the space
-left for the contents is smaller (here 16 bits of tag and 32 of
-payload).</span>
+<Analogy title="a footpath over a low bridge">
+A town runs a footpath across the top of a low road bridge, using the
+space a tall vehicle would need, and that works only because the road
+is signed for nothing taller than the bridge; the whole design rests on
+the promise that no tall lorry will ever come along.
+<span slot="breaks">A road sign is read by every driver, and a warning
+bar stops the ones who miss it. The 47-bit promise is checked nowhere at run time: it holds
+because the operating system and the engine's allocator agree to keep
+memory low, and a pointer that broke it would silently corrupt the
+tag.</span>
 </Analogy>
 
-<Analogy extra title="phone numbers for services">
-Almost every phone number belongs to a person, but a short range is
-kept back for services, and a number in that range is read as "which
-service" rather than "which person".
-<span slot="breaks">A phone network keeps the range free by agreement;
-a NaN-boxing VM relies on arithmetic never producing its chosen
-patterns, so it must make sure every real NaN it stores looks the
-same.</span>
-</Analogy>
+The tall lorry exists. Newer x86 processors support **5-level paging**,
+which gives user space 56 bits of address, and a 56-bit pointer would
+run straight into the tag field. The Linux kernel's documentation says
+plainly that "at least some JIT compilers use higher bits in pointers
+to encode their information", that such pointers collide with valid
+5-level addresses, and that for this reason the kernel does not hand
+out addresses above 47 bits unless a program asks for them with a high
+hint to `mmap`. SpiderMonkey's header makes the matching promise from
+its side: large addresses are opt-in, "and we simply don't use
+them"<Cite id="spidermonkey-value" />.
 
-<NanBoxSteps client:visible />
-
-In JavaScript you can try this with two views over one buffer: a
-`Float64Array` to read and write doubles, and a `Uint32Array` over the
-same bytes to reach their bits. On a little-endian machine (almost
-every machine today), the high word of slot `i` is `u32[2 * i + 1]`
-and the low word `u32[2 * i]`:
-
-<Run id="nan-box" />
-
-Two catches. First, a real NaN must never look boxed, so a NaN-boxing
-VM stores every NaN in one **canonical** form; that matters in
-JavaScript too, because when a NaN is written into a typed array the
-specification lets the engine choose its bit pattern<Cite id="ecma262" />,
-so a NaN carrying "boxed" bits could survive the trip and be misread.
-Second, JavaScript cannot put a pointer inside a double, so in this
-experiment an object's payload is an index into an array of objects; in
-C the spare bits can hold the pointer itself.
-
-<Examples of="nan-boxing">
-
-```text
-1.5      hi 3ff80000  lo 00000000
-none     hi 7ffc0001  lo 00000000
-obj #7   hi 7ffc0004  lo 00000007
-```
-
-```text
-is it a number?
-  (hi & 0x7ffc0000) !== 0x7ffc0000
-```
-
-```text
-NaN, as stored: hi 7ff80000 lo 0
-(the box bit is clear: still a number)
-```
-
-</Examples>
-
-The first shows three values as their two words: `1.5` is an ordinary
-double, while `none` and object number 7 both have the box pattern
-`7ffc` at the top, with tags 1 and 4 in the bottom of the high word and
-the object's index 7 in the low word. The second is the whole type test
-for "is this a number?": one AND and one compare, the cheapest check a
-VM can make. The third is the canonical NaN: its exponent is all ones
-and its quiet bit is set, but the box bit is clear, so it still reads
-as a number.
-
-<Callout kind="definition">
-**NaN-boxing** represents every value as one 64-bit IEEE 754 double.
-Numbers are stored as themselves; every other value is stored as a NaN
-bit pattern that arithmetic never produces, with a tag (none, boolean,
-object and so on) and a payload (a pointer or an index) in its fraction
-bits. Telling a number from anything else is one mask and compare, and
-every real NaN must be stored in one canonical form.
-</Callout>
-
-<Formal title="The two words of a boxed value">
-
-```text
-value = hi : lo        (32 + 32 bits)
-number(v)  ⇔  hi ∧ BOX ≠ BOX
-tag(v)     =  hi ∧ FFFF
-payload(v) =  lo
-```
-
-<span slot="read">A value is a high word and a low word. It is a number
-exactly when its high word, masked with BOX, is not BOX itself;
-otherwise its tag is the low sixteen bits of the high word, and its
-payload is the whole low word.</span>
-</Formal>
-
-<Prompts ids={['nan-room', 'nan-canonical', 'nan-js-payload', 'nan-test']} />
-
-## Most objects die young
-
-The collector of the chapter "Tracing and sweeping: white, grey and
-black" marks every live object on every collection. Is that wasteful?
-I counted, for this chapter, how many of the objects present at each
-collection survived it:
-
-```text
-program        collections  survived
-instantiation           27      0.1%
-closures                 4      0.1%
-sort                     4      8.5%
-trees                   10       54%
-```
-
-In three of the four programs, nearly everything the collector looked
-at was already dead: the 600,000 points and segments `instantiation`
-makes are garbage almost as soon as they exist. That is the
-**generational hypothesis**, the observation that most objects die
-young, and production collectors are built around it<Cite id="v8-trash-talk" />.
-`trees` is the honest exception: it keeps big trees alive across
-collections, so each full collection re-marks them.
-
-<Analogy extra title="an inbox and a filing cabinet">
-You clear your inbox every day, because most of what arrives there is
-junk you can bin at a glance; the filing cabinet, where the few
-important letters end up, you sort through once a year.
-<span slot="breaks">You can see that a letter is junk; a collector can
-only tell that an object is dead by finding that nothing reaches it,
-and an old letter in the cabinet can still point at something in
-today's inbox.</span>
-</Analogy>
-
-So split the heap in two. New objects start in the **young**
-generation. A *minor* collection looks only at the young generation,
-which is small and mostly garbage, so it is quick; objects that survive
-a few minor collections are promoted to the **old** generation, which
-is collected rarely.
-
-<Figure caption="A generational heap: a minor collection traces only the young side, starting from the roots and the remembered set." takeaway="An old object pointing at a young one must be remembered, or the minor collection would free a live object.">
-  <GenerationsFigure />
+<Figure takeaway="NaN-boxing borrows the top bits of every pointer, so it only works while the operating system keeps memory below 2⁴⁷." caption="Three 64-bit words: an ordinary user-space pointer, a SpiderMonkey object Value holding it, and a 5-level address that would not fit.">
+  <AddressBits />
 </Figure>
 
-The catch is the picture's arrow: a reference from an old object to a
-young one. A minor collection does not trace the old generation, so a
-young object kept alive *only* by an old one would look dead. The fix
-is a **write barrier**: a small check on every store of a reference
-into an object, which records an old object that now points at a young
-one in a **remembered set**, and the remembered set joins the roots
-for the next minor collection. In the companion, the stores that would
-need it are `set.prop` (a field), `index.set` and the native `push` (a
-list element), `store.upvalue` on a closed upvalue, and `method` and
-`inherit` (a class's method table); globals and the stack are roots
-already. A sketch, not in the companion:
+<Prompts ids={['nb-47', 'nb-57']} />
 
-```ts
-// a sketch: not in the companion
-function barrier(owner: Obj, v: Value) {
-  if (owner.old && isObj(v) && !v.old) {
-    remembered.add(owner); // a root
-  }
-}
+## Reading a SpiderMonkey Value
+
+The tags are chosen so that the common questions cost one instruction.
+Doubles are stored as themselves, and every non-double tag has its top
+bit set, so any 64-bit pattern up to `0xfff80000ffffffff` (the largest
+pattern that is still a double, a NaN produced by hardware included) is
+a double, and anything above is boxed: the test "is this a double?" is
+one unsigned compare<Cite id="spidermonkey-value" />. Above that line,
+the tag says what the rest holds; an int32 has the tag `0x1fff2` and an
+object the tag `0x1fffc`, which, shifted up by 47, puts `fff9` and
+`fffe` at the top of the word. Values are easiest to try out with a
+**BigInt**, JavaScript's integer of any size (written `5n`), whose
+`<<`, `>>`, `&` and `|` work on all 64 bits at once:
+
+```js
+const v = new DataView(
+  new ArrayBuffer(8));
+v.setFloat64(0, 1.5);
+v.getBigUint64(0).toString(16);
+// '3ff8000000000000': a double
+(0x1fffcn << 47n | 0x7f1234567890n)
+  .toString(16);
+// 'fffe7f1234567890': an object
 ```
 
-<Examples of="generational-gc">
+The first three lines store `1.5` and read the same 8 bytes back as one
+unsigned 64-bit BigInt, which is below the line, so a double. The last
+builds an object Value by hand: the object tag shifted to bit 47, and an
+address (a typical one for a 64-bit Linux heap) in the 47 bits below.
+<More title="Unboxing a pointer, and why it is an XOR">
+
+To get the pointer back, SpiderMonkey does not mask the tag off but
+XORs the Value with the tag it expects: on an object Value that clears
+the top bits exactly, while on a Value of any other type it leaves some
+high bits set, so a wrongly speculated access (the Spectre attacks)
+gets an unusable address rather than a real one<Cite id="spidermonkey-value" />.
+That one instruction on every object access is the price *JavaScriptCore
+and SpiderMonkey* weighed against JavaScriptCore's raw pointers.
+
+</More>
+
+The tag has one more user: the garbage collector. Because every Value
+says whether it holds a pointer, the marker can scan a stack slot or an
+object's field and know at once whether to follow it, with no separate
+map of where the pointers are. V8 makes a different bargain: its values
+are tagged pointers and Smis, and pointer compression shrinks each one
+to 32 bits, which cut the V8 heap by up to 43%; NaN-boxed values can
+never be smaller than the 8 bytes of a double<Cite id="v8-pointer-compression" />.
+
+<Prompts ids={['nb-isdouble', 'nb-trace']} />
+
+## Where the companion would need a barrier
+
+The companion's collector has one generation and needs no barrier. To
+make it generational, every instruction that stores a reference into a
+heap object must run one, and finding them all is harder than it looks,
+because some stores do not look like stores. Reading `vm.ts` and the
+natives, the full list is:
 
 ```text
-for i in 0..200000 {
-  let s = [i, i];   # dies young
-}
+set.prop       o.f = v
+index.set      xs[i] = v
+push           push(xs, v)   (a native)
+store.upvalue  only when closed
+close.upvalue  stack value → upvalue
+method         a method into a class
+inherit        copies methods down
 ```
+
+The first three are the obvious ones. `store.upvalue` writes into the
+heap only once the upvalue is closed; while it is open, it writes a
+stack slot, which is a root. `close.upvalue` (and `return`, which
+closes upvalues too) is the hidden one: it copies a value off the stack
+into an upvalue object that may have been allocated long ago and
+promoted, so it can create an old-to-young pointer without any
+assignment in the Drip program. `method` and `inherit` fill a class's
+method table, which is only safe to skip if classes are always young
+when it happens. The stores that need nothing are as instructive:
+`store.local` and `store.global` write the stack and the globals table,
+which a minor collection scans as roots anyway, and the stores that
+fill a brand-new list or bound method write into an object
+that is young by construction. (A new closure is young too, but
+capturing its upvalues can allocate, and a collection in between would
+promote it; skipping a barrier is only safe when nothing can allocate
+between the allocation and the store.)
+
+<Prompts ids={['gb-roots', 'gb-close']} />
+
+## What the barrier costs
+
+To see what a barrier would do, I added a counter at each of those
+sites in a copy of the companion and ran its benchmarks, calling an
+object *old* once it had survived a collection (so one survival
+promotes). Each row counts the stores that would run the barrier, how
+many stored an object rather than a number or `none`, and how many of
+those wrote a young object into an old one:
 
 ```text
-let ps = [];       # survives, gets old
-push(ps, [1, 2]);  # old -> young: barrier
+program        checks  objects  old→young
+instantiation 1200002   400002          0
+closures       320004        4          0
+sort          1832669  1632669     184681
+trees          651272   323592          0
 ```
 
-```text
-class O {}
-let o = new O();
-o.f = 3;   # a number: no barrier needed
-```
+Nearly every check is wasted. In `instantiation` two stores in three
+write numbers, and the object stores go into records allocated moments
+before, so they are young; `closures` stores almost no objects at all;
+`trees` builds each tree from new nodes, so again nothing old is
+written. Only `sort` creates old-to-young pointers, and many of them:
+it pushes fresh records into a list that a collection has promoted, and
+then quicksort swaps them around inside it. However, in all 184,681 of
+those stores, only **4** distinct objects needed remembering (the list
+being filled at the moment each of the four collections ran), because
+an object only needs to be in the remembered set once.
 
-</Examples>
+That is why barriers usually keep a **remembered bit** in each object:
+the first old-to-young store into an object sets it and adds the object
+to the remembered set, and every later one sees the bit and stops. The
+next minor collection scans the set, promotes the survivors and clears
+the bits. Step through it:
 
-The first is the shape of `instantiation`'s loop: every list is
-garbage by the next pass, so a minor collection would find almost nothing to keep,
-exactly the 0.1% above. In the second, `ps` lives for the whole program
-and would be promoted, and pushing a new list into it creates an
-old-to-young reference that the barrier must record, or the next minor
-collection would free `[1, 2]`. The third shows the barrier's cheap
-case: storing a number creates no reference at all, which is why the
-check starts with `isObj(v)`.
+<BarrierSteps client:visible />
 
-<Callout kind="definition">
-A **generational garbage collector** divides the heap by age. It
-collects the young generation often and cheaply, promotes the objects
-that survive, and collects the old generation rarely. Because a minor
-collection skips the old generation, it needs a write barrier that
-records old-to-young references in a remembered set, which serves as
-extra roots.
-</Callout>
+The same pattern, as a program you can change:
 
-<Prompts ids={['gen-hypothesis', 'write-barrier', 'trees-exception', 'number-store']} />
+<Run id="remembered" />
 
-<Callout kind="engine" label="Under the hood">
-These are the moves real engines make. SpiderMonkey, Firefox's engine,
-stores JavaScript values NaN-boxed: on 64-bit machines it packs a tag
-into the bits next to the exponent and a pointer into the rest, and
-canonicalises NaNs before storing them<Cite id="spidermonkey-value" />.
-V8's heap is generational, with a young generation (split into nursery
-and intermediate parts) and an old one, a fast collector for the young
-generation that copies survivors, and write barriers that keep track of
-old-to-new references<Cite id="v8-trash-talk" />; those remembered
-sets, kept per page of memory, are usually most of a minor collection's
-roots<Cite id="v8-orinoco-scavenger" />.
-</Callout>
+`store` is the barrier: it counts every check, returns at once for a
+number, returns for a young owner or an old value, and only for an old
+owner and a young value looks at the bit. `minor` promotes every young
+object (in this toy, everything survives, because the list holds it all)
+and clears the bits. Five thousand fresh objects stored into an old
+list make 5,000 old-to-young stores but only 5 entries, one per minor
+collection, and the 5,000 number stores afterwards are checked and
+cost nothing else. V8's Scavenger keeps its remembered sets per page of
+memory, as slot sets, rather than per object, for the same reason: the
+set must stay small while the stores it records are
+many<Cite id="v8-orinoco-scavenger" />.
+
+<Prompts ids={['gb-bit', 'gb-cost', 'gb-clear', 'gb-young']} />
 
 ## Your turn
 
-<Exercise id="nanBox" />
-
-<Exercise id="barrier" />
+<Exercise id="punbox" />
 
 ## What you learned
 
-- **NaN-boxing** keeps every value in one double: numbers as
-  themselves, everything else in NaN patterns arithmetic never makes,
-  with a tag and a payload. One mask tells numbers apart, and real NaNs
-  must be canonical.
-- The **generational hypothesis**, most objects die young, held for
-  three of four companion programs measured; `trees` kept half.
-- A **generational collector** collects the young often and the old
-  rarely, and needs a **write barrier** to remember old-to-young
-  references as extra roots.
+- A 64-bit NaN-boxing engine bets that pointers fit in **47 bits**;
+  5-level paging breaks the bet, so Linux and SpiderMonkey keep large
+  addresses opt-in.
+- SpiderMonkey's tags make "is it a double?" one unsigned compare, and
+  an object pointer one mask away; every Value also tells the collector
+  whether it holds a pointer.
+- A generational companion would need barriers at seven instructions,
+  including the hidden **close.upvalue**; locals, globals and fresh
+  objects need none.
+- Measured, almost every barrier check finds nothing to record, and a
+  **remembered bit** keeps the remembered set to one entry per object.
 
-That is Part IV: a compiler, a virtual machine and a garbage collector,
-all your own, and an honest measure of what they are worth on the host
-they run on. Part V looks inside that host.
+Next, *V8’s garbage collector* watches a production generational
+collector at work, with `node --trace-gc`.
 
 <Quiz />

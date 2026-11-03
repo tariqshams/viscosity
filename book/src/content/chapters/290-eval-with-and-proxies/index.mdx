@@ -36,7 +36,7 @@ withEval('x = 5'); // 6
 `eval` takes a string and runs it as JavaScript, and when it is called
 directly, the code runs *inside the caller's scope*: `withEval('x = 5')`
 returns 6, because the string assigned to the caller's local `x`. For
-`plain`, the resolver (chapter 70) knows before the program runs that
+`plain`, the resolver (from *The resolver*) knows before the program runs that
 `x` is local slot 0, and nothing else can touch it. For `withEval`, the
 string is only known at run time, and it might read `x`, assign it, or
 (outside strict mode) declare a new `var` that shadows a global. The
@@ -148,7 +148,7 @@ which is why strict code is easier to compile. In the third, the same
 
 ## Proxies: objects that decide for themselves
 
-Reflection in the last chapter only *looked* at objects. A **proxy**
+Reflection, in *Reflection, eval and proxies*, only *looked* at objects. A **proxy**
 goes further: it is an object whose basic operations, such as reading a
 property, writing one, `in`, `delete` or calling it, are handed to
 functions you write, called **traps**. Every operation on an object is
@@ -217,7 +217,7 @@ sends every method call to one `InvocationHandler`; run here with Java
 hook<Cite id="python-getattr" />.
 
 For an engine, a proxy is the same kind of obstacle as `eval`: a
-property read, which an inline cache (chapter 87) normally turns into
+property read, which an inline cache (from *Shapes, inline caches and elements kinds*) normally turns into
 one load at a fixed offset, becomes a call to arbitrary code followed
 by the invariant check, since the trap may answer differently every
 time.

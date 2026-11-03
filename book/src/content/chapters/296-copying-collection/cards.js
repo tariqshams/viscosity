@@ -1,4 +1,4 @@
-// Chapter 266 cards: recall prompts, examples, exercises and quiz.
+// Chapter 296 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -28,7 +28,7 @@ export const prompts = {
   },
   'fw-what': {
     q: 'What is a **forwarding pointer**, and where is it written?',
-    a: 'A note saying where an object has been copied to, written over the old copy in from-space.',
+    a: 'A note saying where an object has been copied to, usually written over the old copy (its header) in from-space.',
   },
   'fw-two-jobs': {
     q: 'What two jobs does a forwarding pointer do?',

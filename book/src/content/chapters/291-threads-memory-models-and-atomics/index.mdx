@@ -19,8 +19,8 @@ import LitmusTable from '../../../components/diagrams/ch291/LitmusTable';
 ## Four instructions, one impossible answer
 
 Until now every program in this book has run on one thread: even async
-code (chapter 41) takes turns on a single event loop, and the green
-threads of chapter 274 are scheduled one at a time. Real **threads** run
+code (*async, await and the microtask queue*) takes turns on a single event loop, and the green
+threads of *Coroutines and green threads* are scheduled one at a time. Real **threads** run
 at the same moment on different cores and share the same memory. Here
 is the smallest program that shows what that means: `x` and `y` start
 at 0, and two threads run at once.
@@ -153,7 +153,7 @@ wait_then_read:
 ```
 
 `flag` is read once, before the loop, and if it was 0 the loop spins
-forever on `.L3`. This is loop-invariant code motion (chapter 215), and
+forever on `.L3`. This is loop-invariant code motion (*Loop-invariant code motion*), and
 it is correct for one thread: nothing in the loop changes `flag`.
 Another thread changing it would be a data race, which the compiler may
 assume never happens.
@@ -228,7 +228,7 @@ behaves sequentially consistently
 The first compares languages. In C and C++ a racy program has no
 meaning at all<Cite id="cxx-draft-races" />, and Rust inherits that for
 `unsafe` code<Cite id="rust-std-atomic" />. Go's memory model says a
-racy read "must observe a value actually written", which makes Go "more
+racy read of a word-sized location "must observe a value actually written" (wider values may tear), which makes Go "more
 like Java or JavaScript ... and less like C and
 C++"<Cite id="go-memory-model" />; the ECMAScript specification says
 racy shared memory "may appear sequentially inconsistent", but "there
@@ -238,7 +238,7 @@ languages offers: write a program with no data races, and it behaves
 as if it were sequentially consistent, which C++, Go and JavaScript all
 promise<Cite id="cxx-draft-races" /><Cite id="go-memory-model" /><Cite id="ecma262-memory-model" />.
 Keeping that bargain needs atomic operations and the ordering they
-create, the subject of the next chapter.
+create, the subject of the next chapter, *Atomics and happens-before*.
 
 <Prompts ids={['sc-what', 'mm-what', 'mm-sb', 'mm-tso', 'mm-fence', 'mm-hoist', 'mm-mp']} />
 

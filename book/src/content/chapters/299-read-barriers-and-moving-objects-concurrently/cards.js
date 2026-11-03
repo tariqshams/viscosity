@@ -1,4 +1,4 @@
-// Chapter 269 cards: recall prompts, examples, exercises and quiz.
+// Chapter 299 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -23,7 +23,7 @@ export const prompts = {
     a: 'A little at each allocation; a fetched from-space pointer makes the object be copied (or its copy found) first.',
   },
   'shen-lrb': {
-    q: 'In Shenandoah, what does the load-reference barrier do with an object in the collection set that has no copy yet?',
+    q: 'In Shenandoah (OpenJDK 21), what does the load-reference barrier do with an object in the collection set that has no copy yet?',
     a: 'If evacuation is in progress, the program\'s own thread copies (evacuates) it and returns the copy.',
   },
   'shen-race': {
@@ -31,11 +31,11 @@ export const prompts = {
     a: 'The one whose atomic update of the forwarding slot succeeds; the other thread uses that copy instead of its own.',
   },
   'zgc-colour': {
-    q: 'What is a **coloured pointer** in ZGC?',
+    q: 'What is a **coloured pointer** in generational ZGC (OpenJDK 21)?',
     a: 'A pointer that carries metadata bits (remapped, marked, remembered...) beside the address, so the barrier can judge it without reading memory.',
   },
   'zgc-fast': {
-    q: 'What does ZGC\'s load barrier do with a pointer whose colour is good for the current phase?',
+    q: 'What does generational ZGC\'s load barrier (OpenJDK 21) do with a pointer whose colour is good for the current phase?',
     a: 'It shifts the metadata bits away and uses the address directly: the fast path.',
   },
 };
@@ -254,16 +254,16 @@ export const quiz = [
     ],
   },
   {
-    q: 'In this chapter\'s runs, how long were Shenandoah\'s and ZGC\'s pauses, with a 128 MB heap?',
+    q: 'On OpenJDK 21 with a 128 MB heap, what order of pause times do Shenandoah and generational ZGC give an allocation-heavy program?',
     options: [
       {
         t: 'Hundredths to tenths of a millisecond',
         correct: true,
-        why: 'Shenandoah\'s were 0.01 to 0.33 ms; ZGC\'s longest of 67 was 0.153 ms.',
+        why: 'Their pauses only start and finish phases; marking, evacuation and reference updating run beside the program.',
       },
       {
         t: 'About 20 ms each',
-        why: 'That is near the longest of G1\'s young pauses on the same program (about 2 to 21 ms), not these collectors\'.',
+        why: 'That is the scale of a stop-the-world copying pause, such as one of G1\'s young collections, not of these concurrent compactors.',
       },
       {
         t: 'There were no pauses at all',

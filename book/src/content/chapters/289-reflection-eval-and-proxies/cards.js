@@ -1,4 +1,4 @@
-// Chapter 321 cards: recall prompts, examples, exercises and quiz.
+// Chapter 289 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,15 +19,15 @@ export const prompts = {
     a: 'Data the compiler keeps in the running program describing types (names, bases, fields), so the program can ask about types after compilation.',
   },
   'rtti-erasure': {
-    q: 'Why does a statically typed language need extra work to support reflection?',
+    q: 'Why does a language compiled to machine code with erased types (such as C++) need extra work to support reflection?',
     a: 'Its compiler uses types to check the program and then, by default, throws them away; reflection needs some of that information kept in the binary.',
   },
   'rtti-cpp': {
-    q: 'In clang\'s output, what does `_ZTI6Circle` hold for `struct Circle : Shape`?',
+    q: 'Under the Itanium C++ ABI, what does the typeinfo record `_ZTI6Circle` hold for `struct Circle : Shape` (single, non-virtual inheritance)?',
     a: 'Circle\'s typeinfo: a pointer for its kind (single-base class), a pointer to its name string `"6Circle"`, and a pointer to Shape\'s typeinfo.',
   },
   'rtti-norrti': {
-    q: 'What does clang say if you use `dynamic_cast` with `-fno-rtti`?',
+    q: 'What does clang 18 report if code uses `dynamic_cast` and is compiled with `-fno-rtti`?',
     a: '`error: use of dynamic_cast requires -frtti`: without the typeinfo records, the run-time check has nothing to read.',
   },
   'rtti-java': {
@@ -35,11 +35,11 @@ export const prompts = {
     a: 'From the class file, which keeps every field\'s name and type as metadata (`javap -p` lists them).',
   },
   'rtti-rust': {
-    q: 'What runtime type information does Rust offer by default?',
+    q: 'What runtime type information does Rust\'s standard library offer for an arbitrary type?',
     a: 'Very little: `TypeId`, `type_name`, and `Any::downcast_ref` to test for one concrete type. No list of fields or methods.',
   },
   'rtti-v8': {
-    q: 'Why does a JavaScript engine get runtime type information "for free"?',
+    q: 'Why does a JavaScript engine such as V8 get runtime type information "for free"?',
     a: 'Every object already points to a hidden class (V8\'s map) describing its properties, because a dynamic language needs it to run at all.',
   },
 };
@@ -201,9 +201,9 @@ export const quiz = [
         why: 'Virtual calls only need the vtable\'s method slots.',
       },
       {
-        t: '`dynamic_cast`, walking from the object\'s real type up through its bases',
+        t: '`dynamic_cast` (and matching a thrown exception against `catch` clauses), walking from the real type up through its bases',
         correct: true,
-        why: 'The Itanium ABI\'s `__si_class_type_info` adds exactly that base pointer for single inheritance.',
+        why: 'The Itanium ABI\'s `__si_class_type_info` adds exactly that base pointer for single inheritance; both checks follow it.',
       },
       {
         t: 'The linker, to order the classes',

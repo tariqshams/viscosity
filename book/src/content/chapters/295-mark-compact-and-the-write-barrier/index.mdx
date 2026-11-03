@@ -18,7 +18,7 @@ import BarrierSteps from '../../../components/diagrams/ch295/BarrierSteps';
 
 ## The other line in the trace
 
-The previous chapter ran a loop that keeps one object in ten and
+*V8’s garbage collector* ran a loop that keeps one object in ten and
 counted 25 scavenges in its `--trace-gc` output; in the middle of them
 sat one line of a different kind (real output, Node v22.23.4, which runs
 V8 12.4, trimmed):
@@ -46,7 +46,7 @@ Mark-Compact does three things<Cite id="v8-trash-talk" />:
 
 1. **Mark.** Starting from the roots, find every object still in use,
    exactly as your Drip collector does, with the white, grey and black
-   colours of *Tracing and sweeping: white, grey and black*.
+   colours of *Reclaiming memory: mark and sweep*.
 2. **Sweep.** The gaps left by dead objects go onto **free-lists**,
    sorted by size, so that later allocations can reuse them.
 3. **Compact, but only some pages.** The heap is divided into pages,
@@ -188,25 +188,13 @@ is empty, every object still in use has been found.</span>
 
 ## The barrier's other job
 
-The same barrier has a second job, and you have already met it: the
-Scavenger's remembered set. A scavenge does not look at the old
-generation at all, so it would miss a young object held only by an old
-one; the write barrier therefore records each **old-to-new** pointer,
-and those records become extra roots for the next
-scavenge<Cite id="v8-trash-talk" />. In the parallel Scavenger these
-remembered sets are kept per page, and they are usually most of a
-scavenge's roots<Cite id="v8-orinoco-scavenger" />.
-
-<Analogy extra title="a branch library's list of loans">
-A small branch library clears its shelves every week of books nobody
-there has asked for. Before it does, it checks one list: books it has
-lent to the main library. A book on that list is wanted, even though no
-one in the branch has mentioned it.
-<span slot="breaks">A librarian writes the list once per loan; V8's
-barrier runs on every pointer store, so it has to decide in a moment
-whether this store needs writing down, and nearly always it does
-not.</span>
-</Analogy>
+The same barrier has a second job, the one *Measuring and speeding up
+the VM* introduced: recording each **old-to-new** pointer, so that the
+next scavenge can use it as a root<Cite id="v8-trash-talk" />. In the
+parallel Scavenger these remembered sets are kept per page, and they
+are usually most of a scavenge's roots<Cite id="v8-orinoco-scavenger" />;
+*NaN-boxing and write barriers in practice* measured how rarely a store
+actually needs recording.
 
 <Callout kind="definition">
 A **write barrier** is code that runs when a pointer is stored into an

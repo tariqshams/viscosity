@@ -18,7 +18,7 @@ import HbSteps from '../../../components/diagrams/ch292/HbSteps';
 
 ## Making the flag work
 
-Last chapter's message-passing test is the shape of almost all thread
+The message-passing litmus test of *Threads, memory models and atomics* is the shape of almost all thread
 communication: one thread prepares some data and raises a flag; another
 waits for the flag and reads the data. With plain variables it is a
 data race, so the compiler may hoist the flag read out of the loop and
@@ -124,7 +124,7 @@ flag.Store(1) // XCHGL AX, (CX)
 
 On x86, a release store is a plain `mov`, because x86 never lets a
 store pass an earlier access; a `seq_cst` store becomes `xchg`, which
-waits for the store buffer, killing last chapter's store-buffering
+waits for the store buffer, killing the store-buffering
 surprise; and an atomic add is `lock xadd`. On AArch64 even release and
 acquire need their own instructions, `stlr` (store-release) and `ldar`
 (load-acquire), while relaxed accesses stay plain `str` and `ldr`. Go
@@ -156,7 +156,7 @@ with** an acquire load that reads its value<Cite id="cxx-draft-races" />.
 **Happens-before** is "the transitive closure of the union" of those
 two<Cite id="go-memory-model" />: a happens before b if a path of such
 edges leads from a to b. Then a data race is two conflicting accesses
-that happens-before does not order, and the bargain from last chapter
+that happens-before does not order, and the data-race-free bargain (DRF-SC)
 reads: no races, so the program behaves sequentially
 consistently<Cite id="boehm2008cxxmm" />.
 

@@ -18,7 +18,7 @@ import ColouredPointer from '../../../components/diagrams/ch299/ColouredPointer'
 
 ## Two copies of one object
 
-The previous chapter let the program run while the collector marked.
+*Incremental and concurrent collection* let the program run while the collector marked.
 Marking only *colours* objects; nothing moves, so every pointer the
 program holds stays valid. A copying or compacting collector moves
 objects, and if it does that while the program runs, the program may
@@ -43,7 +43,7 @@ program fetches a pointer that leads into from-space, a check on the
 fetch copies the object first (or follows its forwarding pointer, if
 it has been copied), so the program only ever receives to-space
 addresses<Cite id="baker1978" />. Lieberman and Hewitt's generational
-collector, from the chapter "Generational collection in depth", was built as an extension of
+collector, from *Generational collection in depth*, was built as an extension of
 it<Cite id="lieberman1983" />.
 
 <Analogy title="a library moving buildings while open">
@@ -127,8 +127,7 @@ If the object is in a region being emptied (the *collection set*) and
 already has a copy, return the copy; if it has none yet, the program's
 own thread copies it then and there. Two threads may race to copy the
 same object, so the copy is published with an atomic update of the
-forwarding slot, and the loser uses the winner's copy (the chapter
-"Threads, memory models and atomics" covers why that needs atomic
+forwarding slot, and the loser uses the winner's copy (*Threads, memory models and atomics* covers why that needs atomic
 operations)<Cite id="shenandoah-lrb" />.
 
 **ZGC** puts the check in the pointer itself. A **coloured pointer**

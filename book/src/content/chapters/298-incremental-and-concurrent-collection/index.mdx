@@ -102,8 +102,8 @@ pause on the main thread.
 
 ## How a live object gets lost
 
-Step back through the runnable example, or the stepper in the chapter
-"Mark-compact and the write barrier", and look at what the program had
+Step back through the runnable example, or the stepper in
+*Mark-compact and the write barrier*, and look at what the program had
 to do to hide C. Two things, both of them:
 
 1. it stored a pointer to the white object C into a black object A,
@@ -222,8 +222,8 @@ per-thread SATB queue while marking is active<Cite id="hotspot-card-table" />.
 The third is floating garbage in Drip: the list was in the snapshot,
 so it survives this cycle and is freed by the next.
 
-Barriers on several threads bring one more subtlety, from the chapter
-"Threads, memory models and atomics": the barrier's check and the
+Barriers on several threads bring one more subtlety, from
+*Threads, memory models and atomics*: the barrier's check and the
 store can be reordered. Both V8 and Go removed a check on the *owner's*
 colour for exactly this reason, rather than pay for a memory
 fence<Cite id="v8-concurrent-marking" /><Cite id="go-runtime-gc" />.
@@ -248,7 +248,8 @@ fence<Cite id="v8-concurrent-marking" /><Cite id="go-runtime-gc" />.
   value, giving **snapshot-at-the-beginning** (the weak invariant: G1,
   and half of Go's hybrid).
 
-Next: collectors that also *move* objects while the program runs, and
-the read barriers that make it possible.
+Next, *Read barriers and moving objects concurrently*: collectors that
+also *move* objects while the program runs, and the read barriers that
+make it possible.
 
 <Quiz />
