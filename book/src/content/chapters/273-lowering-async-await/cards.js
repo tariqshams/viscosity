@@ -1,4 +1,4 @@
-// Chapter 108 cards: recall prompts, examples, exercises and quiz.
+// Cards for Lowering async/await: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -23,12 +23,12 @@ export const prompts = {
     a: 'It never returns the contents; it passes them to the callback, its continuation.',
   },
   'lower-what': {
-    q: 'An async function with two `await`s is lowered to how many pieces (states)?',
+    q: 'Cutting a straight-line async function (no loops or branches) at its two `await`s gives how many pieces?',
     a: 'Three: before the first await, between the two, and after the second.',
   },
   'lower-live': {
-    q: 'Why must a variable that is used after an `await` be moved off the stack?',
-    a: 'The function returns to the event loop at each await, so its stack frame is gone; the variable has to live in a record that outlasts the call.',
+    q: 'In a state-machine (stackless) lowering of async functions, why must a variable that is live across an `await` be moved out of the stack frame?',
+    a: 'The function returns to the event loop at each await, so its stack frame is popped; the variable has to live in a record that outlasts the call.',
   },
   'lower-ts': {
     q: 'In TypeScript\'s ES5 output, what does `_a.label` hold, and what does `return [4, p]` mean?',
@@ -234,12 +234,12 @@ export const quiz = [
       },
       {
         t: 'cannot be recursive',
-        why: 'sumK in the chapter is recursive CPS.',
+        why: 'It can: a recursive CPS function passes on a new continuation that wraps the old one.',
       },
     ],
   },
   {
-    q: 'Why does a lowered async function keep its variables in a record rather than on the stack?',
+    q: 'In a state-machine (stackless) lowering, why does an async function keep its live variables in a record rather than on the stack?',
     options: [
       {
         t: 'Records are faster than stack slots',
@@ -252,7 +252,7 @@ export const quiz = [
       },
       {
         t: 'JavaScript has no stack',
-        why: 'It does; chapter 19 showed it.',
+        why: 'It does: every call pushes a frame on the call stack.',
       },
       {
         t: 'To make the function run on another thread',
@@ -261,7 +261,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An async function has three `await`s, one after another. How many states does its lowered `switch` need?',
+    q: 'A straight-line async function has three `await`s, one after another. Cut at each `await`, how many pieces does it make?',
     options: [
       {
         t: '3',
@@ -283,7 +283,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'rustc says `big()`\'s future is 102 bytes but `small()`\'s is 2. Why?',
+    q: 'In Rust, `async fn big()` holds a `[u8; 100]` that it reads after its one `.await`; `async fn small()` only awaits. rustc 1.97 makes their futures 102 and 2 bytes. Why the difference?',
     options: [
       {
         t: '`big` holds a 100-byte buffer that is still needed after its `.await`, so the future stores it',
@@ -296,11 +296,11 @@ export const quiz = [
       },
       {
         t: 'Rust copies every local into the future, used or not',
-        why: 'Then small would be bigger; only values live across an await are kept.',
+        why: 'Then the size would not depend on what is live; only values live across an await are kept.',
       },
       {
         t: 'Futures always reserve 100 bytes',
-        why: 'small is 2 bytes.',
+        why: '`small`’s future is 2 bytes.',
       },
     ],
   },

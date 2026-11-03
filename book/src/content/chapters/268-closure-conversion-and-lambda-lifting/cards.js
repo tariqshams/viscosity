@@ -1,4 +1,4 @@
-// Chapter 103 cards: recall prompts, examples, exercises and quiz.
+// Cards for Closure conversion and lambda lifting: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,27 +7,27 @@ export const prompts = {
     a: 'A variable it uses but neither declares nor takes as a parameter, such as `n` in `(x) => x + n`.',
   },
   'cc-what': {
-    q: 'After closure conversion, what is a function value?',
-    a: 'A pair: a pointer to the code, and an environment record holding the free variables.',
+    q: 'In a closure-converted program, how is a function value that may be called from anywhere represented?',
+    a: 'As a pair: a pointer to the code, and an environment record holding its free variables (or boxes for them).',
   },
   'cc-call': {
     q: 'After closure conversion, what does a call `f(a)` become?',
     a: '`f.code(f.env, a)`: the code is called with the record as an extra first argument.',
   },
-  'cc-real': {
-    q: 'What does V8 call the environment record of a closure, and what does Python put in its tuple?',
-    a: 'V8: a context. Python: cells, one small box per captured variable.',
+  'cc-v8': {
+    q: 'In V8, what is the heap object that holds the variables a closure captures called?',
+    a: 'A context: the enclosing function creates it (`CreateFunctionContext`), stores captured variables in its slots, and `CreateClosure` pairs the code with it.',
   },
   'cc-mutate': {
-    q: 'Why is copying a captured variable into the record not enough when it is later assigned?',
-    a: 'The closure and its maker must see the same variable; a copy would drift apart, so the variable is put in a shared box.',
+    q: 'In closure conversion, why is copying a captured variable\'s value into the record wrong when the variable is assigned after capture?',
+    a: 'The closure and the code around it must see one variable; a copy would drift apart, so the variable is put in a shared heap box and the box is captured (assignment conversion).',
   },
   'lift-what': {
     q: 'What does lambda lifting do to a nested function?',
     a: 'Moves it to the top level and adds its free variables as extra parameters, passed at every call.',
   },
   'lift-when': {
-    q: 'Why can a function returned as a value not be lambda-lifted?',
+    q: 'Why can a nested function with free variables that is returned as a value not be lambda-lifted?',
     a: 'Its callers only hold the function, so they cannot supply the extra arguments for its free variables.',
   },
   'lift-cost': {
@@ -188,7 +188,7 @@ export const quiz = [
         why: 'They are used but not declared or taken as parameters.',
       },
       {
-        t: 'None: the function compiles on its own',
+        t: 'None: a function needs nothing from outside',
         why: 'It cannot run without values for `k` and `y` from outside.',
       },
     ],
@@ -207,11 +207,11 @@ export const quiz = [
       {
         t: 'The code pointer',
         correct: true,
-        why: 'Both point at the one `addCode`; the example printed `true` for that.',
+        why: 'Both point at the one `addCode`, so `add1.code === add5.code` is `true`.',
       },
       {
         t: 'A stack frame of `adder`',
-        why: 'Those frames are gone once `adder` returns; that is the whole problem.',
+        why: 'A closure cannot rely on `adder`’s frame, which is gone once `adder` returns; that is the problem conversion solves.',
       },
     ],
   },
@@ -251,12 +251,12 @@ export const quiz = [
       {
         t: 'Because the closure and the code around it must see one shared `c`, so `c` is boxed and the box is captured',
         correct: true,
-        why: 'That is assignment conversion; Python’s cells and Drip’s closed upvalues are such boxes.',
+        why: 'That is assignment conversion; Python’s cells and Lua’s closed upvalues are such boxes.',
       },
     ],
   },
   {
-    q: 'Which nested function can be lambda-lifted?',
+    q: 'Which nested function with free variables can be lambda-lifted?',
     options: [
       {
         t: 'One that is returned from its parent',
@@ -272,7 +272,7 @@ export const quiz = [
         why: 'Every call is known, so each can be given the free variables as arguments.',
       },
       {
-        t: 'Any function, because lifting is always allowed',
+        t: 'Any of them, because lifting is always allowed',
         why: 'Lifting changes every call, so it needs every call to be known.',
       },
     ],

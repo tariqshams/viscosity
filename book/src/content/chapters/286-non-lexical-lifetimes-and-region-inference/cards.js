@@ -1,9 +1,9 @@
-// Chapter 318 cards: recall prompts, examples, exercises and quiz.
+// Cards for Non-lexical lifetimes and region inference: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'nll-lexical': {
-    q: 'Under the old lexical rule, how long does the loan in `let r = &v;` last?',
+    q: 'Under Rust’s old, lexical borrow checker (before NLL), how long does the loan in `let r = &v;` last?',
     a: 'Until the end of the block `r` is declared in, whether or not `r` is used again.',
   },
   'nll-what': {
@@ -15,7 +15,7 @@ export const prompts = {
     a: 'When the value it holds at that point may be used later on some path.',
   },
   'nll-branch': {
-    q: 'A reference is used only in the `then` branch of an `if`. Is it live in the `else` branch?',
+    q: 'Under NLL, a reference is used only in the `then` branch of an `if` (and not after it). Is it live in the `else` branch?',
     a: 'No: liveness follows the control-flow graph, so on the `else` path its value is never used, and the loan does not hold there.',
   },
   'ri-region': {
@@ -23,15 +23,15 @@ export const prompts = {
     a: 'A set of points in the control-flow graph where a reference must stay valid, and so where its loan is in force.',
   },
   'ri-copy': {
-    q: 'What constraint does `let r2 = r;` add, and why?',
+    q: 'In NLL region inference, what constraint does `let r2 = r;` add, and why?',
     a: '`r`\'s region must include every point of `r2`\'s region reachable from here (`\'r: \'r2`), because `r2` carries the same loan.',
   },
   'ri-fixpoint': {
-    q: 'How are the region constraints solved?',
+    q: 'How does NLL region inference solve its region constraints?',
     a: 'Start every region at its live points, then keep applying the constraints, growing the sets, until a full pass changes nothing (a fixpoint).',
   },
   'ri-smallest': {
-    q: 'Why does the solver aim for the **smallest** regions that satisfy the constraints?',
+    q: 'Why does NLL region inference aim for the **smallest** regions that satisfy the constraints?',
     a: 'A smaller region means a loan ends sooner, which rejects fewer correct programs.',
   },
   'ri-pc3': {
@@ -187,7 +187,7 @@ test('no copies: regions are the live points', () => {
       'For one constraint, look at every point `q` in the region of `to`; if `q >= at` and the region of `from` lacks it, add it. One pass over all constraints is not enough when one region feeds another.',
       'Wrap the pass in `let changed = true; while (changed) { changed = false; ... }` and set `changed = true` whenever you add a point. At the end, turn each set back into an array with `[...set].sort((a, b) => a - b)`.',
     ],
-    walkthrough: `**How to think about it.** Each constraint says "this set must contain those points", and the only way to satisfy it is to add points; adding never makes an earlier constraint false again, but it can make one that was already satisfied unsatisfied, because the set it copies from has grown. That is the shape of every fixpoint you met in chapter 92: start small, apply the rules, repeat until a whole pass changes nothing. Because the sets only grow and there are finitely many points, the loop must stop, and where it stops is the smallest answer that satisfies every constraint.
+    walkthrough: `**How to think about it.** Each constraint says "this set must contain those points", and the only way to satisfy it is to add points; adding never makes an earlier constraint false again, but it can make one that was already satisfied unsatisfied, because the set it copies from has grown. That is the shape of every fixpoint you met in *Dataflow, fixpoints and constant propagation*: start small, apply the rules, repeat until a whole pass changes nothing. Because the sets only grow and there are finitely many points, the loop must stop, and where it stops is the smallest answer that satisfies every constraint.
 
 **The solution, line by line.**
 
@@ -292,7 +292,7 @@ B: let r = &v; v.push(1); use(r);
     ],
   },
   {
-    q: 'Why does `let r2 = r;` make `r`\'s region grow?',
+    q: 'In NLL region inference, why does `let r2 = r;` make `r`\'s region grow?',
     options: [
       {
         t: 'Because `r2` is a copy of `r`\'s loan, so the loan must hold wherever `r2` is live (from this point on)',
@@ -310,7 +310,7 @@ B: let r = &v; v.push(1); use(r);
     ],
   },
   {
-    q: 'Why is a single pass over the constraints not enough?',
+    q: 'In NLL region inference, why is a single pass over the outlives constraints not enough?',
     options: [
       {
         t: 'Because the constraints are not sorted by line',
@@ -328,7 +328,7 @@ B: let r = &v; v.push(1); use(r);
     ],
   },
   {
-    q: 'rustc 1.97 rejects `get_default`, which returns `map.get_mut(&k)`\'s result from one branch and inserts in the other. What is the status?',
+    q: 'rustc 1.97 rejects a function that returns the result of `map.get_mut(&k)` from the `Some` arm of a `match` and inserts into `map` in the `None` arm. What is the status?',
     options: [
       {
         t: 'It is a bug in the program',

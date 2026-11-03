@@ -10,7 +10,7 @@ objectives:
   - Tell bytes, code units, code points and grapheme clusters apart, and say which one each language counts.
   - Explain how a rope makes joining strings cheap, and where V8 uses one.
 introduces: [unicode, utf8-utf16, grapheme-cluster, rope]
-uses: [strings, string-index, char-code, string-methods, string-building, byte, bit, binary, bit-ops, array, object, tree, heap-object, function, while-loop]
+uses: [strings, string-index, char-code, string-vs-str, byte-scanning, string-methods, string-building, byte, bit, binary, bit-ops, array, object, tree, heap-object, function, while-loop]
 sources: [mdn-string, mdn-charcodeat, mdn-intl-segmenter, rfc3629, pep393, rust-std-string, v8-src-string-h, boehm1995]
 ---
 import LevelsFigure from '../../../components/diagrams/ch276/LevelsFigure';
@@ -30,10 +30,11 @@ Rust        "👍".len()           4
 
 None of these is a bug. JavaScript counts 16-bit pieces, Python and
 Drip count characters as Unicode numbers them, and Rust counts bytes.
-In chapter 21 you met strings as rows of character codes; this chapter
-shows what those codes really are, the two common ways to store them,
-what a reader means by "one character", and one clever way to store a
-string that keeps growing.
+You met JavaScript's UTF-16 code units in *Strings up close*, and
+UTF-8's bytes in *Slices, String and &str* and *Tokens and the scanner
+in Rust*; this chapter goes further, to what those codes number, the
+full rules of both encodings, what a reader means by "one character",
+and the way engines store a string that keeps growing.
 
 <Figure takeaway="One visible character can be 1, 3, 5 or 11 long, depending on what you count." caption="The emoji 👩‍💻 counted four ways (figures from Node 22 and Python 3.13).">
   <LevelsFigure />
@@ -146,12 +147,11 @@ s.charCodeAt(0).toString(16);   // 'd83d'
 ```
 
 ```rust
-let s = String::from("né");
-s.len();            // 3 bytes
-s.chars().count();  // 2 characters
-&s[0..2];
-// panicked: end byte index 2 is not a
-// char boundary; it is inside 'é'
+let c = '👍';
+c.len_utf8();    // 4 bytes
+c.len_utf16();   // 2 units
+c.encode_utf16(&mut [0u16; 2]);
+// [d83d, dc4d] (in hex)
 ```
 
 </Examples>
@@ -159,9 +159,10 @@ s.chars().count();  // 2 characters
 In the first, Node's `Buffer` shows `é` as two UTF-8 bytes and `€` as
 three. In the second, `length` and `charCodeAt` see the two halves of
 the surrogate pair, while spreading with `...` walks code points and
-finds one. The third is Rust, whose `String` is always UTF-8 and whose
-`len` counts bytes<Cite id="rust-std-string" />; slicing in the middle
-of `é` stops the program (rustc 1.97's message, trimmed).
+finds one. The third is Rust, whose `String` is always UTF-8<Cite id="rust-std-string" />
+but whose `char` (one code point) can report and produce both
+encodings: `👍` is four UTF-8 bytes, or the surrogate pair `D83D DC4D`
+that the formal table computes (rustc 1.97's output).
 
 Each language picked its trade-off. Python stores each string with 1, 2
 or 4 bytes per character, chosen by its largest code point, so that
@@ -171,7 +172,7 @@ strings; `%DebugPrint` in Node 22 reports such a string's type as
 `ONE_BYTE`. Drip's `len` counts code points, because its specification
 says so (DRIP.md), even though its interpreter runs on JavaScript.
 
-<Prompts ids={['enc-ascii', 'enc-pair', 'enc-rust']} />
+<Prompts ids={['enc-ascii', 'enc-pair', 'enc-python']} />
 
 ## Graphemes: what a reader calls a character
 
@@ -299,5 +300,8 @@ Write the UTF-8 encoder from the formal table.
   points.
 - A **grapheme cluster** is what a reader sees as one character.
 - A **rope** stores a string as a tree, so joining copies nothing.
+
+Next, *Modules and separate compilation*: compiling files on their own
+and joining them up afterwards.
 
 <Quiz />

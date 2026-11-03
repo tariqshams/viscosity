@@ -1,4 +1,4 @@
-// Chapter 106 cards: recall prompts, examples, exercises and quiz.
+// Cards for Sum types in memory: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,16 +7,16 @@ export const prompts = {
     a: 'A tag (discriminant) saying which variant it is, and a payload big enough for the largest variant, in which all the variants’ fields overlap.',
   },
   'tu-size': {
-    q: 'Why is every value of a sum type the same size, even a variant with no fields?',
+    q: 'In a tagged-union layout (as C and Rust use), why is every value of the type the same size, even a variant with no fields?',
     a: 'So that values can sit side by side in an array, with element `i` at `i × size`, and be copied without knowing the variant.',
   },
   'tu-tag-first': {
     q: 'Why must code read the tag before the payload?',
     a: 'The payload’s bytes mean different things in different variants (and may hold leftovers), so only the tag says how to read them.',
   },
-  'align-why': {
-    q: 'What does it mean that a `u32` has alignment 4?',
-    a: 'It must start at an address that is a multiple of 4, which is how processors load it fastest (or at all).',
+  'payload-align': {
+    q: 'In a C-style tagged union (tag, then a union of the variants), what alignment does the payload get, and where does it start?',
+    a: 'The largest alignment of any variant; it starts at the first multiple of that alignment after the tag.',
   },
   'pad-where': {
     q: 'In `uint8_t tag; union { uint32_t side; ... }`, which bytes are padding, and why?',
@@ -228,7 +228,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is in bytes 8 to 11 of the 12-byte `Sh` when it holds `Sq(5)`?',
+    q: 'Rust lays out `enum Sh { Dot, Sq(u32), Re(u32, u32) }` in 12 bytes: a 4-byte tag, then 8 payload bytes shared by the variants. When a value holds `Sq(5)`, what is in bytes 8 to 11?',
     options: [
       {
         t: 'Zeros, always',
@@ -239,7 +239,7 @@ export const quiz = [
         why: 'The side is stored once, in bytes 4 to 7.',
       },
       {
-        t: 'Whatever was there before: they belong to no field of `Sq`',
+        t: 'Nothing meaningful (often leftovers): they belong to no field of `Sq`',
         correct: true,
         why: 'Only the tag says which bytes are meaningful, which is why it is read first.',
       },
@@ -282,7 +282,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `size` get rounded up to the alignment at the end of the layout?',
+    q: 'In a C-style struct or tagged-union layout, why is the size rounded up to a multiple of the alignment?',
     options: [
       {
         t: 'To leave room for a second tag',

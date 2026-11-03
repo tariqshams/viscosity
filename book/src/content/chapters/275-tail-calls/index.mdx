@@ -37,8 +37,8 @@ calls on this book's machine) with
 `RangeError: Maximum call stack size exceeded`<Cite id="mdn-too-much-recursion" />.
 Yet it is really a loop: each call hands over a smaller `n` and a bigger
 `acc`, and once the inner call returns, the outer one passes the answer
-straight on. Every waiting frame (chapter 19) is kept alive to do
-nothing. This chapter shows how compilers notice that, and what to do
+straight on. Every waiting frame (the call stack of *Recursion and the call stack*)
+is kept alive to do nothing. This chapter shows how compilers notice that, and what to do
 when yours does not.
 
 ## Tail calls
@@ -128,8 +128,8 @@ A call is a tail call when it fills the hole of the body's tail
 context.</span>
 </Formal>
 
-In continuation-passing style (chapter 273) every call is a tail
-call.
+In continuation-passing style (from *Lowering async/await*) every call
+is a tail call.
 
 <Prompts ids={['tc-what', 'tc-plus', 'tc-or', 'tc-acc']} />
 
@@ -144,7 +144,8 @@ straight to the caller's caller. Step through both versions:
 <FrameSteps client:visible />
 
 Here is clang 18 compiling `long f(long x) { return g(x + 1); }` for
-RISC-V (the architecture of chapters 225 to 250), with the
+RISC-V (the architecture of the native back-end deep dive, from
+*Instruction sets and RISC-V*), with the
 bookkeeping lines removed:
 
 ```text
@@ -301,5 +302,8 @@ asks you to find tail calls in a syntax tree, as a compiler does.
   strict mode, but V8 does not do it.
 - A **trampoline** returns thunks to a loop, giving constant stack depth
   without help from the compiler.
+
+Next, *Strings and Unicode*: what a "character" really is, and how
+engines store text.
 
 <Quiz />

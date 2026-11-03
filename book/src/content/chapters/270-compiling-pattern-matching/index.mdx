@@ -18,10 +18,11 @@ import MirTree from '../../../components/diagrams/ch270/MirTree';
 
 ## Three questions, asked once each
 
-In chapter 30 you wrote a `switch` on a tagged union's `kind`, and
-TypeScript checked that every kind had a case. Languages such as Rust,
-OCaml, Haskell, Swift and Java 21 go further, with a `match` that looks
-inside values. Here is a Rust function on a pair of optional bytes
+You wrote a `switch` on a tagged union's `kind` in *Tagged unions: the
+shape of every syntax tree*, and used Rust's `match` in *Enums, match
+and patterns*; this chapter goes further, to how a compiler turns the
+arms of a `match` (in Rust, OCaml, Haskell, Swift or Java 21, a `match`
+that looks inside values) into code and proves it complete. Here is a Rust function on a pair of optional bytes
 (`Option` is a tagged union of `Some(value)` and `None`):
 
 ```rust
@@ -66,7 +67,8 @@ the value at most once<Cite id="maranget2008" />.
 Write the arms as rows of a table, one column per thing being matched,
 and the compiler can work on that table mechanically. The rule that
 drives it is called **specialisation** (a different idea from the
-specialised generics of the chapter before last, sharing only the word):
+specialised generics of *Generics: specialisation or erasure*, sharing
+only the word):
 once we know column 1 holds
 constructor `c`, a row that starts with `c(q…)` keeps its sub-patterns
 `q…` in place of `c`, a row that starts with `_` keeps one `_` for each
@@ -228,8 +230,9 @@ The first is rustc's error (wrapped to fit) for a `match` on a
 three-variant enum that forgot the variant `Re`: the witness is exactly
 the missing piece. The second is rustc's warning when `(None, None)`
 comes after `(None, _)`: specialised by `None`, the second row is
-already all wildcards, so the third never gets a leaf. The third is
-chapter 30's TypeScript trick: after the `if`, narrowing leaves `s` with
+already all wildcards, so the third never gets a leaf. The third is the
+TypeScript `never` trick from *Tagged unions: the shape of every syntax
+tree*: after the `if`, narrowing leaves `s` with
 type `{ k: 're' }`, which cannot be stored in a `never`, and the error
 names the forgotten kind: `Type '{ k: "re"; }' is not assignable to
 type 'never'`.
@@ -261,7 +264,7 @@ small enough that it never matters.
 - **Exhaustiveness checking** finds values no arm covers (with a
   witness) and arms no value reaches; rustc reports both.
 
-Next: how a tagged union like `Option` or `Sh` is laid out in memory,
-and how `Option<&T>` gets its tag for free.
+Next, *Sum types in memory*: how a tagged union like `Option` or `Sh` is
+laid out, and how `Option<&T>` gets its tag for free.
 
 <Quiz />

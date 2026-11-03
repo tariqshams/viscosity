@@ -1,4 +1,4 @@
-// Chapter 111 cards: recall prompts, examples, exercises and quiz.
+// Cards for Strings and Unicode: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -18,9 +18,9 @@ export const prompts = {
     q: 'Why is `\'👍\'.length` 2 in JavaScript?',
     a: 'Strings are UTF-16 code units, and U+1F44D is above U+FFFF, so it takes a surrogate pair of two units.',
   },
-  'enc-rust': {
-    q: 'What does Rust\'s `s.len()` count, and how do you count characters instead?',
-    a: 'Bytes of UTF-8; `s.chars().count()` counts code points.',
+  'enc-python': {
+    q: 'How does CPython (since PEP 393) store a `str` so that `len` and indexing count code points and stay fast?',
+    a: 'Each string uses 1, 2 or 4 bytes per character, chosen by its largest code point, so every character has the same width.',
   },
   'gr-what': {
     q: 'What is a **grapheme cluster**? Give an example made of several code points.',
@@ -106,7 +106,7 @@ test('the largest code point', () => {
       'Every byte after the first is `0x80 | six bits`. The six bits are `(cp >> 6 * k) & 0x3f` for k = 0 (the lowest six), 1, 2. The first byte is a marker (`0xc0`, `0xe0` or `0xf0`) ORed with whatever bits are left at the top.',
       'For three bytes: `[0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)]`. The two- and four-byte cases follow the same pattern with shifts of 6 and 18.',
     ],
-    walkthrough: `**How to think about it.** Look at the table as a set of boxes to fill. Each row says how many bytes a range of code points gets, and which bits in each byte are fixed markers (the leading 1s and the 0 after them) and which are free (the x's). The free bits, read left to right across the bytes, are the code point's own bits. So the job is: pick the row, then cut the code point into a top piece and six-bit pieces, and glue markers on. Cutting uses the bit operators from chapter 34: \`cp >> 6\` drops the lowest six bits, and \`& 0x3f\` (binary 111111) keeps only the lowest six.
+    walkthrough: `**How to think about it.** Look at the table as a set of boxes to fill. Each row says how many bytes a range of code points gets, and which bits in each byte are fixed markers (the leading 1s and the 0 after them) and which are free (the x's). The free bits, read left to right across the bytes, are the code point's own bits. So the job is: pick the row, then cut the code point into a top piece and six-bit pieces, and glue markers on. Cutting uses the bit operators from *Bits and bytes*: \`cp >> 6\` drops the lowest six bits, and \`& 0x3f\` (binary 111111) keeps only the lowest six.
 
 **The solution, line by line.**
 

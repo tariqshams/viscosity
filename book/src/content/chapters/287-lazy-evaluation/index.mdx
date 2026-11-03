@@ -10,7 +10,7 @@ objectives:
   - Describe the three states of a thunk in a real runtime, and what a black hole is for.
   - Recognise call-by-need in Haskell, Rust's LazyCell, Python's cached_property and JavaScript's &&.
 introduces: [thunk, call-by-need]
-uses: [function, argument, call, closure, closure-conversion, first-class-function, arrow-function, lambda-calculus, beta-reduction, substitution, lazy-sequence, generator, short-circuit, side-effect, heap-object, garbage-collection, object, method, throw, try-catch, error-object, test]
+uses: [trampoline, rust-closure, function, argument, call, closure, closure-conversion, first-class-function, arrow-function, lambda-calculus, beta-reduction, substitution, lazy-sequence, generator, short-circuit, side-effect, heap-object, garbage-collection, object, method, throw, try-catch, error-object, test]
 sources: [plotkin1975, launchbury1993, peytonjones1992stg, ghc-rts-updates, ghc-nontermination, rust-lazycell, python-cached-property]
 ---
 import StrategyTable from '../../../components/diagrams/ch287/StrategyTable';
@@ -35,9 +35,12 @@ the built-in `? :` only evaluates the side it picks. A **lazy** language
 such as Haskell turns this round for every call: nothing is evaluated
 until something needs its value. That lets you write `pick` as an
 ordinary function, build a list of every prime number and take the
-first ten (chapter 39's lazy sequences, as the default), and skip work
-that turns out not to matter. This chapter shows what a compiler builds
-to make that happen.
+first ten (the lazy sequences of *Iterators and generators*, as the
+default), and skip work
+that turns out not to matter. You met that kind of laziness as a library feature in generators, and
+a thunk in passing in *Tail calls*, as the small function a trampoline
+calls; this chapter goes further, to what a compiler builds to make
+laziness the rule.
 
 <Prompts ids={['lz-pick']} />
 
@@ -66,7 +69,8 @@ language, though it may loop forever or throw.</span>
 </Analogy>
 
 In JavaScript a thunk is a function of no arguments, and **forcing**
-it means calling it. After closure conversion (chapter 268) that is a
+it means calling it. After closure conversion (from *Closure conversion and lambda
+lifting*) that is a
 heap record holding a code pointer and the expression's free variables;
 GHC's runtime lays a thunk out as exactly that, an info pointer to the
 code, then the free variables, plus one spare field that will later
@@ -118,7 +122,7 @@ Once arguments can be thunks, there are three classic strategies for
 evaluating them, studied side by side by Plotkin in
 1975<Cite id="plotkin1975" />. **Call-by-value** evaluates the argument
 before the call. **Call-by-name** passes the unevaluated expression and
-evaluates it afresh at every use (beta-reduction, chapter 187, does
+evaluates it afresh at every use (beta-reduction, from *Beta-reduction and Church encodings*, does
 exactly this: it substitutes the expression itself). **Call-by-need**
 passes a thunk too, but the first force *updates* the thunk with its
 value, so every later use shares it.
@@ -232,7 +236,7 @@ higher-order functional languages" on ordinary
 hardware<Cite id="peytonjones1992stg" />, where thunks are closures with
 an update step. Most of its speed then comes from *not* making thunks:
 when the compiler can prove a value will be needed anyway, it computes
-it at once, which is the subject of the next chapter.
+it at once, which is the subject of *Strictness analysis*.
 
 ## Your turn
 
@@ -245,5 +249,8 @@ it at once, which is the subject of the next chapter.
   each use; **call-by-need** runs them at most once and shares.
 - Runtimes mark a thunk as a **black hole** while it runs (to catch
   loops) and **update** it with its value afterwards.
+
+Next, *Strictness analysis*: proving which values will be needed
+anyway, so that no thunk has to be made for them.
 
 <Quiz />

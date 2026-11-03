@@ -18,11 +18,12 @@ import ManglingFigure from '../../../components/diagrams/ch277/ManglingFigure';
 
 ## A one-line change
 
-Chapter 25 split a program into modules so that each file could keep
-its own secrets<Cite id="mdn-modules" />, and the chapters on assemblers and linkers
-showed how an assembler leaves holes in an object file for a linker to
-fill. Put those together and you have the question this chapter
-answers: when you change one line in one file of a program with ten
+*Modules: import and export* split a program into modules so that each
+file could keep its own secrets<Cite id="mdn-modules" />, and
+*Assemblers, object files and linking* and *Linkers and loaders* showed
+how an assembler leaves holes in an object file for a linker to fill;
+this chapter goes further, to what that means for a compiler. Put
+those together and you have its question: when you change one line in one file of a program with ten
 thousand files, what does the compiler have to do again? If the answer
 were "everything", every edit would cost minutes or hours; real
 toolchains get away with compiling the one file you touched, and the
@@ -47,8 +48,8 @@ int main(void) {
 `main.c` never sees the body of `sq`; it sees a **declaration**, a
 promise that some file defines a function called `sq` taking an `int`
 and returning an `int`. That is enough to type-check the call and to
-emit the right instructions for it (chapter 228's calling convention
-says where the argument goes), so `main.c` can be compiled while
+emit the right instructions for it (the calling convention of *Calling
+conventions and the ABI* says where the argument goes), so `main.c` can be compiled while
 `sq.c` is not even written. Step through the build:
 
 <SeparateSteps client:visible />
@@ -130,7 +131,7 @@ while `main.o` defines `main` and needs two symbols it does not have
 (`U` for undefined), `printf` from the C library and `sq` from the
 other file. The second links `main.o` alone, and the linker (GNU `ld`,
 called by clang; the message is trimmed) stops at the hole it cannot
-fill, the same error the linker chapter met. The third is the spot-the-difference,
+fill, the same error *Linkers and loaders* met. The third is the spot-the-difference,
 and the reason this chapter has a second half: the declaration
 disagrees with the definition, yet both files compile and the link
 succeeds, because the only thing a C symbol records is the name `sq`.
@@ -243,7 +244,8 @@ the JVM never mangles at all, because a class file keeps each method's
 name and its **descriptor** (`(II)I` reads "two `int`s, returning an
 `int`") side by side, as `javap` shows.
 
-Mangling also explains a detail of chapter 267: every specialised copy
+Mangling also explains a detail of *Generics: specialisation or
+erasure*: every specialised copy
 of a generic function is a different function, so its type arguments
 go into its symbol too.
 
@@ -271,7 +273,8 @@ Each object file is reduced to the symbols it defines and needs, and
   (`_ZN3geo4areaEd`), so overloads and namespaces survive a flat symbol
   table, and mismatched declarations fail at link time.
 
-Next: a program's modules form a graph, and the order you compile and
-run them in is read off that graph.
+Next, *The module graph and build order*: a program's modules form a
+graph, and the order you compile and run them in is read off that
+graph.
 
 <Quiz />

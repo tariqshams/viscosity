@@ -1,4 +1,4 @@
-// Chapter 113 cards: recall prompts, examples, exercises and quiz.
+// Cards for Macros and hygiene: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'A rule run inside the compiler that is handed pieces of code (not values) and returns code to put in their place.',
   },
   'mx-fn': {
-    q: 'Why does `unless(xs === null, xs.length)` crash when `unless` is a function?',
+    q: 'In JavaScript, with `xs` set to `null`, why does `unless(xs === null, xs.length)` crash when `unless` is an ordinary function?',
     a: 'Arguments are evaluated before the call, so `xs.length` runs (on `null`) before `unless` gets a chance to skip it.',
   },
   'mx-when': {
@@ -214,7 +214,7 @@ export const quiz = [
       {
         t: 'The preprocessor pastes tokens, so without them an argument such as `n + 1` can be split by the operators around it',
         correct: true,
-        why: 'With them, `SQ2(n + 1)` is `((n + 1) * (n + 1))`, as gcc -E showed.',
+        why: 'With them, `SQ2(n + 1)` expands to `((n + 1) * (n + 1))`.',
       },
       {
         t: 'They stop the argument being evaluated twice',
@@ -223,7 +223,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Rust’s `sq!(n + 1)`, with `$x:expr`, prints 9 for `n = 2`. Why does it not suffer from C’s problem?',
+    q: 'A Rust `macro_rules! sq { ($x:expr) => { $x * $x }; }` gives 9 for `sq!(n + 1)` with `n = 2`. Why does it not suffer from the problem of C’s `#define SQ(x) x * x`?',
     options: [
       {
         t: 'The `expr` fragment captures the argument as one expression tree, which stays whole in each hole',
@@ -232,7 +232,7 @@ export const quiz = [
       },
       {
         t: 'Rust evaluates the argument before calling the macro',
-        why: 'Then it would not be a macro; it receives code, as the expanded output shows.',
+        why: 'Then it would not be a macro; it receives the code `n + 1`, not its value.',
       },
       {
         t: 'Rust adds brackets to every macro argument as text',

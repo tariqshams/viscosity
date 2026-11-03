@@ -18,8 +18,10 @@ import StateGraph from '../../../components/diagrams/ch272/StateGraph';
 
 ## A function that stops half-way
 
-In chapter 39 you wrote generators: functions with a `*` that hand out
-values one at a time with `yield`. Here is the smallest useful one:
+You wrote generators, functions with a `*` that hand out values one at
+a time with `yield`, in *Iterators and generators*; this chapter goes
+further, to how a compiler turns one into code that only calls and
+returns. Here is the smallest useful one:
 
 ```js
 function* count(n) {
@@ -68,7 +70,8 @@ generator into code that only calls and returns. Three steps do it:
 
 1. Move every variable that must survive a `yield` into a **record**
    that outlives the call (here, variables captured by a closure, the
-   way chapter 268 turned closures into records).
+   way *Closure conversion and lambda lifting* turned closures into
+   records).
 2. Give the start, each `yield` and the end a **state number**, and keep
    the current number in the record as well.
 3. Make `next()` a `switch` on the state number. Each `yield` becomes
@@ -197,9 +200,8 @@ The three differ in *what* goes in the record. CPython keeps the whole
 frame, V8 copies its register file, and the TypeScript output keeps
 only the variables the body declares, in the closure of the function it
 passes to `__generator`. A compiler can go further and keep only the
-variables that are live across some `yield` (the liveness analysis of
-chapter 210, put to a new use), so that the record is as small as
-possible. The next chapter does this one more time, for `async` functions,
+variables that are live across some `yield` (the analysis of *Liveness*, put to a new use), so that the record is as small as
+possible. *Lowering async/await* does this one more time, for `async` functions,
 where the thing that calls `next()` is the promise machinery rather
 than a `for...of` loop.
 </Callout>
@@ -220,7 +222,7 @@ than a `for...of` loop.
   (`YIELD_VALUE`) all build this machine, keeping different amounts of
   the frame.
 
-Next: `async` and `await`, which are the same machine driven by
-promises.
+Next, *Lowering async/await*: `async` and `await`, which are the same
+machine driven by promises.
 
 <Quiz />

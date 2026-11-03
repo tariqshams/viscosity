@@ -18,7 +18,10 @@ import LiftFigure from '../../../components/diagrams/ch268/LiftFigure';
 
 ## A variable from a frame that is gone
 
-Here is the closure from chapter 12 that every language with nested
+You met closures in *Closures: functions that remember*, and built them
+at run time in *Upvalues: capturing and closing*; this chapter goes
+further, to how a compiler that emits machine code removes them before
+code generation. Here is the closure every language with nested
 functions can write:
 
 ```js
@@ -33,13 +36,13 @@ By the time `add1(2)` runs, `adder` has returned and its stack frame,
 the only place `n` lived, has been thrown away; yet the inner function
 still reads `n`<Cite id="mdn-closures" />. Your Drip VM solved this at
 run time with upvalues, which are moved to the heap when their frame
-dies (chapters 83 and 83). A compiler to machine code needs the same
+dies. A compiler to machine code needs the same
 effect, but a machine function is only an address, with nowhere to keep
 an `n`. So compilers rewrite the program, before generating code, until
 no function refers to a variable it does not own.
 
 The variables to deal with are the **free variables** of a function
-(chapter 186): those it uses but neither declares nor takes as
+(from *The lambda calculus*): those it uses but neither declares nor takes as
 parameters. In `(x) => x + n`, `x` is bound and `n` is free. You will
 write the function that finds them in the exercise; every closure
 compiler starts with it.
@@ -174,8 +177,9 @@ captured values"<Cite id="rustref-closure-types" />, and the sizes
 rustc 1.97 printed say so: a closure capturing nothing is 0 bytes, one
 `i64` by value 8, two 16, and one captured by reference 8 (a pointer).
 (Each Rust closure has its own type, so a generic function taking it is
-specialised, chapter 267, and the call needs no code pointer at all; a
-`Box<dyn Fn>` is a fat pointer, chapter 266.)
+specialised, as in *Generics: specialisation or erasure*, and the call
+needs no code pointer at all; a `Box<dyn Fn>` is a fat pointer, as in
+*Interfaces and traits: dictionary passing*.)
 
 Try it, with two closures sharing one piece of code:
 
@@ -193,7 +197,7 @@ conversion**) and copies the *box* into the record. Python's cells and
 your Drip VM's closed upvalues are such boxes.
 </Callout>
 
-<Prompts ids={['free-what', 'cc-what', 'cc-call', 'cc-real', 'cc-mutate']} />
+<Prompts ids={['free-what', 'cc-what', 'cc-call', 'cc-v8', 'cc-mutate']} />
 
 ## Lambda lifting: pass it in instead
 
@@ -284,7 +288,7 @@ only of global ones<Cite id="johnsson1985" />.
   the function to the top level, with no allocation, but only for
   functions that never escape.
 
-Next: exceptions, and how a thrown error finds its way back up the
-stack to a handler.
+Next, *Exceptions and stack unwinding*: how a thrown error finds its
+way back up the stack to a handler.
 
 <Quiz />

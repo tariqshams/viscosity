@@ -18,8 +18,9 @@ import SwitchSteps from '../../../components/diagrams/ch274/SwitchSteps';
 
 ## A pause that only works at the top
 
-In chapter 39 you wrote generators, and in chapters 272 and 273 you saw
-them compiled into state machines. Try to pause from inside a callback,
+You wrote generators in *Iterators and generators*, and saw them and
+async functions compiled into state machines in *Generators as state
+machines* and *Lowering async/await*. Try to pause from inside a callback,
 though, and JavaScript refuses before the program even starts:
 
 ```js
@@ -252,8 +253,8 @@ The runnable first is a whole green-thread scheduler in a few lines,
 built on generators: a queue of tasks, each run until its next `yield`
 and then sent to the back. The second is Go 1.24 on this book's
 machine: 100,000 goroutines all blocked at once (plus `main`), and
-their stacks in use came to about 2,051 bytes each, close to the
-2,048-byte minimum in the runtime's `stack.go`; a stack that fills up
+their stacks in use came to about 2 KiB each, the 2,048-byte minimum
+in the runtime's `stack.go`; a stack that fills up
 is copied to one twice the size<Cite id="go-runtime-stack" />. The third
 is Java 21: 100,000 virtual threads, each sleeping one second, finished
 in about two seconds on four cores. OpenJDK's `VirtualThread.java`
@@ -279,5 +280,8 @@ each task yields.
   body; **stackful** ones own a stack and pause at any depth.
 - A **green thread** is a stackful coroutine plus a scheduler in the
   runtime: goroutines and Java's virtual threads.
+
+Next, *Tail calls*: a call that is the last thing a function does, and
+how a compiler runs it without growing the stack.
 
 <Quiz />

@@ -1,4 +1,4 @@
-// Chapter 107 cards: recall prompts, examples, exercises and quiz.
+// Cards for Generators as state machines: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,23 +7,23 @@ export const prompts = {
     a: 'A function that can stop part-way, return to its caller, and later continue from the same point with its local variables as they were.',
   },
   'frame-gone': {
-    q: 'Why can a generator’s local variables not live in an ordinary stack frame?',
-    a: 'The frame is thrown away when `next()` returns, but the variables are needed again by the next call.',
+    q: 'Why can a generator’s local variables not live in the frame that `next()` pushes on the caller’s stack?',
+    a: 'That frame is popped when `next()` returns at a `yield`, but the variables are needed again by the next call, so they must live somewhere that outlives it (a heap record, or a stack of their own).',
   },
   'what-moves': {
     q: 'In state-machine lowering, which two things move into the record that outlives each call?',
     a: 'The variables that must survive a `yield`, and the state number saying where to continue.',
   },
   'yield-becomes': {
-    q: 'What does the k-th `yield e` become after lowering?',
-    a: '`st = k; return more(e);`: save the state of the code after it, then return the value.',
+    q: 'In state-machine lowering of a JavaScript generator, what does the k-th `yield e` become?',
+    a: 'Save the number of the state that continues after it (`st = k`), then return `{ value: e, done: false }`.',
   },
   'after-yield': {
-    q: 'Where does the code just after a `yield` end up in the lowered function?',
+    q: 'In state-machine lowering, where does the code just after a `yield` end up?',
     a: 'In its own `case` of the switch, the one whose number the `yield` saved, so the next call to `next()` starts there.',
   },
   finished: {
-    q: 'What should the lowered `next()` return once the generator has finished, however often it is called?',
+    q: 'What does a JavaScript generator’s `next()` return once the generator has finished, however often it is called?',
     a: '`{ value: undefined, done: true }`: a finished generator stays finished.',
   },
   'v8-saves': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'It stores the function’s parameters and registers (and its state) in the generator object, then returns.',
   },
   'python-frame': {
-    q: 'Where does CPython keep a generator’s variables between calls?',
+    q: 'Where does CPython (3.11 and later) keep a generator’s variables between calls?',
     a: 'In the generator object: its whole interpreter frame is embedded in it, on the heap.',
   },
 };
@@ -286,7 +286,7 @@ function zigzag(xs) {
 
 export const quiz = [
   {
-    q: 'What does calling `count(2)` (the real generator) run?',
+    q: 'Given `function* count(n) { for (let i = 0; i < n; i++) yield i; }`, how much of the body does the call `count(2)` run?',
     options: [
       {
         t: 'The body up to the first `yield`',
@@ -295,7 +295,7 @@ export const quiz = [
       {
         t: 'None of the body: it only creates the generator object',
         correct: true,
-        why: 'In the lowered version, it only makes the record and returns `{ next }`.',
+        why: 'The call makes the generator object (in a lowered version, the record and its `next`); the body starts at the first `next()`.',
       },
       {
         t: 'The whole body, saving the values in a list',
@@ -304,7 +304,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the lowered `count`, what does `break` inside the `switch` do?',
+    q: 'A generator is lowered to `for (;;) { switch (st) { ... } }`. What does a `break` inside the `switch` do?',
     options: [
       {
         t: 'Ends the call to `next()`',
@@ -358,15 +358,15 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which statement about where the three real systems keep a generator’s state is right?',
+    q: 'Which statement about where CPython and V8 keep a suspended generator’s state is right?',
     options: [
       {
-        t: 'All of them keep it on the call stack',
+        t: 'Both keep it on the call stack',
         why: 'None can: the stack frame is gone after each `next()`.',
       },
       {
-        t: 'Only V8 keeps a state number',
-        why: 'All three track where to resume: `SwitchOnGeneratorState`, `_a.label`, and CPython’s saved instruction pointer.',
+        t: 'Only V8 keeps a resume position',
+        why: 'Both do: V8’s generator state, read by `SwitchOnGeneratorState`, and CPython’s saved instruction pointer.',
       },
       {
         t: 'CPython keeps the whole frame inside the generator object; V8 copies its registers into it',

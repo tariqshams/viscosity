@@ -18,8 +18,10 @@ import TableFigure from '../../../components/diagrams/ch269/TableFigure';
 
 ## A throw, three calls down
 
-You met `throw` and `try`/`catch` in chapter 23; here is a small program
-that uses both, with a `finally` in the middle:
+You met `throw` and `try`/`catch` in *Errors and exceptions*; this
+chapter goes further, to the code and tables a compiler produces for
+them. Here is a small program that uses both, with a `finally` in the
+middle:
 
 ```js
 function parse(s) {
@@ -265,7 +267,7 @@ remove a frame the runtime must also restore the caller's stack pointer
 and saved registers without the function's help (on Linux that plan is
 the `.eh_frame` section, described by the `.cfi_` lines in clang's
 assembly). Your Drip tree-walker made the opposite choice for `return`
-(chapter 69): it passes a signal back through every statement, which
+(in *Return, the host stack and closures*): it passes a signal back through every statement, which
 costs a little everywhere and needs no tables.
 </Callout>
 
@@ -284,7 +286,7 @@ costs a little everywhere and needs no tables.
   read only when something is thrown; clang, HotSpot, CPython and V8 all
   do it.
 
-Next: a feature that turns a list of patterns into a tree of tests,
-`match`.
+Next, *Compiling pattern matching*: how a compiler turns a list of
+patterns into a tree of tests.
 
 <Quiz />

@@ -18,7 +18,10 @@ import AwaitSteps from '../../../components/diagrams/ch273/AwaitSteps';
 
 ## A function that cannot wait
 
-Here is the kind of async function you wrote in chapter 41:
+You wrote async functions in *async, await and the microtask queue*, and
+saw a generator lowered to a state machine in *Generators as state
+machines*; this chapter goes further, to how a compiler lowers `await`.
+Here is the kind of async function you wrote:
 
 ```js
 async function total(get) {
@@ -35,7 +38,7 @@ Instead, `await` gives control back: `total` returns a promise at once,
 other code runs, and when the value arrives the function carries on
 after the `await`<Cite id="mdn-await" />. The machine has only calls and
 returns, so the compiler must build "carry on from here" out of those,
-with chapter 272's trick of a `switch` on a state number.
+with the generator's trick of a `switch` on a state number.
 
 ## The rest of the work, as a value
 
@@ -189,10 +192,10 @@ the event loop.
 
 Three separate callbacks would work, but `a` must survive from piece 1
 into piece 2, and loops or `try` blocks around an `await` would tangle
-them; so compilers reuse chapter 272's machinery: one `step` function
+them; so compilers reuse the generator machinery: one `step` function
 with a `switch` on a state number, and the variables that live across an
 `await` moved into a record on the heap (here, a closure's captured
-variables, as in chapter 268).
+variables, as in *Closure conversion and lambda lifting*).
 
 <Run id="hand-lowered" />
 
@@ -317,5 +320,8 @@ yields promises as an async function.
 - **Async lowering** cuts a function at each `await`, saves live
   variables and a state number, and registers `step` as each promise's
   continuation.
+
+Next, *Coroutines and green threads*: what changes when a paused
+function keeps a whole stack of its own, rather than one record.
 
 <Quiz />

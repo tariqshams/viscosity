@@ -1,4 +1,4 @@
-// Chapter 111 cards: recall prompts, examples, exercises and quiz.
+// Cards for Modules and separate compilation: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,16 +7,16 @@ export const prompts = {
     a: 'Compiling each source file into an object file on its own, against only the declarations of the other files, and joining the object files later with a linker.',
   },
   'sc-decl': {
-    q: 'What does `main.c` need to know about `sq` to be compiled, if `sq` lives in another file?',
-    a: 'Only its declaration, `int sq(int x);`: enough to check the call and to pass the argument the right way. The body can be anywhere.',
+    q: 'In C, what must a file know about a function defined in another file to compile a call to it?',
+    a: 'Only its declaration (name, parameter types and return type, such as `int sq(int x);`): enough to check the call and to pass the arguments the right way. The body can be anywhere.',
   },
   'sc-u': {
     q: 'In `nm main.o`, what does the line `U sq` mean?',
     a: '`sq` is used in this object file but not defined here (U for undefined); the linker must find it in another one.',
   },
   'sc-rebuild': {
-    q: 'You edit only the body of `sq` in `sq.c`. Which files must be compiled again?',
-    a: 'Only `sq.c`. `main.o` is reused, because the declaration it was compiled against did not change; then the program is linked again.',
+    q: 'In a C program built with separate compilation, you edit only the body of a function in one `.c` file, and no header changes. What must be redone?',
+    a: 'Compiling that one file, then the link. Every other object file is reused, because the declarations they were compiled against did not change.',
   },
   'sc-lie': {
     q: 'In C, what happens if `main.c` declares `double sq(double)` but `sq.c` defines `int sq(int)`?',
@@ -35,7 +35,7 @@ export const prompts = {
     a: 'It turns mangling off, so the symbol is the plain name (`sq`) and C code, which does not mangle, can call it.',
   },
   'mg-catch': {
-    q: 'How does mangling turn a mismatched declaration across files into an error?',
+    q: 'How does C++ name mangling turn a declaration that disagrees with the definition in another file into an error?',
     a: 'The parameter types are part of the symbol, so the caller asks for `_Z3addll` while the file defines `_Z3addii`; the linker finds no match and reports an undefined reference.',
   },
 };

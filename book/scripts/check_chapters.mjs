@@ -142,6 +142,18 @@ const silent = { log() {}, info() {}, warn() {}, error() {}, table() {} };
 
 // --only 1,2,23 (or --only 1-4) checks just those chapters, for a quick
 // loop while writing; a full run checks everything.
+// Usage, and no surprises: an unknown argument stops the run rather than
+// starting a full check of every chapter.
+{
+  const args = process.argv.slice(2);
+  const usage = 'usage: node scripts/check_chapters.mjs [--only N,M-K]';
+  if (args.includes('--help') || args.includes('-h')) { console.log(usage); process.exit(0); }
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--only' && args[i + 1] && /^[0-9,\-\s]+$/.test(args[i + 1])) { i++; continue; }
+    console.error(`unknown argument "${args[i]}"\n${usage}`);
+    process.exit(2);
+  }
+}
 const onlyArg = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : null;
 const only = onlyArg && new Set(onlyArg.split(',').flatMap((x) => { const [a, b] = x.split('-').map(Number); return b ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a]; }));
 const allFolders = readdirSync(dir).filter((d) => /^\d{3}-/.test(d)).sort();

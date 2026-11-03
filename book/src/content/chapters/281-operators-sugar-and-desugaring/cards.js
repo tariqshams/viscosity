@@ -1,4 +1,4 @@
-// Chapter 109 cards: recall prompts, examples, exercises and quiz.
+// Cards for Operators, sugar and desugaring: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,7 +19,7 @@ export const prompts = {
     a: 'The mangled name of `operator+(V, V)`: `pl` is the code for `+`, `1V` the first parameter type, and `S_` refers back to `V` for the second.',
   },
   'op-rust': {
-    q: 'In Rust’s MIR, what has `p + q` become for a struct `V` that implements `Add`?',
+    q: 'In rustc’s MIR, what has `p + q` become for a struct `V` that implements `Add`?',
     a: 'A call `<V as Add>::add(p, q)`: the `add` method of the `Add` trait for `V`.',
   },
   'op-py': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: '"I cannot add this": Python then asks the other operand’s reflected method instead of failing at once.',
   },
   'op-once': {
-    q: 'Why is `xs[pick()] += 5` not the same as `xs[pick()] = xs[pick()] + 5`?',
+    q: 'In JavaScript, why is `xs[pick()] += 5` not the same as `xs[pick()] = xs[pick()] + 5`?',
     a: 'The first works out its target once, so `pick()` runs once; the second calls `pick()` twice. A correct desugaring of `+=` must evaluate the target only once.',
   },
   'op-java': {
@@ -283,7 +283,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In Python, `5 + V(1)` works although `5` is an `int`, which knows nothing about `V`. Why?',
+    q: 'In Python, a class `V` defines `__add__` and `__radd__`. Why does `5 + V(1)` work, although `int` knows nothing about `V`?',
     options: [
       {
         t: '`int.__add__` converts `V(1)` to a number',

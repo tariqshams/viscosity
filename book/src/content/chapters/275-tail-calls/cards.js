@@ -1,4 +1,4 @@
-// Chapter 110 cards: recall prompts, examples, exercises and quiz.
+// Cards for Tail calls: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -271,7 +271,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'clang -O1 compiled `return g(x + 1);` on RISC-V as `tail g`. Where does `g` return to?',
+    q: 'clang -O1 compiles `long f(long x) { return g(x + 1); }` for RISC-V as `addi a0, a0, 1` then `tail g`. Where does `g` return to?',
     options: [
       {
         t: 'To f, which then returns',
@@ -293,12 +293,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `sum(100000, 0)` overflow in Node 22 even in strict mode?',
+    q: 'A strict-mode JavaScript `sum(n, acc)` whose only recursive call is `return sum(n - 1, acc + n)` overflows the stack for `sum(100000, 0)` in Node 22. Why?',
     options: [
       {
         t: 'V8 does not implement the proper tail calls the specification asks for',
         correct: true,
-        why: 'The run threw RangeError: the rule in the spec is not what the engine ships.',
+        why: 'Node throws `RangeError: Maximum call stack size exceeded`: the rule in the specification is not what V8 ships.',
       },
       {
         t: 'The function is not tail-recursive',

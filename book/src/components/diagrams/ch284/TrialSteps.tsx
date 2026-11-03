@@ -9,6 +9,9 @@ type S = { col: Record<string, C>; rc: Record<string, number>; note: string };
 
 const POS: Record<string, [number, number]> = { A: [70, 60], B: [70, 150], C: [270, 60], D: [270, 150] };
 const COLOUR: Record<C, string> = { black: 'ink', purple: 'f4', grey: 'muted', white: 'line', freed: 'line' };
+// White, grey and black are the algorithm's names, so they are drawn as those
+// colours in both themes; purple uses the violet field colour.
+const LITERAL: Partial<Record<C, string>> = { white: '#fafaf9', grey: '#a8a29e', black: '#1c1917' };
 
 const STATES: S[] = [
   { col: { A: 'purple', B: 'black', C: 'purple', D: 'black' }, rc: { A: 1, B: 1, C: 2, D: 1 }, note: 'Two cycles. Nothing points at A or B from outside, yet each has count 1, so counting alone never frees them. A and C were decremented to a non-zero count earlier, so they were remembered as candidates (purple).' },
@@ -41,9 +44,9 @@ export default function TrialSteps() {
           const c = st.col[n];
           return (
             <g key={n}>
-              <Box x={x - 36} y={y - 20} w={72} h={40} dash={c === 'freed'} fill={c === 'freed' ? 'transparent' : tok(COLOUR[c], 0.15)} stroke={tok(COLOUR[c])}>
-                <T x={x} y={y - 6} size={13} mono weight={700} anchor="middle">{c === 'freed' ? '' : n}</T>
-                <T x={x} y={y + 10} size={11} mono anchor="middle">{c === 'freed' ? 'freed' : `rc ${st.rc[n]}`}</T>
+              <Box x={x - 36} y={y - 20} w={72} h={40} dash={c === 'freed'} fill={c === 'freed' ? 'transparent' : (LITERAL[c] ?? tok(COLOUR[c], 0.15))} stroke={tok(c === 'white' ? 'ink' : COLOUR[c])}>
+                <T x={x} y={y - 6} size={13} mono weight={700} anchor="middle" fill={c === 'black' ? '#fafaf9' : c === 'white' || c === 'grey' ? '#1c1917' : undefined}>{c === 'freed' ? '' : n}</T>
+                <T x={x} y={y + 10} size={11} mono anchor="middle" fill={c === 'black' ? '#fafaf9' : c === 'white' || c === 'grey' ? '#1c1917' : undefined}>{c === 'freed' ? 'freed' : `rc ${st.rc[n]}`}</T>
               </Box>
               <T x={x} y={y + 32} size={11} anchor="middle" fill={tok('muted')}>{c === 'freed' ? '' : c}</T>
             </g>

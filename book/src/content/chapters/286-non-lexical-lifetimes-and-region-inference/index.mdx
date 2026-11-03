@@ -10,7 +10,7 @@ objectives:
   - Turn copies of references into outlives constraints and solve them to a fixpoint.
   - Name the kind of program NLL still rejects, and where the borrow checker is heading.
 introduces: [non-lexical-lifetimes, region-inference]
-uses: [borrow-checking-algorithm, liveness, cfg, basic-block, dataflow, fixpoint, worklist, reference, aliasing, mutation, static-analysis, ir, set, map, array, object, for-of, function, test]
+uses: [borrow-checking-algorithm, borrow, lifetime, lifetime-annotation, datalog-analysis, liveness, cfg, basic-block, dataflow, fixpoint, worklist, reference, aliasing, mutation, static-analysis, ir, set, map, array, object, for-of, function, test]
 sources: [rfc2094-nll, rust-book-borrowing, rustc-dev-guide-borrowck, rustc-dev-guide-region-inference, rust-error-codes, polonius-update-2023]
 ---
 import LifetimeBars from '../../../components/diagrams/ch286/LifetimeBars';
@@ -18,8 +18,11 @@ import RegionSteps from '../../../components/diagrams/ch286/RegionSteps';
 
 ## Loans that last too long
 
-The checker from the last chapter never ends a loan, so it rejects
-this harmless program, where `r` is finished with before `m` is made:
+You met borrows that end at their last use in *Borrowing and the
+borrowing rules* and *Lifetimes*; this chapter goes further, to how
+rustc works out where that last use is. The checker of *A borrow
+checker in miniature* never ends a loan, so it rejects this harmless
+program, where `r` is finished with before `m` is made:
 
 ```text
 let v = new
@@ -66,13 +69,13 @@ is exactly what makes ending the loan safe.</span>
 ## Liveness says where a loan ends
 
 The question "may this reference still be used?" is one you have
-answered before: it is **liveness** (chapter 210). A variable is live
+answered before: it is **liveness** (from *Liveness*). A variable is live
 at a point if the value it holds there may be used later, on some
 path<Cite id="rfc2094-nll" />, and liveness is a backward dataflow
 analysis over the control-flow graph, so it handles branches and loops
 for free. NLL gives each reference a **region**: the set of points
 where it is live. A loan is in force exactly at the points of its
-reference's region, and the ledger from last chapter is checked only
+reference's region, and the miniature checker's ledger is checked only
 against the loans in force at each point.
 
 <Callout kind="definition">
@@ -109,8 +112,8 @@ match map.get_mut(&k) {
 
 </Examples>
 
-The first is the push example from last chapter with two lines
-swapped: `first` is last used before the push, so its loan has ended
+The first is the C++-style push example of *A borrow checker in
+miniature* with two lines swapped: `first` is last used before the push, so its loan has ended
 and rustc accepts it. The second is the NLL RFC's own example: inside
 the `if`, `p` is dead between its use and its reassignment, because the
 value it holds there (`&a`) is never read again, even though the name
@@ -145,7 +148,7 @@ So every copy `let r2 = r` at point P adds an **outlives constraint**,
 written `'r: 'r2 @ P`: the region of `r` must contain every point of
 the region of `r2` that can be reached from P. **Region inference**
 finds regions that satisfy all of these at once, and the method is the
-one from chapter 92: start each region at its live points, apply every
+one from *Dataflow, fixpoints and constant propagation*: start each region at its live points, apply every
 constraint, and repeat until a whole pass changes nothing. The RFC
 describes exactly this fixpoint, with each region starting empty and
 growing "until they are big enough to satisfy all
@@ -217,7 +220,8 @@ keep it short); edit the programs and watch which loans meet:
 defined and every point up to its last use (its live points), and to
 record each copy as a constraint; the `while (changed)` loop is the
 fixpoint. `check` then keeps only the loans whose holder's region holds
-the current line, and applies last chapter's rule to them.
+the current line, and applies the conflict rule of *A borrow checker in miniature* to
+them.
 
 <Prompts ids={['ri-region', 'ri-copy', 'ri-fixpoint', 'ri-smallest']} />
 
@@ -241,7 +245,7 @@ once at a time`, because returning `v` forces the loan's region to
 cover the caller's `'r`, and region constraints say *that* a loan flows
 into `'r` but not *on which path*. Issues like this were deferred from
 NLL to **Polonius**, a new formulation of the borrow checker in terms
-of facts and rules, like the Datalog of the chapter on function summaries, for which this example
+of facts and rules, like the Datalog of *Escape analysis across functions*, for which this example
 is the motivating case<Cite id="polonius-update-2023" />.
 
 <Prompts ids={['ri-pc3']} />
@@ -258,5 +262,8 @@ is the motivating case<Cite id="polonius-update-2023" />.
   constraints** `'a: 'b @ P`.
 - **Region inference** solves the constraints by growing sets to a
   **fixpoint**; what NLL still rejects is the target of Polonius.
+
+Next, *Lazy evaluation*: values that are worked out only when, and if,
+they are needed.
 
 <Quiz />

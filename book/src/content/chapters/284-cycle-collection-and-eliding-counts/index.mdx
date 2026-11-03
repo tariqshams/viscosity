@@ -10,7 +10,7 @@ objectives:
   - Run trial deletion by hand, and implement it.
   - Explain how compilers remove count updates, with rustc’s output as evidence.
 introduces: [cycle-collection, rc-elision]
-uses: [reference-counting, garbage-collection, roots, tricolor, mark-sweep, generational-gc, reference, heap-object, pointer, recursion, object, map, set, array, liveness, dce, peephole, inlining, calling-convention, function, parameter, call]
+uses: [reference-counting, rc, refcell, garbage-collection, roots, tricolor, mark-sweep, generational-gc, reference, heap-object, pointer, recursion, object, map, set, array, liveness, dce, peephole, inlining, calling-convention, function, parameter, call]
 sources: [bacon2001, firefox-cycle-collector, python-gc, rust-std-rc, swift-arc, lean-explicit-rc, swift-arc-optimization]
 ---
 import TrialSteps from '../../../components/diagrams/ch284/TrialSteps';
@@ -18,8 +18,12 @@ import ElisionFigure from '../../../components/diagrams/ch284/ElisionFigure';
 
 ## Garbage that keeps itself alive
 
-Here is a doubly linked pair in Python 3.13, where each object's
-`__del__` prints a line when it is freed:
+You saw an `Rc` cycle leak in *Box, Rc and RefCell*, and reference
+counting as a runtime's whole memory manager in *Reference counting*;
+this chapter goes further, to how a runtime finds such cycles itself,
+and how a compiler removes count updates. Here is a doubly linked pair
+in Python 3.13, where each object's `__del__` prints a line when it is
+freed:
 
 ```python
 b = N(); b.name = 'b'
@@ -40,15 +44,16 @@ cycle between `Rc` pointers will never be deallocated"<Cite id="rust-std-rc" />.
 Real programs make such cycles all the time: doubly linked lists, or
 trees whose children point to their parents.
 
-There are two answers. The programmer can make one link of each cycle
-**weak**, a reference that does not add to the count: Rust's `Weak`
-exists "to break cycles", and Swift's `weak` references are set to
-`nil` when their object is freed<Cite id="swift-arc" />. Or the
-runtime can find garbage cycles itself.
+There are two answers. The first is the one *Box, Rc and RefCell*
+used: the programmer makes one link of each cycle **weak**, a reference
+that does not add to the count (Rust's `Weak`, or Swift's `weak`,
+which is also set to `nil` when its object is freed<Cite id="swift-arc" />).
+The second is for the runtime to find garbage cycles itself.
 
 ## Deleting references on trial
 
-A tracing collector (chapter 84) would find the cycle, but it walks
+A tracing collector (as in *Reclaiming memory: mark and sweep*) would
+find the cycle, but it walks
 the whole heap. Bacon and Rajan's **trial deletion** walks only the part of the heap a cycle
 could be in<Cite id="bacon2001" />. Its insight is that a cycle can
 only become garbage at the moment one of its counts is *decremented
@@ -118,14 +123,6 @@ del b, c          # nothing printed
 gc.collect()      # freed b, freed c → 2
 ```
 
-```rust
-// Rust: break the cycle with Weak
-struct Node {
-    parent: RefCell<Weak<Node>>,
-    children: RefCell<Vec<Rc<Node>>>,
-}
-```
-
 ```text
 // Firefox, xpcom/base/nsCycleCollector.cpp:
 // a garbage-cycle collector based on
@@ -137,11 +134,8 @@ if (pi->mInternalRefs == pi->mRefCount
 
 </Examples>
 
-The first is the Python run above. The second is the standard shape of a
-Rust tree with parent links (the `RefCell` lets the links be changed
-later): children are held by strong `Rc`s and the parent by a `Weak`,
-so a parent and child never keep each other alive. The third is a
-cycle collector in a real browser: Firefox's, whose source says it is
+The first is the Python run above. The second is a cycle collector in
+a real browser: Firefox's, whose source says it is
 "based on the paper" by Bacon and Rajan, using its purple, grey, white
 and black colours<Cite id="firefox-cycle-collector" />; instead of
 subtracting, it counts each object's references from inside the graph
@@ -291,7 +285,7 @@ pair around the call stays, because `g` might drop another reference to
   references at their last use; atomic counts are much harder to
   remove.
 
-Next: Rust's borrow checker, which proves at compile time what a
-reference count checks at run time.
+Next, *A borrow checker in miniature*: how Rust's borrow checker proves
+at compile time what a reference count checks at run time.
 
 <Quiz />

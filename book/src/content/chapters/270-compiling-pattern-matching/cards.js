@@ -1,4 +1,4 @@
-// Chapter 105 cards: recall prompts, examples, exercises and quiz.
+// Cards for Compiling pattern matching: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,23 +7,23 @@ export const prompts = {
     a: 'Each inner node tests the constructor (tag) of one part of the value, with one branch per constructor; each leaf names the arm to run, or reports that none fits.',
   },
   'first-wins': {
-    q: 'Two arms of a match both fit a value. Which one runs?',
-    a: 'The first one, top to bottom; the compiled tree must give the same answer.',
+    q: 'In a Rust, OCaml or Haskell `match`, two arms both fit a value. Which one runs?',
+    a: 'The first one, top to bottom; any compiled form of the match must give the same answer.',
   },
   'spec-what': {
-    q: 'In **specialisation** by `Some`, what becomes of the row `[Some(x), None]`?',
+    q: 'In matrix-based match compilation, **specialising** the rows by `Some`, what becomes of the row `[Some(x), None]`?',
     a: '`[x, None]`: the constructor is opened up and its sub-pattern takes its place.',
   },
   'spec-wild': {
-    q: 'Specialising by `Some` (one field), what becomes of the row `[_, None]`?',
+    q: 'In matrix-based match compilation, specialising by `Some` (one field), what becomes of the row `[_, None]`?',
     a: '`[_, None]`: the `_` becomes one wildcard per field of `Some`, here exactly one.',
   },
   'spec-drop': {
-    q: 'Specialising by `Some`, what becomes of the row `[None, _]`?',
+    q: 'In matrix-based match compilation, specialising by `Some`, what becomes of the row `[None, _]`?',
     a: 'It is dropped: a value whose tag is `Some` can never match `None`.',
   },
   'leaf-rules': {
-    q: 'When does match compilation stop with a leaf, and what does the leaf say?',
+    q: 'When does decision-tree match compilation by specialisation stop with a leaf, and what does the leaf say?',
     a: 'When the first row is all wildcards (that arm runs), or when no rows are left (a missing case).',
   },
   witness: {
@@ -403,7 +403,7 @@ function report(m) {
 
 export const quiz = [
   {
-    q: 'Compiled to a decision tree, how many times can `f`’s match test the tag of `a`?',
+    q: 'A `match (a, b)` with arms `(Some(x), Some(y))`, `(None, _)` and `(_, None)` is compiled to a decision tree. On any one path, how many times is the tag of `a` tested?',
     options: [
       {
         t: 'Up to three times, once per arm',

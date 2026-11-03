@@ -18,8 +18,10 @@ import DestructureFigure from '../../../components/diagrams/ch282/DestructureFig
 
 ## A read that might not be there
 
-Reading a property of `undefined` is one of the commonest errors in
-JavaScript:
+*Operators, sugar and desugaring* lowered operators into calls; this
+chapter goes further, to two pieces of JavaScript sugar that lower into
+tests and reads. Reading a property of `undefined` is one of the
+commonest errors in JavaScript:
 
 ```js
 const cfg = {};
@@ -48,7 +50,8 @@ user?.score?.toFixed(1);
 // '0.0'
 ```
 
-`&&` stops at anything falsy (chapter 67), including `0` and `''`, so
+`&&` stops at anything falsy (the short-circuit of *Statements,
+environments and control flow*), including `0` and `''`, so
 the first line gives up on a perfectly good score; `?.` stops only at
 `null` and `undefined`. The rewrite also names `user` three times, which
 would run it three times if it were a call such as `getUser()`. A
@@ -182,7 +185,8 @@ temporary holding the source: a name `x` becomes `x = t.x`; a default
 `x = d` becomes a read, then `x = v === undefined ? d : v` (so `d` is
 only evaluated when needed, and `null` does not trigger it); a nested
 pattern `k: pat` lowers `pat` against `t.k`. Array patterns read
-through the iterator protocol (chapter 39), not by index, so any
+through the iterator protocol (from *Iterators and generators*), not by
+index, so any
 iterable can be destructured<Cite id="mdn-destructuring" />.
 </Callout>
 
@@ -282,7 +286,7 @@ fell back to its default because `o.y` is `undefined`.
 - Engines do the same with bytecode: `JumpIfUndefinedOrNull`,
   `GetNamedProperty`, `UNPACK_SEQUENCE`.
 
-Next: memory again, and the simplest way to know when an object can be
-freed: count the references to it.
+Next, *Reference counting*: memory again, and the simplest way to know
+when an object can be freed, by counting the references to it.
 
 <Quiz />

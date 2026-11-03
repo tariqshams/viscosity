@@ -10,7 +10,7 @@ objectives:
   - Detect an import cycle, and compare how Go and JavaScript treat one.
   - Work out which modules must be rebuilt when one changes.
 introduces: [module-graph]
-uses: [separate-compilation, name-mangling, module, import-export, compiler, object-file, linker, tree, recursion, call-stack, function, array, map, set, dependence-dag, call-graph]
+uses: [separate-compilation, name-mangling, module, import-export, program-structure, compiler, object-file, linker, tree, recursion, call-stack, function, array, map, set, dependence-dag, call-graph]
 sources: [go-list-deps, go-spec-imports, ecma262-module-evaluation, mdn-modules]
 ---
 import OrderSteps from '../../../components/diagrams/ch278/OrderSteps';
@@ -18,7 +18,11 @@ import RebuildFigure from '../../../components/diagrams/ch278/RebuildFigure';
 
 ## Which file first?
 
-In C, the files of a program can be compiled in any order, because each
+You met JavaScript's run order for modules, and the trouble an import
+cycle causes, in *Structuring a program: load order and layers*, and
+compiling files one at a time in *Modules and separate compilation*;
+this chapter goes further, to the graph a build tool reads all of that
+from. In C, the files of a program can be compiled in any order, because each
 one only reads declarations from headers, which are plain text. Many
 newer languages do better than headers: a Go package or a Rust crate
 imports another by name, and the compiler reads what it needs (the types
@@ -104,16 +108,6 @@ app
 ```
 
 ```text
-// main.mjs → a.mjs → b.mjs → c.mjs,
-// each logs when its top level runs
-$ node main.mjs
-c runs
-b runs
-a runs
-main ABC
-```
-
-```text
 $ go build .
 package cyc
   imports cyc/a from main.go
@@ -130,42 +124,21 @@ standard library's are listed too). `go list -deps` "visits them in a
 depth-first post-order traversal, so that a package is listed only after
 all its dependencies"<Cite id="go-list-deps" />, which is the walk you
 just stepped through, and `go build` compiles in such an order. The
-second is Node 22 running four JavaScript modules in a chain: each
-module's top-level code runs after the code of the module it imports,
-so the deepest one, `c`, prints first. The ECMAScript specification
-defines this with a depth-first walk of its own, which also finds the
-groups of modules that form a cycle (a *strongly connected component*)
-and moves each group from one state to the next
-together<Cite id="ecma262-module-evaluation" />. The third is Go
-refusing a cycle (`a` imports `b`, which imports `a`): the language
+second is Go refusing a cycle (`a` imports `b`, which imports `a`): the language
 says "it is illegal for a package to import itself, directly or
 indirectly"<Cite id="go-spec-imports" />, and the error lists the whole
 loop.
 
-JavaScript allows the cycle, and the spot-the-difference shows the
-price:
+JavaScript allows the cycle, and runs one module of it first, which is
+why a module in a cycle can read the other's `const` before it is set
+(the `ReferenceError` of *Structuring a program: load order and
+layers*). The ECMAScript specification runs modules with a depth-first
+walk of its own, the same post-order as `go list`, which also finds the
+groups of modules that form a cycle (a *strongly connected component*)
+and moves each group from one state to the next
+together<Cite id="ecma262-module-evaluation" />.
 
-```js
-// a2.mjs
-import { b } from './b2.mjs';
-export const a = 'A';
-console.log(b);
-// b2.mjs
-import { a } from './a2.mjs';
-export const b = 'B';
-console.log(a);
-// $ node a2.mjs
-// ReferenceError: Cannot access 'a'
-//   before initialization
-```
-
-Starting at `a2`, the walk reaches `b2`, whose import of `a2` points
-back at a module still in progress; so `b2` runs first, and reads `a`
-before `a2`'s `const a = 'A'` has run. Make the imports go one way
-(move what both need into a third module) and the error disappears. (Node prints the file name and a stack too; the
-message is quoted exactly.)
-
-<Prompts ids={['mg-what', 'mg-edge', 'mg-topo', 'mg-dfs', 'mg-cycle', 'mg-js-cycle']} />
+<Prompts ids={['mg-what', 'mg-scc', 'mg-topo', 'mg-dfs', 'mg-cycle', 'mg-js-cycle']} />
 
 ## What to rebuild
 
@@ -192,7 +165,7 @@ a set once; it prints `[ 'a', 'b', 'c', 'main' ]` for `c`,
 which nobody imports. (When
 only a function's *body* changes and its interface does not, the
 importers' compiled code is still right; this is what separate
-compilation bought us in the last chapter, and why build tools try hard
+compilation bought us in *Modules and separate compilation*, and why build tools try hard
 to tell the two kinds of edit apart.)
 
 <Prompts ids={['mg-rebuild', 'mg-body']} />
@@ -213,6 +186,7 @@ to tell the two kinds of edit apart.)
 - After an interface change, everything that can reach the changed
   module is rebuilt.
 
-Next: macros, code that writes code before the compiler sees it.
+Next, *Macros and hygiene*: code that writes code before the compiler
+sees it.
 
 <Quiz />

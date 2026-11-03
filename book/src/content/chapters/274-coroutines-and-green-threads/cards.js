@@ -1,4 +1,4 @@
-// Chapter 109 cards: recall prompts, examples, exercises and quiz.
+// Cards for Coroutines and green threads: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,8 +7,8 @@ export const prompts = {
     a: 'A function that can suspend itself part-way through and later be resumed from the same point, with its local variables intact.',
   },
   'co-asym': {
-    q: 'Generators are **asymmetric** coroutines. What does that mean?',
-    a: 'When they yield, control always goes back to whoever resumed them.',
+    q: 'What makes a coroutine **asymmetric** (as JavaScript and Python generators are)?',
+    a: 'When it yields, control always goes back to whoever resumed it, rather than to another coroutine it names.',
   },
   'co-send': {
     q: 'In Python, what does `gen.send(v)` do to a generator paused at `x = yield`?',
@@ -20,7 +20,7 @@ export const prompts = {
   },
   'sf-switch': {
     q: 'What does switching between two stackful coroutines have to save and load?',
-    a: 'The CPU registers, including the stack pointer; the frames themselves stay on each coroutine\'s own stack.',
+    a: 'The CPU registers it must preserve, including the stack pointer and where to resume; the frames themselves stay on each coroutine\'s own stack.',
   },
   'sl-mark': {
     q: 'In JavaScript, how does a generator let a generator it calls pause on its behalf?',
@@ -218,7 +218,7 @@ export const quiz = [
       },
       {
         t: 'A Rust async fn',
-        why: 'Its future is a state machine holding one function\'s saved variables.',
+        why: 'It is lowered to a state machine, and can suspend only at its own `.await`s.',
       },
     ],
   },
@@ -245,7 +245,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Go started 100,000 goroutines with about 2 KB of stack each. Why can it afford so many?',
+    q: 'In Go 1.24, why can a program afford 100,000 goroutines blocked at once?',
     options: [
       {
         t: 'Goroutines share one stack',
@@ -258,7 +258,7 @@ export const quiz = [
       },
       {
         t: 'Go has no stacks at all',
-        why: 'It does; the runtime measured how much they used.',
+        why: 'It does: each goroutine has its own, which the runtime allocates and grows.',
       },
       {
         t: 'The operating system makes 100,000 threads cheap',

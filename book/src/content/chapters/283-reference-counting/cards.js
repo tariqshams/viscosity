@@ -1,4 +1,4 @@
-// Chapter 115 cards: recall prompts, examples, exercises and quiz.
+// Cards for Reference counting: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'Each heap object keeps a count of the references to it; the object is freed as soon as the count reaches zero.',
   },
   'rc-up': {
-    q: 'Name three things that increment an object’s reference count.',
+    q: 'In plain reference counting (with no updates optimised away), name three things that increment an object’s count.',
     a: 'Storing a reference to it in a variable, in another object’s field, or passing it as an argument (any new copy of the reference).',
   },
   'rc-down': {
@@ -23,11 +23,11 @@ export const prompts = {
     a: 'Freeing it drops the references it held, so each object it pointed to is decremented, and may reach zero too.',
   },
   'rc-getrefcount': {
-    q: 'Why does `sys.getrefcount(x)` print 2 for an object only `x` refers to?',
+    q: 'In CPython, why does `sys.getrefcount(x)` print 2 for an object only `x` refers to?',
     a: 'Passing `x` as the argument makes one more, temporary reference.',
   },
   'rc-atomic': {
-    q: 'Why does copying a C++ `shared_ptr` compile to a `lock`-prefixed instruction, and what does Rust offer instead?',
+    q: 'On x86-64, why does copying a C++ `std::shared_ptr` compile to a `lock`-prefixed instruction, and what does Rust offer instead?',
     a: 'Its count may be shared by threads, so updates must be atomic. Rust has `Arc` (atomic) for threads and `Rc` (plain, cheaper) for one thread.',
   },
   'rc-order': {
@@ -226,7 +226,7 @@ function dec(o) {
 
 export const quiz = [
   {
-    q: '`let a = obj; let b = a; a = null;` What is `obj`’s reference count now (counting only these variables)?',
+    q: 'Under reference counting, after `let a = obj; let b = a; a = null;`, what is `obj`’s count (counting only these variables)?',
     options: [
       {
         t: '0, so it is freed',
@@ -244,7 +244,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An object holding the only references to a 1000-node tree has its count reach zero. What happens?',
+    q: 'Under reference counting, an object holding the only references to a 1000-node tree has its count reach zero. What happens?',
     options: [
       {
         t: 'Only that object is freed; the tree waits for the next collection',
@@ -266,7 +266,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `sys.getrefcount(x)` report one more than the references you can see?',
+    q: 'Why does CPython’s `sys.getrefcount(x)` report one more than the references you can see?',
     options: [
       {
         t: 'CPython counts every object twice',
@@ -284,7 +284,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does copying a C++ `shared_ptr` compile to `lock incl`?',
+    q: 'On x86-64, why does copying a C++ `std::shared_ptr` compile to `lock incl`?',
     options: [
       {
         t: 'The count may be updated by several threads, so the increment must be atomic',
@@ -302,7 +302,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A compiler stores a new value in a variable. In which order should it update the counts, and why?',
+    q: 'Under reference counting, a compiler stores a new value in a variable. In which order should it update the counts, and why?',
     options: [
       {
         t: 'Decrement the old value first, to free memory as early as possible',

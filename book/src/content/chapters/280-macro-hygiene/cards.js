@@ -1,4 +1,4 @@
-// Chapter 113 cards: recall prompts, examples, exercises and quiz.
+// Cards for Macro hygiene: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,16 +19,16 @@ export const prompts = {
     a: 'Expansion never causes capture: a template’s bindings only bind the template’s own names, and its other names mean what they meant where the macro was defined.',
   },
   'hy-marks': {
-    q: 'How does a hygienic expander tell the macro’s `tmp` from the caller’s `tmp`?',
-    a: 'Every identifier carries a mark of where it came from (rustc’s #7 and #0); names refer to each other only if both the spelling and the mark match.',
+    q: 'How does a hygienic expander tell a `tmp` written in a macro’s template from a `tmp` written by the caller?',
+    a: 'Every identifier carries a mark of where it came from (in rustc, a syntax context); two names refer to the same binding only if both the spelling and the mark match.',
   },
   'hy-rust': {
     q: 'Rust’s `macro_rules!` has "mixed-site" hygiene. What is looked up where?',
     a: 'Local variables and labels at the macro’s definition site; other names, such as functions and types, at the place the macro is called.',
   },
   'hy-print': {
-    q: 'rustc’s expanded output for the Rust swap reads `let tmp = tmp; tmp = y; y = tmp;`, yet the program works. Why?',
-    a: 'The printout drops the marks: the first `tmp` and the last one are the macro’s (#7), the others the caller’s (#0), so they are different variables.',
+    q: 'A Rust `swap!` whose template declares `let tmp`, called as `swap!(tmp, y)`, prints under `-Zunpretty=expanded` as `let tmp = tmp; tmp = y; y = tmp;`, yet it swaps correctly. Why?',
+    a: 'The printout drops the hygiene marks: the first and last `tmp` are the macro’s, the other two the caller’s, so they are different variables.',
   },
   'hy-c': {
     q: 'Is C’s preprocessor hygienic?',
@@ -78,8 +78,8 @@ console.log(v2);`,
 export const exercises = {
   hygienic: {
     title: 'A hygienic template filler',
-    prompt: 'Templates are trees of arrays as in the last chapter, with holes `[\'$\', name]`. A template declares a variable with `[\'let\', name, expr]`. Write `hygienic(tpl, env, n)`: rename every variable the template itself declares (wherever it appears in the template, but not inside holes) from `name` to `name_n`, for example `tmp` to `tmp_1` when `n` is 1, and then fill the holes with `fill` (given). Names the template only uses, and everything that comes in through `env`, must not be renamed. The tests run the result in a tiny interpreter, so a swap of the caller’s `tmp` really has to swap.',
-    starter: `// fill from the last chapter
+    prompt: 'Templates are trees of arrays as in *Macros and hygiene*, with holes `[\'$\', name]`. A template declares a variable with `[\'let\', name, expr]`. Write `hygienic(tpl, env, n)`: rename every variable the template itself declares (wherever it appears in the template, but not inside holes) from `name` to `name_n`, for example `tmp` to `tmp_1` when `n` is 1, and then fill the holes with `fill` (given). Names the template only uses, and everything that comes in through `env`, must not be renamed. The tests run the result in a tiny interpreter, so a swap of the caller’s `tmp` really has to swap.',
+    starter: `// fill, from Macros and hygiene
 function fill(tpl, env) {
   if (!Array.isArray(tpl)) return tpl;
   if (tpl[0] === '$') {
@@ -90,7 +90,7 @@ function fill(tpl, env) {
 function hygienic(tpl, env, n) {
   return fill(tpl, env);
 }`,
-    solution: `// fill from the last chapter
+    solution: `// fill, from Macros and hygiene
 function fill(tpl, env) {
   if (!Array.isArray(tpl)) return tpl;
   if (tpl[0] === '$') {
@@ -196,7 +196,7 @@ For \`swap(tmp, y)\` the result is \`let tmp_1 = tmp; tmp = y; y = tmp_1;\`, the
 - Renaming only the \`let\` itself, not the later uses, leaves \`['set', 'y', 'tmp']\` reading the caller's variable.`,
     wrong: [
       {
-        code: `// fill from the last chapter
+        code: `// fill, from Macros and hygiene
 function fill(tpl, env) {
   if (!Array.isArray(tpl)) return tpl;
   if (tpl[0] === '$') {
@@ -214,7 +214,7 @@ function hygienic(tpl, env, n) {
         why: 'It renames after filling, so the caller’s `tmp` is renamed too and capture happens again.',
       },
       {
-        code: `// fill from the last chapter
+        code: `// fill, from Macros and hygiene
 function fill(tpl, env) {
   if (!Array.isArray(tpl)) return tpl;
   if (tpl[0] === '$') {
@@ -259,7 +259,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does renaming the macro’s `tmp` to a fresh name fix `SWAP(tmp, y)`?',
+    q: 'With C’s `#define SWAP(a, b) { int tmp = a; a = b; b = tmp; }`, why does renaming the macro’s `tmp` to a fresh name fix `SWAP(tmp, y)`?',
     options: [
       {
         t: 'Fresh names are faster to look up',
@@ -321,11 +321,11 @@ export const quiz = [
     options: [
       {
         t: 'It renames macro variables automatically',
-        why: 'It does not; gcc -E showed `int tmp = tmp`.',
+        why: 'It does not: a macro declaring `int tmp`, given the argument `tmp`, expands to `int tmp = tmp`.',
       },
       {
         t: 'It reports an error when capture happens',
-        why: 'The swap compiled and ran silently, printing `1 2`.',
+        why: 'Capture compiles silently; a captured swap simply swaps nothing.',
       },
       {
         t: 'It is hygienic for functions but not for variables',

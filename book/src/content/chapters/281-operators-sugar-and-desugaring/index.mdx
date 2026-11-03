@@ -10,7 +10,7 @@ objectives:
   - Implement Python’s rule for a + b, with __add__, __radd__ and NotImplemented.
   - Say which languages choose the operator function while compiling, and which while running.
 introduces: [operator-overloading]
-uses: [desugaring, lowering, method, class, object, this, call, function, dynamic-dispatch, dictionary-passing, generic-specialization, name-mangling, bytecode, opcode, inlining, type-checking, static-vs-dynamic-typing, throw, error-object, instanceof, typeof]
+uses: [desugaring, operator-traits, trait, lowering, method, class, object, this, call, function, dynamic-dispatch, dictionary-passing, generic-specialization, name-mangling, bytecode, opcode, inlining, type-checking, static-vs-dynamic-typing, throw, error-object, instanceof, typeof]
 sources: [cxx-over-oper, rust-std-ops-add, python-datamodel, cpython-dis, itanium-cxx-abi]
 ---
 import DispatchSteps from '../../../components/diagrams/ch281/DispatchSteps';
@@ -28,9 +28,12 @@ const p2 = add(add(p, v), wind);
 ```
 
 Many languages allow the second form: a type you define can say what
-`+`, `==` or `[]` mean for its values. Chapter 67 met **desugaring**,
-rewriting one construct into another the compiler already handles
-(Drip's `for` into a `while`); operators on your own types are the same
+`+`, `==` or `[]` mean for its values. You met **desugaring** (rewriting
+one construct into another the compiler already handles, such as
+Drip's `for` into a `while`) in *Statements, environments and control
+flow*, and Rust's operator traits in *Traits, trait objects and
+derive*; this chapter goes further, to what compilers in several
+languages turn an operator on your own types into, which is the same
 trick. The compiler rewrites `p + v` into a call of a function you
 wrote, and from then on it is an ordinary call, which can be inlined,
 specialised or dispatched like any other. What differs between
@@ -201,8 +204,8 @@ emitAt(bracket.line, Op.IndexSet);
 `IndexGet` can read the old element while a second copy waits for
 `IndexSet`; the value of `e` is pushed and added (`compoundOp` picks
 `Add` for `+=`), and `IndexSet` stores the sum. A desugaring is only
-right if it keeps such details; the next chapter's `?.` needs the same
-care, with temporaries.
+right if it keeps such details; the `?.` of *Desugaring optional
+chaining and destructuring* needs the same care, with temporaries.
 
 <Prompts ids={['op-once']} />
 
@@ -221,7 +224,7 @@ care, with temporaries.
   time: `__add__` on the left, then `__radd__` on the right, then
   `TypeError`.
 
-Next: two more pieces of sugar, `?.` and destructuring, and the plain
-code they stand for.
+Next, *Desugaring optional chaining and destructuring*: two more pieces
+of sugar, and the plain code they stand for.
 
 <Quiz />

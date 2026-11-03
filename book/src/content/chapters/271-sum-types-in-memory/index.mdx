@@ -10,7 +10,7 @@ objectives:
   - Explain the niche optimisation, and predict which Rust Option types are free.
   - Compare the layouts chosen by C, Rust and OCaml.
 introduces: [tagged-union, niche-optimization, adt-layout]
-uses: [discriminated-union, union-type, exhaustiveness, byte, bit, memory, address, pointer, contiguous, arraybuffer, typed-array, tagged-value, value-representation, nan-boxing, smi, heap-object, object-header, boxing, decision-tree, array, object, function]
+uses: [discriminated-union, union-type, exhaustiveness, enum, alignment, padding, repr, byte, bit, memory, address, pointer, contiguous, arraybuffer, typed-array, tagged-value, value-representation, nan-boxing, smi, heap-object, object-header, boxing, decision-tree, array, object, function]
 sources: [rust-reference-type-layout, rust-option-representation, ocaml-manual-intf-c]
 ---
 import LayoutSteps from '../../../components/diagrams/ch271/LayoutSteps';
@@ -18,9 +18,13 @@ import NicheFigure from '../../../components/diagrams/ch271/NicheFigure';
 
 ## One of three shapes, in twelve bytes
 
-In chapter 30 a shape was a JavaScript object with a `kind` field, and
-the last chapter matched on Rust's `Option`. Both are **sum types**: a
-value is *one of* several variants, each with its own fields. Take this
+You met sum types as TypeScript's tagged unions in *Tagged unions: the
+shape of every syntax tree* and as Rust's enums in *Enums, match and
+patterns*, and you stored a tag beside a payload for Drip's values in
+*Tagging values at run time*; this chapter goes further, to the rules a
+compiler uses to lay out any sum type, and the tricks that make the tag
+free. A **sum type**'s value is *one of* several variants, each with
+its own fields. Take this
 one, written in Rust with 32-bit whole numbers (`u32`):
 
 ```rust
@@ -99,12 +103,10 @@ first.
 
 ## The rules for the layout
 
-The diagram used one rule we have not named: **alignment**. A 4-byte
-number must start at an address divisible by 4, and an 8-byte one at a
-multiple of 8, because that is how processors load them fastest (some
-cannot load them otherwise at all). That is where the padding came
-from, and it gives a small recipe that C uses, and that Rust uses
-whenever you ask it to with `#[repr(C, u8)]`<Cite id="rust-reference-type-layout" />:
+The padding in the diagram comes from **alignment**, which you met in
+*Memory layout in Rust*. For a sum type it gives a small recipe that C
+uses, and that Rust uses whenever you ask it to with
+`#[repr(C, u8)]`<Cite id="rust-reference-type-layout" />:
 
 <Formal title="Laying out a tagged union">
 
@@ -139,7 +141,7 @@ may reorder fields and choose the tag as it likes<Cite id="rust-reference-type-l
 OCaml goes the other way: a variant with no fields is stored as a plain
 small integer, and every other variant is a heap block whose header
 holds the tag<Cite id="ocaml-manual-intf-c" />, much like the boxed
-values of chapter 267.
+values of *Generics: specialisation or erasure*.
 
 <Examples of="adt-layout">
 
@@ -173,7 +175,7 @@ works because OCaml can always tell an immediate integer from a pointer
 to a block (its C interface calls the two tests `Is_long` and
 `Is_block`)<Cite id="ocaml-manual-intf-c" />.
 
-<Prompts ids={['align-why', 'pad-where', 'rust-free']} />
+<Prompts ids={['payload-align', 'pad-where', 'rust-free']} />
 
 ## Hiding the tag: niches
 
@@ -233,9 +235,10 @@ variants' fields instead of in bytes of its own, so that, for example,
 <Prompts ids={['niche-what', 'option-ref', 'no-niche']} />
 
 <Callout kind="engine" label="Under the hood">
-You have met niches before under other names. NaN-boxing (chapter
-86) stores pointers inside the bit patterns of NaNs that arithmetic
-never produces, and V8 (chapter 53) tells a small integer from a
+You have met niches before under other names. NaN-boxing (in
+*Measuring and speeding up the VM*) stores pointers inside the bit
+patterns of NaNs that arithmetic never produces, and V8 (in *How
+JavaScript stores numbers, objects and fields*) tells a small integer from a
 pointer by the lowest bit of a slot, which an aligned address would not
 otherwise need; both are a tag hidden where the other case leaves
 room. A JavaScript `{ kind: 'sq', side: 5 }` takes the
@@ -256,7 +259,7 @@ pointer to a string in one of its fields.
 - The **niche optimisation** hides the tag in bit patterns a field never
   uses, which is why `Option<&T>` costs nothing in Rust.
 
-Next: a function that can stop half-way and carry on later, compiled
-into a state machine.
+Next, *Generators as state machines*: a function that can stop half-way
+and carry on later, compiled into a state machine.
 
 <Quiz />

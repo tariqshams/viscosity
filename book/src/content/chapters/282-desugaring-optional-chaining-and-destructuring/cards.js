@@ -1,4 +1,4 @@
-// Chapter 114 cards: recall prompts, examples, exercises and quiz.
+// Cards for Desugaring optional chaining and destructuring: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -23,7 +23,7 @@ export const prompts = {
     a: 'A method call must keep `a` as `this`; calling the function on its own from a temporary would lose it.',
   },
   'ds-what': {
-    q: 'What does `const { x, y } = o` lower to?',
+    q: 'In JavaScript, what plain code does `const { x, y } = o` lower to?',
     a: 'Two plain reads: `const x = o.x; const y = o.y;` (V8 compiles it to two `GetNamedProperty` instructions).',
   },
   'ds-default': {

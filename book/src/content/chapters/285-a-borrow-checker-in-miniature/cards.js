@@ -1,33 +1,25 @@
-// Chapter 317 cards: recall prompts, examples, exercises and quiz.
+// Cards for A borrow checker in miniature: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'bc-why': {
-    q: 'Why can the C++ program that keeps `int& first = v[0]` across `v.push_back(3)` read freed memory?',
+    q: 'In C++, why can `int& first = v[0];` followed by `v.push_back(3);` and a read of `first` read freed memory?',
     a: 'Growing the vector can move its elements to a bigger block and free the old one, so `first` still points into the freed block.',
   },
-  'bc-move': {
-    q: 'After `let t = s` (where `s` owns a value), what may you still do with `s`?',
-    a: 'Only give it a new value (`s = new`). Any read, borrow or move of `s` is error E0382, because its value now belongs to `t`.',
-  },
-  'bc-rule': {
-    q: 'State the rule of references in one sentence.',
-    a: 'At any moment a value may have either any number of shared (`&`) borrows or exactly one mutable (`&mut`) borrow, never both.',
-  },
   'bc-ledger': {
-    q: 'What two things does the miniature checker remember as it walks the program?',
-    a: 'The set of names that have been moved away, and the list of loans that are out (who is borrowed, and whether shared or mutable).',
+    q: 'A borrow checker for straight-line code walks it once, top to bottom. Which two things must its ledger track?',
+    a: 'The names whose value has been moved away, and the loans in force (which place is borrowed, and whether shared or mutable).',
   },
   'bc-only-ok': {
-    q: 'Which single combination of an action and an existing loan of the same name is allowed?',
-    a: 'A read (a use, or another `&`) while only shared loans are out.',
+    q: 'In Rust’s borrow rules, which single combination of an access and an existing loan of the same place is allowed?',
+    a: 'A read (a use, or another `&`) while the loan is shared.',
   },
   'bc-codes': {
-    q: 'Match the codes: a second `&mut`; a `&mut` beside a `&`; moving while borrowed; assigning while borrowed.',
+    q: 'Match rustc’s error codes: a second `&mut`; a `&mut` beside a `&`; moving while borrowed; assigning while borrowed.',
     a: 'E0499; E0502; E0505; E0506.',
   },
   'bc-static': {
-    q: 'Does the borrow checker run the program to find these errors?',
+    q: 'Does Rust’s borrow checker run the program to find borrow errors?',
     a: 'No. It reads the program once, before it runs, and reasons about every line, so the errors are found at compile time and cost nothing at run time.',
   },
   'bc-mir': {
@@ -39,8 +31,8 @@ export const prompts = {
     a: '`&mut x` is a deep write of `x`; `&x` is a deep read. An access is an error unless both it and the loan it meets are reads.',
   },
   'bc-catch': {
-    q: 'Why does our first checker reject `let r = &v; use r; let m = &mut v`, which rustc accepts?',
-    a: 'Its loans never end, so the shared loan from line 1 is still out at line 3; rustc ends a loan once its reference is never used again.',
+    q: 'A borrow checker whose loans, once made, never end rejects `let r = &v; use r; let m = &mut v`. Why does rustc accept it?',
+    a: 'rustc ends a loan once its reference is never used again (non-lexical lifetimes), so the shared loan is no longer in force at the `&mut`.',
   },
 };
 
@@ -244,11 +236,11 @@ test('loans of other names do not count', () => {
 
 export const quiz = [
   {
-    q: `In Lend, which program has **no** borrow error under the chapter's first checker?
+    q: `Under Rust’s borrow rules, with every loan still in use at the end, which sequence has **no** borrow error?
 \`\`\`
-A: let v = new / let a = &v / let b = &v
-B: let v = new / let a = &v / v = new
-C: let v = new / let m = &mut v / use v
+A: let a = &v; let b = &v;
+B: let a = &v; v = new_value;
+C: let m = &mut v; read v
 \`\`\``,
     options: [
       {
@@ -262,25 +254,29 @@ C: let v = new / let m = &mut v / use v
       },
       {
         t: 'C',
-        why: 'Reading `v` while `m` holds a mutable loan is E0502.',
+        why: 'Reading `v` while `m` holds a mutable loan still in use is an error (E0503 for a plain use, E0502 for a new `&v`).',
       },
     ],
   },
   {
-    q: 'What does rustc report for `let t = s;` followed by a use of `s` (where `s` is a `String`)?',
+    q: 'In the NLL RFC’s model of borrow checking, what kind of access is the assignment `x = value`?',
     options: [
       {
-        t: 'E0505, cannot move out of `s` because it is borrowed',
-        why: 'Nothing borrows `s` here; the problem is the use after the move.',
+        t: 'A deep write',
+        why: 'A deep write (such as `&mut x` or a move) also reaches what `x` owns; an assignment only overwrites `x` itself.',
       },
       {
-        t: 'Nothing; `s` is copied',
-        why: '`String` does not implement `Copy`, so `let t = s` moves it.',
-      },
-      {
-        t: 'E0382, borrow of moved value: `s`',
+        t: 'A shallow write',
         correct: true,
-        why: 'The value moved to `t`, so using `s` afterwards is E0382 (and rustc suggests `.clone()`).',
+        why: 'It writes `x` without going through it, so loans of `*x` (data behind a reference in `x`) do not conflict with it.',
+      },
+      {
+        t: 'A deep read',
+        why: 'That is `&x`, which reads `x` and everything reachable through it.',
+      },
+      {
+        t: 'Not an access at all',
+        why: 'It is an access: assigning while `x` is borrowed is E0506.',
       },
     ],
   },
@@ -321,16 +317,16 @@ C: let v = new / let m = &mut v / use v
     ],
   },
   {
-    q: 'Our first checker rejects `let r = &v / use r / let m = &mut v`, but rustc accepts the Rust version. Why?',
+    q: 'A borrow checker that keeps every loan until the end of its block rejects `let r = &v; use(r); let m = &mut v;`, but rustc accepts it. Why?',
     options: [
       {
         t: 'rustc ignores shared loans',
         why: 'It does not: add a use of `r` after the `&mut` and rustc reports E0502.',
       },
       {
-        t: 'Our loans never end; rustc ends a loan after the last use of its reference',
+        t: 'rustc ends a loan after the last use of its reference, not at the end of the block',
         correct: true,
-        why: 'That is non-lexical lifetimes, the subject of the next chapter.',
+        why: 'That is non-lexical lifetimes: the shared loan has ended before the `&mut`.',
       },
       {
         t: 'rustc runs the program and sees no harm',

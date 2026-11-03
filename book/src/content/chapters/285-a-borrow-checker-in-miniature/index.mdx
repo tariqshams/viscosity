@@ -5,12 +5,12 @@ part: XV
 title: 'A borrow checker in miniature'
 tagline: 'Rust frees memory without a garbage collector and still never lets you read freed memory. The trick is a compile-time check that keeps a ledger of who has borrowed what; in this chapter you build one, for a language of six statements.'
 objectives:
-  - Say what owning, moving and borrowing a value mean, and why a pointer into a growing array is dangerous.
+  - Say why a pointer into a growing array is dangerous, and what a borrow checker must track to rule it out.
   - Run a borrow checker by hand over a short program, keeping its ledger of moves and loans.
   - Produce rustc's errors E0382, E0499, E0502, E0505 and E0506, and say which rule each one enforces.
   - Describe how rustc's real borrow checker works on MIR with loans and accesses.
 introduces: [borrow-checking-algorithm]
-uses: [reference, aliasing, mutation, pointer, stack-and-heap, heap-object, garbage-collection, reference-counting, linear-types, static-analysis, type-checker, ir, lowering, cfg, dataflow, array, push, map, set, object, for-of, function, test]
+uses: [ownership, move, borrow, shared-vs-mutable, borrow-checker, lifetime, reference, aliasing, mutation, pointer, stack-and-heap, heap-object, garbage-collection, reference-counting, linear-types, static-analysis, type-checker, ir, lowering, cfg, dataflow, array, push, map, set, object, for-of, function, test]
 sources: [rust-book-ownership, rust-book-borrowing, rust-error-codes, rfc2094-nll, rustc-dev-guide-borrowck]
 ---
 import LoanSteps from '../../../components/diagrams/ch285/LoanSteps';
@@ -18,7 +18,11 @@ import ConflictTable from '../../../components/diagrams/ch285/ConflictTable';
 
 ## A bug with no error message
 
-Here is a short C++ program that keeps a pointer (a reference, in C++'s
+You met ownership and moves in *Ownership: moves, copies and clones*,
+the borrowing rules and the errors that enforce them in *Borrowing and
+the borrowing rules*, and lifetimes in *Lifetimes*; this chapter goes
+further, to the algorithm a compiler uses to check those rules, by
+building a small one. Here is a short C++ program that keeps a pointer (a reference, in C++'s
 words) to the first element of a growable array, adds an element, and
 reads through the pointer:
 
@@ -45,36 +49,19 @@ freed by thread T0 here: ...
 
 Without that mode, the program prints whatever happens to be in the
 freed block. JavaScript cannot have this bug, because a garbage
-collector (chapter 84) keeps the old block alive while anything can
-reach it; Rust has no garbage collector, so it rules the bug out before
-the program runs. The Rust version is refused:
+collector (as in *Reclaiming memory: mark and sweep*) keeps the old
+block alive while anything can reach it; Rust has no garbage collector,
+so it rules the bug out before the program runs, refusing the Rust
+version with E0502. The part of the compiler that does it is the
+**borrow checker**.
 
-```text
-error[E0502]: cannot borrow `v` as
-  mutable because it is also borrowed
-  as immutable
-3 |  let first = &v[0];
-  |               - immutable borrow
-4 |  v.push(3);
-  |  ^^^^^^^^^ mutable borrow occurs here
-5 |  println!("{first}");
-  |             ----- immutable borrow
-  |                   later used here
-```
+## A language small enough to check
 
-(That is rustc 1.97's real message, re-wrapped to fit.) The part of
-the compiler that writes it is the **borrow checker**; in this chapter
-we build a small one.
-
-## Owning, moving and borrowing
-
-Rust's rules are short<Cite id="rust-book-ownership" />: every value has
-one **owner**, the variable responsible for freeing it; assigning it to
-another variable **moves** it, so the old name may no longer be used;
-and instead of moving a value you can **borrow** it, making a reference
-that is either **shared** (`&`, read only) or **mutable** (`&mut`).
-At any moment a value may have any number of shared borrows or exactly
-one mutable borrow, never both<Cite id="rust-book-borrowing" />.
+The rules to enforce are the ones you already know<Cite id="rust-book-ownership" />:
+a move makes the old name unusable, and at any moment a value may have
+any number of shared (`&`) borrows or exactly one mutable (`&mut`)
+borrow, never both<Cite id="rust-book-borrowing" />. The question here
+is how a program can check them.
 
 <Analogy title="a whiteboard in a meeting room">
 Any number of people may read the whiteboard at once. Someone who wants
@@ -85,16 +72,6 @@ anyone is still reading or writing.
 <span slot="breaks">In the room you can see who is looking; a borrow
 checker must work it out from the program text alone, before anything
 runs, for every way the program could go.</span>
-</Analogy>
-
-<Analogy extra title="handing over the house keys">
-When you sell a house you hand over the keys, and after that your old
-key no longer opens the door: that is a move. Lending the keys to a
-cleaner for an afternoon is a borrow; while the cleaner has them, you
-must not sell the house.
-<span slot="breaks">A real cleaner can copy a key in secret; a
-reference cannot outlive or escape its loan, because the compiler
-checks every place the reference goes.</span>
 </Analogy>
 
 To build a checker we need a language small enough to see whole, so
@@ -113,7 +90,7 @@ A `let w = r` copies `r` when it is a shared reference (any number of
 readers is fine) and moves it when it is `&mut` (two copies would be two
 writers).
 
-<Prompts ids={['bc-why', 'bc-move', 'bc-rule']} />
+<Prompts ids={['bc-why']} />
 
 ## The checker's ledger
 
@@ -196,7 +173,10 @@ third, assigning to `x` would change the value under `r`'s feet:
 "cannot assign to `x` because it is borrowed". In the fourth, moving
 `s` would leave `r` borrowing nothing: "cannot move out of `s` because
 it is borrowed". Each comment is the code rustc 1.97 gives the same
-program written in Rust, run here. The whole checker is about sixty
+program written in Rust, run here. (The table folds two of rustc's
+codes into one: a new `&v` beside a mutable loan is E0502, while a
+plain use of `v` there is E0503, "cannot use `v` because it was mutably
+borrowed".) The whole checker is about sixty
 lines; run it, then edit the three programs at the bottom (add a line,
 swap two) and watch the verdicts change:
 
@@ -214,7 +194,8 @@ assignment (which takes the name out of `moved`).
 ## How rustc does it
 
 rustc does not check your source text; the borrow checker runs on
-**MIR** (the mid-level IR), a control-flow graph (chapter 89) of small
+**MIR** (the mid-level IR), a control-flow graph (as in *IR, three-address code and control-flow
+graphs*) of small
 statements, because MIR is far simpler than the syntax tree and its
 graph is what lifetimes are built from<Cite id="rustc-dev-guide-borrowck" />.
 For `let r = &x; let y = *r; x = 6;`, `rustc --emit=mir` prints
@@ -231,7 +212,8 @@ bb0: {
 a loan of `_1`. The NLL RFC describes the same ledger we built, more
 precisely<Cite id="rfc2094-nll" />: a loan is a region, a kind (shared
 or mutable) and a path such as `x` or `(*x).foo`; the loans in force at
-each point are found by a forward dataflow analysis (chapter 92); and
+each point are found by a forward dataflow analysis (as in *Dataflow, fixpoints and
+constant propagation*); and
 each statement becomes **accesses** that are *deep* or *shallow* and
 *reads* or *writes*, where `&x` is a deep read, `&mut x` and a move are
 deep writes, and `x = ...` is a shallow write. An access is an error
@@ -248,7 +230,7 @@ checker above: it reports E0502 on the last line, because once a loan
 is in the ledger nothing takes it out. The same program in Rust
 compiles, since `r` is never used after line 3. A loan should end when
 its reference is finished with, and working out exactly when that is
-takes the next chapter.
+takes *Non-lexical lifetimes and region inference*.
 
 <Prompts ids={['bc-catch']} />
 
@@ -258,12 +240,13 @@ takes the next chapter.
 
 ## What you learned
 
-- A value has one **owner**; assigning it **moves** it; a **borrow** is
-  shared (`&`) or mutable (`&mut`), never both at once.
 - The **borrow checking algorithm** keeps a ledger of moved names and
   **loans**, turns each statement into accesses, and reports a conflict
   unless both sides are reads.
 - rustc does this on **MIR**, with deep and shallow reads and writes,
   and the error codes E0382, E0499, E0502, E0505 and E0506.
+
+Next, *Non-lexical lifetimes and region inference*: ending each loan at
+the last use of its reference.
 
 <Quiz />

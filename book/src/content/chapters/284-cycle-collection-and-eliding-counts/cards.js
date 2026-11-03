@@ -1,4 +1,4 @@
-// Chapter 115 cards: recall prompts, examples, exercises and quiz.
+// Cards for Cycle collection and eliding counts: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,11 +11,11 @@ export const prompts = {
     a: 'It does not add to the count, so the object it points to can still reach zero and be freed (Rust’s `Weak`, Swift’s `weak`).',
   },
   'cy-gray': {
-    q: 'What does the "mark grey" step do to the counts?',
+    q: 'In Bacon and Rajan’s trial deletion, what does the "mark grey" step do to the counts?',
     a: 'It walks everything reachable from the candidates and subtracts one for each reference between those objects, as if the internal references were deleted.',
   },
   'cy-black': {
-    q: 'After mark grey, an object still has a count above zero. What does that mean, and what happens?',
+    q: 'In Bacon and Rajan’s trial deletion, once mark grey has subtracted the internal references, an object’s count is still greater than zero. What does that mean, and what happens to it?',
     a: 'Something outside the walked objects refers to it, so it is alive: scan black restores the counts of it and everything it reaches.',
   },
   'el-what': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'The caller promises to keep the object alive for the call, so neither side increments or decrements for the argument.',
   },
   'el-atomic': {
-    q: 'rustc -O removed the count updates of an `Rc` clone; clang -O2 kept those of a `shared_ptr` copy. Why the difference?',
+    q: 'Why can rustc -O cancel the paired increment and decrement of a Rust `Rc` clone, while clang -O2 keeps those of a C++ `std::shared_ptr` copy?',
     a: '`Rc`’s counts are plain memory, which the optimiser can reason about; `shared_ptr`’s are atomic operations other threads may see, which it leaves alone.',
   },
 };
@@ -265,7 +265,7 @@ export const quiz = [
       {
         t: 'When CPython’s cycle collector runs, for example on `gc.collect()`',
         correct: true,
-        why: 'The collector supplements reference counting precisely for cycles; the run printed both frees and returned 2.',
+        why: 'The collector supplements reference counting for exactly this; `gc.collect()` frees both and returns the number of unreachable objects it found.',
       },
       {
         t: 'Never',
@@ -292,7 +292,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'After mark grey, object C has a trial count of 1 and D has 0, where C → D and D → C. What is the outcome?',
+    q: 'In trial deletion, after mark grey, object C has a trial count of 1 and D has 0, where C → D and D → C. What is the outcome?',
     options: [
       {
         t: 'Both are freed, since D reached zero',

@@ -18,8 +18,10 @@ import MarksFigure from '../../../components/diagrams/ch280/MarksFigure';
 
 ## A swap that swaps nothing
 
-The last chapter's macros pasted code into the program; here is one
-that also needs a variable of its own. Swapping two variables needs a
+You met macros and their templates in *Macros and hygiene*; this
+chapter goes further, to what happens to the names in a template. The
+macros there pasted code into the program; here is one that also needs
+a variable of its own. Swapping two variables needs a
 spare place to hold one value, so a C programmer writes:
 
 ```c
@@ -45,7 +47,7 @@ a variable the macro declares captures a name the caller passed in.
 The other way round, a name the macro *uses* can be captured by a
 variable the caller declared: a macro whose template calls a helper
 `len()` breaks if it is used in a block where the caller has written
-`let len = 5;`. In both cases the scoping rules of chapter 11 are
+`let len = 5;`. In both cases the scoping rules of *Scope: where a name can be seen* are
 obeyed perfectly; it is the pasting that put a name in a scope its
 author never saw.
 
@@ -119,8 +121,8 @@ swap!(a, b)
 template with its own variable renamed to t-prime, a name that does
 not appear in either argument or anywhere in the surrounding code.
 Because the new name is fresh, no name from the caller can be captured
-by it. This is the same renaming that chapter 186's substitution needs
-to avoid capture, applied to macro templates.</span>
+by it. This is the same renaming that substitution in *The lambda calculus*
+needs to avoid capture, applied to macro templates.</span>
 </Formal>
 
 <Examples of="hygiene">
@@ -175,8 +177,8 @@ direction, a trade-off Rust chose on purpose.
 
 <Run id="capture" />
 
-The example rebuilds the problem with the tree templates of the last
-chapter. `SWAP` is the swap template, with holes `a` and `b` and a
+The example rebuilds the problem with the tree templates of *Macros and
+hygiene*. `SWAP` is the swap template, with holes `a` and `b` and a
 variable of its own, `tmp`; `fill` pastes the caller's names into the
 holes; and `run` is an interpreter of three lines for `do` (run each
 part), `let` and `set` (both store a value in `vars`, which is all the
@@ -206,7 +208,7 @@ renaming by hand, and the exercise does it automatically.
   `macro_rules!` is hygienic for local variables and labels, and C's
   preprocessor not at all.
 
-Next: operators, and the small rewrites that turn sugar into plain
-code.
+Next, *Operators, sugar and desugaring*: operators, and the small
+rewrites that turn sugar into plain code.
 
 <Quiz />

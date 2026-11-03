@@ -1,4 +1,4 @@
-// Chapter 319 cards: recall prompts, examples, exercises and quiz.
+// Cards for Lazy evaluation: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -150,7 +150,7 @@ test('after a throw it can try again', () => {
       'In `force`: if the state is done, return the value. If it is running, someone is forcing it from inside its own evaluation, so throw `new Error(\'<<loop>>\')`. Otherwise mark it running, call `f`, store the value, mark it done.',
       'Wrap the call to `f` in `try { val = f(); } catch (e) { state = \'todo\'; throw e; }` so that a failure does not leave the thunk stuck as "running". Do not test `val === undefined` to decide whether it is done: use the state.',
     ],
-    walkthrough: `**How to think about it.** A call-by-need thunk is a tiny state machine with three states, the ones GHC's runtime uses: a thunk that has not been run, a black hole that is being run, and an updated value. Each \`force\` looks at the state and does one of three things, and only the first-ever force does real work. The variables that hold the state must outlive each call to \`force\` and be private to this one thunk, which is exactly what a closure gives you (chapter 12).
+    walkthrough: `**How to think about it.** A call-by-need thunk is a tiny state machine with three states, the ones GHC's runtime uses: a thunk that has not been run, a black hole that is being run, and an updated value. Each \`force\` looks at the state and does one of three things, and only the first-ever force does real work. The variables that hold the state must outlive each call to \`force\` and be private to this one thunk, which is exactly what a closure gives you (from *Closures: functions that remember*).
 
 **The solution, line by line.**
 

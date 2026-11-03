@@ -1,4 +1,4 @@
-// Chapter 112 cards: recall prompts, examples, exercises and quiz.
+// Cards for The module graph and build order: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -6,20 +6,20 @@ export const prompts = {
     q: 'What is a program’s module graph?',
     a: 'One node per module, and an arrow from each module to every module it imports.',
   },
-  'mg-edge': {
-    q: 'In this chapter’s module graph, which way does the arrow for `import { c } from "./c"` inside `a` point?',
-    a: 'From `a` to `c`: from the importing module to the module it imports.',
+  'mg-scc': {
+    q: 'How does the ECMAScript module evaluation algorithm handle modules that import each other in a cycle?',
+    a: 'Its depth-first walk finds each cycle as a strongly connected component and moves the whole group from one state to the next together; within the group, one module still runs first.',
   },
   'mg-topo': {
     q: 'What makes an order of modules a build order (a topological order)?',
     a: 'Every module comes after all the modules it imports.',
   },
   'mg-dfs': {
-    q: 'In a depth-first walk, why does the order in which modules *finish* put each one after its imports?',
+    q: 'In a depth-first walk of a module graph, why does the order in which modules *finish* put each one after its imports?',
     a: 'A module finishes only after the walk has finished every module it imports.',
   },
   'mg-cycle': {
-    q: 'During the depth-first walk, what tells you the graph has a cycle?',
+    q: 'During a depth-first walk of a module graph, what tells you the graph has a cycle?',
     a: 'An import leads back to a module that is still in progress (still on the walk’s stack).',
   },
   'mg-js-cycle': {
@@ -27,7 +27,7 @@ export const prompts = {
     a: 'It runs the modules anyway, one of them first, so that module can read a `const` of the other before it is set: a ReferenceError ("Cannot access ... before initialization").',
   },
   'mg-rebuild': {
-    q: 'Module `c`’s interface changes. Which modules may need compiling again?',
+    q: 'In a separately compiled program, module `c`’s interface changes. Which modules may need compiling again?',
     a: '`c` and every module that can reach `c` by following import arrows (its importers, their importers, and so on).',
   },
   'mg-body': {
@@ -234,7 +234,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the depth-first walk, when is a module added to the build order?',
+    q: 'In a depth-first walk that produces a build order, when is a module added to the order?',
     options: [
       {
         t: 'When the walk first reaches it',
@@ -256,7 +256,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The walk reaches `c` a second time, from `b`, after `c` was finished via `a`. What does that mean?',
+    q: 'A depth-first walk of a module graph reaches `c` a second time, from `b`, after `c` was already finished via `a`. What does that mean?',
     options: [
       {
         t: 'A shared import: skip it, it is already in the order',
@@ -296,7 +296,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the chapter’s graph (main → a, b; a → c; b → c, d), module `d`’s interface changes. Which modules are rebuilt?',
+    q: 'In the module graph main → a, b; a → c; b → c, d (each arrow from importer to imported), module `d`’s interface changes. Which modules are rebuilt?',
     options: [
       {
         t: 'All five',

@@ -10,7 +10,7 @@ objectives:
   - Read reference counts in CPython and Rust, and the atomic instructions C++ uses for them.
   - Implement increment and decrement with recursive freeing.
 introduces: [reference-counting]
-uses: [garbage-collection, roots, mark-sweep, tricolor, heap-object, object-header, reference, aliasing, pointer, stack-and-heap, object, property, field, call, parameter, return, scope, local-variable, recursion, map, set, throw]
+uses: [rc, box, drop, garbage-collection, roots, mark-sweep, tricolor, heap-object, object-header, reference, aliasing, pointer, stack-and-heap, object, property, field, call, parameter, return, scope, local-variable, recursion, map, set, throw]
 sources: [collins1960, cpython-object-h, python-sys-getrefcount, rust-std-rc, swift-arc]
 ---
 import CountSteps from '../../../components/diagrams/ch283/CountSteps';
@@ -18,8 +18,11 @@ import HeaderFigure from '../../../components/diagrams/ch283/HeaderFigure';
 
 ## Knowing the moment an object dies
 
-Your Drip VM's collector (chapters 84 and 84) finds garbage by
-searching: now and then it stops the program, marks everything it can
+You met a reference count as a Rust type in *Box, Rc and RefCell*,
+where `Rc::clone` added one and a drop took one away; this chapter goes
+further, to reference counting as the way a whole language runtime
+manages memory, and what it costs. Your Drip VM's collector (from
+*Reclaiming memory: mark and sweep*) finds garbage by searching: now and then it stops the program, marks everything it can
 reach from the roots, and sweeps away the rest. Between collections,
 dead objects sit in memory, and nobody knows exactly when they will go.
 There is another way, nearly as old (George Collins described it for
@@ -49,8 +52,8 @@ away, and anything tied only to it floats away with it.
 <span slot="breaks">Two balloons tied only to each other, with nobody
 holding either, still float away in real life; under reference
 counting each still has one string attached, so neither is ever
-freed. That is the cycle problem, and the next chapter's
-subject.</span>
+freed. That is the cycle problem, and the subject of *Cycle
+collection and eliding counts*.</span>
 </Analogy>
 
 <Callout kind="definition">
@@ -102,12 +105,16 @@ a = N(); a = None    # prints "freed a"
 ```
 
 ```rust
-let a = Rc::new(5);
-println!("{}", Rc::strong_count(&a)); // 1
-let b = Rc::clone(&a);
-println!("{}", Rc::strong_count(&a)); // 2
-drop(b);
-println!("{}", Rc::strong_count(&a)); // 1
+struct N(&'static str, Option<Rc<N>>);
+impl Drop for N {   // runs when freed
+  fn drop(&mut self) {
+    println!("free {}", self.0);
+  }
+}
+let c = Rc::new(N("c", None));
+let b = Rc::new(N("b", Some(c)));
+let a = Rc::new(N("a", Some(b)));
+drop(a); // free a, free b, free c
 ```
 
 ```text
@@ -128,9 +135,11 @@ one and `del y` takes it away. On the last line `N` is a class whose
 `__del__` method prints a message when an object is freed: setting `a`
 to `None` drops the only reference and the message appears at once,
 before the next line runs, where a tracing collector would print it
-whenever it next happened to run. The second is Rust, where
-`Rc::clone` increments the count rather than copying the value, and
-dropping a clone decrements it<Cite id="rust-std-rc" />. The third is
+whenever it next happened to run. The second is the cascade, in Rust: `a` holds the only `Rc` to `b`,
+and `b` the only one to `c`, so dropping `a` takes its count to zero,
+and freeing it drops the `Rc` it held, which takes `b` to zero, and so
+on down the list (rustc 1.97 printed the three lines in that order,
+with no collector involved)<Cite id="rust-std-rc" />. The third is
 the price: passing a C++ `shared_ptr` by value copies it, and clang's
 code for the copy is a `lock`-prefixed increment, and for the
 destruction a `lock`-prefixed exchange-and-add, because the count may
@@ -176,7 +185,8 @@ instances are no longer needed"<Cite id="swift-arc" />.
   instructions when threads share counts (`shared_ptr`, `Arc`), and
   cycles that never reach zero.
 
-Next: finding the cycles that counting misses, and removing the count
-updates a compiler can prove it does not need.
+Next, *Cycle collection and eliding counts*: finding the cycles that
+counting misses, and removing the count updates a compiler can prove it
+does not need.
 
 <Quiz />
