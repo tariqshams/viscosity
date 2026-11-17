@@ -6,6 +6,8 @@ export const BOOK = {
   subtitle: 'Viscosity’s internals, and compiler engineering from scratch',
   author: 'Tariq Shams',
   edition: 'First edition',
+  // Shown as a badge on every page and on the landing page; remove when the book is done.
+  status: 'In draft',
   description:
     'Tariq Shams’s book on how Viscosity, an automatic ahead-of-time Array of Structures to Structures of Arrays compiler, works, and how anyone, beginner or expert, can learn to build a language, a compiler and Viscosity itself, first in TypeScript and then in Rust.',
 };

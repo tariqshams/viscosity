@@ -30,5 +30,5 @@ Python), which also runs in the browser as WebAssembly. See
 [Install](/start/install/).
 
 Viscosity is by Tariq Shams. **How** it works, from first principles up,
-is the subject of [the book](/book/). These docs
+is the subject of [the book](/book/) (in draft). These docs
 are about **using** it.

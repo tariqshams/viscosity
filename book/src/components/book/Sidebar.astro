@@ -1,4 +1,5 @@
 ---
+import DraftBadge from './DraftBadge.astro';
 // The contents drawer. Desktop: a fixed column. Phone: a slide-in drawer
 // opened by MobileNav. Planned chapters are shown greyed out, so you can
 // see the whole road ahead.
@@ -23,7 +24,7 @@ const back = [
 <aside id="book-nav" class="fixed inset-y-0 left-0 z-50 hidden w-[86%] max-w-[21rem] flex-col border-r border-line bg-paper lg:z-20 lg:flex lg:w-[18rem] lg:max-w-none" aria-label="Book contents">
   <div class="flex items-start border-b border-line">
     <a href={href('/')} class="block flex-1 px-5 py-4">
-      <span class="block font-display text-[1.25rem] font-semibold leading-tight">{BOOK.title}</span>
+      <span class="flex items-center gap-2 font-display text-[1.25rem] font-semibold leading-tight">{BOOK.title} <DraftBadge /></span>
       <span class="mt-0.5 block font-sans text-xs text-muted">by {BOOK.author}</span>
     </a>
     <button type="button" data-nav-close aria-label="Close" class="btn-3d btn-3d-sm mr-4 mt-4 grid h-9 w-9 shrink-0 place-items-center lg:hidden">

@@ -25,7 +25,7 @@ export default defineConfig({
         { label: 'Start here', items: ['start/introduction', 'start/install', 'start/quick-start'] },
         { label: 'Guides', items: ['guides/how-it-decides', 'guides/explain', 'guides/annotations', 'guides/bounds', 'guides/profiling', 'guides/typescript', 'guides/python', 'guides/limitations'] },
         { label: 'Reference', items: ['reference/cli', 'reference/options', 'reference/errors', 'reference/plugin-api', 'reference/layouts'] },
-        { label: 'Project', items: ['project/benchmarks', 'project/contributing', 'project/credits', { label: 'The book (how it works)', link: '/book/' }] },
+        { label: 'Project', items: ['project/benchmarks', 'project/contributing', 'project/credits', { label: 'The book (how it works, in draft)', link: '/book/' }] },
       ],
       head: [
         { tag: 'script', content: forceDark },

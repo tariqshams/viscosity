@@ -1,4 +1,5 @@
 ---
+import DraftBadge from '../components/book/DraftBadge.astro';
 import '../styles/globals.css';
 import Sidebar from '../components/book/Sidebar.astro';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
@@ -43,7 +44,7 @@ const themeScript = `(function(){try{var t=localStorage.getItem('theme');if(!t)t
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-[18rem]">
         <header class="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-paper/95 px-3 backdrop-blur sm:px-4 lg:px-8" style="padding-top: env(safe-area-inset-top)">
           <MobileNav client:idle />
-          <a href={href('/')} class="min-w-0 truncate font-display text-base font-semibold lg:hidden">{BOOK.title}</a>
+          <a href={href('/')} class="flex min-w-0 items-center gap-2 font-display text-base font-semibold lg:hidden"><span class="truncate">{BOOK.title}</span> <DraftBadge /></a>
           <div class="ml-auto flex items-center gap-2">
             <button id="search-open" type="button" aria-label="Search the book" aria-expanded="false" aria-controls="search-panel" class="btn-3d btn-3d-sm grid h-9 w-9 place-items-center sm:flex sm:w-auto sm:gap-2 sm:px-3">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -61,7 +62,7 @@ const themeScript = `(function(){try{var t=localStorage.getItem('theme');if(!t)t
         </header>
         <main class="min-w-0 flex-1"><slot /></main>
         <footer class="border-t border-line px-5 py-6 text-center font-sans text-xs text-muted sm:px-8" style="padding-bottom: max(1.5rem, env(safe-area-inset-bottom))">
-          <i>{BOOK.subtitle}</i> · © {new Date().getFullYear()} {BOOK.author} ·
+          <i>{BOOK.subtitle}</i>{BOOK.status && ` · ${BOOK.status}`} · © {new Date().getFullYear()} {BOOK.author} ·
           <a class="underline underline-offset-4" href={href('/acknowledgements/')}>Acknowledgements</a> ·
           <a class="underline underline-offset-4" href="https://github.com/tariqshams/viscosity">GitHub</a>
         </footer>

@@ -11,7 +11,7 @@
 	</span>
 	<span class="body">
 		<span class="text">Want to learn how this works deeply, compiler engineering from scratch, and perhaps become a contributor? I wrote a book with you in mind.</span>
-		<span class="cta">Read the book <span class="arrow" aria-hidden="true">→</span></span>
+		<span class="cta"><span class="draft">In draft</span> Read the book <span class="arrow" aria-hidden="true">→</span></span>
 	</span>
 </a>
 
@@ -72,6 +72,20 @@
 		font-weight: 600;
 		color: var(--sl-color-accent);
 		letter-spacing: 0.01em;
+	}
+	.draft {
+		display: inline-block;
+		margin-right: 0.6rem;
+		padding: 0.1rem 0.55rem;
+		border: 1px solid color-mix(in srgb, #ecc460 60%, transparent);
+		border-radius: 999px;
+		background: color-mix(in srgb, #ecc460 12%, transparent);
+		color: #ecc460;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		vertical-align: 0.12em;
 	}
 	.arrow {
 		display: inline-block;

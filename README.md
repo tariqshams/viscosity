@@ -9,7 +9,7 @@ rewrites the storage as a *struct of arrays* (SoA) or blocked *AoSoA* backed
 by typed arrays. Your code keeps the same behaviour.
 
 Website: [viscosity.dev](https://viscosity.dev) (the compiler's docs) and
-[viscosity.dev/book](https://viscosity.dev/book) (the book).
+[viscosity.dev/book](https://viscosity.dev/book) (the book, in draft).
 
 Status: **early releases on npm (0.0.2) and crates.io (0.0.1); expect rough edges.**
 The TypeScript compiler (JavaScript, TypeScript and Python front-ends) and its Rust port (JavaScript and Python;
@@ -39,7 +39,7 @@ shared 4-vCPU VM
 | Folder | What it is |
 |---|---|
 | [`engine/`](engine/) | The compiler. `engine/ts` is the TypeScript reference implementation; `engine/rust` is the Rust port. |
-| [`book/`](book/) | *Viscosity: Viscosity’s internals, and compiler engineering from scratch*: an interactive, mobile-first web book, served at [viscosity.dev/book](https://viscosity.dev/book), that teaches everything needed to build this, from `if` statements up. |
+| [`book/`](book/) | *Viscosity: Viscosity’s internals, and compiler engineering from scratch*: an interactive, mobile-first web book, served at [viscosity.dev/book](https://viscosity.dev/book), that teaches everything needed to build this, from `if` statements up. In draft. |
 | [`website/`](website/) | [viscosity.dev](https://viscosity.dev): the landing page and the user docs for the compiler. |
 
 ## Quick start

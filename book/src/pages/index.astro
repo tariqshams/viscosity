@@ -1,5 +1,6 @@
 ---
 import Book from '../layouts/Book.astro';
+import DraftBadge from '../components/book/DraftBadge.astro';
 import { BOOK, PARTS, TOTAL_DAYS, SECTIONS } from '../data/book.js';
 import { curriculum, START_HREF } from '../lib/chapters';
 import { href } from '../lib/url';
@@ -10,8 +11,10 @@ const preludeStart = entries.find((e) => e.section === 'prelude' && e.href)?.hre
 ---
 <Book title={BOOK.subtitle} current="home">
   <div class="mx-auto max-w-reading px-4 pb-16 pt-10 sm:px-6 lg:pt-16">
+    <DraftBadge class="mb-3" />
     <h1 class="font-display text-[2.1rem] font-semibold leading-[1.12] text-balance sm:text-[2.8rem]">{BOOK.subtitle}</h1>
     <p class="mt-4 font-sans text-lg">By <b>{BOOK.author}</b></p>
+    {BOOK.status && <p class="mt-2 font-sans text-sm text-muted">The book is in draft: chapters are still being revised.</p>}
 
     <figure class="not-prose my-8" aria-label="The same particles stored two ways">
       <svg viewBox="0 0 400 150" class="viz" role="img" aria-labelledby="hero-t">

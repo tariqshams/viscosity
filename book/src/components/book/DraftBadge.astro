@@ -1,0 +1,6 @@
+---
+// A small amber pill saying the book is a draft. Drop BOOK.status to remove it everywhere.
+import { BOOK } from '../../data/book.js';
+const { class: cls = '' } = Astro.props;
+---
+{BOOK.status && <span class={`inline-block shrink-0 rounded-full border border-warn/60 bg-warn/10 px-2 py-px align-middle font-sans text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-warn ${cls}`} data-draft>{BOOK.status}</span>}
